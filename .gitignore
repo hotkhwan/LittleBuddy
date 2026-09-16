@@ -1,0 +1,26 @@
+# Godot editor cache
+game/.godot/
+game/android/
+*.translation
+
+# Generated Xcode project / build output (regenerate with tools/export_ios.sh)
+build/
+
+# Native plugin build intermediates (regenerate with ios/speech_plugin/build_*.sh)
+ios/speech_plugin/godot-cpp/
+ios/speech_plugin/bin/
+ios/speech_plugin/.sconsign.dblite
+ios/speech_plugin/*.os
+ios/speech_plugin/src/*.os
+
+# NOTE: game/ios/speech_plugin/bin/** IS tracked on purpose -- those are the
+# compiled artifacts the Godot iOS export consumes, and keeping them in git is
+# what guarantees the last known-good iOS build can always be reproduced.
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store

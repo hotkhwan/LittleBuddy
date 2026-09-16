@@ -1,0 +1,51 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Little Buddy"
+run/main_scene="res://scenes/main/main.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+config/icon="res://icon.svg"
+boot_splash/bg_color=Color(1, 0.964706, 0.878431, 1)
+boot_splash/show_image=false
+
+[autoload]
+
+SaveService="*res://scripts/save/save_service.gd"
+SpeechService="*res://scripts/speech/speech_service.gd"
+TtsService="*res://scripts/speech/tts_service.gd"
+
+[display]
+
+window/size/viewport_width=1366
+window/size/viewport_height=1024
+window/size/window_width_override=1024
+window/size/window_height_override=768
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
+lights_and_shadows/directional_shadow/size=1024
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=0
+anti_aliasing/quality/msaa_3d=0
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/little_buddy_speech_export/plugin.cfg")

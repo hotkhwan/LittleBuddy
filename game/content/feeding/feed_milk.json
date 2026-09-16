@@ -1,0 +1,29 @@
+{
+  "activityId": "feedMilk",
+  "category": "feeding",
+  "prompt": "I'm hungry.",
+  "instruction": "Give the baby some milk.",
+  "repeatPrompt": "Can you say milk?",
+  "targetWords": [
+    "milk"
+  ],
+  "acceptedCommands": [
+    "milk",
+    "give milk",
+    "give baby milk",
+    "give the baby milk",
+    "give the baby some milk",
+    "baby wants milk"
+  ],
+  "reward": {
+    "stars": 1
+  },
+  "successPhrases": [
+    "Great!",
+    "Nice!"
+  ],
+  "retryPhrase": "Try again!",
+  "thankYouPhrase": "Thank you!",
+  "hungerRelief": 50,
+  "thaiHint": "ป้อนนมให้น้อง"
+}

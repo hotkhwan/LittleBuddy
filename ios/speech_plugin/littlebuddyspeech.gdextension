@@ -1,0 +1,51 @@
+; Godot 4 GDExtension descriptor for the LittleBuddySpeech native bridge.
+;
+; STATUS: COMPILED and link-verified for iOS arm64 (device) AND macOS arm64
+; (editor-load only), built against godot-cpp branch "4.5" and Xcode 27.0 /
+; iOS 27.0 SDK, running under Godot 4.7.2. See README.md "Build status" /
+; "Why a macOS build" for exact commands/verification.
+;
+; This file must be copied into the Godot project (e.g.
+; res://ios/speech_plugin/littlebuddyspeech.gdextension) so the exporter
+; picks it up. Root-caused finding (see README.md "Why a macOS build"): the
+; macOS entry below is NOT optional cosmetic polish -- without a library
+; entry matching the editor's own running OS/arch, Godot's macOS editor logs
+; "No GDExtension library found for current OS and architecture (macos.arm64)"
+; and never successfully opens this extension at all, which means the
+; engine's built-in GDExtensionExportPlugin (editor/export/gdextension_export_plugin.*)
+; never sees it as loaded and therefore never bundles the ios.debug/ios.release
+; library or registers the entry symbol into the exported iOS Xcode project.
+; iOS system framework linking (Speech.framework, AVFoundation.framework) is
+; a separate concern, handled by the companion export-time addon at
+; godot_project_overlay/addons/little_buddy_speech_export/ -- see README.md
+; "Why not .gdip" for why the legacy .gdip route does not work in Godot 4.7.
+
+[configuration]
+entry_symbol = "little_buddy_speech_library_init"
+; Built against godot-cpp's 4.5 API surface (no 4.6/4.7 godot-cpp branch
+; exists yet upstream). Floor compatibility_minimum at 4.5 rather than 4.1
+; so an older Godot that lacks some interface entry points this build may
+; call never attempts to load it.
+compatibility_minimum = "4.5"
+compatibility_maximum = "4.7"
+
+[libraries]
+; Paths are relative to this file once copied under res://. Build outputs
+; are NOT included in this repository (see README) — you must build them.
+ios.debug = "res://ios/speech_plugin/bin/liblittle_buddy_speech.ios.debug.xcframework"
+ios.release = "res://ios/speech_plugin/bin/liblittle_buddy_speech.ios.release.xcframework"
+; macOS entries exist ONLY so the macOS Godot editor can load this extension
+; at all (see note above) -- they are never shipped to the child's iPad.
+; AVAudioSession (iOS-only) usage in little_buddy_speech.mm is guarded out
+; on macOS; on-device speech recognition is still real on macOS (useful for
+; in-editor testing) but is not this project's shipping surface.
+macos.debug = "res://ios/speech_plugin/bin/liblittle_buddy_speech.macos.template_debug.framework"
+macos.release = "res://ios/speech_plugin/bin/liblittle_buddy_speech.macos.template_release.framework"
+
+[dependencies]
+; No bundled third-party binary dependencies for either platform. iOS
+; system framework linking (Speech.framework, AVFoundation.framework) is
+; handled by an EditorExportPlugin addon (add_ios_framework), not here --
+; see README.md "Why not .gdip". The macOS build links those same system
+; frameworks directly at build time (see SConstruct) since it is a loaded
+; shared library, not a static archive.

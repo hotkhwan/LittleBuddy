@@ -1,0 +1,7 @@
+{
+  "contentVersion": 1,
+  "category": "feeding",
+  "activities": [
+    "feed_milk.json"
+  ]
+}

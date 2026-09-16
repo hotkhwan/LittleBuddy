@@ -1,0 +1,21 @@
+; DEPRECATED / DEAD FILE -- do not copy this into the Godot project.
+;
+; This .gdip file is NOT used. Confirmed by inspecting the shipped Godot
+; 4.7.2 editor binary directly (strings + symbol table): the only
+; "Invalid plugin config file" error string in that binary belongs to
+; platform/android/export/export_plugin.cpp (the Android plugin loader).
+; There is no .gdip / iOS-plugin-config parser anywhere in Godot 4.7 --
+; the legacy Godot 3.x "iOS plugin" system (res://ios/plugins/*.gdip) does
+; not exist in this engine version. An export attempt that places this file
+; under res://ios/plugins/LittleBuddySpeech/ will not link Speech.framework
+; or AVFoundation.framework, no matter how the [config]/[dependencies]
+; sections are worded.
+;
+; The real mechanism in Godot 4.7 for injecting iOS system framework links
+; is EditorExportPlugin.add_ios_framework(), called from a GDScript
+; EditorPlugin's _export_begin(). See:
+;   ios/speech_plugin/godot_project_overlay/addons/little_buddy_speech_export/
+; for the addon that replaces this file, and README.md "Why not .gdip" for
+; the full writeup of how this was confirmed (not guessed).
+;
+; This file is kept only as a paper trail of what was tried and ruled out.

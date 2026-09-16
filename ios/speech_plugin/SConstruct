@@ -1,0 +1,73 @@
+#!/usr/bin/env python
+# SCons build script for the LittleBuddySpeech GDExtension.
+#
+# Builds for two platforms:
+#   - iOS (arm64, device): the shipping target. Produces a static library,
+#     later combined with godot-cpp and wrapped into an .xcframework by
+#     build_xcframeworks.sh.
+#   - macOS (arm64): NOT a shipping target for the child-facing game. It
+#     exists solely so Godot's macOS *editor* can successfully open
+#     littlebuddyspeech.gdextension (GDExtensionManager requires a library
+#     entry matching the editor's own running OS/arch to load an extension
+#     at all). Once loaded, Godot's built-in GDExtensionExportPlugin can see
+#     this extension and bundle its *iOS* library/dependencies when
+#     exporting to iOS -- without a macOS entry, the .gdextension fails to
+#     load in-editor and its iOS artifacts are silently skipped by the
+#     exporter. See ios/speech_plugin/README.md "Why a macOS build".
+#
+# Verified against godot-cpp branch "4.5" (see godot-cpp/ checkout) built
+# with Godot 4.7.2's engine/toolchain. Godot GDExtension's ABI is designed to
+# be forward compatible: a plugin built against an older api.json will load
+# fine in a newer engine as long as it only uses APIs that already existed
+# at that api.json's snapshot (which is the case here: Object, ClassDB,
+# Engine singleton registration, and basic signals have been stable since
+# well before 4.5).
+#
+# Usage (run from ios/speech_plugin/):
+#   export PATH="$HOME/Library/Python/3.9/bin:$PATH"
+#   scons platform=ios arch=arm64 target=template_debug ios_min_version=15.0
+#   scons platform=ios arch=arm64 target=template_release ios_min_version=15.0
+#   scons platform=macos arch=arm64 target=template_debug
+#   scons platform=macos arch=arm64 target=template_release
+#
+# Produces (per target):
+#   godot-cpp/bin/libgodot-cpp.ios.<target>.arm64.a     (godot-cpp bindings)
+#   bin/liblittle_buddy_speech.ios.<target>.a            (our extension code)
+#   bin/liblittle_buddy_speech.macos.<target>.framework/... (macOS, editor-load only)
+#
+# The iOS static libraries are combined with `libtool -static` and then
+# wrapped into an .xcframework — see ios/speech_plugin/build_xcframeworks.sh.
+# The macOS build links directly against system frameworks since it is a
+# loadable shared library, not a static archive Xcode links later.
+
+env = SConscript("godot-cpp/SConstruct")
+
+env.Append(CPPPATH=["src/"])
+
+# SCons' default C++ suffix list does not include Objective-C++ (.mm) files;
+# register it explicitly so `.mm` sources are compiled with $CXX (clang++,
+# which auto-detects Objective-C++ from the .mm extension).
+env.Append(CXXFILESUFFIXES=[".mm"])
+
+sources = Glob("src/*.cpp") + Glob("src/*.mm")
+
+if env["platform"] in ("ios", "macos"):
+    # little_buddy_speech.mm assumes ARC (no explicit retain/release/autorelease).
+    env.Append(CCFLAGS=["-fobjc-arc"])
+
+if env["platform"] == "macos":
+    # Shared library, linked immediately by the dynamic loader -- unlike the
+    # iOS static archive (where Xcode resolves framework symbols later at
+    # app-link time), this .dylib must resolve Speech/AVFoundation symbols
+    # itself at build time.
+    env.Append(LINKFLAGS=["-framework", "Speech", "-framework", "AVFoundation", "-framework", "Foundation"])
+    library_name = "liblittle_buddy_speech.macos.{}".format(env["target"])
+    library = env.SharedLibrary(
+        target="bin/{0}.framework/{0}".format(library_name),
+        source=sources,
+    )
+else:
+    library_name = "liblittle_buddy_speech.{}.{}.a".format(env["platform"], env["target"])
+    library = env.StaticLibrary(target="bin/" + library_name, source=sources)
+
+Default(library)

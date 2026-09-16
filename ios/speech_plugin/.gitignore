@@ -1,0 +1,17 @@
+# Vendored dependency — reproducible via:
+#   git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp godot-cpp
+# (see README.md). Not committed: ~170MB of upstream source + generated
+# bindings that regenerate deterministically from the pinned branch.
+godot-cpp/
+
+# SCons build cache/state.
+.sconsign.dblite
+.sconf_temp/
+*.os
+*.o
+
+# Intermediate static libraries. Only the final .xcframework artifacts
+# (built by build_xcframeworks.sh) are the actual deliverable consumed by
+# littlebuddyspeech.gdextension; these intermediates regenerate from source.
+bin/*.a
+bin/combined/
