@@ -196,7 +196,9 @@ Speech (optional tonight — see §7):
 
 ## 7. Native iOS speech — status and what remains
 
-**Status: written but never compiled. Not required for tonight.**
+**Status: compiled, linked and shipped in the Xcode project. NOT yet proven on a device.**
+See `docs/OVERNIGHT_BUILD_REPORT.md` §5 for the two runtime bugs that were fixed and
+exactly what remains unverified.
 
 The game ships a `SpeechService` abstraction with three backends. On a real iPad without
 the compiled plugin, `SpeechService` reports `"unavailable"` and **touch gameplay remains

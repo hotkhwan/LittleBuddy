@@ -128,6 +128,19 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 
 @end
 
+// Private notification handlers + shared "stop and report a reason" helper,
+// used by both AVAudioSessionInterruptionNotification and
+// AVAudioSessionMediaServicesWereResetNotification handling below. Declared
+// in a class extension (rather than only relying on late-binding via
+// @selector) so the compiler can see and check these declarations.
+@interface LBSpeechController ()
+#if TARGET_OS_IPHONE
+- (void)_handleAudioSessionInterruption:(NSNotification *)notification;
+- (void)_handleMediaServicesWereReset:(NSNotification *)notification;
+#endif
+- (void)_interruptListeningForReason:(NSString *)reason;
+@end
+
 @implementation LBSpeechController
 
 - (instancetype)initWithOwner:(LittleBuddySpeech *)owner {
@@ -139,8 +152,39 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 				initWithLocale:[NSLocale localeWithLocaleIdentifier:_localeIdentifier]];
 		_recognizer.delegate = self;
 		_isListening = NO;
+#if TARGET_OS_IPHONE
+		// Siri, an incoming call, another app seizing the mic, CarPlay, etc.
+		// all surface as AVAudioSessionInterruptionNotification, NOT as an
+		// NSError delivered to the SFSpeechRecognitionTask result handler --
+		// a running AVAudioEngine can simply be yanked out from under us.
+		// AVAudioSessionMediaServicesWereResetNotification is the more severe
+		// (rare) case where coreaudiod itself restarts and every audio object
+		// tied to the old session/engine instance becomes invalid. Both are
+		// only meaningful on iOS/tvOS/watchOS -- AVAudioSession does not exist
+		// on macOS (see the file-level comment). Removed in `dealloc` below.
+		[[NSNotificationCenter defaultCenter] addObserver:self
+												  selector:@selector(_handleAudioSessionInterruption:)
+													  name:AVAudioSessionInterruptionNotification
+													object:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self
+												  selector:@selector(_handleMediaServicesWereReset:)
+													  name:AVAudioSessionMediaServicesWereResetNotification
+													object:nil];
+#endif
 	}
 	return self;
+}
+
+- (void)dealloc {
+#if TARGET_OS_IPHONE
+	// Under ARC this must NOT call [super dealloc] explicitly -- ARC
+	// synthesizes that call automatically. Without this removal, a
+	// notification firing after this controller is freed (e.g. right after
+	// -[LittleBuddySpeech dealloc] on scene teardown) would send a message to
+	// a dangling `self`, which is exactly the kind of native crash this pass
+	// exists to close off.
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+#endif
 }
 
 - (BOOL)isAvailable {
@@ -295,30 +339,52 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	// format if queried before the audio session has fully settled. Installing
 	// a tap with such a format can misbehave or crash AVAudioEngine.
 	if (recordingFormat == nil || recordingFormat.sampleRate <= 0.0 || recordingFormat.channelCount == 0) {
+		// Route through `_finishListening` (a no-op re: `listening_stopped`
+		// here, since `isListening` is still NO) so the just-allocated
+		// `self.request`/`self.audioEngine` are released the same single way
+		// as every other exit path, instead of being silently leaked/left
+		// dangling until the next start_listening() call overwrites them.
+		[self _finishListening];
 		if (self.owner != nullptr) {
 			self.owner->_emit_recognition_failed(String("audio_format_error"));
 		}
 		return;
 	}
 
+	// AVAudioEngine/AVAudioInputNode do not always report trouble via
+	// NSError -- installing a tap or starting the engine can raise a
+	// synchronous Objective-C NSException instead, most plausibly when the
+	// shared AVAudioSession/audio graph is mid-interruption or was just
+	// invalidated by a media-services reset. Catch it here and funnel it
+	// through the same single `_finishListening` + `recognition_failed` exit
+	// path as every other failure so it cannot cross into Godot's C++/
+	// GDScript call stack and crash the whole app on the child's iPad.
 	__weak LBSpeechController *weakSelf = self;
-	[inputNode installTapOnBus:0
-					 bufferSize:1024
-						 format:recordingFormat
-						  block:^(AVAudioPCMBuffer *_Nonnull buffer, AVAudioTime *_Nonnull when) {
-							// Streamed straight into the recognition request;
-							// never written to disk.
-							__strong LBSpeechController *strongSelf = weakSelf;
-							if (strongSelf != nil && strongSelf.request != nil) {
-								[strongSelf.request appendAudioPCMBuffer:buffer];
-							}
-						  }];
+	@try {
+		[inputNode installTapOnBus:0
+						 bufferSize:1024
+							 format:recordingFormat
+							  block:^(AVAudioPCMBuffer *_Nonnull buffer, AVAudioTime *_Nonnull when) {
+								// Streamed straight into the recognition request;
+								// never written to disk.
+								__strong LBSpeechController *strongSelf = weakSelf;
+								if (strongSelf != nil && strongSelf.request != nil) {
+									[strongSelf.request appendAudioPCMBuffer:buffer];
+								}
+							  }];
 
-	[self.audioEngine prepare];
-	NSError *startError = nil;
-	[self.audioEngine startAndReturnError:&startError];
-	if (startError != nil) {
-		[inputNode removeTapOnBus:0];
+		[self.audioEngine prepare];
+		NSError *startError = nil;
+		[self.audioEngine startAndReturnError:&startError];
+		if (startError != nil) {
+			[self _finishListening];
+			if (self.owner != nullptr) {
+				self.owner->_emit_recognition_failed(String("audio_engine_error"));
+			}
+			return;
+		}
+	} @catch (NSException *exception) {
+		[self _finishListening];
 		if (self.owner != nullptr) {
 			self.owner->_emit_recognition_failed(String("audio_engine_error"));
 		}
@@ -408,6 +474,76 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	[self _finishListening];
 }
 
+// Shared by both notification handlers below. Tears down through the single
+// `_finishListening` exit path (so `listening_stopped` fires exactly once,
+// same as the timeout/error/manual-stop paths above) and then reports the
+// interruption honestly via `recognition_failed` rather than leaving the
+// caller's "I'm listening..." UI stuck open with no explanation. A no-op if
+// nothing was actually listening (e.g. the interruption happened while idle).
+- (void)_interruptListeningForReason:(NSString *)reason {
+	if (!self.isListening) {
+		return;
+	}
+	[self _finishListening];
+	if (self.owner != nullptr) {
+		self.owner->_emit_recognition_failed(String([reason UTF8String]));
+	}
+}
+
+#if TARGET_OS_IPHONE
+// A Siri invocation, an incoming call, another app seizing the mic, a
+// CarPlay/AirPlay route change forcing an interruption, etc. all deliver
+// this notification -- NOT an NSError to the recognition task's result
+// handler -- so this is the only place that observes them. Per Apple's
+// documentation this notification is posted on the main thread, but this
+// dispatches through the main queue anyway to match the defensive pattern
+// used for every other callback in this file that could conceivably arrive
+// off-thread, and so touching `self` here is never racing `_finishListening`
+// running from a different queue.
+//
+// `TypeEnded` is deliberately a no-op beyond returning: a child's microphone
+// must only reopen from a deliberate Speak tap, never resume automatically
+// just because e.g. a phone call ended.
+- (void)_handleAudioSessionInterruption:(NSNotification *)notification {
+	NSNumber *typeValue = notification.userInfo[AVAudioSessionInterruptionTypeKey];
+	if (typeValue == nil ||
+			(AVAudioSessionInterruptionType)typeValue.unsignedIntegerValue != AVAudioSessionInterruptionTypeBegan) {
+		return;
+	}
+	__weak LBSpeechController *weakSelf = self;
+	dispatch_async(dispatch_get_main_queue(), ^{
+	  __strong LBSpeechController *strongSelf = weakSelf;
+	  if (strongSelf == nil) {
+		  return;
+	  }
+	  [strongSelf _interruptListeningForReason:@"interrupted"];
+	});
+}
+
+// Rare, more severe than a plain interruption: coreaudiod itself restarted,
+// so the AVAudioEngine/AVAudioSession instances currently in use may now be
+// entirely invalid, and the OS resets the session's category/mode back to
+// its own defaults. Stop cleanly (if listening) the same way as a plain
+// interruption, then rebuild the SFSpeechRecognizer so a later, deliberate
+// Speak tap gets a fresh instance instead of silently failing forever. The
+// audio session category itself is re-applied unconditionally at the top of
+// `startListeningWithLocale:` on every call, so no extra recovery is needed
+// for that part here.
+- (void)_handleMediaServicesWereReset:(NSNotification *)notification {
+	__weak LBSpeechController *weakSelf = self;
+	dispatch_async(dispatch_get_main_queue(), ^{
+	  __strong LBSpeechController *strongSelf = weakSelf;
+	  if (strongSelf == nil) {
+		  return;
+	  }
+	  [strongSelf _interruptListeningForReason:@"interrupted"];
+	  strongSelf.recognizer = [[SFSpeechRecognizer alloc]
+			  initWithLocale:[NSLocale localeWithLocaleIdentifier:strongSelf.localeIdentifier]];
+	  strongSelf.recognizer.delegate = strongSelf;
+	});
+}
+#endif
+
 // Internal teardown shared by every exit path: final result, error,
 // ~5s timeout, and manual stop_listening(). This is the SINGLE place that
 // emits `listening_stopped` (guarded by `wasListening` so it only fires
@@ -424,11 +560,24 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 		dispatch_block_cancel(self.timeoutBlock);
 		self.timeoutBlock = nil;
 	}
-	if (self.audioEngine != nil) {
-		[self.audioEngine.inputNode removeTapOnBus:0];
-		[self.audioEngine stop];
+	// AVAudioEngine/AVAudioInputNode do not always report trouble via NSError
+	// -- e.g. removing a tap or stopping an engine whose underlying I/O unit
+	// the OS has already torn down mid-interruption or mid-media-services-
+	// reset can raise a synchronous Objective-C NSException instead. This is
+	// the single shared teardown path for every exit (final result, error,
+	// timeout, manual stop, interruption, media-services reset), so this
+	// @try/@catch is what stands between any of those and an uncaught
+	// exception crashing the whole app on the child's iPad. There is nothing
+	// left to roll back if it fires -- we are already unconditionally
+	// resetting all listening state below -- so it is safe to just swallow.
+	@try {
+		if (self.audioEngine != nil) {
+			[self.audioEngine.inputNode removeTapOnBus:0];
+			[self.audioEngine stop];
+		}
+		[self.request endAudio];
+	} @catch (NSException *exception) {
 	}
-	[self.request endAudio];
 	[self.task cancel];
 	self.request = nil;
 	self.task = nil;
