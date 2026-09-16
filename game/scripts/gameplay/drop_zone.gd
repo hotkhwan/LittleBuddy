@@ -94,6 +94,10 @@ func _ready() -> void:
 		zone_id = _zone_id_from_node_name(name)
 	if show_marker:
 		_build_marker()
+	# Landing pads start hidden: a pad only makes sense while a task is actually
+	# asking the child to drag something here. Showing every pad during a
+	# "Find the spoon" task is just noise on the floor.
+	set_marker_visible(false)
 
 
 ## -- Public API --------------------------------------------------------------
@@ -202,3 +206,12 @@ func _build_marker() -> void:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_marker.material_override = material
 	add_child(_marker)
+
+
+## Shows/hides the soft landing pad. Built lazily so a zone that was configured
+## without a marker can still reveal one when a task targets it.
+func set_marker_visible(value: bool) -> void:
+	if value and _marker == null:
+		_build_marker()
+	if _marker != null:
+		_marker.visible = value

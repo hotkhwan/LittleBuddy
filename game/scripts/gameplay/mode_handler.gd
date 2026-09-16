@@ -112,13 +112,45 @@ func start(task: Dictionary, context: Dictionary = {}) -> void:
 		_speak(get_prompt(), false)
 	else:
 		_speak(get_prompt())
+	# Only the zone this task actually targets shows its landing pad.
+	_set_all_markers_visible(false)
+	_reveal_target_zone_marker()
 	_on_start()
 
 
 func cancel() -> void:
 	_active = false
 	_despawn_all()
+	_set_all_markers_visible(false)
 	speak_button_enabled.emit(false)
+
+
+## Hides every landing pad. Zones are plain Area3Ds from the activity scene, so
+## duck-type the call -- a zone without the method is simply skipped.
+func _set_all_markers_visible(value: bool) -> void:
+	var zones: Variant = _context.get(CTX_DROP_ZONES, {})
+	if not (zones is Dictionary):
+		return
+	for key: Variant in (zones as Dictionary).keys():
+		var zone: Variant = (zones as Dictionary)[key]
+		if zone is Node and is_instance_valid(zone) and zone.has_method("set_marker_visible"):
+			zone.call("set_marker_visible", value)
+
+
+## Subclasses that deliver into a zone override `get_zone_id()`; tap-only modes
+## return "" and therefore reveal nothing.
+func _reveal_target_zone_marker() -> void:
+	if not has_method("get_zone_id"):
+		return
+	var zone_id: String = String(call("get_zone_id"))
+	if zone_id.is_empty():
+		return
+	var zones: Variant = _context.get(CTX_DROP_ZONES, {})
+	if not (zones is Dictionary) or not (zones as Dictionary).has(zone_id):
+		return
+	var zone: Variant = (zones as Dictionary)[zone_id]
+	if zone is Node and is_instance_valid(zone) and zone.has_method("set_marker_visible"):
+		zone.call("set_marker_visible", true)
 
 
 ## Single funnel for every touch interaction: a tap on an object, or a drag that
