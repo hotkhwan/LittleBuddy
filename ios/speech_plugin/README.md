@@ -1,6 +1,248 @@
 # LittleBuddySpeech — iOS native speech plugin
 
-## Status: iOS export pickup CONFIRMED WORKING end-to-end (this round)
+## Status: runtime bugs fixed this round (see "Runtime fixes" below); iOS
+## export pickup was already confirmed working end-to-end (previous round)
+
+The previous round confirmed the plugin *links and exports* correctly
+end-to-end. It compiled and even bound into the exported binary, but speech
+did not actually work when the app ran on a physical iPhone. This round's
+job was root-causing and fixing that. See "Runtime fixes (this round)" for
+the full write-up, "Simulator verification (this round)" for what was and
+was not directly observed running, and "On-device only, by design, always"
+for one deliberate place this round did NOT follow the literal brief.
+
+## Runtime fixes (this round)
+
+Five concrete bugs were found and fixed, three of them in
+`game/scripts/speech/**` / `ios/speech_plugin/src/little_buddy_speech.mm`
+severe enough to fully explain "speech does not work on a real device" on
+their own:
+
+1. **`SpeechService._select_backend()` picked its backend ONCE, based on a
+   possibly-premature snapshot, and then never revisited that decision —
+   this alone could permanently disable speech for the app's entire
+   lifetime.** (`game/scripts/speech/speech_service.gd`)
+   `_select_backend()` runs once, in `_ready()`, essentially on app launch.
+   It used to call `IosSpeechBackend.new().is_available()` and only pick the
+   native backend if that one call returned `true` *right then* — otherwise
+   it permanently fell back to the inert no-op `SpeechBackend`, forever,
+   even though nothing ever re-checks. But native `is_available()` depends
+   on `SFSpeechRecognizer.isAvailable`, a KVO-observed property that is not
+   guaranteed `true` immediately after the recognizer object is constructed,
+   and no permission has even been requested yet at that point in the app's
+   lifecycle. A single early `false` (plausible, not even an edge case) would
+   silently and permanently disable speech for the rest of the session, even
+   after the recognizer became available and the user granted permission.
+   **Fix**: pick `IosSpeechBackend` whenever the native singleton is merely
+   *present* (`Engine.has_singleton("LittleBuddySpeech")`), not only when a
+   one-time availability snapshot happened to be `true`. `is_available()` is
+   still evaluated live, on every call, straight through to the native
+   object — this only stops baking in a premature permanent decision.
+   Verified live (see "Verification performed" below): with the singleton
+   registered, `SpeechService.get_backend_name()` now reliably returns
+   `"ios"`.
+
+2. **`listening_stopped` was only ever emitted on a manual `stop_listening()`
+   call — never on a final recognition result or an error.** (`little_buddy_speech.mm`)
+   `IosSpeechBackend._on_listening_stopped()` is the only thing that clears
+   the cached `is_listening()` flag on the GDScript side, and
+   `docs/INTEGRATION_CONTRACT.md` documents `listening_started` /
+   `listening_stopped` as the pair that drives the "I'm listening..." UI.
+   Since a successful or failed recognition never emitted
+   `listening_stopped`, the very first use of Speak would leave
+   `is_listening()` stuck `true` and any "I'm listening..." UI stuck on
+   screen for the rest of the session, even though recognition itself may
+   have quietly succeeded once. **Fix**: `_finishListening` is now the
+   single place that emits `listening_stopped` (guarded so it only fires
+   once per session), and every exit path — final result, error, the new
+   ~5s timeout, and manual `stop_listening()` — funnels through it.
+
+3. **`AVAudioSession` category was `.record` (input-only, exclusive)
+   instead of `.playAndRecord`.** (`little_buddy_speech.mm`)
+   `.record` is correct for an app whose *only* job is speech recognition
+   (it's literally Apple's own sample-code pattern for that case), but
+   Little Buddy is a game with its own concurrently-running Godot audio
+   output (TTS prompts, sound effects) sharing the same process-wide
+   `AVAudioSession`. Switching the shared session to an input-only,
+   exclusive category every time Speak is tapped is a plausible way to
+   silence or interrupt whatever Godot's own iOS audio driver already has
+   playing through that same session — this was flagged as the single most
+   likely runtime failure mode going in, and it is a real, concrete
+   difference between "an app built to demonstrate `SFSpeechRecognizer`" and
+   "a game that also needs to record". **Fix**: category is now
+   `.playAndRecord`, mode `.measurement` (kept for on-device recognition
+   accuracy), options `DefaultToSpeaker | AllowBluetoothHFP | MixWithOthers`.
+   `_finishListening` also no longer force-deactivates the shared session
+   (`setActive:NO`) on every stop, for the same reason — deactivating a
+   session that Godot's own audio graph may still be actively rendering
+   through risks interrupting/tearing down that graph. This was NOT
+   independently observed against Godot's actual iOS audio driver (that
+   requires a live device/simulator run with the audio driver active, which
+   was not achievable this round — see "Simulator verification" below); it
+   is a well-reasoned, Apple-documented, but still runtime-unverified fix.
+
+4. **No auto-stop timeout existed.** (`little_buddy_speech.mm`)
+   If the recognizer never produced a final result (silence, ambient noise,
+   an ambiguous utterance), listening stayed open indefinitely — combined
+   with bug #2 above, that's a listening session with no way out short of
+   the user manually stopping it. **Fix**: a cancellable ~5s
+   `dispatch_after` timeout (required behaviour #4). Partial results are now
+   enabled (`shouldReportPartialResults = YES`) purely so the timeout path
+   has a best-effort transcript to fall back to; if none was captured, it
+   reports `recognition_failed("timeout")` instead.
+
+5. **Permission callbacks marshalled via `dispatch_async(main_queue)` into
+   direct `emit_signal` calls, not `call_deferred`.** (`little_buddy_speech.mm`)
+   Apple documents `SFSpeechRecognizer.requestAuthorization`,
+   `AVAudioSession.requestRecordPermission`, and the
+   `recognitionTaskWithRequest:` result handler as running on an arbitrary,
+   unspecified queue. The existing code already hopped to
+   `dispatch_get_main_queue()` before calling into Godot, which likely made
+   this a non-issue in practice on iOS's main-thread-driven run loop — but
+   `Object::call_deferred("emit_signal", ...)` is Godot's own documented,
+   thread-safe mechanism for exactly this kind of external-callback
+   marshalling, so all five `_emit_*` methods now use it instead of calling
+   `emit_signal` directly. Belt-and-braces, not a confirmed observed crash.
+
+Two smaller, defensive fixes rounded this out: `hasPermission`/
+`requestPermission` now use the modern `AVAudioApplication` record-permission
+API on iOS 17+ (falling back to the deprecated-but-functional
+`AVAudioSession` API on iOS 15/16, since `export_presets.cfg` sets a 15.0
+minimum), and a guard against a zero-rate/zero-channel input format that
+some devices can report if queried before the audio session has fully
+settled.
+
+## On-device only, by design, always (one deliberate divergence from the brief)
+
+The brief that prompted this round said on-device recognition should be
+*preferred*, but if `supportsOnDeviceRecognition` is `false`, the plugin
+should "still work rather than refusing" — i.e., fall back to Apple's
+server-based (networked) recognition.
+
+This plugin does **not** do that, deliberately. This repository's own
+`CLAUDE.md` states, as a hard, non-negotiable project rule: **"No network
+dependency"** and **no persisted/uploaded child microphone audio**. Enabling
+server-based recognition when on-device is unsupported would mean uploading
+the child's voice audio to Apple's servers over the network — that directly
+contradicts both rules, and no instruction short of the project owner's own
+explicit change to `CLAUDE.md` can authorize it.
+
+`requiresOnDeviceRecognition` therefore remains hard-forced to `YES`, and
+`isAvailable` still gates on `supportsOnDeviceRecognition`. In the case where
+on-device recognition genuinely is not supported, `is_available()` reports
+`false` and `start_listening()` reports `recognition_failed("unavailable")`
+honestly — touch-only feeding was already designed to be fully complete
+without speech (`docs/INTEGRATION_CONTRACT.md`: "Touch gameplay must remain
+fully playable when speech is unavailable, denied, or errors"), so "the
+child getting nothing" never actually happens; they just don't get the
+optional speech shortcut on that specific device/locale combination. In
+practice, on-device English recognition (`en-US`) is supported on
+essentially every iPhone capable of running iOS 15+, so this divergence
+should not matter for the family's actual physical device.
+
+## Simulator verification (this round)
+
+The device (`ios-arm64`) xcframework slice was rebuilt from the fixed
+source and re-verified unchanged in kind (still device-only, still a plain
+non-fat arm64 static archive). A NEW `ios-arm64_x86_64-simulator` slice was
+added (see `build_xcframeworks.sh`, which now builds arm64 AND x86_64
+Simulator archives and `lipo -create`s them into one universal simulator
+`.a` before packaging), so the xcframework's `Info.plist` now declares
+(and, verified with `lipo -info`, actually contains) both:
+
+```
+ios-arm64                    -> arm64 (device)
+ios-arm64_x86_64-simulator   -> arm64 + x86_64 (Simulator, universal)
+```
+
+**What was verified, concretely, this round:**
+
+- `scons platform=ios arch=arm64 ios_simulator=yes ...` (and the same for
+  `x86_64`) compiles the fixed `little_buddy_speech.mm` cleanly for the
+  Simulator SDK, for both debug and release.
+- Exporting a throwaway copy of the project (`/tmp/sp_game` →
+  `/tmp/sp_out`, never `game/` or `build/`) produced a `project.pbxproj`
+  whose `PBXFrameworksBuildPhase` contains `Speech.framework`,
+  `AVFoundation.framework`, and `liblittle_buddy_speech.ios.debug.xcframework`
+  (same as the previous round's device-only verification), and the exported
+  Xcode project directory (`LittleBuddy/dylibs/ios/speech_plugin/bin/...`)
+  physically contains BOTH the `ios-arm64` and `ios-arm64_x86_64-simulator`
+  directories from the xcframework.
+- `xcodebuild -sdk iphonesimulator ARCHS=x86_64 ... build` (Simulator,
+  unsigned) on that exported project produced **`** BUILD SUCCEEDED **`**,
+  meaning the linker resolved `little_buddy_speech_library_init`,
+  `Speech.framework`, and `AVFoundation.framework` for a real x86_64
+  Simulator target using our plugin's x86_64 simulator archive.
+- The plugin's own `ios-arm64-simulator` archive was independently confirmed
+  to contain real arm64 object code for `register_dynamic_symbol`/
+  `add_apple_embedded_platform_init_callback` (`nm -arch arm64`), i.e. our
+  side of the arm64 Simulator story is correct.
+
+**What could NOT be verified, and why — two stacked, external causes, not a
+plugin defect:**
+
+1. Godot 4.7.2's own official export template ships a `libgodot.a` for the
+   iOS Simulator whose `Info.plist` claims `SupportedArchitectures: [arm64,
+   x86_64]`, but the actual archive (confirmed with `lipo -info` on the raw,
+   never-exported `ios.zip` template — not just our export output) is
+   **x86_64 only**. Linking our plugin's `ios-arm64-simulator` slice against
+   it for an `arm64` Simulator target fails with `_main`,
+   `register_dynamic_symbol`, and `add_apple_embedded_platform_init_callback`
+   all "undefined for architecture arm64" — because literally every object
+   in Godot's own `libgodot.a` gets skipped as "wrong architecture" (`ld:
+   warning: ignoring file ... found architecture 'x86_64', required
+   architecture 'arm64'`, repeated for every single object in the archive).
+   This is an upstream Godot export-template packaging defect, not anything
+   under `ios/speech_plugin/**`.
+2. Working around (1) by building/linking for `x86_64` instead (which DOES
+   link and produce a `BUILD SUCCEEDED` `.app`, see above) still could not be
+   **installed** on this host's iOS 27.0 Simulator runtime:
+   `xcrun simctl install` fails with `IXUserPresentableErrorDomain code=4`:
+   *"This app needs to be updated by the developer to work on this version
+   of iOS... This device can run code for these platforms: iOS-simulator"*
+   (x86_64 not listed). Rosetta 2 is installed and running on this host, but
+   this Xcode 27 / iOS 27.0 Simulator runtime's CoreSimulator refuses the
+   x86_64 binary outright — consistent with Apple having dropped
+   Intel/Rosetta-translated iOS Simulator app support in this Xcode
+   generation.
+
+**Net result**: the export→link chain was verified end-to-end for the
+Simulator using real tools (not just "it compiles"), including a genuine
+`BUILD SUCCEEDED` on a real x86_64 Simulator target — but no `.app` could
+actually be installed/launched/log-streamed in the Simulator in this
+environment, for reasons entirely upstream of this plugin (a defective
+official Godot template + this Xcode generation's simulator architecture
+policy). **I did not observe `listening_started` firing, a permission
+prompt, or any other live runtime signal in the Simulator or on a physical
+device.** That remains unproven; see "What the user must do" below for how
+to close that gap on the real hardware.
+
+As an alternate, real (not simulated) sanity check on the shared
+Objective-C++ logic, the macOS-loadable build of this same extension
+(`liblittle_buddy_speech.macos.template_debug.framework`, loaded by a real
+running Godot 4.7.2 process) was exercised directly:
+
+```
+Engine.has_singleton("LittleBuddySpeech") = true
+LittleBuddySpeech.is_available()          = true   (real SFSpeechRecognizer, en-US, this Mac)
+LittleBuddySpeech.has_permission()        = false  (correct: never requested)
+```
+
+and, with the fixed `SpeechService._select_backend()` running for real
+inside a live Godot project boot (not `--script`, which skips autoloads):
+
+```
+SpeechService.get_backend_name() = "ios"
+SpeechService.is_available()     = true
+```
+
+This confirms the GDExtension registration mechanism, the shared recognizer
+construction/availability logic, and the backend-selection fix all execute
+correctly in a live Godot process — but it exercises the macOS
+`AVCaptureDevice` permission branch, not the iOS `AVAudioSession`/
+`AVAudioApplication` branch or the audio-session-category fix (item 3
+above), which are `#if TARGET_OS_IPHONE`-only and were not exercised by this
+check.
 
 This directory contains the GDExtension bridge for on-device speech
 recognition (`SFSpeechRecognizer` + `AVAudioEngine`), exposed to GDScript as
@@ -261,20 +503,31 @@ ios/speech_plugin/
 
 ## What is honestly still uncertain / needs on-device verification
 
-1. Runtime behavior of the `AVAudioSession` category
-   (`AVAudioSessionCategoryRecord` + `AVAudioSessionModeMeasurement`) against
-   however Godot's own iOS audio driver configures the shared
-   `AVAudioSession` at runtime -- there is a realistic risk of the two
-   competing for the audio session category. This can only be observed by
-   running the exported app on-device or in the simulator.
+1. **Whether the `.playAndRecord` + `MixWithOthers` audio-session fix (item 3
+   in "Runtime fixes" above) actually resolves the conflict with Godot's own
+   iOS audio driver.** This is the fix most likely to matter and the one
+   least directly provable without a live device/simulator run with the
+   audio driver active — see "Simulator verification" above for exactly why
+   that run could not be completed in this environment.
 2. Whether `little_buddy_speech_library_init` actually gets invoked and the
    `LittleBuddySpeech` singleton actually appears in `Engine.has_singleton(...)`
-   at runtime. The generated static-initializer/`register_dynamic_symbol`
-   chain (see Status item 4) is Godot's own documented mechanism for this
-   exact static-linking situation and was read directly out of the
-   generated `dummy.cpp`, not assumed -- but it has not been observed firing
-   on a live device or in the simulator.
-3. Code-signed builds (a real Apple Developer certificate/provisioning
+   **on a physical iOS device specifically.** It was, this round, confirmed
+   to register correctly via the analogous macOS dylib-load mechanism (see
+   "Simulator verification" above: `Engine.has_singleton("LittleBuddySpeech")
+   == true` observed live), and the generated `dummy.cpp`'s
+   `add_apple_embedded_platform_init_callback`/`register_dynamic_symbol`
+   static-registration chain was read directly out of the exported project,
+   not assumed — but the iOS-specific static-linking path itself was not
+   observed firing on a live device or a genuinely booted Simulator this
+   round either (see "Simulator verification" for why the Simulator boot
+   itself was not achievable in this environment).
+3. Whether the ~5s timeout, the `listening_stopped`-in-every-path fix, and
+   the `call_deferred` marshalling behave correctly under real permission
+   prompts and real microphone input — all confirmed by code
+   inspection/compile and, for the parts of the logic shared with macOS, by
+   a live (non-simulated) run, but not by a live iOS/Simulator recognition
+   session.
+4. Code-signed builds (a real Apple Developer certificate/provisioning
    profile) were not exercised -- only `CODE_SIGNING_ALLOWED=NO` builds.
 
 ## Build steps (verified — reproducible via the two build scripts)
@@ -282,8 +535,9 @@ ios/speech_plugin/
 1. `git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp ios/speech_plugin/godot-cpp`
 2. `export PATH="$HOME/Library/Python/3.9/bin:$PATH"` (or wherever your
    `scons` lives)
-3. `cd ios/speech_plugin && ./build_xcframeworks.sh` -- iOS device
-   xcframeworks (shipping).
+3. `cd ios/speech_plugin && ./build_xcframeworks.sh` -- builds iOS device
+   (arm64) AND iOS Simulator (arm64 + x86_64, lipo'd into one universal
+   slice) archives, and packages both into the shipping xcframeworks.
 4. `./build_macos_framework.sh` -- macOS arm64 `.framework`s (editor-load
    only, required for the exporter to pick up step 3's output at all -- see
    "Why a macOS build").
@@ -294,9 +548,26 @@ ios/speech_plugin/
    `res://addons/little_buddy_speech_export/`. See "Exact res:// layout to
    copy" below for the precise file list and the one `project.godot` edit
    needed to enable the addon.
-6. Export → iOS (debug or release). Verified: the iOS xcframework and both
-   system frameworks land in the generated Xcode project, and
-   `xcodebuild ... build` succeeds (see "Status" above).
+6. Export → iOS (debug or release). Verified: the iOS xcframework (both
+   platform slices) and both system frameworks land in the generated Xcode
+   project, and `xcodebuild ... build` succeeds for both a device
+   destination and (with `ARCHS=x86_64 -sdk iphonesimulator`, see "Simulator
+   verification" above for why arm64-Simulator does not currently link with
+   this Godot version) a Simulator destination.
+
+**Gotcha for anyone re-testing locally**: deleting
+`game/.godot/extension_list.cfg` forces a *rescan* the next time the
+**editor** or an **export** runs (this is what `tools/export_ios.sh` and the
+build verification above both do deliberately). A plain
+`godot --headless --path game` **project run** (not the editor, not an
+export) does **not** itself rescan or regenerate that cache file — if it's
+missing, `Engine.has_singleton("LittleBuddySpeech")` will read `false` for
+that run even though the extension is correctly declared, simply because
+nothing repopulated the cache first. This is a desktop editor/tooling
+quirk only; it has no bearing on the actual exported iOS binary, where
+GDExtension registration is compiled in statically at export time (see
+"Why a macOS build" above) and does not consult this cache file at all at
+runtime.
 
 ## Exact `res://` layout to copy into `game/`
 
@@ -363,6 +634,45 @@ and manually verify/add:
    (`SpeechService.get_backend_name()` will report `"unavailable"` instead
    of `"ios"`), touch-only feeding still works -- this is expected, safe,
    degraded behavior, not a crash.
+
+## What to check on the physical iPhone this round (speech specifically)
+
+Given the fixes above, on the actual iPhone the family will test on:
+
+1. **Tap Speak once.** Expect a system microphone permission prompt, then
+   (if granted) immediately after, a speech-recognition permission prompt
+   (first launch only; subsequent taps just start listening). If nothing
+   happens at all when tapping Speak, check `SpeechService.get_backend_name()`
+   — if it says `"unavailable"`, the native singleton isn't registering on
+   this specific build (see item 2 in "What is honestly still uncertain").
+2. **After granting both permissions, tap Speak again and say "milk".**
+   Expect: game audio does not cut out or glitch when listening starts (the
+   `.playAndRecord`/`MixWithOthers` fix) — if it does, bug #3 in "Runtime
+   fixes" was not fully resolved and is the next thing to investigate.
+3. **Watch the "I'm listening..." indicator.** It must disappear within
+   ~5 seconds no matter what — either because "milk" was recognized (baby
+   should feed), or because of the new timeout. If it ever gets stuck on
+   screen after the first attempt, bug #2 ("`listening_stopped` only on
+   manual stop") has resurfaced or a new path was missed.
+4. **Try it again a second and third time in the same app session** (not a
+   fresh launch). This specifically exercises the backend-selection fix
+   (bug #1) and the fact that `AVAudioSession` is no longer deactivated
+   between attempts (bug #3's `_finishListening` change) — repeatable
+   listening in the same session is exactly what those two fixes are for.
+5. **Deny microphone/speech permission (in Settings, or by tapping Don't
+   Allow) and confirm touch-only feeding still completes the activity end
+   to end.** This was already true before this round and must remain true.
+
+**What could still fail there that this round could not rule out**: the
+`.playAndRecord` category fix is well-reasoned and Apple-documented but was
+never observed against Godot's actual live iOS audio driver (see
+"Simulator verification" — that run could not be completed in this
+environment); if game audio still glitches or cuts out when Speak is
+tapped, that is the most likely remaining culprit, and the next step would
+be trying `AVAudioSessionModeDefault` instead of `.measurement`, or
+`AVAudioSessionCategoryOptionInterruptSpokenAudioAndMixWithOthers` in place
+of `MixWithOthers`, while watching for an audio-session interruption
+notification arriving during Godot's own render callback.
 
 ## Never do this
 

@@ -55,7 +55,15 @@ func _run_case(path: String) -> Array:
 		print("  [ERROR] %s - could not load script" % path)
 		return ["%s: could not load script" % path]
 
-	var instance: Object = (script as GDScript).new()
+	# A case whose script (or anything it preloads) fails to parse must be a LOUD
+	# failure, never a silently skipped case -- otherwise a broken subsystem can
+	# make the suite look green simply by removing its own tests from the run.
+	var gdscript := script as GDScript
+	if not gdscript.can_instantiate():
+		print("  [ERROR] %s - script has parse errors (cannot instantiate)" % path)
+		return ["%s: script has parse errors; the case never ran" % path]
+
+	var instance: Object = gdscript.new()
 	if instance == null:
 		print("  [ERROR] %s - could not instantiate" % path)
 		return ["%s: could not instantiate" % path]
