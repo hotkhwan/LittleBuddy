@@ -22,6 +22,7 @@ boot_splash/show_image=false
 SaveService="*res://scripts/save/save_service.gd"
 SpeechService="*res://scripts/speech/speech_service.gd"
 TtsService="*res://scripts/speech/tts_service.gd"
+Sfx="*res://scripts/audio/sfx_player.gd"
 
 [display]
 

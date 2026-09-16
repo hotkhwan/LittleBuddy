@@ -30,6 +30,8 @@ func default_settings() -> Dictionary:
 		"speechLocale": "en-US",
 		"speechEnabled": true,
 		"thaiHints": true,
+		"soundEnabled": true,
+		"ttsSpeed": "normal",
 	}
 
 

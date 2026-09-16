@@ -77,7 +77,15 @@ func _run_case(path: String) -> Array:
 		return ["%s: missing run()" % label]
 
 	var result: Variant = instance.call("run")
-	var failures: Array = result if result is Array else []
+	# A case that aborts mid-run (script error inside run()) returns null rather than
+	# an Array. Treating that as "no failures" would silently turn a red case green,
+	# so anything that is not an Array is itself a failure.
+	if not (result is Array):
+		print("  [ERROR] %s - run() did not return an Array (case aborted?)" % label)
+		return ["%s: run() returned %s instead of an Array; the case did not complete"
+				% [label, type_string(typeof(result))]]
+
+	var failures: Array = result
 
 	if failures.is_empty():
 		print("  [PASS] %s" % label)
