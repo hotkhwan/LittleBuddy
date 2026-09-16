@@ -4,6 +4,9 @@
 ## platforms/builds with no TTS support at all.
 extends Node
 
+const NORMAL_SPEECH_RATE: float = 1.0
+const SLOW_SPEECH_RATE: float = 0.75
+
 signal speech_started(text: String)
 signal speech_finished(text: String)
 
@@ -78,8 +81,19 @@ func _try_speak_native(text: String, utterance_id: int) -> bool:
 		return false
 
 	var voice_id: String = voices[0]
-	DisplayServer.tts_speak(text, voice_id, 50, 1.0, 1.0, utterance_id, true)
+	DisplayServer.tts_speak(text, voice_id, 50, _speech_rate(), 1.0, utterance_id, true)
 	return true
+
+
+## Reads the parent-facing "ttsSpeed" setting. A slower rate helps a child who is
+## still learning the words. Read defensively: SaveService may be absent (tests).
+func _speech_rate() -> float:
+	var save_service: Node = get_node_or_null("/root/SaveService")
+	if save_service == null or not save_service.has_method("get_setting"):
+		return NORMAL_SPEECH_RATE
+	if str(save_service.get_setting("ttsSpeed", "normal")) == "slow":
+		return SLOW_SPEECH_RATE
+	return NORMAL_SPEECH_RATE
 
 
 func _schedule_fallback(utterance_id: int, duration: float) -> void:
