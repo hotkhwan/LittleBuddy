@@ -224,3 +224,29 @@ func start_listening(locale: String = "en-US") -> void
 ```
 
 Touch gameplay must remain fully playable when speech is unavailable, denied, or errors.
+
+---
+
+# Overnight build waves (2026-09-17, authoritative for the overnight run)
+
+This section SUPERSEDES the narrower "Child-facing MVP round" scope table above and
+supersedes any narrower scope in `.claude/agents/*.md` for the duration of the overnight
+build described in `CLAUDE_OVERNIGHT_BUILD.md`. Agents assigned a scope here are
+explicitly authorised to write in it.
+
+| Role | Wave | Exclusive write scope |
+|---|---|---|
+| SPEECH | 1 | `ios/speech_plugin/**`, `game/scripts/speech/**` |
+| INTERACT | 1 | `game/scenes/baby_room/**`, `game/scripts/activities/**`, `game/scripts/rewards/**`, `game/scripts/interaction/**` |
+| VISUAL | 1 | `game/scripts/baby/**`, `game/scenes/nursery/**` |
+| CONTENT | 1 | `game/content/**`, `game/scripts/content/**`, `game/tests/cases/test_content_*.gd` |
+| ACTIVITIES | 2 | `game/scenes/activities/**`, `game/scripts/gameplay/**` |
+| PROGRESSION | 3 | `game/scripts/progression/**`, `game/scenes/progression/**` |
+| AUDIO | 3 | `game/audio/**`, `game/scripts/audio/**` |
+| PARENT_UI | 3 | `game/scenes/parent/**`, `game/scripts/parent_settings/**` |
+
+Orchestrator owns `game/project.godot`, `game/export_presets.cfg`, `game/tests/run_tests.gd`,
+`tools/**`, `docs/**`, `build/**`, and all git operations.
+
+`game/content/feeding/feed_milk.json` is a live consumed contract: its existing top-level keys
+may be ADDED to but never removed or renamed.

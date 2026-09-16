@@ -170,6 +170,8 @@ func _build_body() -> void:
 	var head_mesh: SphereMesh = SphereMesh.new()
 	head_mesh.radius = 0.19
 	head_mesh.height = 0.38
+	head_mesh.radial_segments = 16
+	head_mesh.rings = 10
 	head_mesh_instance.mesh = head_mesh
 	head_mesh_instance.material_override = _make_material(SKIN_COLOR)
 	_head.add_child(head_mesh_instance)

@@ -67,7 +67,15 @@ if env["platform"] == "macos":
         source=sources,
     )
 else:
-    library_name = "liblittle_buddy_speech.{}.{}.a".format(env["platform"], env["target"])
+    # `.simulator` suffix when building for the iOS Simulator SDK, so the
+    # output filename never collides with the device-arm64 archive of the
+    # same target/platform (godot-cpp's own output already disambiguates
+    # the same way, see godot-cpp/tools/godotcpp.py's `suffix` construction
+    # -- our SConstruct did not, before this round, which would have
+    # silently clobbered the device .a with the simulator .a or vice versa
+    # depending on build order).
+    sim_suffix = ".simulator" if env.get("ios_simulator", False) else ""
+    library_name = "liblittle_buddy_speech.{}.{}{}.a".format(env["platform"], env["target"], sim_suffix)
     library = env.StaticLibrary(target="bin/" + library_name, source=sources)
 
 Default(library)

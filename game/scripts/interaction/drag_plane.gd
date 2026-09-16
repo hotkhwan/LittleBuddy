@@ -45,6 +45,9 @@ static func intersect_ray(plane: Plane, ray_origin: Vector3, ray_direction: Vect
 ## Drop-zone hit test: true when `point` lies within `radius` of `zone_center`.
 ## A point exactly on the boundary counts as inside (inclusive), which keeps
 ## the check stable/repeatable at the edge instead of flip-flopping on
-## floating point noise.
+## floating point noise. The small epsilon absorbs the float32 (Vector3) vs
+## float64 (GDScript `float`) rounding mismatch that would otherwise make an
+## exact-boundary point compare as *very slightly* outside.
 static func point_in_drop_zone(point: Vector3, zone_center: Vector3, radius: float) -> bool:
-	return point.distance_squared_to(zone_center) <= radius * radius
+	const EPSILON: float = 0.000001
+	return point.distance_squared_to(zone_center) <= radius * radius + EPSILON

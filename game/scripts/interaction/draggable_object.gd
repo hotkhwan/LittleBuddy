@@ -108,9 +108,17 @@ func reset_position() -> void:
 
 ## Public wrapper so callers (e.g. baby_room.gd, once a delivered Teddy's
 ## reaction finishes) can send the object smoothly back home without
-## reaching into private drag state.
+## reaching into private drag state. Also re-arms the delivery latch: once an
+## object is settled back at home it is, by definition, ready for a brand
+## new gesture. This is a no-op for the "released outside the drop zone"
+## codepath (delivery never latched there in the first place) and is exactly
+## what lets a repeatable object like Teddy be hugged/tapped again after its
+## reaction -- a one-shot object like MilkBottle instead stays latched via
+## `set_enabled(false)` until `reset_position()` explicitly starts the next
+## feeding cycle.
 func animate_return_to_origin() -> void:
 	_kill_active_tween()
+	_delivered_this_drag = false
 	_active_tween = create_tween()
 	_active_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_active_tween.tween_property(self, "transform", _home_transform, RETURN_DURATION_SEC)
