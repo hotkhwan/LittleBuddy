@@ -21,8 +21,9 @@ const CARD_BORDER_LOCKED: Color = Color(0.894, 0.878, 0.922)
 const LABEL_COLOR: Color = Color(0.349, 0.259, 0.169)
 const LABEL_COLOR_LOCKED: Color = Color(0.639, 0.616, 0.678)
 
-## Big, forgiving touch target for small fingers.
-const MIN_SIZE: Vector2 = Vector2(148.0, 168.0)
+## Big, forgiving touch target for small fingers. Six of these plus their gaps
+## still fit across an iPad in landscape inside the safe area.
+const MIN_SIZE: Vector2 = Vector2(190.0, 210.0)
 
 var _sticker: Dictionary = {}
 var _unlocked: bool = false

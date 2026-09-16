@@ -323,7 +323,9 @@ static func _draw_part(canvas: CanvasItem, part: Dictionary, locked: bool) -> vo
 	var fill: Color = part.get("color", PEACH)
 	if locked:
 		fill = LOCKED_FILL
-	var outline: Color = LOCKED_OUTLINE if locked else fill.darkened(0.22)
+	# Pale stickers (milk, moon, cloud, pillow) would vanish into the cream card
+	# with a proportional outline, so the lighter the fill the darker the edge.
+	var outline: Color = LOCKED_OUTLINE if locked else fill.darkened(lerpf(0.22, 0.42, fill.get_luminance()))
 
 	match String(part.get("kind", "")):
 		"poly":

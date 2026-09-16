@@ -107,10 +107,6 @@ func refresh() -> void:
 
 	if _count_label != null:
 		_count_label.text = "%d / %d" % [unlocked_count, entries.size()]
-	if OS.has_feature("editor") or true:
-		var lay: Control = get_node_or_null("SafeArea/Layout")
-		var sa: Control = get_node_or_null("SafeArea")
-		print("DBG vp=", get_viewport_rect().size, " sa=", sa.position, sa.size, " layout=", lay.position, lay.size, " min=", lay.get_combined_minimum_size(), " grid_min=", _grid.get_combined_minimum_size(), " scroll_min=", get_node("SafeArea/Layout/Scroll").get_combined_minimum_size())
 
 
 ## Lets a caller (or a test harness) drive the screen with its own library and
