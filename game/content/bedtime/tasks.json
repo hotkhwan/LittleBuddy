@@ -1,0 +1,174 @@
+{
+  "contentVersion": 1,
+  "category": "bedtime",
+  "tasks": [
+    {
+      "taskId": "bedtimePajamas",
+      "category": "bedtime",
+      "mode": "followInstruction",
+      "objectId": "pajamas",
+      "targetWords": ["pajamas"],
+      "prompt": "I am sleepy.",
+      "instruction": "Help me put on my pajamas.",
+      "repeatPrompt": "Can you say pajamas?",
+      "acceptedCommands": [
+        "pajamas",
+        "my pajamas",
+        "put on my pajamas",
+        "the pajamas"
+      ],
+      "thaiHint": "ใส่ชุดนอนให้น้อง",
+      "interaction": "dragToDress",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "bedtimeTeddy",
+      "category": "bedtime",
+      "mode": "followInstruction",
+      "objectId": "teddy",
+      "targetWords": ["teddy"],
+      "prompt": "I want my teddy.",
+      "instruction": "Give me my teddy.",
+      "repeatPrompt": "Can you say teddy?",
+      "acceptedCommands": [
+        "teddy",
+        "my teddy",
+        "give me my teddy",
+        "teddy bear"
+      ],
+      "thaiHint": "ส่งตุ๊กตาหมีให้น้อง",
+      "interaction": "dragToHug",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "bedtimePillow",
+      "category": "bedtime",
+      "mode": "followInstruction",
+      "objectId": "pillow",
+      "targetWords": ["pillow"],
+      "prompt": "My head needs a pillow.",
+      "instruction": "Give me the pillow.",
+      "repeatPrompt": "Can you say pillow?",
+      "acceptedCommands": [
+        "pillow",
+        "the pillow",
+        "give me the pillow",
+        "my pillow"
+      ],
+      "thaiHint": "ส่งหมอนให้น้อง",
+      "interaction": "dragToHug",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "bedtimeBlanket",
+      "category": "bedtime",
+      "mode": "followInstruction",
+      "objectId": "blanket",
+      "targetWords": ["blanket"],
+      "prompt": "I am cold.",
+      "instruction": "Cover me with the blanket.",
+      "repeatPrompt": "Can you say blanket?",
+      "acceptedCommands": [
+        "blanket",
+        "the blanket",
+        "cover me with the blanket",
+        "my blanket"
+      ],
+      "thaiHint": "ห่มผ้าให้น้อง",
+      "interaction": "dragToHug",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "findBlanket",
+      "category": "bedtime",
+      "mode": "findIt",
+      "objectId": "blanket",
+      "targetWords": ["blanket"],
+      "prompt": "Where is my blanket?",
+      "instruction": "Find the blanket.",
+      "repeatPrompt": "Can you say blanket?",
+      "acceptedCommands": [
+        "blanket",
+        "the blanket",
+        "here is the blanket",
+        "this is the blanket"
+      ],
+      "thaiHint": "ผ้าห่มอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 4
+    },
+    {
+      "taskId": "turnOffLamp",
+      "category": "bedtime",
+      "mode": "followInstruction",
+      "objectId": "lamp",
+      "targetWords": ["lamp"],
+      "prompt": "The light is bright.",
+      "instruction": "Turn off the lamp.",
+      "repeatPrompt": "Can you say lamp?",
+      "acceptedCommands": [
+        "lamp",
+        "the lamp",
+        "turn off the lamp",
+        "lights off"
+      ],
+      "thaiHint": "ปิดโคมไฟ",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "sayGoodNight",
+      "category": "bedtime",
+      "mode": "sayIt",
+      "objectId": "lamp",
+      "targetWords": ["good night"],
+      "prompt": "Time to sleep.",
+      "instruction": "Say good night.",
+      "repeatPrompt": "Can you say good night?",
+      "acceptedCommands": [
+        "good night",
+        "goodnight",
+        "night night",
+        "good night baby"
+      ],
+      "thaiHint": "พูดว่า good night",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 5
+    },
+    {
+      "taskId": "sayPillow",
+      "category": "bedtime",
+      "mode": "sayIt",
+      "objectId": "pillow",
+      "targetWords": ["pillow"],
+      "prompt": "Soft and fluffy!",
+      "instruction": "Say pillow.",
+      "repeatPrompt": "Can you say pillow?",
+      "acceptedCommands": [
+        "pillow",
+        "a pillow",
+        "my pillow",
+        "soft pillow"
+      ],
+      "thaiHint": "พูดว่า pillow",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 5
+    }
+  ]
+}

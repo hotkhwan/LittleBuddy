@@ -1,0 +1,217 @@
+{
+  "contentVersion": 1,
+  "category": "play",
+  "tasks": [
+    {
+      "taskId": "findBall",
+      "category": "play",
+      "mode": "findIt",
+      "objectId": "ball",
+      "targetWords": ["ball"],
+      "prompt": "Where is the ball?",
+      "instruction": "Find the ball.",
+      "repeatPrompt": "Can you say ball?",
+      "acceptedCommands": [
+        "ball",
+        "the ball",
+        "here is the ball",
+        "this is the ball"
+      ],
+      "thaiHint": "ลูกบอลอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "giveTeddy",
+      "category": "play",
+      "mode": "followInstruction",
+      "objectId": "teddy",
+      "targetWords": ["teddy"],
+      "prompt": "I miss my teddy.",
+      "instruction": "Give me the teddy.",
+      "repeatPrompt": "Can you say teddy?",
+      "acceptedCommands": [
+        "teddy",
+        "the teddy",
+        "give me the teddy",
+        "give teddy",
+        "teddy bear"
+      ],
+      "thaiHint": "ส่งตุ๊กตาหมีให้น้อง",
+      "interaction": "dragToHug",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "giveBall",
+      "category": "play",
+      "mode": "followInstruction",
+      "objectId": "ball",
+      "targetWords": ["ball"],
+      "prompt": "Let's play catch!",
+      "instruction": "Give me the ball.",
+      "repeatPrompt": "Can you say ball?",
+      "acceptedCommands": [
+        "ball",
+        "the ball",
+        "give me the ball",
+        "give ball"
+      ],
+      "thaiHint": "ส่งลูกบอลให้น้อง",
+      "interaction": "dragToHug",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "blockInToyBox",
+      "category": "play",
+      "mode": "followInstruction",
+      "objectId": "blocks",
+      "targetWords": ["block"],
+      "prompt": "Time to tidy up.",
+      "instruction": "Put the block in the toy box.",
+      "repeatPrompt": "Can you say block?",
+      "acceptedCommands": [
+        "block",
+        "blocks",
+        "put the block in the toy box",
+        "put the block away"
+      ],
+      "thaiHint": "เก็บบล็อกใส่กล่อง",
+      "interaction": "dragToToyBox",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "findStar",
+      "category": "play",
+      "mode": "findIt",
+      "objectId": "starToy",
+      "targetWords": ["star"],
+      "prompt": "Where is the star?",
+      "instruction": "Find the star.",
+      "repeatPrompt": "Can you say star?",
+      "acceptedCommands": [
+        "star",
+        "the star",
+        "here is the star",
+        "this is a star"
+      ],
+      "thaiHint": "ดาวอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "findCircle",
+      "category": "play",
+      "mode": "findIt",
+      "objectId": "circleToy",
+      "targetWords": ["circle"],
+      "prompt": "Where is the circle?",
+      "instruction": "Find the circle.",
+      "repeatPrompt": "Can you say circle?",
+      "acceptedCommands": [
+        "circle",
+        "the circle",
+        "here is the circle",
+        "this is a circle"
+      ],
+      "thaiHint": "วงกลมอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "findSquare",
+      "category": "play",
+      "mode": "findIt",
+      "objectId": "squareToy",
+      "targetWords": ["square"],
+      "prompt": "Where is the square?",
+      "instruction": "Find the square.",
+      "repeatPrompt": "Can you say square?",
+      "acceptedCommands": [
+        "square",
+        "the square",
+        "here is the square",
+        "this is a square"
+      ],
+      "thaiHint": "สี่เหลี่ยมอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "tidyToyBox",
+      "category": "play",
+      "mode": "followInstruction",
+      "objectId": "toyBox",
+      "targetWords": ["toy box"],
+      "prompt": "My toys are everywhere.",
+      "instruction": "Put the toys in the toy box.",
+      "repeatPrompt": "Can you say toy box?",
+      "acceptedCommands": [
+        "toy box",
+        "the toy box",
+        "put the toys away",
+        "put them in the toy box"
+      ],
+      "thaiHint": "เก็บของเล่นเข้ากล่อง",
+      "interaction": "dragToToyBox",
+      "reward": { "stars": 1 },
+      "difficulty": 3,
+      "cooldown": 5
+    },
+    {
+      "taskId": "sayCircle",
+      "category": "play",
+      "mode": "sayIt",
+      "objectId": "circleToy",
+      "targetWords": ["circle"],
+      "prompt": "Round and round!",
+      "instruction": "Say circle.",
+      "repeatPrompt": "Can you say circle?",
+      "acceptedCommands": [
+        "circle",
+        "a circle",
+        "it is a circle",
+        "round circle"
+      ],
+      "thaiHint": "พูดว่า circle",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 5
+    },
+    {
+      "taskId": "sayBall",
+      "category": "play",
+      "mode": "sayIt",
+      "objectId": "ball",
+      "targetWords": ["ball"],
+      "prompt": "Bouncy ball!",
+      "instruction": "Say ball.",
+      "repeatPrompt": "Can you say ball?",
+      "acceptedCommands": [
+        "ball",
+        "a ball",
+        "my ball",
+        "bouncy ball"
+      ],
+      "thaiHint": "พูดว่า ball",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 5
+    }
+  ]
+}

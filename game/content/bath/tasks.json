@@ -1,0 +1,174 @@
+{
+  "contentVersion": 1,
+  "category": "bath",
+  "tasks": [
+    {
+      "taskId": "giveSoap",
+      "category": "bath",
+      "mode": "followInstruction",
+      "objectId": "soap",
+      "targetWords": ["soap"],
+      "prompt": "Let's wash.",
+      "instruction": "Give me the soap.",
+      "repeatPrompt": "Can you say soap?",
+      "acceptedCommands": [
+        "soap",
+        "the soap",
+        "give me the soap",
+        "give soap"
+      ],
+      "thaiHint": "ส่งสบู่ให้น้อง",
+      "interaction": "dragToBath",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "findTowel",
+      "category": "bath",
+      "mode": "findIt",
+      "objectId": "towel",
+      "targetWords": ["towel"],
+      "prompt": "Where is the towel?",
+      "instruction": "Find the towel.",
+      "repeatPrompt": "Can you say towel?",
+      "acceptedCommands": [
+        "towel",
+        "the towel",
+        "here is the towel",
+        "this is the towel"
+      ],
+      "thaiHint": "ผ้าเช็ดตัวอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "dryWithTowel",
+      "category": "bath",
+      "mode": "followInstruction",
+      "objectId": "towel",
+      "targetWords": ["towel", "dry"],
+      "prompt": "I am all wet.",
+      "instruction": "Dry me with the towel.",
+      "repeatPrompt": "Can you say dry?",
+      "acceptedCommands": [
+        "towel",
+        "dry",
+        "dry me",
+        "the towel"
+      ],
+      "thaiHint": "เช็ดตัวให้น้อง",
+      "interaction": "dragToBath",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "brushTeeth",
+      "category": "bath",
+      "mode": "followInstruction",
+      "objectId": "toothbrush",
+      "targetWords": ["toothbrush", "teeth"],
+      "prompt": "My teeth need cleaning.",
+      "instruction": "Brush my teeth.",
+      "repeatPrompt": "Can you say toothbrush?",
+      "acceptedCommands": [
+        "toothbrush",
+        "brush my teeth",
+        "brush teeth",
+        "the toothbrush"
+      ],
+      "thaiHint": "แปรงฟันให้น้อง",
+      "interaction": "dragToBath",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "giveCup",
+      "category": "bath",
+      "mode": "followInstruction",
+      "objectId": "cup",
+      "targetWords": ["cup"],
+      "prompt": "I need my cup.",
+      "instruction": "Give me the cup.",
+      "repeatPrompt": "Can you say cup?",
+      "acceptedCommands": [
+        "cup",
+        "the cup",
+        "give me the cup",
+        "give cup"
+      ],
+      "thaiHint": "ส่งแก้วน้ำให้น้อง",
+      "interaction": "dragToBath",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "giveBathToy",
+      "category": "bath",
+      "mode": "followInstruction",
+      "objectId": "bathToy",
+      "targetWords": ["bath", "toy"],
+      "prompt": "Bath time is fun!",
+      "instruction": "Give me the bath toy.",
+      "repeatPrompt": "Can you say bath toy?",
+      "acceptedCommands": [
+        "bath toy",
+        "the bath toy",
+        "give me the bath toy",
+        "toy"
+      ],
+      "thaiHint": "ส่งของเล่นอาบน้ำให้น้อง",
+      "interaction": "dragToBath",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "sayToothbrush",
+      "category": "bath",
+      "mode": "sayIt",
+      "objectId": "toothbrush",
+      "targetWords": ["toothbrush"],
+      "prompt": "This is my toothbrush.",
+      "instruction": "Say toothbrush.",
+      "repeatPrompt": "Can you say toothbrush?",
+      "acceptedCommands": [
+        "toothbrush",
+        "tooth brush",
+        "my toothbrush",
+        "this is a toothbrush"
+      ],
+      "thaiHint": "พูดว่า toothbrush",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 3,
+      "cooldown": 5
+    },
+    {
+      "taskId": "sayTowel",
+      "category": "bath",
+      "mode": "sayIt",
+      "objectId": "towel",
+      "targetWords": ["towel"],
+      "prompt": "Soft and dry!",
+      "instruction": "Say towel.",
+      "repeatPrompt": "Can you say towel?",
+      "acceptedCommands": [
+        "towel",
+        "a towel",
+        "my towel",
+        "this is a towel"
+      ],
+      "thaiHint": "พูดว่า towel",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 5
+    }
+  ]
+}

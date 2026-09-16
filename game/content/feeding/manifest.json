@@ -3,5 +3,6 @@
   "category": "feeding",
   "activities": [
     "feed_milk.json"
-  ]
+  ],
+  "tasksFile": "tasks.json"
 }

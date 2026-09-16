@@ -25,5 +25,11 @@
   "retryPhrase": "Try again!",
   "thankYouPhrase": "Thank you!",
   "hungerRelief": 50,
-  "thaiHint": "ป้อนนมให้น้อง"
+  "thaiHint": "ป้อนนมให้น้อง",
+  "taskId": "feedMilk",
+  "mode": "followInstruction",
+  "objectId": "milk",
+  "interaction": "dragToMouth",
+  "difficulty": 1,
+  "cooldown": 2
 }

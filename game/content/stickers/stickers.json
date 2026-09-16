@@ -1,0 +1,21 @@
+{
+  "contentVersion": 1,
+  "stickers": [
+    { "stickerId": "milkSticker", "word": "milk", "displayName": "Milk", "thai": "นม", "category": "feeding", "unlockAtStars": 1, "primitive": "capsule", "color": "#FFFFFF", "celebrationPhrase": "You got the milk sticker!" },
+    { "stickerId": "teddySticker", "word": "teddy", "displayName": "Teddy", "thai": "ตุ๊กตาหมี", "category": "play", "unlockAtStars": 3, "primitive": "sphere", "color": "#C88C4E", "celebrationPhrase": "You got the teddy sticker!" },
+    { "stickerId": "appleSticker", "word": "apple", "displayName": "Apple", "thai": "แอปเปิล", "category": "feeding", "unlockAtStars": 6, "primitive": "sphere", "color": "#E8453C", "celebrationPhrase": "You got the apple sticker!" },
+    { "stickerId": "bananaSticker", "word": "banana", "displayName": "Banana", "thai": "กล้วย", "category": "feeding", "unlockAtStars": 10, "primitive": "capsule", "color": "#F6D743", "celebrationPhrase": "You got the banana sticker!" },
+    { "stickerId": "starSticker", "word": "star", "displayName": "Star", "thai": "ดาว", "category": "play", "unlockAtStars": 15, "primitive": "box", "color": "#FFD93D", "celebrationPhrase": "You got the star sticker!" },
+    { "stickerId": "ballSticker", "word": "ball", "displayName": "Ball", "thai": "ลูกบอล", "category": "play", "unlockAtStars": 20, "primitive": "sphere", "color": "#FF6B6B", "celebrationPhrase": "You got the ball sticker!" },
+    { "stickerId": "shirtSticker", "word": "shirt", "displayName": "Shirt", "thai": "เสื้อ", "category": "dressing", "unlockAtStars": 26, "primitive": "box", "color": "#4A90D9", "celebrationPhrase": "You got the shirt sticker!" },
+    { "stickerId": "shoesSticker", "word": "shoes", "displayName": "Shoes", "thai": "รองเท้า", "category": "dressing", "unlockAtStars": 33, "primitive": "box", "color": "#8B5A2B", "celebrationPhrase": "You got the shoes sticker!" },
+    { "stickerId": "soapSticker", "word": "soap", "displayName": "Soap", "thai": "สบู่", "category": "bath", "unlockAtStars": 40, "primitive": "box", "color": "#FFE6F0", "celebrationPhrase": "You got the soap sticker!" },
+    { "stickerId": "towelSticker", "word": "towel", "displayName": "Towel", "thai": "ผ้าเช็ดตัว", "category": "bath", "unlockAtStars": 48, "primitive": "box", "color": "#FFC1CC", "celebrationPhrase": "You got the towel sticker!" },
+    { "stickerId": "toothbrushSticker", "word": "toothbrush", "displayName": "Toothbrush", "thai": "แปรงสีฟัน", "category": "bath", "unlockAtStars": 56, "primitive": "cylinder", "color": "#6FE3C4", "celebrationPhrase": "You got the toothbrush sticker!" },
+    { "stickerId": "pillowSticker", "word": "pillow", "displayName": "Pillow", "thai": "หมอน", "category": "bedtime", "unlockAtStars": 65, "primitive": "box", "color": "#FFF3B0", "celebrationPhrase": "You got the pillow sticker!" },
+    { "stickerId": "moonSticker", "word": "moon", "displayName": "Moon", "thai": "พระจันทร์", "category": "bedtime", "unlockAtStars": 75, "primitive": "sphere", "color": "#F4F1DE", "celebrationPhrase": "You got the moon sticker!" },
+    { "stickerId": "heartSticker", "word": "heart", "displayName": "Heart", "thai": "หัวใจ", "category": "play", "unlockAtStars": 85, "primitive": "sphere", "color": "#FF7BA9", "celebrationPhrase": "You got the heart sticker!" },
+    { "stickerId": "cloudSticker", "word": "cloud", "displayName": "Cloud", "thai": "เมฆ", "category": "bedtime", "unlockAtStars": 95, "primitive": "sphere", "color": "#E6F0FA", "celebrationPhrase": "You got the cloud sticker!" },
+    { "stickerId": "rainbowSticker", "word": "rainbow", "displayName": "Rainbow", "thai": "สายรุ้ง", "category": "play", "unlockAtStars": 110, "primitive": "torus", "color": "#9AD0EC", "celebrationPhrase": "You got the rainbow sticker!" }
+  ]
+}

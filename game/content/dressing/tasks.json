@@ -1,0 +1,195 @@
+{
+  "contentVersion": 1,
+  "category": "dressing",
+  "tasks": [
+    {
+      "taskId": "wearRedShirt",
+      "category": "dressing",
+      "mode": "followInstruction",
+      "objectId": "redShirt",
+      "targetWords": ["red", "shirt"],
+      "prompt": "I want to get dressed.",
+      "instruction": "Put on the red shirt.",
+      "repeatPrompt": "Can you say red shirt?",
+      "acceptedCommands": [
+        "red shirt",
+        "the red shirt",
+        "put on the red shirt",
+        "red"
+      ],
+      "thaiHint": "ใส่เสื้อสีแดง",
+      "interaction": "dragToDress",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "wearBlueShirt",
+      "category": "dressing",
+      "mode": "followInstruction",
+      "objectId": "blueShirt",
+      "targetWords": ["blue", "shirt"],
+      "prompt": "I like blue.",
+      "instruction": "Put on the blue shirt.",
+      "repeatPrompt": "Can you say blue?",
+      "acceptedCommands": [
+        "blue shirt",
+        "the blue shirt",
+        "put on the blue shirt",
+        "blue"
+      ],
+      "thaiHint": "ใส่เสื้อสีน้ำเงิน",
+      "interaction": "dragToDress",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "wearYellowShirt",
+      "category": "dressing",
+      "mode": "followInstruction",
+      "objectId": "yellowShirt",
+      "targetWords": ["yellow", "shirt"],
+      "prompt": "Yellow is sunny!",
+      "instruction": "Put on the yellow shirt.",
+      "repeatPrompt": "Can you say yellow?",
+      "acceptedCommands": [
+        "yellow shirt",
+        "the yellow shirt",
+        "put on the yellow shirt",
+        "yellow"
+      ],
+      "thaiHint": "ใส่เสื้อสีเหลือง",
+      "interaction": "dragToDress",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 3
+    },
+    {
+      "taskId": "wearPants",
+      "category": "dressing",
+      "mode": "followInstruction",
+      "objectId": "pants",
+      "targetWords": ["pants"],
+      "prompt": "Where are my pants?",
+      "instruction": "Put on the pants.",
+      "repeatPrompt": "Can you say pants?",
+      "acceptedCommands": [
+        "pants",
+        "the pants",
+        "put on the pants",
+        "my pants"
+      ],
+      "thaiHint": "ใส่กางเกง",
+      "interaction": "dragToDress",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "findShoes",
+      "category": "dressing",
+      "mode": "findIt",
+      "objectId": "shoes",
+      "targetWords": ["shoes"],
+      "prompt": "Where are my shoes?",
+      "instruction": "Find the shoes.",
+      "repeatPrompt": "Can you say shoes?",
+      "acceptedCommands": [
+        "shoes",
+        "the shoes",
+        "here are the shoes",
+        "my shoes"
+      ],
+      "thaiHint": "รองเท้าอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 3
+    },
+    {
+      "taskId": "wearShoes",
+      "category": "dressing",
+      "mode": "followInstruction",
+      "objectId": "shoes",
+      "targetWords": ["shoes"],
+      "prompt": "My feet are cold.",
+      "instruction": "Put on the shoes.",
+      "repeatPrompt": "Can you say shoes?",
+      "acceptedCommands": [
+        "shoes",
+        "put on the shoes",
+        "the shoes",
+        "my shoes"
+      ],
+      "thaiHint": "ใส่รองเท้า",
+      "interaction": "dragToDress",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "wearHat",
+      "category": "dressing",
+      "mode": "followInstruction",
+      "objectId": "hat",
+      "targetWords": ["hat"],
+      "prompt": "It's sunny outside.",
+      "instruction": "Put on my hat.",
+      "repeatPrompt": "Can you say hat?",
+      "acceptedCommands": [
+        "hat",
+        "the hat",
+        "put on the hat",
+        "my hat"
+      ],
+      "thaiHint": "ใส่หมวก",
+      "interaction": "dragToDress",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3
+    },
+    {
+      "taskId": "wearPajamas",
+      "category": "dressing",
+      "mode": "followInstruction",
+      "objectId": "pajamas",
+      "targetWords": ["pajamas"],
+      "prompt": "It's bedtime.",
+      "instruction": "Put on my pajamas.",
+      "repeatPrompt": "Can you say pajamas?",
+      "acceptedCommands": [
+        "pajamas",
+        "the pajamas",
+        "put on the pajamas",
+        "my pajamas"
+      ],
+      "thaiHint": "ใส่ชุดนอน",
+      "interaction": "dragToDress",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    },
+    {
+      "taskId": "sayBlue",
+      "category": "dressing",
+      "mode": "sayIt",
+      "objectId": "blueShirt",
+      "targetWords": ["blue"],
+      "prompt": "What color is this shirt?",
+      "instruction": "Say blue.",
+      "repeatPrompt": "Can you say blue?",
+      "acceptedCommands": [
+        "blue",
+        "it is blue",
+        "this is blue",
+        "blue shirt"
+      ],
+      "thaiHint": "พูดว่า blue",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "contentVersion": 1,
+  "category": "feeding",
+  "tasks": [
+    {
+      "taskId": "feedMilk",
+      "category": "feeding",
+      "mode": "followInstruction",
+      "objectId": "milk",
+      "targetWords": ["milk"],
+      "prompt": "I'm hungry.",
+      "instruction": "Give the baby some milk.",
+      "repeatPrompt": "Can you say milk?",
+      "acceptedCommands": [
+        "milk",
+        "give milk",
+        "give baby milk",
+        "give the baby milk",
+        "give the baby some milk",
+        "baby wants milk"
+      ],
+      "thaiHint": "ป้อนนมให้น้อง",
+      "interaction": "dragToMouth",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 2,
+      "hungerRelief": 50
+    },
+    {
+      "taskId": "feedWater",
+      "category": "feeding",
+      "mode": "followInstruction",
+      "objectId": "water",
+      "targetWords": ["water"],
+      "prompt": "I'm thirsty.",
+      "instruction": "Give me some water.",
+      "repeatPrompt": "Can you say water?",
+      "acceptedCommands": [
+        "water",
+        "give water",
+        "give me water",
+        "give me some water",
+        "baby wants water"
+      ],
+      "thaiHint": "ป้อนน้ำให้น้อง",
+      "interaction": "dragToMouth",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 2,
+      "hungerRelief": 30
+    },
+    {
+      "taskId": "feedApple",
+      "category": "feeding",
+      "mode": "followInstruction",
+      "objectId": "apple",
+      "targetWords": ["apple"],
+      "prompt": "I want a snack.",
+      "instruction": "Give the baby the apple.",
+      "repeatPrompt": "Can you say apple?",
+      "acceptedCommands": [
+        "apple",
+        "give apple",
+        "give me the apple",
+        "give the baby the apple",
+        "baby wants an apple"
+      ],
+      "thaiHint": "ป้อนแอปเปิลให้น้อง",
+      "interaction": "dragToMouth",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 3,
+      "hungerRelief": 40
+    },
+    {
+      "taskId": "feedBanana",
+      "category": "feeding",
+      "mode": "followInstruction",
+      "objectId": "banana",
+      "targetWords": ["banana"],
+      "prompt": "I like bananas.",
+      "instruction": "Give the baby the banana.",
+      "repeatPrompt": "Can you say banana?",
+      "acceptedCommands": [
+        "banana",
+        "give banana",
+        "give me the banana",
+        "give the baby the banana",
+        "baby wants a banana"
+      ],
+      "thaiHint": "ป้อนกล้วยให้น้อง",
+      "interaction": "dragToMouth",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 3,
+      "hungerRelief": 40
+    },
+    {
+      "taskId": "findSpoon",
+      "category": "feeding",
+      "mode": "findIt",
+      "objectId": "spoon",
+      "targetWords": ["spoon"],
+      "prompt": "Where is the spoon?",
+      "instruction": "Find the spoon.",
+      "repeatPrompt": "Can you say spoon?",
+      "acceptedCommands": [
+        "spoon",
+        "the spoon",
+        "here is the spoon",
+        "this is the spoon"
+      ],
+      "thaiHint": "ช้อนอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 3
+    },
+    {
+      "taskId": "findBowl",
+      "category": "feeding",
+      "mode": "findIt",
+      "objectId": "bowl",
+      "targetWords": ["bowl"],
+      "prompt": "Where is the bowl?",
+      "instruction": "Find the bowl.",
+      "repeatPrompt": "Can you say bowl?",
+      "acceptedCommands": [
+        "bowl",
+        "the bowl",
+        "here is the bowl",
+        "this is the bowl"
+      ],
+      "thaiHint": "ชามอยู่ไหน",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 3
+    },
+    {
+      "taskId": "sayMilk",
+      "category": "feeding",
+      "mode": "sayIt",
+      "objectId": "milk",
+      "targetWords": ["milk"],
+      "prompt": "Can I have some milk?",
+      "instruction": "Say milk.",
+      "repeatPrompt": "Can you say milk?",
+      "acceptedCommands": [
+        "milk",
+        "some milk",
+        "i want milk",
+        "can i have some milk"
+      ],
+      "thaiHint": "พูดว่า milk",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 4
+    },
+    {
+      "taskId": "sayBanana",
+      "category": "feeding",
+      "mode": "sayIt",
+      "objectId": "banana",
+      "targetWords": ["banana"],
+      "prompt": "Yummy banana!",
+      "instruction": "Say banana.",
+      "repeatPrompt": "Can you say banana?",
+      "acceptedCommands": [
+        "banana",
+        "a banana",
+        "i want banana",
+        "yummy banana"
+      ],
+      "thaiHint": "พูดว่า banana",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 4
+    }
+  ]
+}

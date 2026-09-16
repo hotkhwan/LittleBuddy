@@ -1,0 +1,24 @@
+{
+  "contentVersion": 1,
+  "objectsFile": "res://content/objects.json",
+  "vocabularyFile": "res://content/vocabulary/vocabulary.json",
+  "missionsFile": "res://content/missions/missions.json",
+  "stickersFile": "res://content/stickers/stickers.json",
+  "legacyActivityFile": "res://content/feeding/feed_milk.json",
+  "modes": ["findIt", "sayIt", "followInstruction"],
+  "interactions": [
+    "dragToMouth",
+    "dragToHug",
+    "dragToBath",
+    "dragToDress",
+    "dragToToyBox",
+    "tap"
+  ],
+  "categories": [
+    { "categoryId": "feeding", "title": "Feeding", "thaiTitle": "ป้อนอาหาร", "tasksFile": "res://content/feeding/tasks.json" },
+    { "categoryId": "dressing", "title": "Dress Up", "thaiTitle": "แต่งตัว", "tasksFile": "res://content/dressing/tasks.json" },
+    { "categoryId": "bath", "title": "Bath Time", "thaiTitle": "อาบน้ำ", "tasksFile": "res://content/bath/tasks.json" },
+    { "categoryId": "play", "title": "Play Room", "thaiTitle": "ห้องเล่น", "tasksFile": "res://content/play/tasks.json" },
+    { "categoryId": "bedtime", "title": "Bedtime", "thaiTitle": "เข้านอน", "tasksFile": "res://content/bedtime/tasks.json" }
+  ]
+}

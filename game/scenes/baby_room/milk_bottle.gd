@@ -65,11 +65,14 @@ func _on_dropped_in_zone() -> void:
 
 
 func _settle_after_delivery() -> void:
+	# Tracked in the shared `_active_tween` (inherited) rather than a local
+	# var, so a hard reset_position() mid-settle correctly cancels this too
+	# instead of leaving it to fight the instantaneous snap-home.
 	_kill_active_tween()
-	var tween: Tween = create_tween()
-	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "scale", Vector3.ONE, SETTLE_DURATION_SEC)
-	tween.parallel().tween_property(self, "rotation:z", 0.0, SETTLE_DURATION_SEC)
+	_active_tween = create_tween()
+	_active_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_active_tween.tween_property(self, "scale", Vector3.ONE, SETTLE_DURATION_SEC)
+	_active_tween.parallel().tween_property(self, "rotation:z", 0.0, SETTLE_DURATION_SEC)
 
 
 ## -- Construction (primitives only) --------------------------------------

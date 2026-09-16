@@ -117,6 +117,23 @@ func _make_sphere(radius: float, color: Color, local_position: Vector3, scale: V
 	return instance
 
 
+## A short capsule used as an upper-arm/forearm segment, its long axis
+## rotated onto local X so it can bridge a shoulder pivot to a hand blob
+## (capsules default to a vertical Y-axis).
+func _make_arm_segment(radius: float, length: float, color: Color, local_position: Vector3, z_rotation_deg: float) -> MeshInstance3D:
+	var instance: MeshInstance3D = MeshInstance3D.new()
+	var mesh: CapsuleMesh = CapsuleMesh.new()
+	mesh.radius = radius
+	mesh.height = length
+	mesh.radial_segments = 8
+	mesh.rings = 2
+	instance.mesh = mesh
+	instance.material_override = _make_material(color)
+	instance.position = local_position
+	instance.rotation_degrees = Vector3(0.0, 0.0, z_rotation_deg)
+	return instance
+
+
 func _build_body() -> void:
 	_body = Node3D.new()
 	_body.name = "Body"
@@ -141,16 +158,22 @@ func _build_body() -> void:
 
 	# Arms: pivots at the shoulder so the hugging animation can swing the
 	# whole arm forward without hardcoding a hand position anywhere else.
+	# Each arm is an upper-arm capsule (bridging the shoulder to the hand,
+	# overlapping the torso on one end and the hand blob on the other) plus
+	# a small hand sphere at the tip — this keeps the arm visually attached
+	# to the body instead of a floating detached hand.
 	_left_arm_pivot = Node3D.new()
 	_left_arm_pivot.name = "LeftArmPivot"
 	_left_arm_pivot.position = Vector3(-0.19, 0.32, 0.02)
 	_body.add_child(_left_arm_pivot)
+	_left_arm_pivot.add_child(_make_arm_segment(0.045, 0.13, SKIN_COLOR, Vector3(-0.045, 0.0, 0.0), 90.0))
 	_left_arm_pivot.add_child(_make_sphere(0.065, SKIN_COLOR, Vector3(-0.09, 0.0, 0.0)))
 
 	_right_arm_pivot = Node3D.new()
 	_right_arm_pivot.name = "RightArmPivot"
 	_right_arm_pivot.position = Vector3(0.19, 0.32, 0.02)
 	_body.add_child(_right_arm_pivot)
+	_right_arm_pivot.add_child(_make_arm_segment(0.045, 0.13, SKIN_COLOR, Vector3(0.045, 0.0, 0.0), -90.0))
 	_right_arm_pivot.add_child(_make_sphere(0.065, SKIN_COLOR, Vector3(0.09, 0.0, 0.0)))
 
 	# Hug marker: front of the chest, roughly where hugging arms would meet.

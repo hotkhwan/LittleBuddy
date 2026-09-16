@@ -1,0 +1,130 @@
+{
+  "contentVersion": 1,
+  "missions": [
+    {
+      "missionId": "morningRoutine",
+      "title": "Morning Routine",
+      "thaiTitle": "กิจวัตรตอนเช้า",
+      "category": "dressing",
+      "introPhrase": "Good morning!",
+      "outroPhrase": "We are ready for the day!",
+      "unlockAtStars": 0,
+      "taskIds": [
+        "wearPants",
+        "wearRedShirt",
+        "findShoes",
+        "wearShoes",
+        "feedMilk",
+        "findSpoon"
+      ]
+    },
+    {
+      "missionId": "feedingTime",
+      "title": "Feeding Time",
+      "thaiTitle": "เวลาอาหาร",
+      "category": "feeding",
+      "introPhrase": "I'm hungry!",
+      "outroPhrase": "My tummy is full. Thank you!",
+      "unlockAtStars": 0,
+      "taskIds": [
+        "feedMilk",
+        "feedWater",
+        "feedApple",
+        "feedBanana",
+        "findBowl",
+        "sayMilk"
+      ]
+    },
+    {
+      "missionId": "playTime",
+      "title": "Play Time",
+      "thaiTitle": "เวลาเล่น",
+      "category": "play",
+      "introPhrase": "Let's play!",
+      "outroPhrase": "That was so much fun!",
+      "unlockAtStars": 4,
+      "taskIds": [
+        "findBall",
+        "giveBall",
+        "giveTeddy",
+        "blockInToyBox",
+        "findStar",
+        "sayBall",
+        "tidyToyBox"
+      ]
+    },
+    {
+      "missionId": "bathTime",
+      "title": "Bath Time",
+      "thaiTitle": "เวลาอาบน้ำ",
+      "category": "bath",
+      "introPhrase": "Splash! Let's take a bath.",
+      "outroPhrase": "I am clean and dry!",
+      "unlockAtStars": 10,
+      "taskIds": [
+        "giveSoap",
+        "giveCup",
+        "brushTeeth",
+        "findTowel",
+        "dryWithTowel",
+        "giveBathToy",
+        "sayToothbrush"
+      ]
+    },
+    {
+      "missionId": "bedtimeRoutine",
+      "title": "Bedtime Routine",
+      "thaiTitle": "เวลาเข้านอน",
+      "category": "bedtime",
+      "introPhrase": "I am sleepy.",
+      "outroPhrase": "Good night. See you tomorrow!",
+      "unlockAtStars": 16,
+      "taskIds": [
+        "bedtimePajamas",
+        "bedtimeTeddy",
+        "bedtimePillow",
+        "bedtimeBlanket",
+        "turnOffLamp",
+        "sayGoodNight"
+      ]
+    },
+    {
+      "missionId": "colorsAndShapes",
+      "title": "Colors and Shapes",
+      "thaiTitle": "สีและรูปทรง",
+      "category": "play",
+      "introPhrase": "Let's learn colors and shapes!",
+      "outroPhrase": "You know so many colors!",
+      "unlockAtStars": 24,
+      "taskIds": [
+        "wearRedShirt",
+        "wearBlueShirt",
+        "wearYellowShirt",
+        "findCircle",
+        "findSquare",
+        "findStar",
+        "sayBlue",
+        "sayCircle"
+      ]
+    },
+    {
+      "missionId": "sayItChallenge",
+      "title": "Say It Challenge",
+      "thaiTitle": "ท้าพูดภาษาอังกฤษ",
+      "category": "play",
+      "introPhrase": "Can you say these words with me?",
+      "outroPhrase": "Wow! You said them all!",
+      "unlockAtStars": 32,
+      "taskIds": [
+        "sayMilk",
+        "sayBanana",
+        "sayBlue",
+        "sayTowel",
+        "sayToothbrush",
+        "sayCircle",
+        "sayPillow",
+        "sayGoodNight"
+      ]
+    }
+  ]
+}
