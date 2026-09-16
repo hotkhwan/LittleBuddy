@@ -522,6 +522,13 @@ func _on_task_skipped(_task_id: String) -> void:
 
 
 func _on_mission_completed(_mission_id: String, _stars_earned: int) -> void:
+	# The bedtime routine ends on a calm low chime rather than the bright star
+	# sound -- a gentle "good night" close instead of more excitement.
+	if _mission_id.to_lower().contains("bedtime"):
+		var sfx: Node = get_node_or_null("/root/Sfx")
+		if sfx != null and sfx.has_method("play"):
+			sfx.call("play", "bedtime_chime")
+
 	_next_button.visible = false
 	_task_speak_enabled = false
 	_update_mic_visual()

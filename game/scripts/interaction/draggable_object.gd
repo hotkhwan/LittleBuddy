@@ -117,6 +117,7 @@ func reset_position() -> void:
 ## `set_enabled(false)` until `reset_position()` explicitly starts the next
 ## feeding cycle.
 func animate_return_to_origin() -> void:
+	_play_sfx("drop_return")
 	_kill_active_tween()
 	_delivered_this_drag = false
 	_active_tween = create_tween()
@@ -263,11 +264,20 @@ func _on_return_tween_finished() -> void:
 ## -- Cosmetic feedback (Tween-driven; cheap, no particles) -------------------
 
 func _play_pickup_feedback() -> void:
+	_play_sfx("pickup")
 	_kill_active_tween()
 	_active_tween = create_tween()
 	_active_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_active_tween.tween_property(self, "scale", Vector3.ONE * PICKUP_SCALE, PICKUP_FEEDBACK_DURATION_SEC)
 	_active_tween.parallel().tween_property(self, "rotation:z", deg_to_rad(PICKUP_TILT_DEG), PICKUP_FEEDBACK_DURATION_SEC)
+
+
+## Soft audio feedback. The Sfx autoload may be absent (tests, or a scene run in
+## isolation), so look it up defensively -- silence is always acceptable here.
+func _play_sfx(sfx_name: String) -> void:
+	var sfx: Node = get_node_or_null("/root/Sfx")
+	if sfx != null and sfx.has_method("play"):
+		sfx.call("play", sfx_name)
 
 
 func _kill_active_tween() -> void:
