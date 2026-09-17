@@ -28,8 +28,9 @@ const SPAWNER_PATH: String = "res://scripts/gameplay/object_spawner.gd"
 const OBJECTS_JSON: String = "res://content/objects.json"
 const MODEL_ROOT: String = "res://assets/models"
 
-## Kenney props measure 44-576 tris and the generated meshes 40-588. A ceiling
-## that leaves headroom but would still catch someone dropping a
+## Kenney props measure 44-576 tris and the generated meshes 36-588 (the heaviest
+## are the pillow at 588 and the blocks at 576; the clothing cut-outs are 40-92).
+## A ceiling that leaves headroom but would still catch someone dropping a
 ## film-resolution mesh into the mobile build.
 const MAX_TRIANGLES_PER_MODEL: int = 600
 
@@ -50,6 +51,52 @@ func run() -> Array:
 	failures.append_array(_test_procedural_models(spawner))
 	failures.append_array(_test_bake_keeps_every_part(spawner))
 	failures.append_array(_test_mesh_budget(spawner))
+	failures.append_array(_test_every_object_has_a_model(spawner))
+	failures.append_array(_test_every_procedural_model_is_presented(spawner))
+	return failures
+
+
+## No teaching object may fall back to a bare primitive any more.
+##
+## Every one of the 28 objects in `objects.json` now names a `model`, and that is
+## a property worth locking down rather than a coincidence: a primitive is a
+## sphere, a box, a capsule, a cylinder or a torus, and NONE of those is the
+## shape of an English noun a child is being taught. The clothing objects shipped
+## as coloured boxes for a while -- a shirt, trousers and pyjamas were the same
+## cube in three colours, while the game teaches the word "square" with another
+## cube -- and nothing failed, because a box is a perfectly valid primitive.
+##
+## The primitive path itself is NOT being removed: it is still the fallback that
+## keeps the game playable if a `.glb` goes missing from an export, and
+## `_test_missing_model_falls_back` in `test_gameplay_object_spawner` covers it.
+## This asserts only that no SHIPPED record relies on it.
+func _test_every_object_has_a_model(_spawner: GDScript) -> Array:
+	var failures: Array = []
+	var records: Array = _object_records()
+	if records.is_empty():
+		return ["could not read any object record from %s" % OBJECTS_JSON]
+	for record: Dictionary in records:
+		var object_id: String = String(record.get("objectId", ""))
+		if String(record.get("model", "")).strip_edges().is_empty():
+			failures.append(
+					"object '%s' has no 'model' -- it would spawn as a bare '%s' primitive, which is not the shape of the word '%s'"
+					% [object_id, String(record.get("primitive", "?")), String(record.get("word", "?"))])
+	return failures
+
+
+## A generated mesh with no `MODEL_PRESENTATION` entry silently spawns at
+## `MODEL_DEFAULT_SIZE_M` and zero rotation. That is never what is wanted -- the
+## rotation is what turns a silhouette into a recognisable word, and every one of
+## these was chosen against a render -- but it is invisible headlessly, because
+## the object still spawns and is still the right size.
+func _test_every_procedural_model_is_presented(spawner: GDScript) -> Array:
+	var failures: Array = []
+	for model: String in spawner.PROCEDURAL_MODELS:
+		var qualified: String = "%s/%s" % [String(spawner.PROCEDURAL_PACK), model]
+		if not (spawner.MODEL_PRESENTATION as Dictionary).has(qualified):
+			failures.append(
+					"'%s' has no MODEL_PRESENTATION entry, so it would spawn unrotated at the default size"
+					% qualified)
 	return failures
 
 
@@ -296,16 +343,21 @@ func _triangles(mesh: Mesh) -> int:
 ## objectId -> model name, read straight from the shipped JSON.
 func _declared_models() -> Dictionary:
 	var models: Dictionary = {}
-	if not FileAccess.file_exists(OBJECTS_JSON):
-		return models
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(OBJECTS_JSON))
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return models
-	for entry: Variant in (parsed as Dictionary).get("objects", []):
-		if typeof(entry) != TYPE_DICTIONARY:
-			continue
-		var record: Dictionary = entry
+	for record: Dictionary in _object_records():
 		var model_name: String = String(record.get("model", "")).strip_edges()
 		if not model_name.is_empty():
 			models[String(record.get("objectId", ""))] = model_name
 	return models
+
+
+func _object_records() -> Array:
+	var records: Array = []
+	if not FileAccess.file_exists(OBJECTS_JSON):
+		return records
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(OBJECTS_JSON))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return records
+	for entry: Variant in (parsed as Dictionary).get("objects", []):
+		if typeof(entry) == TYPE_DICTIONARY:
+			records.append(entry)
+	return records
