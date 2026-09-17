@@ -74,9 +74,12 @@ func can_play(action_name: String) -> bool:
 
 
 ## A one-shot action is timed by its own clip when one exists, so authoring a
-## longer `drink` automatically gives the character longer to drink. A held pose
-## is NOT timed by its clip -- its clip loops for as long as the pose lasts, and
-## its "duration" is only how long settling into it takes.
+## longer `drink` automatically gives the character longer to drink.
+##
+## Two clips have no useful length. A held pose loops for as long as the pose
+## lasts, so its "duration" is only how long settling into it takes. And ANY
+## looping clip's length is one arbitrary cycle of something that repeats -- a
+## 2.6 s idle loop is not a 2.6 s action. Both fall back to the semantic default.
 func get_action_duration(action_name: String) -> float:
 	if is_hold_action(action_name):
 		return -1.0
@@ -85,6 +88,8 @@ func get_action_duration(action_name: String) -> float:
 		return -1.0
 	var animation: Animation = _player.get_animation(clip)
 	if animation == null or animation.length < MIN_MEANINGFUL_CLIP_SEC:
+		return -1.0
+	if animation.loop_mode != Animation.LOOP_NONE:
 		return -1.0
 	return animation.length
 

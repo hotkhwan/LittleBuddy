@@ -479,6 +479,15 @@ func _test_clip_length_times_the_action():
 	if float(driver.call("get_action_duration", "brushTeeth")) > 0.0:
 		failures.append("an unauthored action has no clip and so no length of its own")
 
+	# A LOOPING clip's length is one arbitrary cycle of something that repeats.
+	# Timing an action by it would make `walk` last exactly one stride.
+	var looping: AnimationPlayer = _player_with(["wave"], 2.0)
+	looping.get_animation("wave").loop_mode = Animation.LOOP_LINEAR
+	var loop_driver: RefCounted = AnimationDriver.create(looping)
+	if float(loop_driver.call("get_action_duration", "wave")) > 0.0:
+		failures.append("a looping clip's length is not an action duration")
+	looping.free()
+
 	# And the character actually uses it: a 2.5 s drink outlasts the 1.8 s default.
 	var character: CharacterBody3D = _make_character()
 	character.call("set_action_driver", driver)

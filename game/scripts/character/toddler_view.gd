@@ -191,12 +191,18 @@ func _build_body() -> void:
 		leg.name = "LegLeft" if side < 0.0 else "LegRight"
 		leg.position = Vector3(side * 0.058, HIP_Y, 0.0)
 		_body.add_child(leg)
-		_capsule(leg, "Mesh", LEG_RADIUS, LEG_HEIGHT, TROUSERS,
-				Vector3(0.0, -LEG_HEIGHT * 0.5, 0.0))
+		# `_capsule()` adds one radius to the length, so the leg's TOTAL height is
+		# `LEG_HEIGHT - FOOT_SIZE.y * 2` and the foot makes up the rest. Sized
+		# this way the sole lands exactly on y = 0: the first version overshot and
+		# put 48 mm of the child through the floor, which is invisible against an
+		# opaque floor and very visible the moment he stands on anything thin.
+		var shin: float = LEG_HEIGHT - FOOT_SIZE.y * 2.0
+		_capsule(leg, "Mesh", LEG_RADIUS, shin - LEG_RADIUS, TROUSERS,
+				Vector3(0.0, -shin * 0.5, 0.0))
 		# Bare toddler feet, rounded and oversized. Nudged forward so the child
 		# reads as standing rather than balancing on two dots.
 		var foot: MeshInstance3D = _sphere(leg, "Foot", 1.0, SKIN,
-				Vector3(0.0, -LEG_HEIGHT - 0.012, -0.018), SEG_SMALL)
+				Vector3(0.0, -LEG_HEIGHT + FOOT_SIZE.y, -0.018), SEG_SMALL)
 		foot.scale = FOOT_SIZE
 
 	# A rounded seat joining the legs to the torso -- without it the waist is a
