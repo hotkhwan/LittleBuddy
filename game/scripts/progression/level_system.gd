@@ -326,6 +326,37 @@ func get_chapter_chain(chapter_id: String) -> PackedStringArray:
 	return ids
 
 
+## The authored journey as one flat list: every chapter in play order, each
+## chapter's chain before its bonus levels. This is the ORDER a child meets the
+## content in, which is what "levels since last seen" has to be measured against.
+func get_journey_level_ids() -> PackedStringArray:
+	var ids: PackedStringArray = PackedStringArray()
+	for chapter: Variant in _chapters:
+		for level_id: Variant in get_levels_in_chapter(String((chapter as Dictionary).get("chapterId", ""))):
+			var text: String = String(level_id)
+			if not ids.has(text):
+				ids.append(text)
+	return ids
+
+
+## 1-based position of `level_id` in `get_journey_level_ids()`, or 0 when the
+## level is not part of the authored journey.
+##
+## Deliberately 1-based with 0 meaning "unknown": `VocabularyReview` treats a
+## `lastSeenLevel` of 0 as "never honestly placed" and falls back to the neutral
+## weight, so an unrecognised level can never be mistaken for level zero and
+## resurface the whole vocabulary at once.
+func get_level_ordinal(level_id: String) -> int:
+	var wanted: String = level_id.strip_edges()
+	if wanted.is_empty():
+		return 0
+	var ids: PackedStringArray = get_journey_level_ids()
+	for i: int in range(ids.size()):
+		if ids[i] == wanted:
+			return i + 1
+	return 0
+
+
 func get_first_chapter_id() -> String:
 	if _chapters.is_empty():
 		return ""

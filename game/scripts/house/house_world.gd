@@ -60,6 +60,15 @@ const CONTENT_VALIDATOR_SCRIPT_PATH: String = "res://scripts/content/content_val
 ## still walks and still renders.
 const LEVEL_DIRECTOR_SCRIPT_PATH: String = "res://scripts/gameplay/house_level_director.gd"
 
+## Free Play's loop: no objective, but a word and a reaction for every object the
+## child touches. `load()`ed for the same reason as the level director -- a house
+## whose Free Play loop is missing is still a walkable house.
+const FREE_PLAY_DIRECTOR_SCRIPT_PATH: String = "res://scripts/gameplay/house_freeplay_director.gd"
+
+## First run, once per profile. Same lazy-load rule again: a build with no
+## onboarding script starts the session directly.
+const ONBOARDING_DIRECTOR_SCRIPT_PATH: String = "res://scripts/onboarding/onboarding_director.gd"
+
 const CAMERA_FOV: float = 55.0
 ## Only a fallback for callers with no viewport; anything real is fitted to the
 ## live aspect ratio.
@@ -106,6 +115,10 @@ var _world_state: RefCounted = null
 ## every headless test that never asks for it.
 var _director: Node = null
 var _director_booted: bool = false
+## Free Play's loop. Null in Story.
+var _free_play_director: Node = null
+## First run. Null once it has been played, and in every headless test.
+var _onboarding: Node = null
 ## Optional: agentTARGET's semantic-id lookup. Null when that file is absent, in
 ## which case `get_target_by_semantic_id()` falls back to asking the rooms.
 var _registry: RefCounted = null
@@ -144,16 +157,59 @@ func _ready() -> void:
 ## for it by name with `ensure_level_director()`, which is honest about what it
 ## is building.
 ##
-## Free Play never builds one: it has no objective by definition.
+## Free Play never builds one: it has no objective by definition. It builds its
+## OWN loop instead (`house_freeplay_director.gd`), which is where tapping an
+## object becomes an English word and a reaction.
+##
+## First run comes before either of them. When `onboarding_director.gd` decides
+## this profile has never been shown the game, the session is deferred until it
+## says it has finished -- by success, by timeout, or by the child ignoring the
+## whole thing, all three of which end the same way.
 func _process(_delta: float) -> void:
 	if _director_booted:
 		return
 	_director_booted = true
+	if _begin_onboarding():
+		return
+	begin_session()
+
+
+## Starts whichever loop this session is: Free Play's, or Story's.
+##
+## Public, and called by hand from the tests, for the same reason
+## `ensure_level_director()` is: the headless `--script` runner fires no frames,
+## so the only way to assert what a real first frame does is to be able to ask
+## for it by name.
+func begin_session() -> void:
 	if is_free_play():
+		var free_play: Node = ensure_free_play_director()
+		if free_play != null and free_play.has_method("start"):
+			free_play.call("start")
 		return
 	var director: Node = ensure_level_director()
 	if director != null and director.has_method("start"):
 		director.call("start")
+
+
+## Builds and starts first run, or returns false when it is not wanted. See
+## `onboarding_director.gd::should_run()` -- a build with no save service never
+## runs it, which is also what keeps the headless runner booting the plain,
+## objective-free house every existing case asserts against.
+func _begin_onboarding() -> bool:
+	var onboarding: Node = ensure_onboarding_director()
+	if onboarding == null:
+		return false
+	if not bool(onboarding.call("should_run_now")):
+		return false
+	if not onboarding.is_connected("finished", _on_onboarding_finished):
+		onboarding.connect("finished", _on_onboarding_finished, CONNECT_ONE_SHOT)
+	if not bool(onboarding.call("start")):
+		return false
+	return true
+
+
+func _on_onboarding_finished() -> void:
+	begin_session()
 
 
 ## The house owns its navigation map, so it must give the RID back; a leaked map
@@ -505,6 +561,67 @@ func ensure_level_director() -> Node:
 	add_child(_director)
 	_director.call("bind", self)
 	return _director
+
+
+## Free Play's loop, or null when its script is missing or malformed. Idempotent
+## and duck-typed, exactly like `ensure_level_director()`: a house that cannot
+## build one degrades to a walkable, silent house rather than failing to load.
+func ensure_free_play_director() -> Node:
+	if _free_play_director != null and is_instance_valid(_free_play_director):
+		return _free_play_director
+	_free_play_director = _build_helper(FREE_PLAY_DIRECTOR_SCRIPT_PATH, "FreePlayDirector")
+	return _free_play_director
+
+
+func get_free_play_director() -> Node:
+	return _free_play_director
+
+
+## First run's director, or null when its script is missing. Built (and bound)
+## without being STARTED, so a caller can ask `should_run_now()` first.
+func ensure_onboarding_director() -> Node:
+	if _onboarding != null and is_instance_valid(_onboarding):
+		return _onboarding
+	_onboarding = _build_helper(ONBOARDING_DIRECTOR_SCRIPT_PATH, "Onboarding")
+	return _onboarding
+
+
+func get_onboarding_director() -> Node:
+	return _onboarding
+
+
+## True while first run is on screen. Nothing is disabled while it is -- the
+## child can play straight through it -- so this is information, not a gate.
+func is_onboarding_active() -> bool:
+	return _onboarding != null and is_instance_valid(_onboarding) \
+			and bool(_onboarding.call("is_running"))
+
+
+## Loads `script_path`, instantiates it, adds it as a child and hands it this
+## world. Null for anything that is not a `Node` answering `bind()`.
+##
+## One function for both loops rather than two near-identical copies, so there
+## is a single place where "a missing or broken helper degrades to a plain
+## walkable house" is decided, and a single place a test has to break to prove
+## it. `ensure_level_director()` above predates it and is left alone: it carries
+## its own history in its comments.
+func _build_helper(script_path: String, node_name: String) -> Node:
+	build_world()
+	if not ResourceLoader.exists(script_path):
+		return null
+	var script: Resource = load(script_path)
+	if not (script is GDScript):
+		return null
+	var built: Object = (script as GDScript).new()
+	if not (built is Node) or not built.has_method("bind"):
+		if built is Node:
+			(built as Node).free()
+		return null
+	var node: Node = built as Node
+	node.name = node_name
+	add_child(node)
+	node.call("bind", self)
+	return node
 
 
 func get_navigation_map() -> RID:

@@ -65,6 +65,7 @@ const MissionRunnerScript := preload("res://scripts/gameplay/mission_runner.gd")
 ## The same runner, playing the day in the order it was authored. See the file.
 const HouseMissionRunnerScript := preload("res://scripts/gameplay/house_mission_runner.gd")
 const PromptSpeakerScript := preload("res://scripts/speech/prompt_speaker.gd")
+const VocabularyReviewScript := preload("res://scripts/content/vocabulary_review.gd")
 const ContentLibraryScript := preload("res://scripts/content/content_library.gd")
 const LevelSystemScript := preload("res://scripts/progression/level_system.gd")
 const StarRulesScript := preload("res://scripts/progression/star_rules.gd")
@@ -354,6 +355,7 @@ func _start_level(mission_id: String) -> bool:
 		"thaiHints": _thai_hints_enabled(),
 		"tts": _autoload("TtsService"),
 		"speech": _autoload("SpeechService"),
+		"review": _review_context(),
 	})
 
 	_running = true
@@ -625,6 +627,10 @@ func _on_task_completed(task_id: String, stars: int) -> void:
 	_stage.call("show_beat_marker", null)
 	_hud.call("mark_current_done")
 	_rewards.call("award", task_id, stars)
+	# Recorded BEFORE the action plays, while the handler's spawns are still
+	# alive -- the exposure is "which objects were on screen", and after the
+	# reaction they are gone.
+	_record_vocabulary_exposure()
 	if not _awaiting_action:
 		# `goAndDo` already played its action on arrival; everything else plays it
 		# now, as the reaction to what the child just did.
@@ -905,12 +911,28 @@ func advance_to_next_level() -> void:
 
 
 func _on_summary_play_again() -> void:
+	# Latched on `_summary_open`. The three summary buttons emit once per press
+	# with no debounce of their own, so two fast taps -- trivially easy for a
+	# child -- otherwise ran `_start_next_level()` twice, calling
+	# `begin_round()` and `start_mission()` again and restarting the level that
+	# had just started. Not a dead end, but a wasted restart a child can trigger
+	# in under a second.
+	if not _summary_open:
+		return
 	var replay_id: String = _last_mission_id
 	_forced_next_mission_id = ""
 	_start_next_level(replay_id)
 
 
 func _on_summary_next_level() -> void:
+	# Latched on `_summary_open`. The three summary buttons emit once per press
+	# with no debounce of their own, so two fast taps -- trivially easy for a
+	# child -- otherwise ran `_start_next_level()` twice, calling
+	# `begin_round()` and `start_mission()` again and restarting the level that
+	# had just started. Not a dead end, but a wasted restart a child can trigger
+	# in under a second.
+	if not _summary_open:
+		return
 	var next_id: String = _forced_next_mission_id
 	_forced_next_mission_id = ""
 	_start_next_level(next_id)
@@ -919,6 +941,14 @@ func _on_summary_next_level() -> void:
 ## The back button leads forward too: there is nowhere else to go from here, and
 ## a child must never be able to close their way into an empty screen.
 func _on_summary_closed() -> void:
+	# Latched on `_summary_open`. The three summary buttons emit once per press
+	# with no debounce of their own, so two fast taps -- trivially easy for a
+	# child -- otherwise ran `_start_next_level()` twice, calling
+	# `begin_round()` and `start_mission()` again and restarting the level that
+	# had just started. Not a dead end, but a wasted restart a child can trigger
+	# in under a second.
+	if not _summary_open:
+		return
 	_forced_next_mission_id = ""
 	_start_next_level("")
 
@@ -1145,6 +1175,59 @@ func _speech_available() -> bool:
 	if speech == null or not speech.has_method("is_available"):
 		return false
 	return bool(speech.call("is_available"))
+
+
+## Review state for the level being played. Built once per level, read by
+## `ModeHandler.build_review_choice_ids()` through the mission context.
+func _review_context() -> Dictionary:
+	var save_service: Node = _autoload("SaveService")
+	var profile: Dictionary = {}
+	if save_service != null and save_service.has_method("get_profile"):
+		profile = save_service.call("get_profile")
+	var ordinal: int = 0
+	if _system != null:
+		ordinal = int(_system.call("get_level_ordinal", _level_id))
+	return {
+		"progress": VocabularyReviewScript.read_progress(profile),
+		"levelOrdinal": ordinal,
+		"reviewWeight": VocabularyReviewScript.read_review_weight(profile),
+	}
+
+
+## Every object that was on screen counts as an exposure; the one the child chose
+## counts as a success. This is the entire data model -- three numbers per word,
+## deliberately not a leech algorithm, because drilling a word a child struggles
+## with is exactly how a game starts to feel like a test.
+func _record_vocabulary_exposure() -> void:
+	var save_service: Node = _autoload("SaveService")
+	if save_service == null or not save_service.has_method("get_profile") \
+			or not save_service.has_method("set_setting"):
+		return
+	if _runner == null or not is_instance_valid(_runner):
+		return
+	var handler: Node = _runner.call("get_handler")
+	if handler == null or not is_instance_valid(handler) \
+			or not handler.has_method("get_spawned_objects"):
+		return
+
+	var shown: Array = []
+	for node: Variant in handler.call("get_spawned_objects"):
+		if node is Node and is_instance_valid(node):
+			shown.append(String((node as Node).get("object_id")))
+	if shown.is_empty():
+		return
+
+	var ordinal: int = 0
+	if _system != null:
+		ordinal = int(_system.call("get_level_ordinal", _level_id))
+	var chosen: Array = []
+	if handler.has_method("get_target_object_id"):
+		chosen.append(String(handler.call("get_target_object_id")))
+
+	var profile: Dictionary = save_service.call("get_profile")
+	var updated: Dictionary = VocabularyReviewScript.record_row(
+			VocabularyReviewScript.read_progress(profile), shown, ordinal, chosen)
+	save_service.call("set_setting", VocabularyReviewScript.PROGRESS_KEY, updated)
 
 
 func _autoload(autoload_name: String) -> Node:

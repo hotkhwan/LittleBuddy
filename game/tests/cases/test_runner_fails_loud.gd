@@ -67,6 +67,7 @@ func run():
 
 	failures.append_array(_test_no_case_types_its_run())
 	failures.append_array(_test_runner_still_checks_the_return_type())
+	failures.append_array(_test_no_case_can_reach_a_real_save_file())
 
 	return failures
 
@@ -138,6 +139,38 @@ func _test_runner_still_checks_the_return_type():
 			"runner_fails_loud: run_tests.gd no longer rejects a non-Array result from run(); "
 			+ "an aborted case would be reported as passing"
 		)
+
+	return failures
+
+
+## The runner must keep the project autoloads OUT of `/root` for the duration of
+## a run.
+##
+## Godot 4.7 DOES instantiate autoloads under `--script`, contrary to what this
+## runner's own documentation used to claim. Their `_ready()` does not fire, so
+## `SaveService` holds an empty in-memory profile -- and any case that completes
+## a level reaches `save_profile()` and writes that empty profile over
+## `user://profile.json`. On a device that is a real child's stars and stickers.
+##
+## Verified before the fix: `/root` held
+## `[SpeechService, TtsService, Sfx, SaveService]` during a run. After it, a case
+## that deliberately called `add_stars(-999)` could not touch the profile at all.
+func _test_no_case_can_reach_a_real_save_file():
+	var failures: Array = []
+
+	var loop: MainLoop = Engine.get_main_loop()
+	var tree: SceneTree = loop as SceneTree
+	if tree == null or tree.root == null:
+		return ["runner_fails_loud: no SceneTree; cannot check autoload isolation"]
+
+	for autoload_name: String in ["SaveService", "SpeechService", "TtsService", "Sfx"]:
+		if tree.root.get_node_or_null(NodePath(autoload_name)) != null:
+			failures.append(
+				("runner_fails_loud: /root/%s is reachable during the test run. A case that "
+				+ "completes a level would write SaveService's empty in-memory profile over "
+				+ "user://profile.json -- on a device, a real child's stars. run_tests.gd must "
+				+ "detach the autoloads for the duration of the run.") % autoload_name
+			)
 
 	return failures
 

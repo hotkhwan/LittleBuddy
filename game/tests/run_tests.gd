@@ -5,13 +5,41 @@ extends SceneTree
 ##   godot --headless --path game --script res://tests/run_tests.gd
 ##
 ## Discovers every `res://tests/cases/test_*.gd`, instantiates it and calls
-## `run() -> Array` (array of failure strings; empty means the case passed).
-## Cases must not depend on autoloads -- `--script` does not load them.
+## `run()` (array of failure strings; empty means the case passed).
+##
+## ## `run()` and every `_test_*` helper must be UNTYPED
+##
+## GDScript returns a default-constructed value from a typed function that
+## aborts, so `func run() -> Array:` returns an EMPTY Array on a script error and
+## the case reports [PASS] with its assertions never having executed. The same
+## applies one level down: a typed `_test_*` helper's abort is swallowed by
+## `append_array()` and `run()` carries on. `test_runner_fails_loud.gd` enforces
+## both, and a live instance of each was found in this project.
+##
+## ## Autoloads ARE live here, contrary to what this file used to claim
+##
+## This comment previously read "cases must not depend on autoloads -- `--script`
+## does not load them". That is false on Godot 4.7: `/root` really does hold
+## SaveService, SpeechService, TtsService and Sfx. What does NOT happen is their
+## `_ready()`, so `SaveService` starts with an empty in-memory profile -- and any
+## case that completes a level reaches `save_profile()` and writes that empty
+## profile over `user://profile.json`. On a device that is a real child's stars.
+##
+## So the autoloads are detached for the duration of the run and restored after.
+## The guarantee is now enforced rather than asserted, and no case can reach a
+## real save file by accident.
 
 const CASES_DIR := "res://tests/cases"
 
+## Detached for the run. Named explicitly rather than "every root child", so a
+## scene a case leaves behind is not silently swept up with them.
+const PROJECT_AUTOLOADS: Array[String] = [
+	"SaveService", "SpeechService", "TtsService", "Sfx",
+]
+
 
 func _initialize() -> void:
+	var detached: Array[Node] = _detach_autoloads()
 	var case_paths := _discover_cases()
 	if case_paths.is_empty():
 		print("No test cases found in %s" % CASES_DIR)
@@ -26,6 +54,8 @@ func _initialize() -> void:
 		var failures := _run_case(path)
 		total_failures += failures.size()
 
+	_reattach_autoloads(detached)
+
 	print("")
 	if total_failures == 0:
 		print("PASS - %d case(s), 0 failure(s)" % total_cases)
@@ -33,6 +63,26 @@ func _initialize() -> void:
 	else:
 		print("FAIL - %d case(s), %d failure(s)" % [total_cases, total_failures])
 		quit(1)
+
+
+## Takes the autoloads out of `/root` so no case can reach a real save file.
+func _detach_autoloads() -> Array[Node]:
+	var detached: Array[Node] = []
+	for autoload_name: String in PROJECT_AUTOLOADS:
+		var node: Node = root.get_node_or_null(NodePath(autoload_name))
+		if node == null:
+			continue
+		root.remove_child(node)
+		detached.append(node)
+	return detached
+
+
+## Put them back, so anything that inspects the tree afterwards sees it intact
+## and the nodes are freed normally with the root rather than leaking.
+func _reattach_autoloads(detached: Array[Node]) -> void:
+	for node: Node in detached:
+		if is_instance_valid(node) and node.get_parent() == null:
+			root.add_child(node)
 
 
 func _discover_cases() -> PackedStringArray:

@@ -36,7 +36,7 @@ func _on_start() -> void:
 	var target_id: String = get_target_object_id()
 	if target_id.is_empty():
 		return
-	var choices: Array = build_choice_ids(target_id, _distractor_pool(), DISTRACTOR_COUNT, _rng)
+	var choices: Array = build_review_choice_ids(target_id, _distractor_pool(), DISTRACTOR_COUNT)
 	# Distractors get the same drop zone on purpose: delivering the wrong thing
 	# must be *possible*, so it can be answered kindly rather than ignored.
 	_spawn_choices(choices, get_zone_id())

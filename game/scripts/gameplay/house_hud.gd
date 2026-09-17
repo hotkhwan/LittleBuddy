@@ -34,6 +34,16 @@ const CAPTION_FONT_SIZE: int = 24
 const BUTTON_FONT_SIZE: int = 30
 const STAR_FONT_SIZE: int = 34
 
+## Free Play's word card. Much bigger than a prompt, because in Free Play the
+## word IS the content: a child taps the fridge and this is the reward, together
+## with the voice saying it.
+const WORD_FONT_SIZE: int = 84
+const WORD_THAI_FONT_SIZE: int = 40
+
+## How long a tapped word stays on screen. Long enough to connect the word to the
+## thing that was touched, short enough that the room is not permanently covered.
+const WORD_SECONDS: float = 3.2
+
 const DOT_SIZE: float = 26.0
 const DOT_GAP: float = 12.0
 
@@ -50,11 +60,15 @@ var _encouragement: Label = null
 var _dots: HBoxContainer = null
 var _next_button: Button = null
 var _speak_button: Button = null
+var _word: Label = null
+var _word_thai: Label = null
 
 var _total: int = 0
 var _current: int = 0
 var _done: Dictionary = {}
 var _built: bool = false
+var _free_play: bool = false
+var _word_generation: int = 0
 
 
 func _ready() -> void:
@@ -141,6 +155,113 @@ func build() -> void:
 	_speak_button.offset_bottom = -34.0
 	_speak_button.pressed.connect(_on_speak_pressed)
 	_speak_button.visible = false
+
+	# The Free Play word card. Low and centred, so it sits under the object the
+	# child just touched rather than over it, and above where thumbs rest on an
+	# iPad held in landscape.
+	# INK on a CREAM outline, the opposite way round from every other label here.
+	# The rest of the HUD sits over a 3D room of every colour; the word card sits
+	# low, over the cream floor almost every time, and cream-on-cream with a thin
+	# ink edge was legible but weak when rendered. Ink is the palette's only dark
+	# and reads at a glance against the floor, while the cream outline keeps it
+	# readable if it ever lands on a wardrobe.
+	_word = _add_label("Word", WORD_FONT_SIZE, INK)
+	_word.add_theme_color_override("font_outline_color", CREAM)
+	_word.add_theme_constant_override("outline_size", 14)
+	_word.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_word.offset_left = -480.0
+	_word.offset_top = -288.0
+	_word.offset_right = 480.0
+	_word.offset_bottom = -172.0
+	_word.visible = false
+
+	_word_thai = _add_label("WordThai", WORD_THAI_FONT_SIZE, INK)
+	_word_thai.add_theme_color_override("font_outline_color", CREAM)
+	_word_thai.add_theme_constant_override("outline_size", 10)
+	_word_thai.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_word_thai.offset_left = -480.0
+	_word_thai.offset_top = -168.0
+	_word_thai.offset_right = 480.0
+	_word_thai.offset_bottom = -104.0
+	_word_thai.visible = false
+
+
+## -- Free Play -----------------------------------------------------------------
+
+## Free Play has **no objective**, so it has no progress dots, no Next and no
+## Speak: there is nothing to be part-way through, nothing to skip and no
+## question to answer. What it keeps is the star total -- stars are the one
+## number in this game that only ever goes up -- and it gains the word card.
+##
+## Written as one call rather than four, so "Free Play looks like this" is a
+## single fact that a test can assert and a later edit cannot half-apply.
+func set_free_play_mode(enabled: bool) -> void:
+	build()
+	_free_play = enabled
+	if not enabled:
+		return
+	configure_progress(0)
+	_next_button.visible = false
+	_speak_button.visible = false
+	_prompt.visible = false
+	_hint.visible = false
+	_caption.visible = false
+	_stars.visible = true
+
+
+func is_free_play_mode() -> bool:
+	build()
+	return _free_play
+
+
+## Shows the English word for the thing the child just touched, and optionally
+## the Thai hint underneath it.
+##
+## The Thai half is **only** passed on a long press (ART_BIBLE section 9): a hint
+## that is always on screen is not a hint, it is a translation, and the child
+## stops reaching for the English.
+func show_word(word: String, thai_hint: String = "") -> void:
+	build()
+	var text: String = word.strip_edges()
+	if text.is_empty():
+		hide_word()
+		return
+	_word.text = text
+	_word.visible = true
+	_word_thai.text = thai_hint.strip_edges()
+	_word_thai.visible = not _word_thai.text.is_empty()
+
+	_word_generation += 1
+	var generation: int = _word_generation
+	if not is_inside_tree():
+		return
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	# Generation-guarded, so a second tap does not get its card taken away early
+	# by the first tap's timer. A child taps a lot.
+	tree.create_timer(WORD_SECONDS).timeout.connect(
+		func() -> void:
+			if generation == _word_generation:
+				hide_word(),
+		CONNECT_ONE_SHOT
+	)
+
+
+func hide_word() -> void:
+	build()
+	_word.visible = false
+	_word_thai.visible = false
+
+
+func get_word_text() -> String:
+	build()
+	return _word.text if _word.visible else ""
+
+
+func get_word_thai_text() -> String:
+	build()
+	return _word_thai.text if _word_thai.visible else ""
 
 
 ## -- Prompt --------------------------------------------------------------------
@@ -284,15 +405,16 @@ func is_speak_visible() -> bool:
 ## Everything off, for an overlay (the summary) or the end of a level.
 func set_play_chrome_visible(value: bool) -> void:
 	build()
-	_prompt.visible = value
-	_hint.visible = value and not _hint.text.strip_edges().is_empty()
-	_dots.visible = value and _total > 0
-	_caption.visible = value and not _caption.text.strip_edges().is_empty()
+	_prompt.visible = value and not _free_play
+	_hint.visible = value and not _free_play and not _hint.text.strip_edges().is_empty()
+	_dots.visible = value and not _free_play and _total > 0
+	_caption.visible = value and not _free_play and not _caption.text.strip_edges().is_empty()
 	_stars.visible = value
 	if not value:
 		_next_button.visible = false
 		_speak_button.visible = false
 		_encouragement.visible = false
+		hide_word()
 
 
 func _on_next_pressed() -> void:

@@ -277,6 +277,15 @@ func _sanitize(raw: Dictionary) -> Dictionary:
 
 	result["settings"] = settings_result
 
+	# Additive and optional: vocabulary review history (VOCABULARY_REVIEW_SPEC
+	# section 5). PRESERVED rather than defaulted, so a profile that has never met
+	# review simply has no key and behaves exactly as it does today. Without this
+	# the sanitiser -- which builds from `default_profile()` and copies only known
+	# keys -- silently dropped it on every save, so the spec's chosen location did
+	# not actually round-trip. No version bump: nothing existing changes shape.
+	if typeof(raw.get("vocabularyProgress", null)) == TYPE_DICTIONARY:
+		result["vocabularyProgress"] = (raw["vocabularyProgress"] as Dictionary).duplicate(true)
+
 	result["profileVersion"] = CURRENT_VERSION
 
 	return result

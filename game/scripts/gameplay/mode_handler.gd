@@ -52,6 +52,9 @@ const CTX_DROP_ZONES: String = "dropZones"        # Dictionary zoneId -> DropZon
 const CTX_TTS: String = "tts"                     # Node with speak()
 const CTX_SPEECH: String = "speech"               # Node with start_listening()
 const CTX_THAI_HINTS: String = "thaiHints"        # bool
+const CTX_REVIEW: String = "review"               # Dictionary, vocabulary review state
+
+const VOCABULARY_REVIEW_SCRIPT_PATH: String = "res://scripts/content/vocabulary_review.gd"
 
 ## Short, kind, never a score. Rotated so repetition doesn't feel robotic.
 const GENTLE_PHRASES: Array[String] = ["Try again!", "Almost!", "Have another go!"]
@@ -386,6 +389,21 @@ func _return_object_home(object_id: String) -> void:
 ## Returns the target plus up to `distractor_count` other objects, shuffled.
 ## The target is ALWAYS present: a task whose answer is not on screen would be an
 ## unwinnable dead end.
+## The same choice set as `build_choice_ids()`, biased toward words the child met
+## two to five levels ago when the profile carries review history.
+##
+## With no history -- or with `reviewWeight` at 0.0 -- this IS `build_choice_ids()`
+## draw for draw, which is asserted id-for-id across 750 seed/size combinations.
+## That exactness is the point: review must be invisible, so it may not change the
+## row's shape, its pool, or the order the RNG is consumed in.
+func build_review_choice_ids(target_id: String, pool: Array, distractor_count: int) -> Array:
+	var review: GDScript = load(VOCABULARY_REVIEW_SCRIPT_PATH) as GDScript
+	var options: Variant = _context.get(CTX_REVIEW, {})
+	if review == null or typeof(options) != TYPE_DICTIONARY:
+		return build_choice_ids(target_id, pool, distractor_count, _rng)
+	return review.build_choice_ids(target_id, pool, distractor_count, _rng, options)
+
+
 static func build_choice_ids(
 	target_id: String,
 	pool: Array,
