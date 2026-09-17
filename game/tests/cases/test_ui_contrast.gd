@@ -52,10 +52,13 @@ const CHECKS: Dictionary = {
 	},
 	SUMMARY_SCENE: {
 		"SafeArea/Center/Panel/Margin/VBox/TitleLabel": CREAM_PANEL,
-		"SafeArea/Center/Panel/Margin/VBox/EarnedRow/EarnedLabel": CREAM_PANEL,
-		"SafeArea/Center/Panel/Margin/VBox/TotalRow/TotalLabel": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/VBox/LevelLabel": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/VBox/EncourageLabel": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/VBox/ScoreRow/EarnedRow/EarnedLabel": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/VBox/ScoreRow/TotalRow/TotalLabel": CREAM_PANEL,
 		"SafeArea/Center/Panel/Margin/VBox/StickerRow/StickerLabel": CREAM_PANEL,
-		"SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton/PlayAgainBox/PlayAgainLabel": MINT_FACE,
+		"SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton/PlayAgainLabel": MINT_FACE,
+		"SafeArea/Center/Panel/Margin/VBox/Buttons/NextButton/NextLabel": MINT_FACE,
 	},
 	STICKER_BOOK_SCENE: {
 		"SafeArea/Layout/Header/Title": CREAM_PANEL,

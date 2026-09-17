@@ -19,6 +19,7 @@ signal next_level()
 signal closed()
 
 const _Celebration := preload("res://scripts/progression/celebration.gd")
+const _RatingStar := preload("res://scripts/ui/rating_star.gd")
 
 const SFX_GENTLE_TAP: String = "gentle_tap"
 
@@ -27,14 +28,31 @@ const SFX_GENTLE_TAP: String = "gentle_tap"
 ## They are never summed -- see docs/PHASE1_CONTRACT.md.
 const MAX_LEVEL_STARS: int = 3
 
-const STAR_EARNED_TINT: Color = Color(1.0, 0.78, 0.24, 1.0)
-## Not grey and not red: an unearned star is a thing still to find, never a mark
-## against the child. It stays the same warm hue, just quiet.
-const STAR_EMPTY_TINT: Color = Color(0.85, 0.78, 0.66, 0.45)
+## What the child is told under the rating row, per rating.
+##
+## The entry that matters is index 0. `CLAUDE.md` and the slice contract both say
+## a 0-star completion is celebrated and never a failure screen, and the screen
+## this replaces broke that in two ways at once: a gold star beside the text
+## "+0", and three pale filled blobs where the rating should be.
+##
+## The fix is not softer wording -- the headline was already "Nice playing!" --
+## it is removing the zero and giving the child somewhere to go. So at 0 stars
+## the tally disappears entirely and this line points forward, at the Replay
+## button sitting directly under it. Nothing here names what was missed, counts
+## anything, or uses the word "try": there is nothing to try again, only more to
+## find.
+const ENCOURAGEMENT: Array[String] = [
+	"There are stars to find in here!",
+	"Two more stars are waiting!",
+	"One more star is waiting!",
+	"",
+]
 
 var _earned_label: Label = null
 var _total_label: Label = null
 var _title_label: Label = null
+var _encourage_label: Label = null
+var _earned_row: Control = null
 var _sticker_row: Control = null
 var _sticker_cell: Control = null
 var _sticker_label: Label = null
@@ -71,6 +89,8 @@ func _ensure_resolved() -> void:
 	_earned_label = get_node_or_null("%EarnedLabel") as Label
 	_total_label = get_node_or_null("%TotalLabel") as Label
 	_title_label = get_node_or_null("%TitleLabel") as Label
+	_encourage_label = get_node_or_null("%EncourageLabel") as Label
+	_earned_row = get_node_or_null("%EarnedRow") as Control
 	_sticker_row = get_node_or_null("%StickerRow") as Control
 	_sticker_cell = get_node_or_null("%StickerCell") as Control
 	_sticker_label = get_node_or_null("%StickerLabel") as Label
@@ -132,6 +152,12 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [],
 
 	if _earned_label != null:
 		_earned_label.text = "+%d" % earned
+	# "+0" beside a gold star is the single unkindest thing this screen could
+	# say, and it is also information the child cannot use. When nothing was
+	# added, the tally is simply not there -- the rating row and the
+	# encouragement line carry the moment instead.
+	if _earned_row != null:
+		_earned_row.visible = earned > 0
 	if _total_label != null:
 		_total_label.text = str(total)
 	if _title_label != null:
@@ -182,6 +208,8 @@ func reset() -> void:
 	_rated_stars = -1
 	if _sticker_row != null:
 		_sticker_row.visible = false
+	if _earned_row != null:
+		_earned_row.visible = true
 	_apply_level_result({})
 
 
@@ -200,6 +228,8 @@ func _apply_level_result(level_result: Variant) -> void:
 			_rating_row.visible = false
 		if _level_label != null:
 			_level_label.visible = false
+		if _encourage_label != null:
+			_encourage_label.visible = false
 		# Without a level there is no "next level", so Replay is the only
 		# forward move and Next would lead nowhere.
 		if _next_button != null:
@@ -223,19 +253,41 @@ func _apply_level_result(level_result: Variant) -> void:
 		var star: CanvasItem = _rating_stars[index]
 		if star == null:
 			continue
-		var tint: Color = STAR_EARNED_TINT if index < shown else STAR_EMPTY_TINT
-		if "tint" in star:
-			star.set("tint", tint)
-		else:
-			star.modulate = tint
+		# Earned, next-one-to-find, or ghost -- `rating_star.gd` owns which
+		# texture and which palette colour each of those means. The row never
+		# paints a faded *filled* star, which is what made three unearned stars
+		# read as three empty slots.
+		if star.has_method("set_state"):
+			star.call("set_state", _RatingStar.state_for(index, shown))
+		elif "tint" in star:
+			star.set("tint", _RatingStar.color_for(_RatingStar.state_for(index, shown)))
+
+	# Something to look forward to, never something that was missed. Blank at
+	# three stars, because there is nothing left to point at.
+	if _encourage_label != null:
+		var line: String = encouragement_for(shown)
+		_encourage_label.text = line
+		_encourage_label.visible = not line.is_empty()
 
 	if _next_button != null:
 		_next_button.visible = bool(result.get("hasNextLevel", true))
 
 
+## The line printed under the rating row for a `stars`-out-of-three result.
+##
+## Public and static so `test_ui_kindness.gd` can read every one of them and
+## assert that none of them is a report card.
+static func encouragement_for(stars: int) -> String:
+	var index: int = clampi(stars, 0, ENCOURAGEMENT.size() - 1)
+	return ENCOURAGEMENT[index]
+
+
 static func _level_headline(stars: int) -> String:
 	if stars <= 0:
-		return "Nice playing!"
+		# Spoken as well as printed, so a pre-reader gets the same message. The
+		# second sentence is the same forward-looking promise as
+		# `ENCOURAGEMENT[0]`, not a note about what went wrong.
+		return "Nice playing! There are stars to find in here."
 	if stars == 1:
 		return "Well done! One star."
 	if stars >= MAX_LEVEL_STARS:

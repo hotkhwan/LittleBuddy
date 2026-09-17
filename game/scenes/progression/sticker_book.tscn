@@ -24,7 +24,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(1, 0.964706, 0.878431, 1)
+color = Color(1, 0.965, 0.898, 1)
 
 [node name="SafeArea" type="Control" parent="."]
 layout_mode = 1
@@ -41,9 +41,13 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 6.0
+offset_right = -10.0
+offset_bottom = -14.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 18
 
 [node name="Header" type="HBoxContainer" parent="SafeArea/Layout"]
 layout_mode = 2
@@ -51,7 +55,7 @@ theme_override_constants/separation = 24
 
 [node name="BackButton" type="Button" parent="SafeArea/Layout/Header"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(180, 180)
+custom_minimum_size = Vector2(240, 240)
 layout_mode = 2
 size_flags_vertical = 4
 focus_mode = 0
@@ -66,29 +70,29 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 22.0
-offset_right = -30.0
-offset_bottom = -50.0
+offset_left = 56.0
+offset_top = 50.0
+offset_right = -56.0
+offset_bottom = -78.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("3")
 glyph = 1
-tint = Color(0.506, 0.302, 0.149, 1)
+tint = Color(0.349, 0.259, 0.169, 1)
 
 [node name="Title" type="Label" parent="SafeArea/Layout/Header"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.35, 0.25, 0.05, 1)
-theme_override_font_sizes/font_size = 52
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_font_sizes/font_size = 58
 text = "Sticker Book"
 horizontal_alignment = 1
 
 [node name="Progress" type="PanelContainer" parent="SafeArea/Layout/Header"]
-custom_minimum_size = Vector2(240, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
@@ -101,7 +105,7 @@ theme_override_constants/separation = 8
 alignment = 1
 
 [node name="ProgressStar" type="TextureRect" parent="SafeArea/Layout/Header/Progress/ProgressRow"]
-custom_minimum_size = Vector2(64, 64)
+custom_minimum_size = Vector2(72, 72)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
@@ -114,8 +118,8 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.42, 0.3, 0.08, 1)
-theme_override_font_sizes/font_size = 40
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_font_sizes/font_size = 44
 text = "0 / 0"
 vertical_alignment = 1
 

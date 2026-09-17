@@ -28,7 +28,13 @@ const SFX_DIR: String = "res://audio/sfx"
 const SUCCESS_CHIME: String = "success_chime"
 const SOFT_POP: String = "soft_pop"
 const PICKUP: String = "pickup"
+## Object landed where it belongs (drag delivered, item placed).
+const PLACE_SOFT: String = "place_soft"
+## Object slid back home because it was dropped somewhere else. NOT a failure
+## sound -- there is no failure sound in this game.
 const DROP_RETURN: String = "drop_return"
+## The character walked into another room.
+const ROOM_CHANGE: String = "room_change"
 const STICKER_UNLOCK: String = "sticker_unlock"
 const STAR_EARNED: String = "star_earned"
 const BEDTIME_CHIME: String = "bedtime_chime"
@@ -38,7 +44,9 @@ const KNOWN_SFX: Array[String] = [
 	SUCCESS_CHIME,
 	SOFT_POP,
 	PICKUP,
+	PLACE_SOFT,
 	DROP_RETURN,
+	ROOM_CHANGE,
 	STICKER_UNLOCK,
 	STAR_EARNED,
 	BEDTIME_CHIME,

@@ -34,6 +34,13 @@ const EDGE_FADE_SEC: float = 0.008
 ## Fraction of a voice's length reserved for forcing its tail to silence.
 const VOICE_TAIL_FRACTION: float = 0.18
 
+## Minimum time a file may take to reach half of its own peak. A sound that is
+## already loud in its first millisecond is a snap, and a snap 30 cm from a
+## small child's face is startling however quiet the file's average level is.
+## (This is why the CC0 packs were rejected: one measured its first sample at
+## 0.86 of full scale.)
+const MIN_ATTACK_SEC: float = 0.005
+
 const DEFAULT_OUT_DIR: String = "res://audio/sfx"
 
 # -- Note table (equal temperament, A4 = 440 Hz). -----------------------------
@@ -86,12 +93,16 @@ func _initialize() -> void:
 			continue
 
 		print(
-			"  %-18s %6.3f s  %6d B  peak %6.2f dBFS  edges %d/%d  max-step %.4f  dc %+.5f"
+			(
+				"  %-18s %6.3f s  %6d B  peak %6.2f dBFS  attack %5.1f ms"
+				+ "  edges %d/%d  max-step %.4f  dc %+.5f"
+			)
 			% [
 				name,
 				report["duration"],
 				report["bytes"],
 				report["peak_db"],
+				report["attack"] * 1000.0,
 				report["first_sample"],
 				report["last_sample"],
 				report["max_step"],
@@ -157,6 +168,31 @@ func _specs() -> Array:
 			"length": 0.32,
 			"peak_db": -10.0,
 			"voices": [_glide(0.0, 0.30, G5, C5, 1.0, 0.016, TRIANGLE)],
+		},
+		{
+			# Object settles where it belongs: a stable major third, C5 + E5.
+			# Deliberately NOT the descending fifth of `drop_return` -- landing in
+			# the right place and sliding back home must not sound alike.
+			"name": "place_soft",
+			"length": 0.30,
+			"peak_db": -11.0,
+			"voices":
+			[
+				_voice(0.00, 0.26, C5, 1.00, 0.016, WARM),
+				_voice(0.05, 0.22, E5, 0.55, 0.016, WARM),
+			],
+		},
+		{
+			# Walking into another room: an open, unhurried rising fifth, C5 - G5.
+			# Incidental, so quieter than any reward sound; it happens a lot.
+			"name": "room_change",
+			"length": 0.55,
+			"peak_db": -13.0,
+			"voices":
+			[
+				_voice(0.00, 0.34, C5, 1.00, 0.030, SOFT_LOW),
+				_voice(0.16, 0.36, G5, 0.70, 0.030, SOFT_LOW),
+			],
 		},
 		{
 			# Sparkle: four quick rising partials, C6 - E6 - G6 - C7.
@@ -448,6 +484,8 @@ func _verify(path: String, expected: PackedFloat32Array) -> Dictionary:
 	var previous: float = 0.0
 	var first: int = 0
 	var last: int = 0
+	var values: PackedFloat32Array = PackedFloat32Array()
+	values.resize(frame_count)
 
 	for i in range(frame_count):
 		var raw: int = bytes.decode_s16(44 + i * 2)
@@ -456,6 +494,7 @@ func _verify(path: String, expected: PackedFloat32Array) -> Dictionary:
 		if i == frame_count - 1:
 			last = raw
 		var v: float = float(raw) / 32768.0
+		values[i] = v
 		peak = maxf(peak, absf(v))
 		sum += v
 		if i > 0:
@@ -469,10 +508,22 @@ func _verify(path: String, expected: PackedFloat32Array) -> Dictionary:
 	if first != 0 or last != 0:
 		return {"error": "boundary samples are not zero (%d/%d)" % [first, last]}
 
+	# Attack: how long the file takes to reach half of its own peak.
+	var attack_frames: int = frame_count
+	var half: float = peak * 0.5
+	for i in range(frame_count):
+		if absf(values[i]) >= half:
+			attack_frames = i
+			break
+	var attack: float = float(attack_frames) / float(SAMPLE_RATE)
+	if attack < MIN_ATTACK_SEC:
+		return {"error": "attack too sharp (%.4f s, minimum %.4f s)" % [attack, MIN_ATTACK_SEC]}
+
 	return {
 		"bytes": bytes.size(),
 		"duration": float(frame_count) / float(SAMPLE_RATE),
 		"peak_db": linear_to_db(peak),
+		"attack": attack,
 		"max_step": max_step,
 		"dc_offset": sum / float(frame_count),
 		"first_sample": first,

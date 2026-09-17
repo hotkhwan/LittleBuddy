@@ -91,8 +91,18 @@ const FREE_PLAY_ROUTE: int = Route.HOUSE_WORLD
 
 ## Aimed in code rather than relying on a hand-written Transform3D in the .tscn,
 ## which previously had an inverted pitch and framed the backdrop off-screen.
-const CAMERA_POSITION: Vector3 = Vector3(0.0, 1.5, 4.0)
-const CAMERA_TARGET: Vector3 = Vector3(0.0, 1.95, -2.0)
+##
+## Framed on Little Buddy, who stands at the origin. The art bible calls the
+## character the most memorable subject a title screen can have, and this one
+## used to be three pastel spheres on an empty field -- correct colours, nobody
+## home. The numbers: he is 0.85 m tall, the vertical FOV is 50 degrees, and at
+## 2.23 m the visible slice is about 2.08 m, so he stands roughly 41% of the
+## frame high, head a quarter of the way down and feet just above the two
+## buttons. The camera sits above the aim point, which gives the constrained
+## three-quarter, slightly-down view §5 asks for -- never top-down, which kills
+## faces, and a face is the whole point of putting him here.
+const CAMERA_POSITION: Vector3 = Vector3(0.72, 0.80, 2.05)
+const CAMERA_TARGET: Vector3 = Vector3(0.0, 0.44, 0.0)
 
 @onready var _play_button: Button = %PlayButton
 @onready var _free_play_button: Button = %FreePlayButton

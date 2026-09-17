@@ -48,6 +48,11 @@ var _grid: GridContainer = null
 var _count_label: Label = null
 var _back_button: Button = null
 
+## The sticker cards, in library order, held apart from the grid's children --
+## the grid also carries the invisible spacers that centre the final row, and
+## counting those as stickers would pick the wrong column count.
+var _cells: Array[Control] = []
+
 var _library: Object = null
 var _book: Object = null
 var _resolved: bool = false
@@ -106,6 +111,7 @@ func refresh() -> void:
 		# grid until the end of the frame, which would double up the layout.
 		_grid.remove_child(child)
 		child.queue_free()
+	_cells.clear()
 
 	var entries: Array = []
 	if _book != null and _library != null:
@@ -123,6 +129,7 @@ func refresh() -> void:
 
 		var cell: Control = _StickerCell.new()
 		_grid.add_child(cell)
+		_cells.append(cell)
 		cell.call("setup", sticker, unlocked, true)
 		cell.connect("pressed", _on_sticker_pressed)
 
@@ -176,7 +183,7 @@ func _update_columns() -> void:
 	if available <= 0.0:
 		return
 
-	var total: int = _grid.get_child_count()
+	var total: int = _cells.size()
 	var columns: int = pick_columns(available, total)
 	_grid.columns = columns
 
@@ -185,11 +192,56 @@ func _update_columns() -> void:
 	if scroll != null and scroll.size.y > 1.0:
 		page_height = scroll.size.y
 
+	_centre_last_row(columns, total)
+
 	var cell: Vector2 = cell_size(available, page_height, columns, total)
 	for child: Node in _grid.get_children():
 		var card: Control = child as Control
 		if card != null:
 			card.custom_minimum_size = cell
+
+
+## Indents the final row so it sits under the middle of the page.
+##
+## A `GridContainer` packs its last row hard against the left edge. With sixteen
+## stickers over six columns that leaves four cards huddled in the corner under
+## two full rows, and the page stops reading as a collection and starts reading
+## as a list that ran out. There is no alignment property for this, so the row is
+## indented with invisible cards: half the shortfall before the last row's first
+## real sticker, which centres it.
+##
+## The spacers are `MOUSE_FILTER_IGNORE` and draw nothing, so nothing about the
+## touch behaviour changes -- and they are rebuilt here rather than in
+## `refresh()` because the column count changes with the viewport.
+func _centre_last_row(columns: int, total: int) -> void:
+	if _grid == null:
+		return
+
+	var lead: int = 0
+	if columns > 1 and total > columns:
+		# Integer division on purpose: an odd shortfall leans left by half a
+		# card, which is far less noticeable than leaning right.
+		lead = _last_row_gap(columns, total) / 2
+
+	# Rebuild the child order: full rows, then the indent, then the last row.
+	for child: Node in _grid.get_children():
+		if child is Control and not _cells.has(child):
+			_grid.remove_child(child)
+			child.queue_free()
+
+	var before_last_row: int = maxi(total - (columns - _last_row_gap(columns, total)), 0)
+	var index: int = 0
+	for cell: Control in _cells:
+		if index == before_last_row:
+			for _i: int in range(lead):
+				var spacer: Control = Control.new()
+				spacer.name = "RowIndent%d" % _i
+				spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				_grid.add_child(spacer)
+				_grid.move_child(spacer, index)
+				index += 1
+		_grid.move_child(cell, index)
+		index += 1
 
 
 ## The card size that fills the page without overflowing it.

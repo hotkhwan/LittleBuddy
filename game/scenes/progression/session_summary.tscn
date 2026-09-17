@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scenes/progression/session_summary.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/safe_area.gd" id="2"]
@@ -9,6 +9,7 @@
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_peach_down.tres" id="7"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_mint.tres" id="8"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_mint_down.tres" id="9"]
+[ext_resource type="Script" path="res://scripts/ui/rating_star.gd" id="10"]
 
 [node name="SessionSummary" type="Control"]
 layout_mode = 3
@@ -26,7 +27,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.2, 0.16, 0.12, 0.45)
+color = Color(0.349, 0.259, 0.169, 0.42)
 
 [node name="SafeArea" type="Control" parent="."]
 layout_mode = 1
@@ -48,7 +49,7 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="Panel" type="PanelContainer" parent="SafeArea/Center"]
-custom_minimum_size = Vector2(820, 0)
+custom_minimum_size = Vector2(880, 0)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = ExtResource("5")
@@ -56,22 +57,22 @@ theme_override_styles/panel = ExtResource("5")
 [node name="Margin" type="MarginContainer" parent="SafeArea/Center/Panel"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 30
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 30
-theme_override_constants/margin_bottom = 20
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 14
 
 [node name="VBox" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 18
+theme_override_constants/separation = 12
 
 [node name="TitleLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.35, 0.25, 0.05, 1)
-theme_override_font_sizes/font_size = 58
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_font_sizes/font_size = 64
 text = "Great job!"
 horizontal_alignment = 1
 
@@ -79,8 +80,8 @@ horizontal_alignment = 1
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.5, 0.4, 0.22, 1)
-theme_override_font_sizes/font_size = 38
+theme_override_colors/font_color = Color(0.541, 0.451, 0.345, 1)
+theme_override_font_sizes/font_size = 36
 text = ""
 horizontal_alignment = 1
 
@@ -88,84 +89,97 @@ horizontal_alignment = 1
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 26
 alignment = 1
 
 [node name="RatingStar1" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/RatingRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(96, 96)
+custom_minimum_size = Vector2(140, 140)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-script = ExtResource("3")
-glyph = 0
-tint = Color(1, 0.78, 0.24, 1)
+script = ExtResource("10")
+state = 0
 
 [node name="RatingStar2" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/RatingRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(96, 96)
+custom_minimum_size = Vector2(140, 140)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-script = ExtResource("3")
-glyph = 0
-tint = Color(1, 0.78, 0.24, 1)
+script = ExtResource("10")
+state = 0
 
 [node name="RatingStar3" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/RatingRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(96, 96)
+custom_minimum_size = Vector2(140, 140)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-script = ExtResource("3")
-glyph = 0
-tint = Color(1, 0.78, 0.24, 1)
+script = ExtResource("10")
+state = 0
 
-[node name="EarnedRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox"]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 18
-alignment = 1
-
-[node name="EarnedStar" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/EarnedRow"]
-custom_minimum_size = Vector2(112, 112)
-layout_mode = 2
-size_flags_vertical = 4
-mouse_filter = 2
-script = ExtResource("3")
-glyph = 0
-tint = Color(1, 0.78, 0.24, 1)
-
-[node name="EarnedLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/EarnedRow"]
+[node name="EncourageLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_vertical = 4
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.35, 0.25, 0.05, 1)
-theme_override_font_sizes/font_size = 76
-text = "+0"
+theme_override_colors/font_color = Color(0.541, 0.451, 0.345, 1)
+theme_override_font_sizes/font_size = 36
+text = ""
+horizontal_alignment = 1
 
-[node name="TotalRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox"]
+[node name="ScoreRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 56
+alignment = 1
+
+[node name="EarnedRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow"]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="TotalStar" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/TotalRow"]
-custom_minimum_size = Vector2(58, 58)
+[node name="EarnedStar" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow/EarnedRow"]
+custom_minimum_size = Vector2(66, 66)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 script = ExtResource("3")
 glyph = 0
-tint = Color(0.92, 0.79, 0.44, 1)
+tint = Color(1, 0.78, 0.239, 1)
 
-[node name="TotalLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/TotalRow"]
+[node name="EarnedLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow/EarnedRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.5, 0.4, 0.22, 1)
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_font_sizes/font_size = 50
+text = "+0"
+
+[node name="TotalRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="TotalStar" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow/TotalRow"]
+custom_minimum_size = Vector2(56, 56)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+script = ExtResource("3")
+glyph = 0
+tint = Color(1, 0.78, 0.239, 1)
+
+[node name="TotalLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow/TotalRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.541, 0.451, 0.345, 1)
 theme_override_font_sizes/font_size = 40
 text = "0"
 
@@ -173,12 +187,12 @@ text = "0"
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 28
 alignment = 1
 
 [node name="StickerCell" type="Control" parent="SafeArea/Center/Panel/Margin/VBox/StickerRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(180, 200)
+custom_minimum_size = Vector2(172, 190)
 layout_mode = 2
 mouse_filter = 2
 script = ExtResource("4")
@@ -188,18 +202,18 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.35, 0.25, 0.05, 1)
-theme_override_font_sizes/font_size = 44
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_font_sizes/font_size = 46
 text = ""
 
 [node name="Buttons" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_constants/separation = 26
+theme_override_constants/separation = 28
 alignment = 1
 
 [node name="CloseButton" type="Button" parent="SafeArea/Center/Panel/Margin/VBox/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(180, 180)
+custom_minimum_size = Vector2(240, 240)
 layout_mode = 2
 size_flags_vertical = 4
 focus_mode = 0
@@ -214,20 +228,20 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 22.0
-offset_right = -30.0
-offset_bottom = -50.0
+offset_left = 56.0
+offset_top = 50.0
+offset_right = -56.0
+offset_bottom = -78.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("3")
 glyph = 1
-tint = Color(0.506, 0.302, 0.149, 1)
+tint = Color(0.349, 0.259, 0.169, 1)
 
 [node name="PlayAgainButton" type="Button" parent="SafeArea/Center/Panel/Margin/VBox/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(250, 180)
+custom_minimum_size = Vector2(240, 240)
 layout_mode = 2
 size_flags_vertical = 4
 focus_mode = 0
@@ -237,40 +251,38 @@ theme_override_styles/pressed = ExtResource("9")
 theme_override_styles/disabled = ExtResource("8")
 theme_override_styles/focus = ExtResource("8")
 
-[node name="PlayAgainBox" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton"]
+[node name="PlayAgainIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton"]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 34.0
-offset_right = -34.0
-offset_bottom = -34.0
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -54.0
+offset_top = 34.0
+offset_right = 54.0
+offset_bottom = 142.0
 grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_constants/separation = 10
-alignment = 1
-
-[node name="PlayAgainIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton/PlayAgainBox"]
-custom_minimum_size = Vector2(120, 120)
-layout_mode = 2
-size_flags_vertical = 4
 mouse_filter = 2
 script = ExtResource("3")
 glyph = 3
 tint = Color(0.137, 0.365, 0.294, 1)
 
-[node name="PlayAgainLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton/PlayAgainBox"]
-layout_mode = 2
-size_flags_vertical = 4
+[node name="PlayAgainLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 150.0
+offset_bottom = 204.0
+grow_horizontal = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.137, 0.365, 0.294, 1)
-theme_override_font_sizes/font_size = 42
+theme_override_font_sizes/font_size = 40
 text = "Replay"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="NextButton" type="Button" parent="SafeArea/Center/Panel/Margin/VBox/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(320, 180)
+custom_minimum_size = Vector2(240, 240)
 layout_mode = 2
 size_flags_vertical = 4
 focus_mode = 0
@@ -280,24 +292,31 @@ theme_override_styles/pressed = ExtResource("9")
 theme_override_styles/disabled = ExtResource("8")
 theme_override_styles/focus = ExtResource("8")
 
-[node name="NextBox" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/NextButton"]
+[node name="NextIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/NextButton"]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 34.0
-offset_right = -34.0
-offset_bottom = -34.0
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -54.0
+offset_top = 34.0
+offset_right = 54.0
+offset_bottom = 142.0
 grow_horizontal = 2
-grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/separation = 10
-alignment = 1
+script = ExtResource("3")
+glyph = 2
+tint = Color(0.137, 0.365, 0.294, 1)
 
-[node name="NextLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/NextButton/NextBox"]
-layout_mode = 2
-size_flags_vertical = 4
+[node name="NextLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/NextButton"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 150.0
+offset_bottom = 204.0
+grow_horizontal = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.137, 0.365, 0.294, 1)
-theme_override_font_sizes/font_size = 42
+theme_override_font_sizes/font_size = 40
 text = "Next"
+horizontal_alignment = 1
+vertical_alignment = 1

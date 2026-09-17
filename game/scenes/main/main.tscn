@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://scenes/main/main.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/safe_area.gd" id="2"]
@@ -9,6 +9,7 @@
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_mint_down.tres" id="7"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_peach.tres" id="8"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_peach_down.tres" id="9"]
+[ext_resource type="Script" path="res://scripts/character/toddler_view.gd" id="10"]
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
@@ -18,27 +19,56 @@ ambient_light_color = Color(0.96, 0.94, 0.9, 1)
 ambient_light_energy = 0.55
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_1"]
-size = Vector2(24, 24)
+size = Vector2(40, 40)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
 albedo_color = Color(0.525, 0.804, 0.686, 1)
 roughness = 0.95
 metallic = 0.0
 
-[sub_resource type="SphereMesh" id="SphereMesh_peach"]
-radius = 0.55
-height = 1.1
+[sub_resource type="CylinderMesh" id="CylinderMesh_rug"]
+top_radius = 1.05
+bottom_radius = 1.05
+height = 0.02
+radial_segments = 48
+rings = 1
 
-[sub_resource type="SphereMesh" id="SphereMesh_lavender"]
-radius = 0.4
-height = 0.8
-
-[sub_resource type="SphereMesh" id="SphereMesh_pink"]
-radius = 0.29
-height = 0.58
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_peach"]
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rug"]
 albedo_color = Color(1.0, 0.827, 0.714, 1)
+roughness = 0.95
+metallic = 0.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_cloud"]
+radius = 1.0
+height = 2.0
+radial_segments = 12
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cloud"]
+albedo_color = Color(1.0, 0.965, 0.898, 1)
+roughness = 1.0
+metallic = 0.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball_pink"]
+radius = 0.13
+height = 0.26
+radial_segments = 14
+rings = 8
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball_lavender"]
+radius = 0.13
+height = 0.26
+radial_segments = 14
+rings = 8
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball_peach"]
+radius = 0.13
+height = 0.26
+radial_segments = 14
+rings = 8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pink"]
+albedo_color = Color(1.0, 0.757, 0.8, 1)
 roughness = 0.9
 metallic = 0.0
 
@@ -47,8 +77,8 @@ albedo_color = Color(0.839, 0.78, 0.941, 1)
 roughness = 0.9
 metallic = 0.0
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pink"]
-albedo_color = Color(1.0, 0.757, 0.8, 1)
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_peach"]
+albedo_color = Color(1.0, 0.827, 0.714, 1)
 roughness = 0.9
 metallic = 0.0
 
@@ -63,26 +93,76 @@ fov = 50.0
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.8296, -0.4356, 0.3494, 0, 0.6248, 0.7808, -0.5583, -0.6479, 0.5185, 0, 3, 0)
-shadow_enabled = false
+light_color = Color(1, 0.976, 0.925, 1)
+shadow_enabled = true
+shadow_opacity = 0.45
+directional_shadow_max_distance = 18.0
 
 [node name="Floor" type="MeshInstance3D" parent="."]
 mesh = SubResource("PlaneMesh_1")
 surface_material_override/0 = SubResource("StandardMaterial3D_floor")
 
-[node name="PeachBall" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.55, -2.6)
-mesh = SubResource("SphereMesh_peach")
-surface_material_override/0 = SubResource("StandardMaterial3D_peach")
+[node name="Rug" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, -0.05)
+mesh = SubResource("CylinderMesh_rug")
+surface_material_override/0 = SubResource("StandardMaterial3D_rug")
 
-[node name="LavenderBall" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.75, 0.4, -3.2)
-mesh = SubResource("SphereMesh_lavender")
+[node name="Clouds" type="Node3D" parent="."]
+
+[node name="CloudLeftA" type="MeshInstance3D" parent="Clouds"]
+transform = Transform3D(0.62, 0, 0, 0, 0.36, 0, 0, 0, 0.62, -4.2, 1.36, -6.4)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_cloud")
+surface_material_override/0 = SubResource("StandardMaterial3D_cloud")
+
+[node name="CloudLeftB" type="MeshInstance3D" parent="Clouds"]
+transform = Transform3D(0.42, 0, 0, 0, 0.26, 0, 0, 0, 0.42, -3.56, 1.28, -6.4)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_cloud")
+surface_material_override/0 = SubResource("StandardMaterial3D_cloud")
+
+[node name="CloudLeftC" type="MeshInstance3D" parent="Clouds"]
+transform = Transform3D(0.36, 0, 0, 0, 0.23, 0, 0, 0, 0.36, -4.76, 1.26, -6.4)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_cloud")
+surface_material_override/0 = SubResource("StandardMaterial3D_cloud")
+
+[node name="CloudRightA" type="MeshInstance3D" parent="Clouds"]
+transform = Transform3D(0.7, 0, 0, 0, 0.4, 0, 0, 0, 0.7, 0.2, 1.46, -7.2)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_cloud")
+surface_material_override/0 = SubResource("StandardMaterial3D_cloud")
+
+[node name="CloudRightB" type="MeshInstance3D" parent="Clouds"]
+transform = Transform3D(0.46, 0, 0, 0, 0.28, 0, 0, 0, 0.46, 0.94, 1.36, -7.2)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_cloud")
+surface_material_override/0 = SubResource("StandardMaterial3D_cloud")
+
+[node name="CloudRightC" type="MeshInstance3D" parent="Clouds"]
+transform = Transform3D(0.4, 0, 0, 0, 0.25, 0, 0, 0, 0.4, -0.44, 1.34, -7.2)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_cloud")
+surface_material_override/0 = SubResource("StandardMaterial3D_cloud")
+
+[node name="LittleBuddy" type="Node3D" parent="."]
+transform = Transform3D(-0.9613, 0, -0.2756, 0, 1, 0, 0.2756, 0, -0.9613, 0, 0, 0)
+script = ExtResource("10")
+
+[node name="ToyBallPink" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.58, 0, 0, 0, 0.58, 0, 0, 0, 0.58, 0.44, 0.0754, -0.3)
+mesh = SubResource("SphereMesh_ball_pink")
+surface_material_override/0 = SubResource("StandardMaterial3D_pink")
+
+[node name="ToyBallLavender" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, -0.45, 0.065, -0.24)
+mesh = SubResource("SphereMesh_ball_lavender")
 surface_material_override/0 = SubResource("StandardMaterial3D_lavender")
 
-[node name="PinkBall" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.55, 0.29, -1.5)
-mesh = SubResource("SphereMesh_pink")
-surface_material_override/0 = SubResource("StandardMaterial3D_pink")
+[node name="ToyBallPeach" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.2, 0.0546, -0.52)
+mesh = SubResource("SphereMesh_ball_peach")
+surface_material_override/0 = SubResource("StandardMaterial3D_peach")
 
 [node name="UI" type="CanvasLayer" parent="."]
 
@@ -100,10 +180,10 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -380.0
-offset_top = 70.0
-offset_right = 380.0
-offset_bottom = 246.0
+offset_left = -400.0
+offset_top = 26.0
+offset_right = 400.0
+offset_bottom = 196.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_styles/panel = ExtResource("5")
@@ -117,7 +197,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
-theme_override_font_sizes/font_size = 92
+theme_override_font_sizes/font_size = 88
 text = "Little Buddy"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -125,17 +205,17 @@ vertical_alignment = 1
 [node name="PlayButton" type="Button" parent="UI/SafeArea"]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.5
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -360.0
-offset_top = -100.0
-offset_right = -60.0
-offset_bottom = 200.0
+anchor_bottom = 1.0
+offset_left = -490.0
+offset_top = -334.0
+offset_right = -190.0
+offset_bottom = -34.0
 grow_horizontal = 2
-grow_vertical = 2
+grow_vertical = 0
 focus_mode = 0
 theme_override_styles/normal = ExtResource("6")
 theme_override_styles/hover = ExtResource("6")
@@ -148,10 +228,10 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -82.0
+offset_left = -72.0
 offset_top = 44.0
-offset_right = 82.0
-offset_bottom = 208.0
+offset_right = 72.0
+offset_bottom = 188.0
 grow_horizontal = 2
 mouse_filter = 2
 script = ExtResource("3")
@@ -162,12 +242,12 @@ tint = Color(0.137, 0.365, 0.294, 1)
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 208.0
-offset_bottom = 262.0
+offset_top = 194.0
+offset_bottom = 252.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.137, 0.365, 0.294, 1)
-theme_override_font_sizes/font_size = 40
+theme_override_font_sizes/font_size = 44
 text = "Play"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -175,17 +255,17 @@ vertical_alignment = 1
 [node name="FreePlayButton" type="Button" parent="UI/SafeArea"]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.5
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = 60.0
-offset_top = -100.0
-offset_right = 360.0
-offset_bottom = 200.0
+anchor_bottom = 1.0
+offset_left = 190.0
+offset_top = -334.0
+offset_right = 490.0
+offset_bottom = -34.0
 grow_horizontal = 2
-grow_vertical = 2
+grow_vertical = 0
 focus_mode = 0
 theme_override_styles/normal = ExtResource("8")
 theme_override_styles/hover = ExtResource("8")
@@ -198,26 +278,27 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -82.0
+offset_left = -72.0
 offset_top = 44.0
-offset_right = 82.0
-offset_bottom = 208.0
+offset_right = 72.0
+offset_bottom = 188.0
 grow_horizontal = 2
 mouse_filter = 2
 script = ExtResource("4")
 tint = Color(0.349, 0.259, 0.169, 1)
 face_color = Color(0.984, 0.82, 0.675, 1)
+window_color = Color(0.984, 0.82, 0.675, 1)
 
 [node name="FreePlayCaption" type="Label" parent="UI/SafeArea/FreePlayButton"]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 208.0
-offset_bottom = 262.0
+offset_top = 194.0
+offset_bottom = 252.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
-theme_override_font_sizes/font_size = 40
+theme_override_font_sizes/font_size = 44
 text = "Free Play"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -228,20 +309,21 @@ visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.5
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -420.0
-offset_top = 236.0
-offset_right = 420.0
-offset_bottom = 310.0
+anchor_bottom = 1.0
+offset_left = -180.0
+offset_top = -180.0
+offset_right = 180.0
+offset_bottom = -76.0
 grow_horizontal = 2
-grow_vertical = 2
+grow_vertical = 0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
 theme_override_colors/font_outline_color = Color(1, 0.965, 0.898, 1)
-theme_override_constants/outline_size = 12
-theme_override_font_sizes/font_size = 48
+theme_override_constants/outline_size = 14
+theme_override_font_sizes/font_size = 44
 text = "Back in a moment!"
 horizontal_alignment = 1
 vertical_alignment = 1
+autowrap_mode = 2

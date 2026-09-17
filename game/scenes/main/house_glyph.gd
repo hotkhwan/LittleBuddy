@@ -34,6 +34,13 @@ extends Control
 		face_color = value
 		queue_redraw()
 
+## The window, knocked out the same way. Separate from `face_color` only so a
+## caller can tint it without also changing the door.
+@export var window_color: Color = Color(0.984, 0.820, 0.675):
+	set(value):
+		window_color = value
+		queue_redraw()
+
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -73,15 +80,25 @@ func _draw() -> void:
 	_draw_rounded(body, box * 0.10, tint)
 
 	# Flush with the bottom of the body, so the house stands on the ground
-	# instead of floating a door in the middle of a wall.
-	var door_width: float = box * 0.22
-	var door_height: float = box * 0.34
+	# instead of floating a door in the middle of a wall. Set left of centre to
+	# leave room for the window: a door alone reads as a shed, and it is the
+	# window that says "somebody lives here" -- the same reason §5 gives every
+	# room one.
+	var door_width: float = box * 0.20
+	var door_height: float = box * 0.32
 	var door: Rect2 = Rect2(
-		Vector2(body.position.x + (body.size.x - door_width) * 0.5,
-				body.end.y - door_height),
+		Vector2(body.position.x + body.size.x * 0.16, body.end.y - door_height),
 		Vector2(door_width, door_height)
 	)
-	_draw_rounded(door, box * 0.06, face_color)
+	_draw_rounded(door, box * 0.055, face_color)
+
+	var window_side: float = box * 0.19
+	var window: Rect2 = Rect2(
+		Vector2(body.position.x + body.size.x * 0.56,
+				body.end.y - door_height - box * 0.015),
+		Vector2(window_side, window_side)
+	)
+	_draw_rounded(window, box * 0.05, window_color)
 
 
 func _draw_rounded(rect: Rect2, radius: float, color: Color) -> void:
