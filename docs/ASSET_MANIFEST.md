@@ -97,6 +97,30 @@ pseudo-pack) and `game/scripts/baby/baby_view_3d.gd`.
 ## Pending owner action
 
 **Tiny Treats "Playful Bedroom"** ($7.95, CC0) is the best style match for the nursery and
-would replace the retinted Kenney furniture. It **cannot be downloaded non-interactively**
-(itch.io browser flow), so it needs a human purchase + download. The nursery is built to swap
-cleanly — see `docs/NURSERY_SWAP_CONTRACT.md`.
+would replace the retinted Kenney furniture. Because it is **paid**, it needs a human purchase
+before it can be fetched. The nursery is built to swap cleanly — see
+`docs/NURSERY_SWAP_CONTRACT.md`.
+
+**Correction to earlier research:** this document previously claimed Tiny Treats packs
+"cannot be downloaded non-interactively". That is **wrong for the free packs**. itch.io exposes
+a scriptable download API, verified end-to-end with plain `curl`, no login, no browser, no
+cookies:
+
+```
+POST https://tinytreats.itch.io/<pack>/download_url      -> signed page URL
+POST https://tinytreats.itch.io/<pack>/file/<file_id>    -> {"url": "<signed CDN URL>"}
+GET  <that URL>                                          -> the zip
+```
+
+*Bubbly Bathroom* was pulled this way (5,668,736 bytes, valid zip, 84 `.gltf`+`.bin`, one
+shared atlas). Its bundled `License.txt` reads verbatim: *"License: (Creative Commons Zero,
+CC0) … This content is free to use in personal, educational and commercial projects. Support
+me by crediting Isa Lousberg, www.isalousberg.com (this is not mandatory)"* — by Isa Lousberg,
+v1.1, 28/10/2025.
+
+It was **deliberately not used**: it covers only towels, toothbrushes and a duck (there is no
+bar of soap, only a soap *dish*, which would teach "dish"), and those three objects already
+read well as procedural models. Swapping correct procedural art for third-party art is an
+art-style decision, not a mis-teach fix, and it would add 5.4 MB, a second atlas, `.gltf`
+external-buffer import risk and a new licence surface for no teaching gain. Reproducible with
+the commands above whenever wanted.

@@ -4,7 +4,9 @@ How to replace the room's art without touching gameplay or interaction logic.
 
 The current nursery uses **Kenney Furniture Kit** retinted to pastel. The intended upgrade is
 **Tiny Treats "Playful Bedroom"** ($7.95, CC0), which is a much closer match to the soft-toy
-pastel target but must be bought and downloaded by a human (itch.io browser flow).
+pastel target. Because it is **paid**, a human must buy it first — but note that itch.io's
+download API *is* scriptable (see `docs/ASSET_MANIFEST.md`), so once purchased it can be
+fetched without a browser.
 
 This document defines the boundary so that swap is an art change only.
 
