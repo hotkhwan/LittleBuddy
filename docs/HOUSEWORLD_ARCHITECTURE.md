@@ -1,6 +1,7 @@
 # HouseWorld Architecture
 
-**Status:** implemented, Phase 2B. Four greybox rooms, navigable, 56/56 tests green.
+**Status:** implemented and **reachable from the game**. Four greybox rooms, navigable, with
+Chapter 3 routed into them. See §8 for exactly what is and is not done.
 **Scope:** toddler-stage (Chapter 3+) spatial gameplay. Chapters 1–2 do not use this at all.
 
 ---
@@ -119,13 +120,22 @@ navmesh after a room edit would strand the child with no way back. An unknown ro
 back to the room default, and ultimately the bedroom default. That fallback is tested, not
 assumed.
 
-**Currently stored under `settings.worldState`, with no schema bump.** `ProfileStore` preserves
-unknown JSON-safe keys inside `settings`, and the round trip is tested end-to-end through the
-real store with `stars`, `completedActivities`, `starsByLevel` and `levelCompleted` asserted
-unchanged. Filing position under "settings" is semantically odd, and promoting it to a
-first-class top-level field is a **v4 migration** — deliberately deferred, because the schema is
-at v3 and was migrated twice in one week, and the contract says not to bump without need. Only
-two constants and two functions in `world_state.gd` change if we do.
+**Now stored as top-level `currentRoomId` / `currentSpawnId` in save schema v4.**
+`settings.worldState` is retained for one release as a read-compatibility mirror and is no
+longer the authority. It was deliberately not deleted in the same commit: `world_state.gd` was
+its only reader, and removing the key while that was still true would have stranded every
+HouseWorld restore in the bedroom **with the whole suite green** — the worst possible failure
+shape. Flipping `ProfileStore.DROP_LEGACY_WORLD_STATE` finishes the job and is pre-tested.
+
+> Historical note, kept because the bug was invisible: `world_state.gd` originally read *only*
+> `settings.worldState`, which `ProfileStore` never creates. The house therefore saw nothing in a
+> fresh v4 profile and would have woken every returning child in the bedroom — undetectably,
+> because the bedroom is also the correct answer for a profile that has never been in the house.
+
+Migrations v1→v4, v2→v4 and v3→v4 are built as a **chain** rather than three jumps, so there is
+no fourth code path to drift, and idempotency is asserted over three passes because two-pass
+stability can be an accident. Shape validation upstream means a persisted `Vector3`, Array or
+compound id can never become a location.
 
 Persistence is **caller-driven** (`write_into_profile()` / `restore_from_profile()`); the house
 does not call `SaveService` itself.
@@ -151,10 +161,20 @@ Both now have mutants that go red.
 `frame_room(framing: Dictionary)`. HouseWorld adapts by passing `room.get_camera_framing()`.
 Recorded here so a third consumer does not guess wrong.
 
-## 8. Not done, and deliberately so
+## 8. Status
 
-HouseWorld is **not reachable from the game yet** — `main.tscn` does not reference it and nothing
-routes to it. There is no Chapter 3 mission content, no English content, no vocabulary, no
-journey map, and no final art. `toddler_view.gd` is explicitly temporary engineering art.
+**HouseWorld is reachable.** `main.gd` routes ch1/ch2 to the Baby Room and ch3 to HouseWorld, with
+Free Play entering the house directly. Chapter 3 content exists: five chained levels
+(`goodMorning`, `gettingDressed`, `breakfast`, `playTime`, `tidyAndBed`), ~29 minutes, every level
+completable to 3/3 by touch alone.
+
+Routing had to do more than read the saved chapter: `set_current_chapter()` was called nowhere in
+the project, so a fresh profile is written `"ch1"` and stays `"ch1"` forever. Reading it alone
+would have left ch3 permanently unreachable however much of ch2 a child played. The chapter is now
+trusted when it names an unlocked, unfinished chapter and recomputed from `levelCompleted`
+otherwise.
+
+Still outstanding: no journey map, no final art, and `toddler_view.gd` remains explicitly
+temporary engineering art.
 
 See `docs/NAVMESH_WORKFLOW.md` and `docs/ROOM_CAMERA_SYSTEM.md` for the two subsystems.
