@@ -75,7 +75,7 @@ func run():
 
 # ---------------------------------------------------------------------------
 
-func _test_single_award() -> Array:
+func _test_single_award():
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var ledger: Object = _ledger(FakeClock.new())
@@ -96,7 +96,7 @@ func _test_single_award() -> Array:
 	return failures
 
 
-func _test_no_double_award() -> Array:
+func _test_no_double_award():
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var clock: FakeClock = FakeClock.new()
@@ -134,7 +134,7 @@ func _test_no_double_award() -> Array:
 	return failures
 
 
-func _test_spam_taps() -> Array:
+func _test_spam_taps():
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var clock: FakeClock = FakeClock.new()
@@ -167,7 +167,7 @@ func _test_spam_taps() -> Array:
 	return failures
 
 
-func _test_invalid_awards() -> Array:
+func _test_invalid_awards():
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var clock: FakeClock = FakeClock.new()
@@ -197,7 +197,7 @@ func _test_invalid_awards() -> Array:
 	return failures
 
 
-func _test_session_totals() -> Array:
+func _test_session_totals():
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var clock: FakeClock = FakeClock.new()
@@ -230,7 +230,7 @@ func _test_session_totals() -> Array:
 	return failures
 
 
-func _test_claim_guard() -> Array:
+func _test_claim_guard():
 	var failures: Array = []
 	var ledger: Object = _ledger(FakeClock.new())
 
@@ -259,7 +259,7 @@ func _test_claim_guard() -> Array:
 # Ledger + sticker book together: the full award path
 # ---------------------------------------------------------------------------
 
-func _test_stickers_not_double_unlocked() -> Array:
+func _test_stickers_not_double_unlocked():
 	var failures: Array = []
 
 	var library: Object = ContentLibraryScript.new()

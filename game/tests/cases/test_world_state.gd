@@ -39,7 +39,7 @@ func run():
 
 ## The fallback chain, exhaustively: unknown spawn -> the room's default;
 ## unknown room -> the bedroom's default.
-func _test_resolution() -> Array:
+func _test_resolution():
 	var failures: Array = []
 
 	var exact: Dictionary = WorldState.resolve("bathroom", "fromBedroom")
@@ -87,7 +87,7 @@ func _test_resolution() -> Array:
 	return failures
 
 
-func _test_dictionary_round_trip() -> Array:
+func _test_dictionary_round_trip():
 	var failures: Array = []
 	var state: RefCounted = WorldState.create("livingRoom", "fromKitchen")
 	var as_dict: Dictionary = state.call("to_dict")
@@ -115,7 +115,7 @@ func _test_dictionary_round_trip() -> Array:
 
 ## Contract §8: never a raw `Vector3` as the only recovery mechanism. The
 ## persisted payload must be two strings and nothing else.
-func _test_no_coordinates_are_persisted() -> Array:
+func _test_no_coordinates_are_persisted():
 	var failures: Array = []
 	var stored: Dictionary = WorldState.create("kitchen", "fromBedroom").call("to_dict")
 	for key: String in stored.keys():
@@ -131,7 +131,7 @@ func _test_no_coordinates_are_persisted() -> Array:
 
 
 ## End to end through the real `ProfileStore`, on a throwaway path.
-func _test_profile_round_trip() -> Array:
+func _test_profile_round_trip():
 	var failures: Array = []
 	var path: String = "user://test_world_state_%d.json" % randi()
 	var store: RefCounted = ProfileStoreScript.new(path)
@@ -183,7 +183,7 @@ func _test_profile_round_trip() -> Array:
 
 ## The property that actually protects a child: an invalid saved location puts
 ## them somewhere real, standing on the navigation mesh, in a room that exists.
-func _test_world_restores_and_falls_back() -> Array:
+func _test_world_restores_and_falls_back():
 	var failures: Array = []
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	if tree == null:

@@ -50,6 +50,19 @@
     { "wordId": "lamp", "word": "lamp", "category": "bedtime", "partOfSpeech": "noun", "objectId": "lamp", "thai": "โคมไฟ", "exampleSentence": "Turn off the lamp." },
     { "wordId": "goodNight", "word": "good night", "category": "bedtime", "partOfSpeech": "phrase", "objectId": "", "thai": "ราตรีสวัสดิ์", "exampleSentence": "Good night!" },
     { "wordId": "night", "word": "night", "category": "bedtime", "partOfSpeech": "noun", "objectId": "", "thai": "กลางคืน", "exampleSentence": "The night is quiet." },
-    { "wordId": "moon", "word": "moon", "category": "bedtime", "partOfSpeech": "noun", "objectId": "", "thai": "พระจันทร์", "exampleSentence": "The moon is in the sky." }
+    { "wordId": "moon", "word": "moon", "category": "bedtime", "partOfSpeech": "noun", "objectId": "", "thai": "พระจันทร์", "exampleSentence": "The moon is in the sky." },
+
+    { "wordId": "goodMorning", "word": "good morning", "category": "routine", "partOfSpeech": "phrase", "objectId": "", "thai": "อรุณสวัสดิ์", "exampleSentence": "Good morning!", "stage": "toddler", "exposure": "active" },
+    { "wordId": "bedroom", "word": "bedroom", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "ห้องนอน", "exampleSentence": "My bed is in the bedroom.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "bathroom", "word": "bathroom", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "ห้องน้ำ", "exampleSentence": "We brush our teeth in the bathroom.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "kitchen", "word": "kitchen", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "ห้องครัว", "exampleSentence": "We eat in the kitchen.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "livingRoom", "word": "living room", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "ห้องนั่งเล่น", "exampleSentence": "We play in the living room.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "walk", "word": "walk", "category": "routine", "partOfSpeech": "verb", "objectId": "", "thai": "เดิน", "exampleSentence": "Walk to the kitchen.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "sit", "word": "sit", "category": "routine", "partOfSpeech": "verb", "objectId": "", "thai": "นั่ง", "exampleSentence": "Sit at the table.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "table", "word": "table", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "โต๊ะ", "exampleSentence": "Breakfast is on the table.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "sofa", "word": "sofa", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "โซฟา", "exampleSentence": "The sofa is soft.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "sleep", "word": "sleep", "category": "bedtime", "partOfSpeech": "verb", "objectId": "", "thai": "นอนหลับ", "exampleSentence": "Time to sleep.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "cleanUp", "word": "clean up", "category": "play", "partOfSpeech": "phrase", "objectId": "toyBox", "thai": "เก็บของ", "exampleSentence": "Clean up the toys.", "stage": "toddler", "exposure": "active" },
+    { "wordId": "hug", "word": "hug", "category": "play", "partOfSpeech": "verb", "objectId": "teddy", "thai": "กอด", "exampleSentence": "Hug the teddy.", "stage": "toddler", "exposure": "active" }
   ]
 }

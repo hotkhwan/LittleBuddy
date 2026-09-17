@@ -45,7 +45,7 @@ func run():
 # Glyphs
 # ---------------------------------------------------------------------------
 
-func _test_glyphs_load() -> Array:
+func _test_glyphs_load():
 	var failures: Array = []
 
 	for word: Variant in StickerArtScript.GLYPH_PATHS.keys():
@@ -84,7 +84,7 @@ func _test_glyphs_load() -> Array:
 ## still have a polygon recipe behind it. A word with neither would reach the
 ## device as an empty card; a word with only the recipe would reach it visibly
 ## hand-drawn next to fifteen icons.
-func _test_every_sticker_has_art() -> Array:
+func _test_every_sticker_has_art():
 	var failures: Array = []
 
 	var library: Object = ContentLibraryScript.create()
@@ -127,7 +127,7 @@ func _test_every_sticker_has_art() -> Array:
 
 
 ## The cache is load-bearing, not an optimisation -- see `StickerArt.glyph_for`.
-func _test_glyph_cache_keeps_a_reference() -> Array:
+func _test_glyph_cache_keeps_a_reference():
 	var first: Texture2D = StickerArtScript.glyph_for("milk")
 	if first == null:
 		return ["the milk glyph did not load at all"]
@@ -149,7 +149,7 @@ func _test_glyph_cache_keeps_a_reference() -> Array:
 
 ## Cards grow from their minimum to fill the page. Whatever size that lands on,
 ## the grid has to fit the width AND the height it was handed.
-func _test_page_fits() -> Array:
+func _test_page_fits():
 	var failures: Array = []
 	var gap: float = StickerBookScreenScript.GAP
 	var minimum: Vector2 = StickerCellScript.MIN_SIZE

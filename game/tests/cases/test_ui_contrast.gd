@@ -100,7 +100,7 @@ func run():
 	return failures
 
 
-func _test_labels() -> Array:
+func _test_labels():
 	var failures: Array = []
 
 	for scene_path: Variant in CHECKS.keys():
@@ -128,7 +128,7 @@ func _test_labels() -> Array:
 	return failures
 
 
-func _test_toggles() -> Array:
+func _test_toggles():
 	var failures: Array = []
 
 	var packed: PackedScene = load(PARENT_SCENE) as PackedScene
@@ -196,7 +196,7 @@ func _test_toggles() -> Array:
 
 
 ## The word under an earned sticker, on the cream card it is printed on.
-func _test_sticker_caption() -> Array:
+func _test_sticker_caption():
 	return _check("StickerCell caption", StickerCellScript.LABEL_COLOR, CREAM_PANEL,
 			int(StickerCellScript.MIN_SIZE.y * StickerCellScript.CAPTION_FONT_RATIO))
 

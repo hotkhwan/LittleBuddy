@@ -138,7 +138,7 @@ func run():
 # Nothing was broken on the way in
 # ---------------------------------------------------------------------------
 
-func _test_existing_content_still_valid() -> Array:
+func _test_existing_content_still_valid():
 	var failures: Array = []
 
 	var problems: Array = ContentValidatorScript.validate_all(_library)
@@ -149,9 +149,14 @@ func _test_existing_content_still_valid() -> Array:
 		failures.append("level system warning: %s" % str(warning))
 
 	var mission_ids: PackedStringArray = _library.get_mission_ids()
-	if mission_ids.size() != SHIPPED_MISSION_IDS.size():
+	# The invariant is "none of the shipped missions may DISAPPEAR", not "the
+	# count is frozen". Chapter 3 legitimately adds missions; an equality check
+	# here would make authoring new content fail a test about not losing old
+	# content. Each shipped id is still checked individually in the loop below.
+	if mission_ids.size() < SHIPPED_MISSION_IDS.size():
 		failures.append(
-			"expected %d missions, got %d" % [SHIPPED_MISSION_IDS.size(), mission_ids.size()]
+			"expected at least %d missions, got %d -- a shipped mission was lost"
+			% [SHIPPED_MISSION_IDS.size(), mission_ids.size()]
 		)
 	for mission_id: String in SHIPPED_MISSION_IDS:
 		if not _library.has_mission(mission_id):
@@ -168,11 +173,23 @@ func _test_existing_content_still_valid() -> Array:
 				% [mission_id, expected_threshold, str(mission.get("unlockAtStars"))]
 			)
 
-	# The legacy star-threshold listing still behaves exactly as it did.
-	if _library.get_unlocked_missions(0).size() != 2:
-		failures.append("get_unlocked_missions(0) should still list the two 0-star missions")
-	if _library.get_unlocked_missions(32).size() != SHIPPED_MISSION_IDS.size():
-		failures.append("get_unlocked_missions(32) should still list every mission")
+	# The legacy star-threshold listing still behaves exactly as it did for the
+	# missions that predate the level layer. Assert membership, not count: the
+	# Chapter 3 missions are completion-gated, so they correctly carry
+	# `unlockAtStars: 0` and now also appear in the 0-star listing. Counting
+	# would turn "the legacy gate still works" into "no content may be added".
+	var zero_star: Array = []
+	for entry: Variant in _library.get_unlocked_missions(0):
+		if typeof(entry) == TYPE_DICTIONARY:
+			zero_star.append(String((entry as Dictionary).get("missionId", "")))
+	for legacy_id: String in ["morningRoutine", "feedingTime"]:
+		if not zero_star.has(legacy_id):
+			failures.append(
+				"get_unlocked_missions(0) no longer lists '%s'; the legacy star gate regressed"
+				% legacy_id
+			)
+	if _library.get_unlocked_missions(32).size() < SHIPPED_MISSION_IDS.size():
+		failures.append("get_unlocked_missions(32) should still list every shipped mission")
 
 	return failures
 
@@ -181,7 +198,7 @@ func _test_existing_content_still_valid() -> Array:
 # Chapter 2
 # ---------------------------------------------------------------------------
 
-func _test_chapter_2_mapping() -> Array:
+func _test_chapter_2_mapping():
 	var failures: Array = []
 
 	var chain: PackedStringArray = _system.get_chapter_chain("ch2")
@@ -245,7 +262,7 @@ func _test_chapter_2_mapping() -> Array:
 	return failures
 
 
-func _test_chapter_2_star_rules() -> Array:
+func _test_chapter_2_star_rules():
 	var failures: Array = []
 
 	for row: Array in CHAPTER_2:
@@ -274,7 +291,7 @@ func _test_chapter_2_star_rules() -> Array:
 # Unlocking
 # ---------------------------------------------------------------------------
 
-func _test_unlock_is_ordered() -> Array:
+func _test_unlock_is_ordered():
 	var failures: Array = []
 
 	# A brand-new profile: chapter 2 and only its first level.
@@ -346,7 +363,7 @@ func _test_unlock_is_ordered() -> Array:
 ##   - complete the level and unlock the next one (the escape hatch is never a
 ##     trap), and
 ##   - score 0, not 1 (a skipped objective is not an achievement).
-func _test_completion_is_separate_from_stars() -> Array:
+func _test_completion_is_separate_from_stars():
 	var failures: Array = []
 
 	var skipped_everything: Dictionary = _system.resolve_completion("milkTime", 0, {}, {})
@@ -408,7 +425,7 @@ func _test_completion_is_separate_from_stars() -> Array:
 	return failures
 
 
-func _test_completing_a_chapter_unlocks_the_next() -> Array:
+func _test_completing_a_chapter_unlocks_the_next():
 	var failures: Array = []
 
 	var almost: Dictionary = {}
@@ -427,11 +444,13 @@ func _test_completing_a_chapter_unlocks_the_next() -> Array:
 		failures.append("finishing every level must complete chapter 2")
 	if not _system.is_chapter_unlocked("ch3", done):
 		failures.append("completing chapter 2 must unlock chapter 3")
-	if not _system.is_level_unlocked("gettingDressed", done):
+	# `goodMorning` is L11, the first level of chapter 3. `gettingDressed` was the
+	# first only while chapter 3 held a single promoted level.
+	if not _system.is_level_unlocked("goodMorning", done):
 		failures.append("completing chapter 2 must unlock the first chapter 3 level")
 	if not _system.is_level_unlocked("sayItChallenge", done):
 		failures.append("a bonus level must unlock with its chapter")
-	if _system.get_next_level_id("firstWords") != "gettingDressed":
+	if _system.get_next_level_id("firstWords") != "goodMorning":
 		failures.append(
 			"the level after the last of chapter 2 should be the first of chapter 3, got '%s'"
 			% _system.get_next_level_id("firstWords")
@@ -451,7 +470,7 @@ func _test_completing_a_chapter_unlocks_the_next() -> Array:
 ## A child whose device has no working recognition completes every task by
 ## touch. That must still reach 3/3 on every Chapter 2 level, and must still
 ## carry them through the whole chapter.
-func _test_speech_free_player_reaches_three_stars() -> Array:
+func _test_speech_free_player_reaches_three_stars():
 	var failures: Array = []
 
 	var progress: Dictionary = {}
@@ -487,7 +506,7 @@ func _test_speech_free_player_reaches_three_stars() -> Array:
 # Replay safety
 # ---------------------------------------------------------------------------
 
-func _test_replay_never_lowers() -> Array:
+func _test_replay_never_lowers():
 	var failures: Array = []
 
 	var progress: Dictionary = {"milkTime": 3}
@@ -521,7 +540,7 @@ func _test_replay_never_lowers() -> Array:
 	return failures
 
 
-func _test_no_duplicate_awards() -> Array:
+func _test_no_duplicate_awards():
 	var failures: Array = []
 
 	var save: StubSaveService = StubSaveService.new()
@@ -567,7 +586,7 @@ func _test_no_duplicate_awards() -> Array:
 # Migration support
 # ---------------------------------------------------------------------------
 
-func _test_seeding() -> Array:
+func _test_seeding():
 	var failures: Array = []
 
 	# Every task of `milkTime` completed in a v1 profile -> exactly 1 star.
@@ -605,7 +624,7 @@ func _test_seeding() -> Array:
 # The old gate still works where it is still used
 # ---------------------------------------------------------------------------
 
-func _test_legacy_unlock_at_stars_still_works() -> Array:
+func _test_legacy_unlock_at_stars_still_works():
 	var failures: Array = []
 
 	var legacy_system: RefCounted = LevelSystemScript.create(LegacyLibrary.new())
@@ -634,7 +653,7 @@ func _test_legacy_unlock_at_stars_still_works() -> Array:
 	return failures
 
 
-func _test_degrades_without_a_save_service() -> Array:
+func _test_degrades_without_a_save_service():
 	var failures: Array = []
 
 	var system: RefCounted = LevelSystemScript.create(_library)

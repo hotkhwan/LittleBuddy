@@ -70,7 +70,7 @@ func run():
 ## keeps the game playable if a `.glb` goes missing from an export, and
 ## `_test_missing_model_falls_back` in `test_gameplay_object_spawner` covers it.
 ## This asserts only that no SHIPPED record relies on it.
-func _test_every_object_has_a_model(_spawner: GDScript) -> Array:
+func _test_every_object_has_a_model(_spawner: GDScript):
 	var failures: Array = []
 	var records: Array = _object_records()
 	if records.is_empty():
@@ -89,7 +89,7 @@ func _test_every_object_has_a_model(_spawner: GDScript) -> Array:
 ## rotation is what turns a silhouette into a recognisable word, and every one of
 ## these was chosen against a render -- but it is invisible headlessly, because
 ## the object still spawns and is still the right size.
-func _test_every_procedural_model_is_presented(spawner: GDScript) -> Array:
+func _test_every_procedural_model_is_presented(spawner: GDScript):
 	var failures: Array = []
 	for model: String in spawner.PROCEDURAL_MODELS:
 		var qualified: String = "%s/%s" % [String(spawner.PROCEDURAL_PACK), model]
@@ -114,7 +114,7 @@ func _packs_in_use(spawner: GDScript) -> Dictionary:
 
 ## CC0 requires no attribution, but the licence file is what makes that
 ## checkable later. Losing it turns a known-clean asset into an unknown one.
-func _test_provenance(spawner: GDScript) -> Array:
+func _test_provenance(spawner: GDScript):
 	var failures: Array = []
 	var packs: Dictionary = _packs_in_use(spawner)
 	if packs.is_empty():
@@ -136,7 +136,7 @@ func _test_provenance(spawner: GDScript) -> Array:
 ## The gotcha that renders a whole pack flat white if it regresses. Checked per
 ## pack, because the atlases are NOT interchangeable: the three bundled packs
 ## ship three different 512x512 colormaps.
-func _test_pack_textures(spawner: GDScript) -> Array:
+func _test_pack_textures(spawner: GDScript):
 	var failures: Array = []
 	for pack: String in _packs_in_use(spawner).keys():
 		var texture_path: String = String(spawner.pack_texture_path(pack))
@@ -180,7 +180,7 @@ func _test_pack_textures(spawner: GDScript) -> Array:
 ## falls back to a primitive if it does not, so the game stays playable either
 ## way -- but shipping a dead reference is still a bug, and only a test catches
 ## it, since the fallback is deliberately silent to the child.
-func _test_every_declared_model_exists(spawner: GDScript) -> Array:
+func _test_every_declared_model_exists(spawner: GDScript):
 	var failures: Array = []
 	var declared: Dictionary = _declared_models()
 	if declared.is_empty():
@@ -209,7 +209,7 @@ func _test_every_declared_model_exists(spawner: GDScript) -> Array:
 ## The procedural half of the model layer. A generated mesh has no file to go
 ## missing, so the failure mode is different: a builder that silently returns
 ## null, or a name in `PROCEDURAL_MODELS` with no `match` arm behind it.
-func _test_procedural_models(spawner: GDScript) -> Array:
+func _test_procedural_models(spawner: GDScript):
 	var failures: Array = []
 	var names: Array = spawner.PROCEDURAL_MODELS
 	if names.is_empty():
@@ -245,7 +245,7 @@ func _test_procedural_models(spawner: GDScript) -> Array:
 ## object was still visible, still touchable and still roughly the right size.
 ## Comparing the baked triangle count against the source scene is what makes
 ## that silent, plausible-looking loss detectable.
-func _test_bake_keeps_every_part(spawner: GDScript) -> Array:
+func _test_bake_keeps_every_part(spawner: GDScript):
 	var failures: Array = []
 	for object_id: String in _declared_models().keys():
 		var model_name: String = _declared_models()[object_id]
@@ -305,7 +305,7 @@ func _measure_source_meshes(node: Node, parent_transform: Transform3D, totals: A
 		_measure_source_meshes(child, here, totals)
 
 
-func _test_mesh_budget(spawner: GDScript) -> Array:
+func _test_mesh_budget(spawner: GDScript):
 	var failures: Array = []
 	for model_name: String in _declared_models().values():
 		var mesh: Mesh = spawner.load_model_mesh(model_name)

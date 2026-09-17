@@ -96,7 +96,7 @@ func run():
 
 ## -- Static checks -------------------------------------------------------------
 
-func _test_scene_text() -> Array:
+func _test_scene_text():
 	var failures: Array = []
 	var text: String = _read(SCENE_PATH)
 	if text.is_empty():
@@ -124,7 +124,7 @@ func _test_scene_text() -> Array:
 
 ## The spike must be deletable in a single commit, with nothing else depending on
 ## it and it depending on nothing else.
-func _test_spike_is_self_contained() -> Array:
+func _test_spike_is_self_contained():
 	var failures: Array = []
 	for path: String in SPIKE_SCRIPTS:
 		var source: String = _read(path)
@@ -143,7 +143,7 @@ func _test_spike_is_self_contained() -> Array:
 ## Computed from the camera constants rather than read back from a live viewport,
 ## because the constants are where that bug lived. Checked at every aspect ratio
 ## the game ships on, since the camera distance is fitted per aspect.
-func _test_camera_framing() -> Array:
+func _test_camera_framing():
 	var failures: Array = []
 	var distance: float = Layout.fit_camera_distance(Layout.CAMERA_REFERENCE_ASPECT)
 	var position: Vector3 = Layout.camera_position(distance)
@@ -202,7 +202,7 @@ func _test_camera_framing() -> Array:
 
 ## -- Instantiated checks --------------------------------------------------------
 
-func _test_structure(scene: Node) -> Array:
+func _test_structure(scene: Node):
 	var failures: Array = []
 	var expected: Dictionary = {
 		"Camera3D": "Camera3D",
@@ -264,7 +264,7 @@ func _test_structure(scene: Node) -> Array:
 	return failures
 
 
-func _test_navigation_built(scene: Node) -> Array:
+func _test_navigation_built(scene: Node):
 	var failures: Array = []
 	var region: Node = scene.get_node_or_null("%NavigationRegion3D")
 	if region == null:
@@ -280,7 +280,7 @@ func _test_navigation_built(scene: Node) -> Array:
 	return failures
 
 
-func _test_targets_registered(scene: Node) -> Array:
+func _test_targets_registered(scene: Node):
 	var failures: Array = []
 	var character: Node = scene.get_node_or_null("%LittleBuddy")
 	var controller: Node = scene.get_node_or_null("%NavigationController")
@@ -310,7 +310,7 @@ func _test_targets_registered(scene: Node) -> Array:
 
 ## Required behaviour 3. Navigation must not break the interaction model the game
 ## already ships.
-func _test_drag_and_drop_still_works(scene: Node) -> Array:
+func _test_drag_and_drop_still_works(scene: Node):
 	var failures: Array = []
 	var ball: Node = scene.get_node_or_null("%Ball")
 	var zone: Node = scene.get_node_or_null("%BallDropZone")

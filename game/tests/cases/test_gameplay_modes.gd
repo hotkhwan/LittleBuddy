@@ -53,7 +53,7 @@ func run():
 ## End-to-end wiring: with an object anchor in the context, a handler really does
 ## build touchable objects from `objects.json` and completes when the target
 ## reports it was chosen.
-func _test_spawning_into_an_anchor() -> Array:
+func _test_spawning_into_an_anchor():
 	var failures: Array = []
 	var library_script: GDScript = load(LIBRARY_PATH) as GDScript
 	if library_script == null:
@@ -124,7 +124,7 @@ func _test_spawning_into_an_anchor() -> Array:
 
 ## A wrong tap must NOT award, must NOT end the task, and must produce a short
 ## kind phrase -- never a score, never a red X.
-func _test_find_it_wrong_choice_is_kind() -> Array:
+func _test_find_it_wrong_choice_is_kind():
 	var failures: Array = []
 	var handler: Node = _make(FIND_IT_PATH)
 	if handler == null:
@@ -165,7 +165,7 @@ func _test_find_it_wrong_choice_is_kind() -> Array:
 
 ## Mashing tap + re-delivery must complete a task exactly once (layer 2 of the
 ## three no-double-award layers; `MissionRunner._award` is the authoritative one).
-func _test_no_double_completion_on_mash() -> Array:
+func _test_no_double_completion_on_mash():
 	var failures: Array = []
 	for path: String in [FIND_IT_PATH, SAY_IT_PATH, FOLLOW_PATH]:
 		var task: Dictionary = find_task
@@ -197,7 +197,7 @@ func _test_no_double_completion_on_mash() -> Array:
 
 ## The mic must never be a gate: with no speech service in the context, touch
 ## still finishes the task with the full reward.
-func _test_say_it_completes_by_touch_without_speech() -> Array:
+func _test_say_it_completes_by_touch_without_speech():
 	var failures: Array = []
 	var handler: Node = _make(SAY_IT_PATH)
 	if handler == null:
@@ -241,7 +241,7 @@ func _test_say_it_completes_by_touch_without_speech() -> Array:
 
 
 ## Tolerant matching, and a non-match that is a nudge rather than a score.
-func _test_say_it_speech_path() -> Array:
+func _test_say_it_speech_path():
 	var failures: Array = []
 	var say_it: GDScript = load(SAY_IT_PATH) as GDScript
 	if say_it == null:
@@ -277,7 +277,7 @@ func _test_say_it_speech_path() -> Array:
 
 ## The instruction mode must resolve its zone from content, and a plain tap must
 ## still finish the task (the drag-free fallback).
-func _test_follow_instruction_zone_and_tap() -> Array:
+func _test_follow_instruction_zone_and_tap():
 	var failures: Array = []
 	var handler: Node = _make(FOLLOW_PATH)
 	if handler == null:
@@ -315,7 +315,7 @@ func _test_follow_instruction_zone_and_tap() -> Array:
 
 
 ## The answer must always be on screen -- otherwise the task is unwinnable.
-func _test_choice_set_always_contains_target() -> Array:
+func _test_choice_set_always_contains_target():
 	var failures: Array = []
 	var base: GDScript = load(MODE_HANDLER_PATH) as GDScript
 	if base == null:
@@ -349,7 +349,7 @@ func _test_choice_set_always_contains_target() -> Array:
 
 ## Sweep the real content: every shipped task must be completable by touch alone
 ## through its mode handler.
-func _test_every_shipped_task_has_a_touch_path() -> Array:
+func _test_every_shipped_task_has_a_touch_path():
 	var failures: Array = []
 	var library_script: GDScript = load(LIBRARY_PATH) as GDScript
 	if library_script == null:

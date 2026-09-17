@@ -54,7 +54,7 @@ func run():
 # Every 0-3 combination
 # ---------------------------------------------------------------------------
 
-func _test_truth_table() -> Array:
+func _test_truth_table():
 	var failures: Array = []
 
 	# [core done, listening done, optional done] -> expected rating.
@@ -89,7 +89,7 @@ func _test_truth_table() -> Array:
 	return failures
 
 
-func _test_partial_progress() -> Array:
+func _test_partial_progress():
 	var failures: Array = []
 
 	# Half the core tasks is not completion.
@@ -128,7 +128,7 @@ func _test_partial_progress() -> Array:
 	return failures
 
 
-func _test_optional_objectives() -> Array:
+func _test_optional_objectives():
 	var failures: Array = []
 
 	# Star 3 can also come from a non-task objective (free play, tidying up).
@@ -163,7 +163,7 @@ func _test_optional_objectives() -> Array:
 # Speech is never required -- proved three ways
 # ---------------------------------------------------------------------------
 
-func _test_speech_is_never_required() -> Array:
+func _test_speech_is_never_required():
 	var failures: Array = []
 
 	# 1. Behavioural. A child on a device where recognition is unavailable or
@@ -227,7 +227,7 @@ func _test_speech_is_never_required() -> Array:
 # Never subtract a star
 # ---------------------------------------------------------------------------
 
-func _test_merge_never_subtracts() -> Array:
+func _test_merge_never_subtracts():
 	var failures: Array = []
 
 	if StarRulesScript.merge(3, 1) != 3:
@@ -272,7 +272,7 @@ func _test_merge_never_subtracts() -> Array:
 # Defensiveness
 # ---------------------------------------------------------------------------
 
-func _test_shaping_is_defensive() -> Array:
+func _test_shaping_is_defensive():
 	var failures: Array = []
 
 	for junk: Variant in [null, 42, "rules", []]:
@@ -296,7 +296,7 @@ func _test_shaping_is_defensive() -> Array:
 	return failures
 
 
-func _test_derivation() -> Array:
+func _test_derivation():
 	var failures: Array = []
 
 	# A mission with no authored rules still rates: findIt/sayIt become the
@@ -332,7 +332,7 @@ func _test_derivation() -> Array:
 	return failures
 
 
-func _test_validate() -> Array:
+func _test_validate():
 	var failures: Array = []
 
 	if not StarRulesScript.validate(RULES, ["feedMilk", "feedWater", "findBowl", "sayMilk", "feedBanana"]).is_empty():

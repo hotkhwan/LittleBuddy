@@ -78,7 +78,7 @@ func run():
 
 ## No dead ends (contract §4): every room reachable from every other, directly or
 ## via one intermediate room.
-func _test_layout_is_a_ring() -> Array:
+func _test_layout_is_a_ring():
 	var failures: Array = []
 	var ids: Array = HouseLayout.room_ids()
 	if ids.size() != 4:
@@ -125,7 +125,7 @@ func _test_layout_is_a_ring() -> Array:
 ## Contract §3: toddler ~0.85 m, door ~1.9 m, counter ~0.9 m, sofa seat ~0.4 m,
 ## rooms ~4 x 4 m. Greybox is allowed to be ugly; it is not allowed to be the
 ## wrong size, because every camera and framing judgement depends on this.
-func _test_scale() -> Array:
+func _test_scale():
 	var failures: Array = []
 	if not is_equal_approx(ToddlerView.HEIGHT, 0.85):
 		failures.append("the toddler should be 0.85 m tall, is %.2f" % ToddlerView.HEIGHT)
@@ -153,7 +153,7 @@ func _test_scale() -> Array:
 	return failures
 
 
-func _test_no_runtime_baking() -> Array:
+func _test_no_runtime_baking():
 	var failures: Array = []
 	for path: String in SHIPPED_HOUSE_SCRIPTS:
 		var source: String = _read(path)
@@ -168,7 +168,7 @@ func _test_no_runtime_baking() -> Array:
 
 
 ## The committed, inspectable navigation meshes (contract §5).
-func _test_baked_navmesh_resources() -> Array:
+func _test_baked_navmesh_resources():
 	var failures: Array = []
 	for room_id: String in HouseLayout.room_ids():
 		var path: String = HouseLayout.navmesh_path(room_id)
@@ -200,7 +200,7 @@ func _test_baked_navmesh_resources() -> Array:
 ## The check the inverted-pitch bug would have failed: the fallback framing must
 ## look DOWN at the room from above it, and fit the whole room on every screen
 ## the game ships on.
-func _test_camera_framing_fits_every_screen() -> Array:
+func _test_camera_framing_fits_every_screen():
 	var failures: Array = []
 	for room_id: String in HouseLayout.room_ids():
 		var framing: Dictionary = HouseLayout.camera_framing(room_id)
@@ -229,7 +229,7 @@ func _test_camera_framing_fits_every_screen() -> Array:
 
 ## -- Instantiated checks -------------------------------------------------------
 
-func _test_structure(world: Node) -> Array:
+func _test_structure(world: Node):
 	var failures: Array = []
 	var expected: Dictionary = {
 		"WorldCamera": "Camera3D",
@@ -259,7 +259,7 @@ func _test_structure(world: Node) -> Array:
 	return failures
 
 
-func _test_rooms(world: Node) -> Array:
+func _test_rooms(world: Node):
 	var failures: Array = []
 	var ids: Array = world.call("get_room_ids")
 	var expected: Array = REQUIRED_TARGETS.keys()
@@ -303,7 +303,7 @@ func _test_rooms(world: Node) -> Array:
 	return failures
 
 
-func _test_targets(world: Node) -> Array:
+func _test_targets(world: Node):
 	var failures: Array = []
 	var global_ids: Array = []
 	for room_id: String in world.call("get_room_ids"):
@@ -356,7 +356,7 @@ func _test_targets(world: Node) -> Array:
 	return failures
 
 
-func _test_spawns(world: Node) -> Array:
+func _test_spawns(world: Node):
 	var failures: Array = []
 	for room_id: String in world.call("get_room_ids"):
 		var room: Node = world.call("get_room", room_id)
@@ -382,7 +382,7 @@ func _test_spawns(world: Node) -> Array:
 	return failures
 
 
-func _test_navigation_regions(world: Node) -> Array:
+func _test_navigation_regions(world: Node):
 	var failures: Array = []
 	var navigation: Node = world.get_node_or_null("Navigation")
 	if navigation == null:
@@ -405,7 +405,7 @@ func _test_navigation_regions(world: Node) -> Array:
 	return failures
 
 
-func _test_character(world: Node) -> Array:
+func _test_character(world: Node):
 	var failures: Array = []
 	var character: Node = world.call("get_character")
 	if character == null:

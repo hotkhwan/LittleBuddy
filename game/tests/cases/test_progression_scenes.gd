@@ -31,7 +31,7 @@ func run():
 	return failures
 
 
-func _test_sticker_book(root: Node) -> Array:
+func _test_sticker_book(root: Node):
 	var failures: Array = []
 
 	var scene: PackedScene = _load_scene(STICKER_BOOK_SCENE, failures)
@@ -101,7 +101,7 @@ func _test_sticker_book(root: Node) -> Array:
 	return failures
 
 
-func _test_session_summary(root: Node) -> Array:
+func _test_session_summary(root: Node):
 	var failures: Array = []
 
 	var scene: PackedScene = _load_scene(SESSION_SUMMARY_SCENE, failures)

@@ -40,7 +40,7 @@ func run():
 	return failures
 
 
-func _test_authored_level() -> Array:
+func _test_authored_level():
 	var failures: Array = []
 
 	var mission: Dictionary = {
@@ -94,7 +94,7 @@ func _test_authored_level() -> Array:
 	return failures
 
 
-func _test_legacy_mission_still_works() -> Array:
+func _test_legacy_mission_still_works():
 	var failures: Array = []
 
 	var level: RefCounted = LevelDefinitionScript.create(LEGACY_MISSION)
@@ -133,7 +133,7 @@ func _test_legacy_mission_still_works() -> Array:
 	return failures
 
 
-func _test_malformed_input() -> Array:
+func _test_malformed_input():
 	var failures: Array = []
 
 	for junk: Variant in [null, 42, "mission", []]:
@@ -157,7 +157,7 @@ func _test_malformed_input() -> Array:
 	return failures
 
 
-func _test_does_not_mutate_the_mission() -> Array:
+func _test_does_not_mutate_the_mission():
 	var failures: Array = []
 
 	var mission: Dictionary = LEGACY_MISSION.duplicate(true)
@@ -178,7 +178,7 @@ func _test_does_not_mutate_the_mission() -> Array:
 
 
 ## Every shipped level must name one of the six templates from LEVEL_MATRIX.md.
-func _test_shipped_templates() -> Array:
+func _test_shipped_templates():
 	var failures: Array = []
 
 	var library: RefCounted = ContentLibraryScript.create()

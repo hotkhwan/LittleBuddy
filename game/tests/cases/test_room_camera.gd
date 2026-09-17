@@ -59,7 +59,7 @@ func run():
 	return failures
 
 
-func _test_public_api() -> Array:
+func _test_public_api():
 	var failures: Array = []
 	var camera: Camera3D = _make_camera()
 	for method: String in PUBLIC_API:
@@ -74,7 +74,7 @@ func _test_public_api() -> Array:
 
 ## No orbit, no pinch, no drag-to-look. A four-year-old cannot operate a camera,
 ## and an input handler here would also steal taps from tap-to-walk.
-func _test_no_manual_camera_control() -> Array:
+func _test_no_manual_camera_control():
 	var failures: Array = []
 	var source: String = _read("res://scripts/camera/room_camera.gd")
 	if source.is_empty():
@@ -98,7 +98,7 @@ func _test_no_manual_camera_control() -> Array:
 ## The headless runner builds nodes without a tree, and `Node3D.global_transform`
 ## silently returns the identity there -- "everything is at the origin" instead of
 ## a loud failure. The camera must still end up where the maths says.
-func _test_frames_out_of_tree() -> Array:
+func _test_frames_out_of_tree():
 	var failures: Array = []
 	var camera: Camera3D = _make_camera()
 	camera.call("frame_room", ROOM)
@@ -142,7 +142,7 @@ func _test_frames_out_of_tree() -> Array:
 ## render pass is what covers the real-viewport case; here we check the parts that
 ## are honestly observable: the fit ran, it used the VIEWPORT's aspect rather than
 ## a constant, and the camera made itself current.
-func _test_frames_in_tree() -> Array:
+func _test_frames_in_tree():
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	if tree == null:
 		return ["no SceneTree available"]
@@ -182,7 +182,7 @@ func _test_frames_in_tree() -> Array:
 	return failures
 
 
-func _test_focus_and_restore() -> Array:
+func _test_focus_and_restore():
 	var failures: Array = []
 	var camera: Camera3D = _make_camera()
 	camera.call("frame_room", ROOM)
@@ -229,7 +229,7 @@ func _test_focus_and_restore() -> Array:
 ## refuses to latch its wiring while disconnected (so it will connect the moment a
 ## real viewport appears), and re-fitting actually produces a different framing --
 ## and the connection itself is covered by the rendered screenshots.
-func _test_refits_on_resize() -> Array:
+func _test_refits_on_resize():
 	var failures: Array = []
 	var camera: Camera3D = _make_camera()
 
@@ -277,7 +277,7 @@ func _test_refits_on_resize() -> Array:
 
 ## Nothing framed, nonsense framed, framed twice -- none of it may crash or leave
 ## a non-finite transform on a node the whole scene is rendered through.
-func _test_survives_nothing() -> Array:
+func _test_survives_nothing():
 	var failures: Array = []
 	var camera: Camera3D = _make_camera()
 

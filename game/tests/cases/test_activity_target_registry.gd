@@ -80,7 +80,7 @@ func run():
 
 ## -- Registration ----------------------------------------------------------------
 
-func _test_registers_a_house() -> Array:
+func _test_registers_a_house():
 	var failures: Array = []
 	var house: Node3D = _build_house()
 	var registry: RefCounted = Registry.new()
@@ -112,7 +112,7 @@ func _test_registers_a_house() -> Array:
 
 ## Contract §1, directly: content holds an id, and resolution needs no tree, no
 ## `NodePath` and no coordinate.
-func _test_lookup_without_the_tree() -> Array:
+func _test_lookup_without_the_tree():
 	var failures: Array = []
 	var house: Node3D = _build_house()
 	var registry: RefCounted = Registry.new()
@@ -153,7 +153,7 @@ func _test_lookup_without_the_tree() -> Array:
 
 
 ## Moving the fridge across the kitchen must touch zero lines of content data.
-func _test_moving_the_fridge_changes_no_content() -> Array:
+func _test_moving_the_fridge_changes_no_content():
 	var failures: Array = []
 	var house: Node3D = _build_house()
 	var registry: RefCounted = Registry.new()
@@ -189,7 +189,7 @@ func _test_moving_the_fridge_changes_no_content() -> Array:
 
 ## -- Duplicates ------------------------------------------------------------------
 
-func _test_duplicate_within_a_room_is_loud() -> Array:
+func _test_duplicate_within_a_room_is_loud():
 	var failures: Array = []
 	var registry: RefCounted = Registry.new()
 	registry.call("set_report_errors", false)  # the error is expected; assert it instead
@@ -230,7 +230,7 @@ func _test_duplicate_within_a_room_is_loud() -> Array:
 	return failures
 
 
-func _test_duplicate_semantic_id_is_loud() -> Array:
+func _test_duplicate_semantic_id_is_loud():
 	var failures: Array = []
 	var registry: RefCounted = Registry.new()
 	registry.call("set_report_errors", false)
@@ -261,7 +261,7 @@ func _test_duplicate_semantic_id_is_loud() -> Array:
 	return failures
 
 
-func _test_same_local_id_in_two_rooms_is_fine() -> Array:
+func _test_same_local_id_in_two_rooms_is_fine():
 	var failures: Array = []
 	var registry: RefCounted = Registry.new()
 	var bedroom_toy: Area3D = _target("bedroom", "toy")
@@ -280,7 +280,7 @@ func _test_same_local_id_in_two_rooms_is_fine() -> Array:
 	return failures
 
 
-func _test_malformed_targets_are_refused() -> Array:
+func _test_malformed_targets_are_refused():
 	var failures: Array = []
 	var registry: RefCounted = Registry.new()
 	registry.call("set_report_errors", false)
@@ -320,7 +320,7 @@ func _test_malformed_targets_are_refused() -> Array:
 
 ## -- Queries -----------------------------------------------------------------------
 
-func _test_queries() -> Array:
+func _test_queries():
 	var failures: Array = []
 	var registry: RefCounted = Registry.new()
 
@@ -371,7 +371,7 @@ func _test_queries() -> Array:
 	return failures
 
 
-func _test_unregister_and_freed_nodes() -> Array:
+func _test_unregister_and_freed_nodes():
 	var failures: Array = []
 	var registry: RefCounted = Registry.new()
 	var fridge: Area3D = _target("kitchen", "fridge")
@@ -405,7 +405,7 @@ func _test_unregister_and_freed_nodes() -> Array:
 	return failures
 
 
-func _test_sync_to_character() -> Array:
+func _test_sync_to_character():
 	var failures: Array = []
 	var house: Node3D = _build_house()
 	var registry: RefCounted = Registry.new()
@@ -435,7 +435,7 @@ func _test_sync_to_character() -> Array:
 
 
 ## The Phase 2A spike still works: an unroomed target registers under its bare id.
-func _test_legacy_unroomed_target() -> Array:
+func _test_legacy_unroomed_target():
 	var failures: Array = []
 	var registry: RefCounted = Registry.new()
 	var toy_box: Area3D = _target("", "toyBox")

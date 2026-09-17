@@ -62,7 +62,7 @@ func run():
 ## Guards against the whole file becoming vacuous: if the map answers nothing,
 ## `path_reaches()` returns false for everything and the "unreachable" assertions
 ## below would pass for entirely the wrong reason.
-func _test_map_is_really_live(provider: RefCounted) -> Array:
+func _test_map_is_really_live(provider: RefCounted):
 	var failures: Array = []
 	var snapped: Vector3 = provider.call("snap_to_navigable", Layout.UNREACHABLE_OUTSIDE_ROOM)
 	if snapped.is_equal_approx(Vector3.ZERO):
@@ -79,7 +79,7 @@ func _test_map_is_really_live(provider: RefCounted) -> Array:
 	return failures
 
 
-func _test_reachable_destinations(provider: RefCounted) -> Array:
+func _test_reachable_destinations(provider: RefCounted):
 	var failures: Array = []
 	for pad: Vector3 in Layout.TAP_PADS:
 		var path: PackedVector3Array = provider.call("query_path", Layout.START_POSITION, pad)
@@ -97,7 +97,7 @@ func _test_reachable_destinations(provider: RefCounted) -> Array:
 
 ## The table sits between the start position and the toy box. A path that ignores
 ## it would walk Little Buddy straight through the furniture.
-func _test_paths_route_around_obstacles(provider: RefCounted) -> Array:
+func _test_paths_route_around_obstacles(provider: RefCounted):
 	var failures: Array = []
 	var table: Rect2 = Layout.OBSTACLES[Layout.TABLE_OBSTACLE_INDEX]
 	var from := Vector3(0.0, 0.0, 1.6)
@@ -125,7 +125,7 @@ func _test_paths_route_around_obstacles(provider: RefCounted) -> Array:
 
 ## The headline unreachable case, and the realistic one: floor a child can see,
 ## inside the room, behind a closed wall.
-func _test_sealed_closet_is_unreachable(provider: RefCounted) -> Array:
+func _test_sealed_closet_is_unreachable(provider: RefCounted):
 	var failures: Array = []
 	var closet: Vector3 = Layout.UNREACHABLE_INSIDE_ROOM
 	var path: PackedVector3Array = provider.call("query_path", Layout.START_POSITION, closet)
@@ -143,7 +143,7 @@ func _test_sealed_closet_is_unreachable(provider: RefCounted) -> Array:
 	return failures
 
 
-func _test_outside_the_room_is_unreachable(provider: RefCounted) -> Array:
+func _test_outside_the_room_is_unreachable(provider: RefCounted):
 	var failures: Array = []
 	var outside: Vector3 = Layout.UNREACHABLE_OUTSIDE_ROOM
 	var path: PackedVector3Array = provider.call("query_path", Layout.START_POSITION, outside)
@@ -164,7 +164,7 @@ func _test_outside_the_room_is_unreachable(provider: RefCounted) -> Array:
 
 ## The full stack over real pathfinding: reachable target accepted and walked,
 ## unreachable target refused without disturbing anything.
-func _test_controller_over_a_real_map(provider: RefCounted) -> Array:
+func _test_controller_over_a_real_map(provider: RefCounted):
 	var failures: Array = []
 	var controller: RefCounted = MovementController.create(provider)
 	controller.call("set_position", Layout.START_POSITION)
@@ -201,7 +201,7 @@ func _test_controller_over_a_real_map(provider: RefCounted) -> Array:
 ## A provider with no map at all -- a room whose navigation has not been built,
 ## or a map that has not synchronised yet -- must still let the child move.
 ## Refusing to walk is a worse failure than walking through a wall.
-func _test_unready_provider_degrades_to_a_straight_line() -> Array:
+func _test_unready_provider_degrades_to_a_straight_line():
 	var failures: Array = []
 	var orphan: RefCounted = NavMapProvider.create(null)
 	if bool(orphan.call("is_navigation_ready")):

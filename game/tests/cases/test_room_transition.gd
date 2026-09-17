@@ -51,7 +51,7 @@ func run():
 ## `map_get_iteration_id()` is NOT proof the map answers. Everything below walks
 ## real paths, so if the map were silently empty every reachability assertion
 ## would pass for the wrong reason. Prove it answers first.
-func _test_navigation_answers(world: Node) -> Array:
+func _test_navigation_answers(world: Node):
 	var failures: Array = []
 	var map: RID = world.call("get_navigation_map")
 	var provider: RefCounted = NavMapProviderScript.create(map)
@@ -70,7 +70,7 @@ func _test_navigation_answers(world: Node) -> Array:
 	return failures
 
 
-func _test_bedroom_to_bathroom(world: Node) -> Array:
+func _test_bedroom_to_bathroom(world: Node):
 	var failures: Array = []
 	var controller: Node = world.call("get_transition_controller")
 	var character: Node = world.call("get_character")
@@ -135,7 +135,7 @@ func _test_bedroom_to_bathroom(world: Node) -> Array:
 
 
 ## Contract §4, rule 1. The one that must not crash.
-func _test_unknown_room_is_refused(world: Node) -> Array:
+func _test_unknown_room_is_refused(world: Node):
 	var failures: Array = []
 	var controller: Node = world.call("get_transition_controller")
 	var character: Node = world.call("get_character")
@@ -182,7 +182,7 @@ func _test_unknown_room_is_refused(world: Node) -> Array:
 
 ## The whole child-facing loop, driven only by a semantic id: tap the door, walk
 ## to it, turn to face it, change room. Exactly once.
-func _test_tapping_a_door_transitions_once(world: Node) -> Array:
+func _test_tapping_a_door_transitions_once(world: Node):
 	var failures: Array = []
 	var controller: Node = world.call("get_transition_controller")
 	var character: Node = world.call("get_character")
@@ -209,7 +209,7 @@ func _test_tapping_a_door_transitions_once(world: Node) -> Array:
 	return failures
 
 
-func _test_arrival_fires_once(world: Node) -> Array:
+func _test_arrival_fires_once(world: Node):
 	var failures: Array = []
 	var character: Node = world.call("get_character")
 	_reset(world)
@@ -242,7 +242,7 @@ func _test_arrival_fires_once(world: Node) -> Array:
 
 
 ## One destination, never a queue: a second request replaces the first.
-func _test_path_replacement(world: Node) -> Array:
+func _test_path_replacement(world: Node):
 	var failures: Array = []
 	var character: Node = world.call("get_character")
 	_reset(world)
@@ -276,7 +276,7 @@ func _test_path_replacement(world: Node) -> Array:
 
 ## A tap the child genuinely cannot reach changes nothing at all -- no walk, no
 ## half-path, and certainly no red X.
-func _test_unreachable_target(world: Node) -> Array:
+func _test_unreachable_target(world: Node):
 	var failures: Array = []
 	var character: Node = world.call("get_character")
 	_reset(world)
@@ -309,7 +309,7 @@ func _test_unreachable_target(world: Node) -> Array:
 
 ## A transition requested from inside a transition must be refused rather than
 ## re-entering, or `transition_completed` could fire more than once per door.
-func _test_reentrant_transition_is_refused(world: Node) -> Array:
+func _test_reentrant_transition_is_refused(world: Node):
 	var failures: Array = []
 	var controller: Node = world.call("get_transition_controller")
 	var character: Node = world.call("get_character")

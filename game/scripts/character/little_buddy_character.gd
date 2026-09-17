@@ -20,6 +20,9 @@ extends CharacterBody3D
 ##     character.move_to("milkBottle")        # walk to a named thing
 ##     character.move_to_ground(1.2, -0.4)    # walk to a floor position
 ##     character.play_action("drink")         # show a semantic action
+##     character.play_action("sit")           # ...or take up a posture
+##     character.release_action()             # ...and leave it again
+##     character.get_held_action()            # "sit" while sitting, else ""
 ##     character.stop()
 ##     character.is_busy()
 ##     character.get_state_name()
@@ -136,15 +139,29 @@ func move_to_ground(x: float, z: float) -> bool:
 
 
 ## Shows a semantic action: "drink", "eat", "sit", "brushTeeth", "celebrate"...
+## The full vocabulary is `character_action_driver.gd`'s `KNOWN_ACTIONS`.
 ##
 ## Returns true if the action started. It starts whether or not an animation for
 ## it exists yet -- an unauthored action is a short pause and then a clean return
-## to idle, never a frozen character. `can_play_action()` tells you which it will
+## to rest, never a frozen character. `can_play_action()` tells you which it will
 ## be, for callers that care.
-func play_action(action_name: String) -> bool:
+##
+## `action_finished` is emitted for **every** action, including the held ones:
+## for `sit` it means "has finished sitting down", not "has stopped sitting". A
+## mission may always await it and can never dead-end. After a held action
+## finishes the character rests *in* the pose and `get_held_action()` names it;
+## walking, another action, `stop()`, `release_action()` or `set_disabled(true)`
+## all release it.
+##
+## `seconds` overrides the timing. Leave it out and the action takes its clip's
+## own length if a clip exists, or the semantic default if it does not -- so
+## authoring a longer `drink` animation later lengthens the drink automatically,
+## with no content change.
+func play_action(action_name: String, seconds: float = -1.0) -> bool:
 	_ensure_wired()
 	_ensure_driver()
-	if not bool(_controller.call("request_action", action_name)):
+	var holds: bool = ActionDriverScript.is_hold_action(action_name)
+	if not bool(_controller.call("request_action", action_name, _action_seconds(action_name, seconds), holds)):
 		return false
 	# Best effort. A false from the driver is expected for the actions that have
 	# no clip yet, and is deliberately not an error.
@@ -161,6 +178,33 @@ func can_play_action(action_name: String) -> bool:
 	return bool(_driver.call("can_play", action_name))
 
 
+## Is `action_name` a posture that persists until released, rather than a
+## one-shot that ends by itself? Lets a mission decide whether it needs to stand
+## the character back up afterwards, without hard-coding the list.
+func is_hold_action(action_name: String) -> bool:
+	return ActionDriverScript.is_hold_action(action_name)
+
+
+## The posture currently held ("sit", "sleep", "hold"), or "".
+func get_held_action() -> String:
+	_ensure_wired()
+	return String(_controller.call("get_held_action"))
+
+
+## Ends a held posture and returns to the resting look. Returns the posture that
+## was released, or "" if the character was not holding one. Safe to call
+## always; walking or starting another action releases the pose anyway.
+func release_action() -> String:
+	_ensure_wired()
+	_ensure_driver()
+	var released: String = String(_controller.call("release_hold"))
+	if released.is_empty():
+		return ""
+	_rest_driver()
+	_sync_state_signal()
+	return released
+
+
 ## Stops walking or acting and returns to rest. Emits no `arrived`: a cancelled
 ## walk did not arrive.
 func stop() -> void:
@@ -174,7 +218,7 @@ func set_carrying(carrying: bool) -> void:
 	_ensure_wired()
 	_controller.call("set_carrying", carrying)
 	if not bool(_controller.call("is_moving")):
-		_driver.call("rest", carrying)
+		_rest_driver()
 	_sync_state_signal()
 
 
@@ -189,7 +233,7 @@ func set_disabled(disabled: bool) -> void:
 	_ensure_wired()
 	_controller.call("set_disabled", disabled)
 	if not disabled:
-		_driver.call("rest", bool(_controller.call("is_carrying")))
+		_rest_driver()
 	_sync_state_signal()
 
 
@@ -295,6 +339,11 @@ func step_movement(delta: float) -> void:
 		# headless runner, which runs no physics frames at all.
 		position += velocity * delta
 
+	# Carrying is settled BEFORE the animation sync so that a `pickUp` which has
+	# just finished rests into the carry idle on the same frame, rather than
+	# flashing one frame of empty-handed idle.
+	if bool(step.get("actionFinished", false)):
+		_apply_carry_effect(String(step.get("actionName", "")))
 	_sync_animation(step)
 
 	if bool(step.get("arrived", false)):
@@ -335,15 +384,51 @@ func _submit_move(destination: Variant, options: Dictionary, target_id: String) 
 func _sync_animation(step: Dictionary) -> void:
 	_ensure_driver()
 	var state: int = int(step.get("state", MovementControllerScript.State.IDLE))
+	var held: String = String(step.get("heldAction", ""))
 	match state:
 		MovementControllerScript.State.WALKING:
 			if _driver.call("get_current_action") != "walk":
 				_driver.call("play", "walk")
 		MovementControllerScript.State.IDLE, MovementControllerScript.State.CARRYING:
-			if _driver.call("get_current_action") != "idle":
+			# A held posture rests *as the pose*. Without this the per-frame
+			# rest-sync would drag a sitting toddler back to a standing idle one
+			# frame after he sat down, which is the exact bug the CARRYING state
+			# already taught us to expect.
+			if not held.is_empty():
+				if _driver.call("get_current_action") != held:
+					_driver.call("play", held)
+			elif _driver.call("get_current_action") != "idle":
 				_driver.call("rest", bool(_controller.call("is_carrying")))
 		_:
 			pass
+
+
+## How long an action should run: an explicit override wins, then the driver's
+## own opinion (an authored clip times itself), then the semantic default.
+func _action_seconds(action_name: String, requested: float) -> float:
+	if requested > 0.0:
+		return requested
+	var from_clip: float = float(_driver.call("get_action_duration", action_name))
+	if from_clip > 0.0:
+		return from_clip
+	return ActionDriverScript.default_duration(action_name)
+
+
+## `pickUp` fills the hands, `give` empties them, `hold` keeps them full, and
+## every other action has no opinion at all -- which is why the table answers
+## `null` rather than `false` for them.
+func _apply_carry_effect(action_name: String) -> void:
+	var effect: Variant = ActionDriverScript.carry_effect(action_name)
+	if effect == null:
+		return
+	_controller.call("set_carrying", bool(effect))
+
+
+## `rest()`, unless a posture is being held -- in which case resting IS the pose.
+func _rest_driver() -> void:
+	if not String(_controller.call("get_held_action")).is_empty():
+		return
+	_driver.call("rest", bool(_controller.call("is_carrying")))
 
 
 ## Re-binds the animation driver if it is still attached to nothing.

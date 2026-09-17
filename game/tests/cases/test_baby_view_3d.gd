@@ -80,7 +80,7 @@ func run():
 	return failures
 
 
-func _test_api_surface(view: Node3D) -> Array:
+func _test_api_surface(view: Node3D):
 	var failures: Array = []
 	for method: String in ["set_view_state", "get_view_state_name", "get_mouth_position", "get_hug_position"]:
 		if not view.has_method(method):
@@ -88,7 +88,7 @@ func _test_api_surface(view: Node3D) -> Array:
 	return failures
 
 
-func _test_states(view: Node3D) -> Array:
+func _test_states(view: Node3D):
 	var failures: Array = []
 	for state: String in STATES:
 		view.call("set_view_state", state)
@@ -103,7 +103,7 @@ func _test_states(view: Node3D) -> Array:
 	return failures
 
 
-func _test_markers(view: Node3D) -> Array:
+func _test_markers(view: Node3D):
 	var failures: Array = []
 	var mouth: Node3D = _find(view, "MouthMarker")
 	var hug: Node3D = _find(view, "HugMarker")
@@ -133,7 +133,7 @@ func _test_markers(view: Node3D) -> Array:
 
 ## Both markers hang off the animated `Body`, which is what lets the getters be
 ## derived rather than baked. Re-parent or detach them and this fails.
-func _test_markers_follow_the_body(view: Node3D) -> Array:
+func _test_markers_follow_the_body(view: Node3D):
 	var failures: Array = []
 	var body: Node3D = _find(view, "Body")
 	var mouth: Node3D = _find(view, "MouthMarker")
@@ -157,7 +157,7 @@ func _test_markers_follow_the_body(view: Node3D) -> Array:
 	return failures
 
 
-func _test_fits_play_volume(view: Node3D) -> Array:
+func _test_fits_play_volume(view: Node3D):
 	var failures: Array = []
 	var box: AABB = _visual_aabb(view)
 	if box.size == Vector3.ZERO:
@@ -185,7 +185,7 @@ func _test_fits_play_volume(view: Node3D) -> Array:
 ## An animation whose track path points at nothing plays happily and animates
 ## nothing at all, so this can only be caught by resolving the paths. Paths are
 ## relative to the AnimationPlayer's parent, i.e. the view itself.
-func _test_animation_tracks_resolve(view: Node3D) -> Array:
+func _test_animation_tracks_resolve(view: Node3D):
 	var failures: Array = []
 	var player: AnimationPlayer = null
 	for child: Node in view.get_children():
@@ -214,7 +214,7 @@ func _test_animation_tracks_resolve(view: Node3D) -> Array:
 ## The blink is a `_process` timer, not an animation track, precisely so it
 ## survives every state change. Drive it by hand: the eyes must actually shut
 ## and then reopen all the way.
-func _test_blink(view: Node3D) -> Array:
+func _test_blink(view: Node3D):
 	var failures: Array = []
 	var eyes: Node3D = _find(view, "Eyes")
 	if eyes == null:
@@ -235,7 +235,7 @@ func _test_blink(view: Node3D) -> Array:
 
 
 ## Hungry and drinking must not wear the same face as happy.
-func _test_mouth_changes_with_state(view: Node3D) -> Array:
+func _test_mouth_changes_with_state(view: Node3D):
 	var failures: Array = []
 	var smile: Node3D = _find(view, "Smile")
 	var open_mouth: Node3D = _find(view, "MouthOpen")
@@ -255,7 +255,7 @@ func _test_mouth_changes_with_state(view: Node3D) -> Array:
 
 
 ## Opportunistic: only meaningful under a runner with a live scene tree.
-func _test_global_getters_if_tree_is_live(view: Node3D) -> Array:
+func _test_global_getters_if_tree_is_live(view: Node3D):
 	var failures: Array = []
 	if not view.is_inside_tree():
 		return failures

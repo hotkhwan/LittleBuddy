@@ -88,7 +88,7 @@ func run():
 # Authored order
 # ---------------------------------------------------------------------------
 
-func _test_starts_at_the_first_level() -> Array:
+func _test_starts_at_the_first_level():
 	var failures: Array = []
 	var room: Node = _room({})
 
@@ -110,7 +110,7 @@ func _test_starts_at_the_first_level() -> Array:
 	return failures
 
 
-func _test_follows_the_authored_order() -> Array:
+func _test_follows_the_authored_order():
 	var failures: Array = []
 
 	var completed: Dictionary = {}
@@ -130,7 +130,7 @@ func _test_follows_the_authored_order() -> Array:
 ## `bathTime` carries the legacy `unlockAtStars: 10`, and a child who finished
 ## `milkTime` by skipping every task has 0 task stars. Story Mode must still hand
 ## them Bath Time: authored levels gate on completion, never on a star count.
-func _test_ignores_the_legacy_star_gate() -> Array:
+func _test_ignores_the_legacy_star_gate():
 	var failures: Array = []
 	var room: Node = _room({"milkTime": true})
 
@@ -154,7 +154,7 @@ func _test_ignores_the_legacy_star_gate() -> Array:
 # Resume
 # ---------------------------------------------------------------------------
 
-func _test_resumes_the_saved_level() -> Array:
+func _test_resumes_the_saved_level():
 	var failures: Array = []
 
 	var completed: Dictionary = {"milkTime": true, "bathTime": true, "bedtime": true}
@@ -182,7 +182,7 @@ func _test_resumes_the_saved_level() -> Array:
 ## A saved pointer at a level the child has not unlocked (a hand-edited profile,
 ## or content re-ordered under them) must not be honoured, and must not strand
 ## them either.
-func _test_never_resumes_into_a_locked_level() -> Array:
+func _test_never_resumes_into_a_locked_level():
 	var failures: Array = []
 	var room: Node = _room({})
 	room.set("saved_level", "firstWords")
@@ -201,7 +201,7 @@ func _test_never_resumes_into_a_locked_level() -> Array:
 
 ## The end of the authored journey is not a dead end: there is always something
 ## to play.
-func _test_finished_journey_still_has_something_to_play() -> Array:
+func _test_finished_journey_still_has_something_to_play():
 	var failures: Array = []
 
 	var completed: Dictionary = {}
@@ -227,7 +227,7 @@ func _test_finished_journey_still_has_something_to_play() -> Array:
 
 ## The random picker must survive untouched, because Free Play will use it and
 ## because Story Mode falls back to it when the authored order yields nothing.
-func _test_free_play_picker_is_preserved() -> Array:
+func _test_free_play_picker_is_preserved():
 	var failures: Array = []
 	var room: Node = _room({})
 
@@ -247,7 +247,7 @@ func _test_free_play_picker_is_preserved() -> Array:
 	return failures
 
 
-func _test_mode_switch_is_explicit() -> Array:
+func _test_mode_switch_is_explicit():
 	var failures: Array = []
 	var room: Node = _room({})
 

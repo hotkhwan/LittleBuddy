@@ -121,7 +121,7 @@ func run():
 # 1. One ledger for the whole run
 # ---------------------------------------------------------------------------
 
-func _test_managers_share_one_ledger() -> Array:
+func _test_managers_share_one_ledger():
 	var failures: Array = []
 
 	var a: Node = _manager(FakeSave.new())
@@ -139,11 +139,11 @@ func _test_managers_share_one_ledger() -> Array:
 # 2 + 3. feedMilk reported by both systems in one round
 # ---------------------------------------------------------------------------
 
-func _test_legacy_then_mission() -> Array:
+func _test_legacy_then_mission():
 	return _assert_single_payment("legacy first", true)
 
 
-func _test_mission_then_legacy() -> Array:
+func _test_mission_then_legacy():
 	return _assert_single_payment("mission first", false)
 
 
@@ -204,7 +204,7 @@ func _assert_single_payment(label: String, legacy_first: bool) -> Array:
 ## Plays `feedingTime` (which contains `feedMilk`) end to end through the real
 ## `MissionRunner` and the real content, completing each task by touch, then
 ## tries to claim `feedMilk` again from the legacy path.
-func _test_full_mission_pays_once_per_task() -> Array:
+func _test_full_mission_pays_once_per_task():
 	var failures: Array = []
 
 	var library: Object = ContentLibraryScript.new()
@@ -299,7 +299,7 @@ func _test_full_mission_pays_once_per_task() -> Array:
 # 5. A new round is still rewarding
 # ---------------------------------------------------------------------------
 
-func _test_next_round_pays_again() -> Array:
+func _test_next_round_pays_again():
 	var failures: Array = []
 
 	var save: FakeSave = FakeSave.new()

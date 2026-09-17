@@ -176,7 +176,7 @@ func run():
 
 
 ## THE headline test. Every call below uses a String and nothing else.
-func _test_walk_to_a_named_target_using_only_strings() -> Array:
+func _test_walk_to_a_named_target_using_only_strings():
 	var failures: Array = []
 	var character: CharacterBody3D = _make_character()
 	var log := SignalLog.new()
@@ -231,7 +231,7 @@ func _test_walk_to_a_named_target_using_only_strings() -> Array:
 	return failures
 
 
-func _test_floor_walk_takes_only_floats() -> Array:
+func _test_floor_walk_takes_only_floats():
 	var failures: Array = []
 	var character: CharacterBody3D = _make_character()
 	var log := SignalLog.new()
@@ -268,7 +268,7 @@ func _test_floor_walk_takes_only_floats() -> Array:
 
 
 ## Every failure is a signal, never a crash and never a stuck state.
-func _test_failures_are_reported_never_fatal() -> Array:
+func _test_failures_are_reported_never_fatal():
 	var failures: Array = []
 	var character: CharacterBody3D = _make_character()
 	var log := SignalLog.new()
@@ -313,7 +313,7 @@ func _test_failures_are_reported_never_fatal() -> Array:
 	return failures
 
 
-func _test_disabled_refuses_everything() -> Array:
+func _test_disabled_refuses_everything():
 	var failures: Array = []
 	var character: CharacterBody3D = _make_character()
 	var log := SignalLog.new()
@@ -345,7 +345,7 @@ func _test_disabled_refuses_everything() -> Array:
 
 
 ## Static check 2: no public signature on the character mentions a 3D type.
-func _test_public_signatures_are_engine_free() -> Array:
+func _test_public_signatures_are_engine_free():
 	var failures: Array = []
 	var source: String = _read(CHARACTER_SCRIPT)
 	if source.is_empty():
@@ -371,7 +371,7 @@ func _test_public_signatures_are_engine_free() -> Array:
 	return failures
 
 
-func _test_signals_carry_only_strings() -> Array:
+func _test_signals_carry_only_strings():
 	var failures: Array = []
 	var character: CharacterBody3D = _make_character()
 	var allowed: Array = [TYPE_STRING, TYPE_STRING_NAME, TYPE_BOOL, TYPE_INT, TYPE_FLOAT]
@@ -400,7 +400,7 @@ func _test_signals_carry_only_strings() -> Array:
 	return failures
 
 
-func _test_forbidden_methods_absent() -> Array:
+func _test_forbidden_methods_absent():
 	var failures: Array = []
 	var character: CharacterBody3D = _make_character()
 	for method: String in FORBIDDEN_METHODS:
@@ -429,7 +429,7 @@ func _test_forbidden_methods_absent() -> Array:
 ## What remains here is the part only this file can check: that the *character's*
 ## own public surface never exposes a 3D type. That is a live API boundary, not a
 ## file scan, and it stays.
-func _test_domain_layer_stays_3d_free() -> Array:
+func _test_domain_layer_stays_3d_free():
 	var failures: Array = []
 
 	# Fail loudly if the guard that took over this duty is ever removed, rather

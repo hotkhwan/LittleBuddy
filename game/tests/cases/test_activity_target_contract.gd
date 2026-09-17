@@ -51,7 +51,7 @@ func run():
 
 ## A target with no `room_id` must behave EXACTLY as it did in Phase 2A. This is
 ## the spike's `"toyBox"`, reproduced.
-func _test_unroomed_target_is_unchanged() -> Array:
+func _test_unroomed_target_is_unchanged():
 	var failures: Array = []
 	var target: Area3D = ActivityTarget.new()
 	target.set("target_id", "toyBox")
@@ -117,7 +117,7 @@ func _test_unroomed_target_is_unchanged() -> Array:
 
 ## -- Semantic ids ---------------------------------------------------------------
 
-func _test_semantic_id() -> Array:
+func _test_semantic_id():
 	var failures: Array = []
 	var fridge: Area3D = _make("kitchen", "fridge")
 
@@ -152,7 +152,7 @@ func _test_semantic_id() -> Array:
 	return failures
 
 
-func _test_extended_fields() -> Array:
+func _test_extended_fields():
 	var failures: Array = []
 	var fridge: Area3D = _make("kitchen", "fridge")
 	fridge.call("set_supported_actions", ["open", " give ", "open", ""])
@@ -199,7 +199,7 @@ func _test_extended_fields() -> Array:
 	return failures
 
 
-func _test_facing() -> Array:
+func _test_facing():
 	var failures: Array = []
 
 	# An explicit direction, resolved from where the character will stand.
@@ -243,7 +243,7 @@ func _test_facing() -> Array:
 	return failures
 
 
-func _test_doors() -> Array:
+func _test_doors():
 	var failures: Array = []
 	var door: Area3D = _make("bedroom", "doorToBathroom")
 	door.set("to_room_id", "bathroom")
@@ -273,7 +273,7 @@ func _test_doors() -> Array:
 	return failures
 
 
-func _test_describe_shape() -> Array:
+func _test_describe_shape():
 	var failures: Array = []
 	var fridge: Area3D = _make("kitchen", "fridge")
 	fridge.call("set_supported_actions", ["open"])
@@ -309,7 +309,7 @@ func _test_describe_shape() -> Array:
 ## The layer invariant, restated where the contract lives. Activity targets are
 ## layer 2, draggables layer 1, and they must never overlap -- if they did, a
 ## tap-to-walk raycast and a drag press would fight over the same object.
-func _test_layer_discipline() -> Array:
+func _test_layer_discipline():
 	var failures: Array = []
 	if ActivityTarget.ACTIVITY_TARGET_LAYER != 2:
 		failures.append("activity targets must stay on collision layer 2, found %d"
@@ -336,7 +336,7 @@ func _test_layer_discipline() -> Array:
 ## The routing path, end to end in strings: the raycast hits a child mesh, the
 ## controller walks up to the target, and the id it hands the character is the
 ## semantic one the registry and the content both use.
-func _test_tap_routing_still_resolves() -> Array:
+func _test_tap_routing_still_resolves():
 	var failures: Array = []
 	var fridge: Area3D = _make("kitchen", "fridge")
 	var mesh: Node3D = Node3D.new()

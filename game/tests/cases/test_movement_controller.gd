@@ -65,6 +65,7 @@ func run():
 	failures.append_array(_test_no_duplicate_arrival())
 	failures.append_array(_test_interaction_during_movement())
 	failures.append_array(_test_unauthored_action_never_sticks())
+	failures.append_array(_test_held_action_is_a_resting_pose())
 	failures.append_array(_test_cancel())
 	failures.append_array(_test_carrying_and_disabled())
 	failures.append_array(_test_state_names())
@@ -73,7 +74,7 @@ func run():
 
 ## -- 1. Tap floor -> walk there -> stop cleanly -> Idle ------------------------
 
-func _test_tap_to_walk() -> Array:
+func _test_tap_to_walk():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 	var destination := Vector3(2.0, 0.0, 1.0)
@@ -101,7 +102,7 @@ func _test_tap_to_walk() -> Array:
 
 ## Child-friendly pacing: calm, never an action game. A 4 m walk must take at
 ## least a few seconds, and the character must never exceed its walk speed.
-func _test_calm_speed() -> Array:
+func _test_calm_speed():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 	controller.call("set_position", Vector3(-2.0, 0.0, 0.0))
@@ -121,7 +122,7 @@ func _test_calm_speed() -> Array:
 
 ## -- 5. Repeated taps while walking: path REPLACED, never queued --------------
 
-func _test_path_replacement() -> Array:
+func _test_path_replacement():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 	controller.call("request_move", Vector3(2.0, 0.0, 0.0))
@@ -155,7 +156,7 @@ func _test_path_replacement() -> Array:
 
 ## An impatient four-year-old taps ten times. There must be exactly one
 ## destination and one path at the end of it, not a queue of ten.
-func _test_impatient_tapping_does_not_queue() -> Array:
+func _test_impatient_tapping_does_not_queue():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 
@@ -192,7 +193,7 @@ func _test_impatient_tapping_does_not_queue() -> Array:
 
 ## Anti-jitter: tapping essentially the same spot again must not rebuild the path
 ## and restart the walk animation.
-func _test_repeat_tap_on_same_spot_is_ignored() -> Array:
+func _test_repeat_tap_on_same_spot_is_ignored():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 	controller.call("request_move", Vector3(2.0, 0.0, 0.0))
@@ -210,7 +211,7 @@ func _test_repeat_tap_on_same_spot_is_ignored() -> Array:
 
 ## -- 4. Tap unreachable space: no crash, no stuck walk, nothing disturbed ------
 
-func _test_unreachable() -> Array:
+func _test_unreachable():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 
@@ -253,7 +254,7 @@ func _test_unreachable() -> Array:
 
 ## A child's thumb lands on the skirting board. Walk to the nearest standable
 ## point rather than refusing -- forgiving beats correct here.
-func _test_near_miss_is_forgiven() -> Array:
+func _test_near_miss_is_forgiven():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 
@@ -281,7 +282,7 @@ func _test_near_miss_is_forgiven() -> Array:
 ## -- 2. Tap an object: walk to its interaction point, TURN TO FACE IT, then
 ##       report interaction-ready.
 
-func _test_activity_target_arrival() -> Array:
+func _test_activity_target_arrival():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 
@@ -342,7 +343,7 @@ func _test_activity_target_arrival() -> Array:
 
 ## -- 6. No duplicate arrival signals ------------------------------------------
 
-func _test_no_duplicate_arrival() -> Array:
+func _test_no_duplicate_arrival():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 
@@ -384,7 +385,7 @@ func _test_no_duplicate_arrival() -> Array:
 
 ## -- 7. Interaction during movement -------------------------------------------
 
-func _test_interaction_during_movement() -> Array:
+func _test_interaction_during_movement():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 	controller.call("request_move", Vector3(2.5, 0.0, 0.0), {"targetId": "toyBox"})
@@ -424,7 +425,7 @@ func _test_interaction_during_movement() -> Array:
 
 ## The graceful-degradation guarantee: an action with no animation yet must still
 ## start, still end, and still leave the character idle. Never a stuck state.
-func _test_unauthored_action_never_sticks() -> Array:
+func _test_unauthored_action_never_sticks():
 	var failures: Array = []
 	for action: String in ["eat", "drink", "sit", "sleep", "brushTeeth", "hug", "pickUp", "give", "celebrate"]:
 		var controller: RefCounted = _make()
@@ -453,9 +454,98 @@ func _test_unauthored_action_never_sticks() -> Array:
 	return failures
 
 
+## Postures, at the layer that times them.
+##
+## The controller knows nothing about what "sit" means -- the vocabulary lives in
+## `character_action_driver.gd` -- so hold-ness is passed in as a flag. What it
+## owns is the consequence: a held action still ENDS (exactly once, under its own
+## name, so nothing awaiting it can dead-end), and the character then rests *in*
+## the pose rather than entering a sixth state or staying busy forever.
+func _test_held_action_is_a_resting_pose():
+	var failures: Array = []
+	var controller: RefCounted = _make()
+
+	if not bool(controller.call("request_action", "sit", 0.4, true)):
+		failures.append("a held action should be accepted like any other")
+
+	var position := Vector3.ZERO
+	var finished: int = 0
+	var finished_name: String = ""
+	for _frame: int in range(MAX_FRAMES):
+		var step: Dictionary = controller.call("advance", position, 0.0, DT)
+		if bool(step["actionFinished"]):
+			finished += 1
+			finished_name = String(step["actionName"])
+		if String(step["stateName"]) == "idle":
+			break
+
+	if finished != 1:
+		failures.append("a held action should finish settling exactly once, finished %d times"
+				% finished)
+	if finished_name != "sit":
+		failures.append("a held action must finish under its own name, got '%s'" % finished_name)
+	if String(controller.call("get_held_action")) != "sit":
+		failures.append("the pose should persist once settled, held '%s'"
+				% String(controller.call("get_held_action")))
+	if not bool(controller.call("is_holding")):
+		failures.append("is_holding() should agree with get_held_action()")
+	if String(controller.call("get_state_name")) != "idle":
+		failures.append("a held pose is a RESTING state, not a sixth state; got '%s'"
+				% String(controller.call("get_state_name")))
+	if bool(controller.call("is_busy")):
+		failures.append("a held pose must not make the character permanently busy -- nothing "
+				+ "would ever be able to interrupt it")
+
+	# Still held a long time later. A posture does not time out.
+	for _frame: int in range(600):
+		controller.call("advance", position, 0.0, DT)
+	if String(controller.call("get_held_action")) != "sit":
+		failures.append("a posture timed itself out; only events do that")
+
+	# And every route out of it clears the pose.
+	if String(controller.call("release_hold")) != "sit":
+		failures.append("release_hold() should report what it released")
+	if bool(controller.call("is_holding")):
+		failures.append("release_hold() should actually release")
+	if not String(controller.call("release_hold")).is_empty():
+		failures.append("releasing nothing should report nothing, not a phantom pose")
+
+	for route: String in ["move", "action", "cancel", "disable"]:
+		var probe: RefCounted = _make()
+		probe.call("request_action", "sleep", 0.2, true)
+		for _frame: int in range(60):
+			probe.call("advance", Vector3.ZERO, 0.0, DT)
+		if not bool(probe.call("is_holding")):
+			failures.append("the '%s' route could not be set up: the pose never settled" % route)
+			continue
+		match route:
+			"move":
+				probe.call("request_move", Vector3(1.0, 0.0, 0.0))
+			"action":
+				probe.call("request_action", "wave")
+			"cancel":
+				probe.call("cancel")
+			"disable":
+				probe.call("set_disabled", true)
+		if bool(probe.call("is_holding")):
+			failures.append("'%s' should release a held pose; a child must never be able to tap "
+					% route + "the character into a posture it cannot leave")
+
+	# A one-shot leaves nothing behind, which is what makes the distinction real.
+	var one_shot: RefCounted = _make()
+	one_shot.call("request_action", "wave", 0.3, false)
+	for _frame: int in range(MAX_FRAMES):
+		var step: Dictionary = one_shot.call("advance", Vector3.ZERO, 0.0, DT)
+		if String(step["stateName"]) == "idle":
+			break
+	if bool(one_shot.call("is_holding")):
+		failures.append("a one-shot must not leave a held pose behind")
+	return failures
+
+
 ## -- 8. Movement cancel --------------------------------------------------------
 
-func _test_cancel() -> Array:
+func _test_cancel():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 	controller.call("request_move", Vector3(2.5, 0.0, 0.0), {"targetId": "toyBox"})
@@ -489,7 +579,7 @@ func _test_cancel() -> Array:
 
 ## -- Carrying and Disabled -----------------------------------------------------
 
-func _test_carrying_and_disabled() -> Array:
+func _test_carrying_and_disabled():
 	var failures: Array = []
 	var controller: RefCounted = _make()
 
@@ -541,7 +631,7 @@ func _test_carrying_and_disabled() -> Array:
 
 
 ## Exactly five states, no more, and every one of them has a name.
-func _test_state_names() -> Array:
+func _test_state_names():
 	var failures: Array = []
 	var expected: Array = ["idle", "walking", "interacting", "carrying", "disabled"]
 	var seen: Array = []

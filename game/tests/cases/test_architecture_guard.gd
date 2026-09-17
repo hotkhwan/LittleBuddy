@@ -105,7 +105,7 @@ func run():
 
 ## Proof that this file's central mechanism works in BOTH directions. Without
 ## these four assertions every check below could be passing for the wrong reason.
-func _test_the_scanner_itself() -> Array:
+func _test_the_scanner_itself():
 	var failures: Array = []
 
 	var commented: String = "# this mentions Vector3 in a comment\nvar x: int = 1\n"
@@ -141,7 +141,7 @@ func _test_the_scanner_itself() -> Array:
 
 ## -- Rule 1: the domain layer holds no 3D types --------------------------------
 
-func _test_domain_layer_has_no_3d() -> Array:
+func _test_domain_layer_has_no_3d():
 	var failures: Array = []
 	var scanned: int = 0
 	var characters: int = 0
@@ -188,7 +188,7 @@ func _test_domain_layer_has_no_3d() -> Array:
 
 ## -- Rule 2: Chapter 2 does not walk -------------------------------------------
 
-func _test_chapter_2_has_no_locomotion() -> Array:
+func _test_chapter_2_has_no_locomotion():
 	var failures: Array = []
 	var files: Array = []
 	for directory: String in CHAPTER_2_DIRS:
@@ -227,7 +227,7 @@ func _test_chapter_2_has_no_locomotion() -> Array:
 ## Activity targets are layer 2, draggables layer 1. Restated here because it is
 ## the invariant that keeps tap-to-walk and drag-and-drop from fighting over the
 ## same press, and it is now load-bearing for four rooms rather than one spike.
-func _test_layer_discipline() -> Array:
+func _test_layer_discipline():
 	var failures: Array = []
 	if ActivityTarget.ACTIVITY_TARGET_LAYER != 2:
 		failures.append("activity targets must stay on collision layer 2, found %d"
@@ -247,7 +247,7 @@ func _test_layer_discipline() -> Array:
 ## `semantic_id.gd` is what content uses to reason about ids. If it ever acquired
 ## a `Node` or a `Vector3`, content would acquire one too, and rule 1 would fall
 ## over from the other side.
-func _test_semantic_ids_need_no_engine() -> Array:
+func _test_semantic_ids_need_no_engine():
 	var failures: Array = []
 	var path: String = "res://scripts/navigation/semantic_id.gd"
 	var code: String = _code_of(_read(path))

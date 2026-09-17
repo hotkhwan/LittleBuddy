@@ -34,7 +34,7 @@ func _count_unlocks(gate: Object) -> Array:
 	return counter
 
 
-func _test_progress_accumulates() -> Array:
+func _test_progress_accumulates():
 	var failures: Array = []
 	var gate: Object = _make_gate(3.0)
 	var unlocks: Array = _count_unlocks(gate)
@@ -67,7 +67,7 @@ func _test_progress_accumulates() -> Array:
 	return failures
 
 
-func _test_early_release_resets() -> Array:
+func _test_early_release_resets():
 	var failures: Array = []
 	var gate: Object = _make_gate(3.0)
 	var unlocks: Array = _count_unlocks(gate)
@@ -96,7 +96,7 @@ func _test_early_release_resets() -> Array:
 	return failures
 
 
-func _test_unlocks_once() -> Array:
+func _test_unlocks_once():
 	var failures: Array = []
 	var gate: Object = _make_gate(3.0)
 	var unlocks: Array = _count_unlocks(gate)
@@ -126,7 +126,7 @@ func _test_unlocks_once() -> Array:
 	return failures
 
 
-func _test_reset_allows_reuse() -> Array:
+func _test_reset_allows_reuse():
 	var failures: Array = []
 	var gate: Object = _make_gate(3.0)
 	var unlocks: Array = _count_unlocks(gate)
@@ -149,7 +149,7 @@ func _test_reset_allows_reuse() -> Array:
 	return failures
 
 
-func _test_custom_duration() -> Array:
+func _test_custom_duration():
 	var failures: Array = []
 	var gate: Object = _make_gate(1.5)
 	var unlocks: Array = _count_unlocks(gate)

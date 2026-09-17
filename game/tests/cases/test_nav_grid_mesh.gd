@@ -25,7 +25,7 @@ func run():
 	return failures
 
 
-func _test_walkability() -> Array:
+func _test_walkability():
 	var failures: Array = []
 	var obstacles: Array = [Rect2(-0.5, -0.5, 1.0, 1.0)]
 
@@ -49,7 +49,7 @@ func _test_walkability() -> Array:
 	return failures
 
 
-func _test_mesh_shape() -> Array:
+func _test_mesh_shape():
 	var failures: Array = []
 	var bounds := Rect2(-1.0, -1.0, 2.0, 2.0)
 	var open: NavigationMesh = GridNavMesh.build(bounds, 0.5, [], 0.0, 0.0)
@@ -97,7 +97,7 @@ func _test_mesh_shape() -> Array:
 
 ## Nonsense in must not mean a hang or a crash out. A 6 x 5 m floor at 1 cm cells
 ## would be 300,000 polygons and would look like a freeze.
-func _test_degenerate_inputs() -> Array:
+func _test_degenerate_inputs():
 	var failures: Array = []
 	var tiny: NavigationMesh = GridNavMesh.build(Rect2(-1.0, -1.0, 2.0, 2.0), 0.001, [], 0.0, 0.0)
 	if tiny.get_polygon_count() != 0:
@@ -124,7 +124,7 @@ func _test_degenerate_inputs() -> Array:
 
 ## The spike's own floor plan: everything a child is invited to tap must be on
 ## walkable floor, and the sealed closet must genuinely be sealed.
-func _test_spike_layout_is_sane() -> Array:
+func _test_spike_layout_is_sane():
 	var failures: Array = []
 	var obstacles: Array = []
 	obstacles.assign(Layout.OBSTACLES)

@@ -18,9 +18,76 @@ extends RefCounted
 ##                       level", true even if every task was skipped. THIS is
 ##                       what gates unlocking, so the skip button can never trap
 ##                       a child, while a 0-star completion stays honest.
+##
+## Schema v4 promotes WHERE IN THE HOUSE the child is to top-level
+## `currentRoomId` / `currentSpawnId`. Two semantic strings, never a coordinate:
+## a `Vector3` that was valid when it was written drifts out of the navigation
+## mesh the moment a sofa moves, and a saved coordinate is then a way of
+## stranding a child with no route back. A room id plus a spawn id can always be
+## re-resolved against the CURRENT layout.
 
 const DEFAULT_PATH := "user://profile.json"
-const CURRENT_VERSION := 3
+const CURRENT_VERSION := 4
+
+## -- World location (v4) --------------------------------------------------------
+
+const ROOM_FIELD: String = "currentRoomId"
+const SPAWN_FIELD: String = "currentSpawnId"
+
+## The last-resort location. Deliberately duplicated from
+## `HouseLayout.FALLBACK_ROOM` / `HouseLayout.DEFAULT_SPAWN` rather than
+## imported: the save layer is domain logic and must not reach into
+## `scripts/house/**` (CLAUDE.md "domain logic ... must never reference 3D node
+## types"; house_layout.gd is full of `Vector3`/`Rect2`). The duplication is not
+## left to trust -- `test_save_world_location.gd` asserts the two agree, so a
+## rename on either side fails the build instead of silently diverging.
+const FALLBACK_ROOM_ID: String = "bedroom"
+const DEFAULT_SPAWN_ID: String = "default"
+
+## A room/spawn id is a single camelCase segment. Anything else -- a compound
+## semantic id like "bedroom.bed", a NodePath, a number, a Dictionary, an
+## absurdly long string -- is not a location this schema can honour, so it falls
+## back rather than being written through to the house.
+const MAX_SEMANTIC_ID_LENGTH: int = 64
+
+## -- The v3 compatibility shim, and how to remove it -----------------------------
+##
+## Under v3 the world location lived at `settings.worldState`, because
+## `ProfileStore` preserves unknown JSON-safe keys inside `settings` and that let
+## HouseWorld ship without a schema bump. v4 makes it a first-class top-level
+## field, which is what `docs/SLICE_CONTRACT.md` §4 asks for.
+##
+## The contract also says to REMOVE the old key. This build does not, because the
+## only reader/writer of it is `scripts/house/world_state.gd`
+## (`read_from_profile()` / `write_into_profile()`), which is outside this agent's
+## write scope and is being edited by nobody tonight. Deleting the key here would
+## silently strand every HouseWorld restore in the bedroom while every test still
+## reported green -- the worst possible failure shape.
+##
+## So for exactly one release `settings.worldState` stays a supported *write*
+## channel: if it is present it wins, and it is normalised to agree with the
+## top-level fields on every load and save. It is never synthesised on a profile
+## that does not already have it, so a fresh v4 profile's `settings` block is
+## clean.
+##
+## To finish the migration, in one commit:
+##   1. point `world_state.gd` `read_from_profile()`/`write_into_profile()` at the
+##      top-level `currentRoomId`/`currentSpawnId` (it already owns those two
+##      constant names),
+##   2. flip `DROP_LEGACY_WORLD_STATE` to true here,
+##   3. drop the `settings.worldState` expectations in `test_world_state.gd`.
+## Nothing else changes.
+##
+## `drop_legacy_world_state` below is the same switch as an instance field, so a
+## test can run the POST-shim configuration today. That is not decoration: while
+## the shim is on, `_sanitize()` reads the legacy key on every load for every
+## version, which makes `_migrate_v3_to_v4()` redundant and therefore able to rot
+## unnoticed -- a mutation disabling it survived the whole suite until this seam
+## existed. The day the shim is switched off, that dead step would be the ONLY
+## thing lifting a v3 profile's location, and every returning child would wake up
+## in the bedroom.
+const LEGACY_WORLD_STATE_KEY: String = "worldState"
+const DROP_LEGACY_WORLD_STATE: bool = false
 
 ## Levels are authored directly onto the mission records (see
 ## `LevelDefinition.is_authored_level()`), and their play order lives in
@@ -44,6 +111,9 @@ var path: String
 var missions_path: String
 var chapters_path: String
 
+## Test seam for the shim above. Production always leaves this at the constant.
+var drop_legacy_world_state: bool = DROP_LEGACY_WORLD_STATE
+
 func _init(p_path: String = DEFAULT_PATH, p_missions_path: String = DEFAULT_MISSIONS_PATH, p_chapters_path: String = DEFAULT_CHAPTERS_PATH) -> void:
 	path = p_path
 	missions_path = p_missions_path
@@ -59,6 +129,8 @@ func default_profile() -> Dictionary:
 		"completedActivities": [],
 		"currentChapter": CH1_CHAPTER_ID,
 		"currentLevel": "",
+		ROOM_FIELD: FALLBACK_ROOM_ID,
+		SPAWN_FIELD: DEFAULT_SPAWN_ID,
 		"starsByLevel": {},
 		"levelCompleted": {},
 		"unlockedChapters": [CH1_CHAPTER_ID],
@@ -138,6 +210,13 @@ func _sanitize(raw: Dictionary) -> Dictionary:
 	if raw.has("currentLevel") and typeof(raw["currentLevel"]) == TYPE_STRING:
 		result["currentLevel"] = raw["currentLevel"]
 
+	# currentRoomId / currentSpawnId (v4): where in the house the child is, as two
+	# semantic ids. Anything that is not a plain id falls back to bedroom/default,
+	# so a corrupt or stale save can never point at nowhere.
+	var location: Dictionary = _resolve_world_location(raw)
+	result[ROOM_FIELD] = location[ROOM_FIELD]
+	result[SPAWN_FIELD] = location[SPAWN_FIELD]
+
 	# starsByLevel: Dictionary<String levelId, int 0..3>. Wrong-typed keys or
 	# values are dropped individually rather than discarding the whole map.
 	var stars_by_level_result: Dictionary = {}
@@ -183,11 +262,77 @@ func _sanitize(raw: Dictionary) -> Dictionary:
 					var safe_types := [TYPE_STRING, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_ARRAY, TYPE_DICTIONARY]
 					if safe_types.has(typeof(value)):
 						settings_result[key] = value
+	# The v3 compatibility shim. `settings.worldState` is never created here --
+	# only kept in agreement with the authoritative top-level fields when a caller
+	# is still using it, so a stale or malformed mirror can never contradict the
+	# real location. See DROP_LEGACY_WORLD_STATE above.
+	if settings_result.has(LEGACY_WORLD_STATE_KEY):
+		if drop_legacy_world_state:
+			settings_result.erase(LEGACY_WORLD_STATE_KEY)
+		else:
+			settings_result[LEGACY_WORLD_STATE_KEY] = {
+				ROOM_FIELD: result[ROOM_FIELD],
+				SPAWN_FIELD: result[SPAWN_FIELD],
+			}
+
 	result["settings"] = settings_result
 
 	result["profileVersion"] = CURRENT_VERSION
 
 	return result
+
+
+## -- World location ---------------------------------------------------------------
+
+## Resolves the child's saved location out of a raw profile, tolerating every
+## shape a hand-edited, half-written, downgraded or corrupt file can produce.
+## Always returns two non-empty semantic ids.
+##
+## `settings.worldState` (the v3 home, still written by `world_state.gd`) takes
+## precedence over the top-level fields when it is present, because it is the
+## channel a live caller just wrote through; the top-level fields are then
+## brought into agreement with it. Once the shim is removed this whole branch
+## goes with it and the top-level fields are simply read.
+func _resolve_world_location(raw: Dictionary) -> Dictionary:
+	var room: String = _sanitize_semantic_id(raw.get(ROOM_FIELD, null), FALLBACK_ROOM_ID)
+	var spawn: String = _sanitize_semantic_id(raw.get(SPAWN_FIELD, null), DEFAULT_SPAWN_ID)
+
+	var legacy: Dictionary = {} if drop_legacy_world_state else _legacy_world_state(raw)
+	if not legacy.is_empty():
+		room = _sanitize_semantic_id(legacy.get(ROOM_FIELD, null), FALLBACK_ROOM_ID)
+		spawn = _sanitize_semantic_id(legacy.get(SPAWN_FIELD, null), DEFAULT_SPAWN_ID)
+
+	return {ROOM_FIELD: room, SPAWN_FIELD: spawn}
+
+
+## `settings.worldState` as a Dictionary, or `{}` when it is absent or is not a
+## Dictionary at all (a stored `5`, a String, an Array -- all shapes the corrupt
+## cases in `test_world_state.gd` already exercise).
+func _legacy_world_state(raw: Dictionary) -> Dictionary:
+	var settings: Variant = raw.get("settings", null)
+	if typeof(settings) != TYPE_DICTIONARY:
+		return {}
+	var legacy: Variant = (settings as Dictionary).get(LEGACY_WORLD_STATE_KEY, null)
+	if typeof(legacy) != TYPE_DICTIONARY:
+		return {}
+	return legacy
+
+
+## One camelCase segment, or the fallback. Rejects non-Strings (so a persisted
+## `Vector3`, Array or Dictionary can never become a location), the empty and
+## whitespace-only string, compound ids such as "bedroom.bed", anything that
+## looks like a path, and absurd lengths. Surrounding whitespace is forgiven
+## rather than treated as a different room.
+static func _sanitize_semantic_id(value: Variant, fallback: String) -> String:
+	if typeof(value) != TYPE_STRING:
+		return fallback
+	var cleaned: String = String(value).strip_edges()
+	if cleaned.is_empty() or cleaned.length() > MAX_SEMANTIC_ID_LENGTH:
+		return fallback
+	for forbidden: String in [".", "/", ":", " ", "\t", "\n"]:
+		if cleaned.contains(forbidden):
+			return fallback
+	return cleaned
 
 
 ## Normalizes an arbitrary value into `{levelId: true}`. Accepts the canonical
@@ -232,17 +377,55 @@ func _sanitize_string_array(raw_value: Variant) -> Array:
 	return cleaned
 
 
-## Migration hook. Legacy (<=1, including missing/malformed) versions run the
-## full v1->v3 migration; a v2 profile runs only the small v2->v3 step. Version
-## 3 -- and any unknown future version -- passes through unchanged and relies on
-## _sanitize()'s field-by-field validation, which keeps migration idempotent by
-## construction (running it twice is a no-op).
+## Migration hook, as a CHAIN rather than three independent jumps: every older
+## version is lifted one step at a time to the current schema, so v1->v4 and
+## v2->v4 are literally the tested v1->v3/v2->v3 steps followed by the tested
+## v3->v4 step. There is no fourth code path that could drift away from them.
+##
+## Legacy (<=1, including missing/malformed) versions run the full seeding
+## migration; a v2 profile runs only the small levelCompleted step; a v3 profile
+## only has its world location promoted. Version 4 -- and any unknown future
+## version -- passes through unchanged and relies on _sanitize()'s
+## field-by-field validation, which keeps migration idempotent by construction
+## (running it twice is a no-op).
 func _migrate(raw: Dictionary, version: int) -> Dictionary:
 	if version <= 1:
-		return _migrate_v1_to_v3(raw)
+		return _migrate_v3_to_v4(_migrate_v1_to_v3(raw))
 	if version == 2:
-		return _migrate_v2_to_v3(raw)
+		return _migrate_v3_to_v4(_migrate_v2_to_v3(raw))
+	if version == 3:
+		return _migrate_v3_to_v4(raw)
 	return raw
+
+
+## v3 -> v4. Promotes the world location from `settings.worldState` to the
+## top-level `currentRoomId`/`currentSpawnId` fields. Nothing else is read or
+## written: stars, completedActivities, starsByLevel, levelCompleted, the unlock
+## sets and every other setting are carried over verbatim.
+##
+## A v1/v2 profile has no world location at all and simply gains the bedroom
+## default, which is where a child who has never been in the house belongs.
+##
+## The old key is left in place for one release; see DROP_LEGACY_WORLD_STATE.
+func _migrate_v3_to_v4(raw: Dictionary) -> Dictionary:
+	var migrated := raw.duplicate(true)
+
+	# Reads the legacy key DIRECTLY rather than going through
+	# `_resolve_world_location()`, which honours `drop_legacy_world_state`. A
+	# migration must be able to read the old shape even -- especially -- once the
+	# rest of the code has stopped looking at it; that is what makes it a
+	# migration rather than a second reader.
+	var legacy: Dictionary = _legacy_world_state(migrated)
+	var room_source: Variant = legacy.get(ROOM_FIELD, migrated.get(ROOM_FIELD, null))
+	var spawn_source: Variant = legacy.get(SPAWN_FIELD, migrated.get(SPAWN_FIELD, null))
+
+	migrated[ROOM_FIELD] = _sanitize_semantic_id(room_source, FALLBACK_ROOM_ID)
+	migrated[SPAWN_FIELD] = _sanitize_semantic_id(spawn_source, DEFAULT_SPAWN_ID)
+
+	if drop_legacy_world_state and typeof(migrated.get("settings", null)) == TYPE_DICTIONARY:
+		(migrated["settings"] as Dictionary).erase(LEGACY_WORLD_STATE_KEY)
+
+	return migrated
 
 
 ## v2 -> v3. The only new fact is `levelCompleted`, and the only honest thing a

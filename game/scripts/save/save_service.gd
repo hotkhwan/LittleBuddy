@@ -21,6 +21,7 @@ signal profile_changed(profile: Dictionary)
 signal stars_changed(stars: int)
 signal level_stars_changed(level_id: String, stars: int)
 signal level_completed_changed(level_id: String)
+signal world_location_changed(room_id: String, spawn_id: String)
 
 var _store: ProfileStore
 var _profile: Dictionary = {}
@@ -95,6 +96,72 @@ func get_current_level() -> String:
 func set_current_level(level_id: String) -> void:
 	_profile["currentLevel"] = level_id
 	save_profile()
+	profile_changed.emit(get_profile())
+
+
+## ---------------------------------------------------------------------------
+## World location (schema v4) -- WHERE IN THE HOUSE the child is, as two
+## semantic ids and never a coordinate. Chapter 2 does not use this at all: the
+## baby does not walk, so a Baby Room profile simply carries the bedroom
+## default and ignores it.
+##
+## The values returned here are shape-validated only (a non-empty single
+## camelCase segment). Whether `"attic"` is a room that EXISTS is a question
+## about the current house layout, and is answered -- with the same
+## bedroom/default fallback -- by `scripts/house/world_state.gd`. Keeping the
+## two apart is what lets the save layer stay engine-agnostic.
+## ---------------------------------------------------------------------------
+
+func get_current_room_id() -> String:
+	return String(_profile.get(ProfileStore.ROOM_FIELD, ProfileStore.FALLBACK_ROOM_ID))
+
+
+func get_current_spawn_id() -> String:
+	return String(_profile.get(ProfileStore.SPAWN_FIELD, ProfileStore.DEFAULT_SPAWN_ID))
+
+
+func get_world_location() -> Dictionary:
+	return {
+		ProfileStore.ROOM_FIELD: get_current_room_id(),
+		ProfileStore.SPAWN_FIELD: get_current_spawn_id(),
+	}
+
+
+## Records where the child is. Idempotent: setting the location it is already at
+## writes nothing and emits nothing, so a room transition that re-fires cannot
+## churn the save file.
+##
+## Writes BOTH the v4 top-level fields and the v3 `settings.worldState` mirror,
+## because `scripts/house/world_state.gd` still reads the latter. That second
+## write disappears with `ProfileStore.DROP_LEGACY_WORLD_STATE`.
+func set_world_location(room_id: String, spawn_id: String) -> void:
+	var room := room_id.strip_edges()
+	var spawn := spawn_id.strip_edges()
+	if room.is_empty():
+		room = ProfileStore.FALLBACK_ROOM_ID
+	if spawn.is_empty():
+		spawn = ProfileStore.DEFAULT_SPAWN_ID
+	if get_current_room_id() == room and get_current_spawn_id() == spawn:
+		return
+
+	_profile[ProfileStore.ROOM_FIELD] = room
+	_profile[ProfileStore.SPAWN_FIELD] = spawn
+
+	if not ProfileStore.DROP_LEGACY_WORLD_STATE:
+		var settings: Dictionary = _profile.get("settings", {})
+		settings[ProfileStore.LEGACY_WORLD_STATE_KEY] = {
+			ProfileStore.ROOM_FIELD: room,
+			ProfileStore.SPAWN_FIELD: spawn,
+		}
+		_profile["settings"] = settings
+
+	save_profile()
+	# Read back rather than echoing the arguments: ProfileStore may have refused
+	# a malformed id, and a listener must be told where the child ACTUALLY is.
+	# Deliberately not `reload_profile()`, which would also re-emit stars_changed
+	# with an unchanged total and make a room transition look like a reward.
+	_profile = _store.load_profile()
+	world_location_changed.emit(get_current_room_id(), get_current_spawn_id())
 	profile_changed.emit(get_profile())
 
 

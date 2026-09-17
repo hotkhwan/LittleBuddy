@@ -103,7 +103,7 @@ func run():
 
 ## Every corner of the room, at floor level and at head height, projects inside
 ## the usable screen -- at every aspect, with the real device insets applied.
-func _test_fits_at_every_aspect() -> Array:
+func _test_fits_at_every_aspect():
 	var failures: Array = []
 	var insets: Vector4 = Insets.chrome_insets()
 
@@ -146,7 +146,7 @@ func _test_fits_at_every_aspect() -> Array:
 ## Correct framing is trivially satisfied by a camera a kilometre away, so the
 ## distance must also be the CLOSEST one that works. Anything else is a room the
 ## child has to squint at, which on a phone is its own kind of unplayable.
-func _test_as_close_as_possible() -> Array:
+func _test_as_close_as_possible():
 	var failures: Array = []
 	var insets: Vector4 = Insets.chrome_insets()
 	for label: String in ASPECTS:
@@ -176,7 +176,7 @@ func _test_as_close_as_possible() -> Array:
 ## The composition -- pitch, yaw, look-at -- must be IDENTICAL on every device.
 ## Only the distance changes. A camera that also tilted on a phone would make the
 ## same room read as a different place.
-func _test_composition_is_constant() -> Array:
+func _test_composition_is_constant():
 	var failures: Array = []
 	var reference: Basis = Framing.solve(ROOM, 4.0 / 3.0, Vector4.ZERO)["transform"].basis
 	for label: String in ASPECTS:
@@ -195,7 +195,7 @@ func _test_composition_is_constant() -> Array:
 ## The claim the whole system exists for: `KEEP_HEIGHT` fixes the VERTICAL field
 ## of view, so a narrow screen has less horizontal room and the camera must stand
 ## further back. If that ordering ever inverts, the aspect term is wrong.
-func _test_narrow_screens_stand_further_back() -> Array:
+func _test_narrow_screens_stand_further_back():
 	var failures: Array = []
 	var wide_room: Dictionary = {
 		"bounds": Rect2(-3.5, -2.0, 7.0, 4.0),  # wider than deep: width binds hard
@@ -245,7 +245,7 @@ func _test_narrow_screens_stand_further_back() -> Array:
 
 ## The insets must actually do something, and must push the camera BACK rather
 ## than crop harder. A fit that ignored them would return the same distance.
-func _test_safe_area_insets() -> Array:
+func _test_safe_area_insets():
 	var failures: Array = []
 	var aspect: float = 19.5 / 9.0
 	var bare: float = Framing.solve(ROOM, aspect, Vector4.ZERO)["distance"]
@@ -284,7 +284,7 @@ func _test_safe_area_insets() -> Array:
 
 ## The same phone, turned the other way round. The notch moves from the left edge
 ## to the right edge, and nothing important may be under it in either case.
-func _test_both_notch_orientations() -> Array:
+func _test_both_notch_orientations():
 	var failures: Array = []
 	var aspect: float = float(PHONE_WINDOW.x) / float(PHONE_WINDOW.y)
 	var chrome: Vector4 = Insets.chrome_insets()
@@ -330,7 +330,7 @@ func _test_both_notch_orientations() -> Array:
 
 ## -- Clamps, focus and bad input -----------------------------------------------
 
-func _test_distance_clamp() -> Array:
+func _test_distance_clamp():
 	var failures: Array = []
 	var aspect: float = 16.0 / 9.0
 
@@ -380,7 +380,7 @@ func _test_distance_clamp() -> Array:
 
 
 ## Moving in on one activity: closer, same shot, and reversible.
-func _test_activity_focus() -> Array:
+func _test_activity_focus():
 	var failures: Array = []
 	var aspect: float = 4.0 / 3.0
 	var insets: Vector4 = Insets.chrome_insets()
@@ -428,7 +428,7 @@ func _test_activity_focus() -> Array:
 
 ## Bad data must produce a slightly odd camera, never a NaN transform. Godot
 ## propagates a NaN transform silently until the entire scene vanishes.
-func _test_degenerate_input() -> Array:
+func _test_degenerate_input():
 	var failures: Array = []
 	var cases: Dictionary = {
 		"empty dictionary": {},

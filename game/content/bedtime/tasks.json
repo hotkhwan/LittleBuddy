@@ -169,6 +169,61 @@
       "reward": { "stars": 1 },
       "difficulty": 2,
       "cooldown": 5
+    },
+    {
+      "taskId": "sleepInBed",
+      "category": "bedtime",
+      "mode": "followInstruction",
+      "objectId": "blanket",
+      "targetWords": ["sleep", "bed"],
+      "prompt": "Good night!",
+      "instruction": "Go to sleep.",
+      "repeatPrompt": "Can you say sleep?",
+      "acceptedCommands": [
+        "sleep",
+        "go to sleep",
+        "time to sleep",
+        "go to bed"
+      ],
+      "thaiHint": "เข้านอนกันเถอะ",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 4,
+      "stage": "toddler",
+      "speechRequired": false,
+      "targetId": "bedroom.bed",
+      "requiresWalkTo": "bedroom.bed",
+      "characterAction": "sleep",
+      "assistAfterAttempts": 3
+    },
+    {
+      "taskId": "hugTeddyGoodNight",
+      "category": "bedtime",
+      "mode": "followInstruction",
+      "objectId": "teddy",
+      "targetWords": ["teddy", "hug"],
+      "prompt": "Teddy sleeps with me.",
+      "instruction": "Hug your teddy.",
+      "repeatPrompt": "Can you say teddy?",
+      "acceptedCommands": [
+        "teddy",
+        "hug",
+        "hug your teddy",
+        "my teddy"
+      ],
+      "thaiHint": "กอดตุ๊กตาหมีก่อนนอน",
+      "interaction": "dragToHug",
+      "reward": { "stars": 1 },
+      "difficulty": 1,
+      "cooldown": 4,
+      "stage": "toddler",
+      "speechRequired": false,
+      "targetId": "bedroom.bed",
+      "requiresWalkTo": "bedroom.bed",
+      "zoneId": "hug",
+      "characterAction": "hug",
+      "assistAfterAttempts": 3
     }
   ]
 }

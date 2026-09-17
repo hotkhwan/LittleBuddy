@@ -59,13 +59,23 @@ func _write_raw(path: String, text: String) -> void:
 	file.close()
 
 
-func _test_fresh_defaults(path: String) -> Array:
+func _test_fresh_defaults(path: String):
 	var failures: Array = []
 	var store := ProfileStore.new(path)
 	var profile := store.load_profile()
 
-	if profile.get("profileVersion") != 3:
-		failures.append("fresh load: expected profileVersion 3, got %s" % str(profile.get("profileVersion")))
+	if profile.get("profileVersion") != 4:
+		failures.append("fresh load: expected profileVersion 4, got %s" % str(profile.get("profileVersion")))
+	if String(profile.get("currentRoomId", "")) != "bedroom":
+		failures.append("fresh load: expected currentRoomId 'bedroom', got %s"
+				% str(profile.get("currentRoomId")))
+	if String(profile.get("currentSpawnId", "")) != "default":
+		failures.append("fresh load: expected currentSpawnId 'default', got %s"
+				% str(profile.get("currentSpawnId")))
+	var fresh_settings: Dictionary = profile.get("settings", {})
+	if fresh_settings.has("worldState"):
+		failures.append("fresh load: a v4 profile must not carry the v3 settings.worldState key; "
+				+ "the compatibility mirror is preserved when present, never synthesised")
 	if profile.get("stars") != 0:
 		failures.append("fresh load: expected stars 0, got %s" % str(profile.get("stars")))
 	if typeof(profile.get("completedActivities")) != TYPE_ARRAY or profile["completedActivities"].size() != 0:
@@ -101,7 +111,7 @@ func _test_fresh_defaults(path: String) -> Array:
 	return failures
 
 
-func _test_round_trip(path: String) -> Array:
+func _test_round_trip(path: String):
 	var failures: Array = []
 	var store := ProfileStore.new(path)
 	var profile := store.default_profile()
@@ -153,7 +163,7 @@ func _test_round_trip(path: String) -> Array:
 	return failures
 
 
-func _test_corrupt_json(path: String) -> Array:
+func _test_corrupt_json(path: String):
 	var failures: Array = []
 	_write_raw(path, "{not json")
 	var store := ProfileStore.new(path)
@@ -165,7 +175,7 @@ func _test_corrupt_json(path: String) -> Array:
 	return failures
 
 
-func _test_non_dictionary_json(path: String) -> Array:
+func _test_non_dictionary_json(path: String):
 	var failures: Array = []
 	_write_raw(path, "[1, 2, 3]")
 	var store := ProfileStore.new(path)
@@ -179,7 +189,7 @@ func _test_non_dictionary_json(path: String) -> Array:
 	return failures
 
 
-func _test_empty_file(path: String) -> Array:
+func _test_empty_file(path: String):
 	var failures: Array = []
 	_write_raw(path, "")
 	var store := ProfileStore.new(path)
@@ -191,7 +201,7 @@ func _test_empty_file(path: String) -> Array:
 	return failures
 
 
-func _test_partial_json(path: String) -> Array:
+func _test_partial_json(path: String):
 	var failures: Array = []
 	_write_raw(path, "{\"stars\": 5}")
 	var store := ProfileStore.new(path)
@@ -209,7 +219,7 @@ func _test_partial_json(path: String) -> Array:
 	return failures
 
 
-func _test_wrong_typed_values(path: String) -> Array:
+func _test_wrong_typed_values(path: String):
 	var failures: Array = []
 	var raw := "{\"stars\": \"five\", \"completedActivities\": \"nope\", \"settings\": {\"speechEnabled\": \"yes\", \"thaiHints\": true}}"
 	_write_raw(path, raw)
@@ -237,7 +247,7 @@ func _test_wrong_typed_values(path: String) -> Array:
 	return failures
 
 
-func _test_duplicate_completed_activities(path: String) -> Array:
+func _test_duplicate_completed_activities(path: String):
 	var failures: Array = []
 	_write_raw(path, "{\"completedActivities\": [\"feedMilk\", \"feedMilk\", \"feedMilk\"]}")
 	var store := ProfileStore.new(path)
@@ -254,7 +264,7 @@ func _test_duplicate_completed_activities(path: String) -> Array:
 ## never-crash, safe-defaults contract the v1 fields already have. Wrong key
 ## or value types are dropped individually rather than discarding the whole
 ## profile; out-of-range starsByLevel values are clamped to 0..3.
-func _test_wrong_typed_v2_fields(path: String) -> Array:
+func _test_wrong_typed_v2_fields(path: String):
 	var failures: Array = []
 	var raw := JSON.stringify({
 		"profileVersion": 2,
@@ -301,7 +311,7 @@ func _test_wrong_typed_v2_fields(path: String) -> Array:
 ## unlocking, so a malformed entry must never be read as "completed" (which
 ## would skip a child forward) and a valid sibling must never be lost (which
 ## would lock a child out of progress they already have).
-func _test_wrong_typed_completion_map(path: String) -> Array:
+func _test_wrong_typed_completion_map(path: String):
 	var failures: Array = []
 	var raw := JSON.stringify({
 		"profileVersion": 3,

@@ -37,6 +37,27 @@ static func _typed_run() -> String:
 	return "func run() -> %s:" % "Array"
 
 
+## The same hole, one level down — and it was far larger.
+##
+## Untyping `run()` alone is not enough. Nearly every case delegates to
+## `_test_*()` helpers via `failures.append_array(_test_x())`. While a helper is
+## typed, an abort inside it returns an EMPTY Array, `append_array` succeeds,
+## `run()` continues, and the case reports [PASS] with that helper's assertions
+## never having executed. **327 such helpers existed across 44 files** when this
+## was found.
+##
+## Untyped, the chain works: the helper returns null, `append_array(null)` raises
+## loudly, `run()` aborts, returns null, and the runner reports [ERROR].
+##
+## Found because a real one was live: `world_state.gd::from_dict()` called
+## `String(7)` — not a valid Godot 4 constructor — which aborted
+## `_test_dictionary_round_trip()` in `test_world_state.gd`. Three assertions
+## after it, including the fallback contract that stops a child being stranded in
+## an unknown room, had never run. The suite said [PASS].
+static func _typed_helper_pattern() -> String:
+	return ") -> %s:" % "Array"
+
+
 func test_name() -> String:
 	return "runner_fails_loud"
 
@@ -51,7 +72,7 @@ func run():
 
 
 ## Every case must declare `func run():` and none may declare it typed.
-func _test_no_case_types_its_run() -> Array:
+func _test_no_case_types_its_run():
 	var failures: Array = []
 
 	var names: PackedStringArray = _case_file_names()
@@ -81,6 +102,21 @@ func _test_no_case_types_its_run() -> Array:
 				% [file_name, UNTYPED_RUN]
 			)
 
+		# The same hole one level down: a typed _test_* helper swallows its own
+		# abort and lets run() carry on as though it had passed.
+		for line: String in source.split("\n"):
+			var text: String = line.strip_edges()
+			if not text.begins_with("func _test_"):
+				continue
+			if text.ends_with(_typed_helper_pattern()):
+				failures.append(
+					("runner_fails_loud: %s declares `%s`. A typed assertion helper that aborts "
+					+ "returns an EMPTY Array, so append_array() succeeds, run() continues, and "
+					+ "the case reports [PASS] with that helper's assertions never having run. "
+					+ "Drop the return type: untyped, the abort propagates and the runner catches "
+					+ "it.") % [file_name, text]
+				)
+
 	# A scan that silently checked nothing is worse than no scan.
 	if checked < 2:
 		failures.append("runner_fails_loud: only %d case file(s) were readable" % checked)
@@ -90,7 +126,7 @@ func _test_no_case_types_its_run() -> Array:
 
 ## The other half of the contract: the runner must still reject a non-Array.
 ## Dropping the return types achieves nothing if this guard is ever deleted.
-func _test_runner_still_checks_the_return_type() -> Array:
+func _test_runner_still_checks_the_return_type():
 	var failures: Array = []
 
 	var source: String = _read(RUNNER_PATH)

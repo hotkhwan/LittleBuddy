@@ -20,6 +20,27 @@
     { "categoryId": "dressing", "title": "Dress Up", "thaiTitle": "แต่งตัว", "tasksFile": "res://content/dressing/tasks.json" },
     { "categoryId": "bath", "title": "Bath Time", "thaiTitle": "อาบน้ำ", "tasksFile": "res://content/bath/tasks.json" },
     { "categoryId": "play", "title": "Play Room", "thaiTitle": "ห้องเล่น", "tasksFile": "res://content/play/tasks.json" },
-    { "categoryId": "bedtime", "title": "Bedtime", "thaiTitle": "เข้านอน", "tasksFile": "res://content/bedtime/tasks.json" }
+    { "categoryId": "bedtime", "title": "Bedtime", "thaiTitle": "เข้านอน", "tasksFile": "res://content/bedtime/tasks.json" },
+    { "categoryId": "routine", "title": "Daily Routine", "thaiTitle": "กิจวัตรประจำวัน", "tasksFile": "res://content/routine/tasks.json" }
+  ],
+  "semanticTargetKeys": ["targetId", "requiresWalkTo"],
+  "semanticActions": [
+    "idle",
+    "walk",
+    "wave",
+    "point",
+    "clap",
+    "pickUp",
+    "hold",
+    "give",
+    "eat",
+    "drink",
+    "brushTeeth",
+    "sit",
+    "stand",
+    "hug",
+    "sleep",
+    "wake",
+    "celebrate"
   ]
 }

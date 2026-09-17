@@ -1,9 +1,14 @@
 extends RefCounted
 
-## Tests for the save migrations (v1 -> v3 and v2 -> v3) and the schema
+## Tests for the save migrations (v1 -> v4, v2 -> v4, v3 -> v4) and the schema
 ## additions they introduce: currentChapter/currentLevel, starsByLevel,
-## levelCompleted, and the unlockedChapters/unlockedLevels/unlockedRooms
-## unlock sets.
+## levelCompleted, the unlockedChapters/unlockedLevels/unlockedRooms unlock
+## sets, and the v4 world location (currentRoomId/currentSpawnId).
+##
+## Migration runs as a CHAIN, so "v1 -> v4" is the v1 -> v3 seeding step followed
+## by the v3 -> v4 promotion. Both halves are asserted separately AND together,
+## because the failure this guards against is a returning child -- the owner's
+## own 64-star profile -- losing progress on the night the schema moved.
 ##
 ## Two cruxes under test throughout:
 ##   1. "stars" (lifetime task total, feeds sticker thresholds) and
@@ -74,13 +79,28 @@ func run():
 	failures.append_array(_test_v2_to_v3_marks_rated_levels_completed(test_path))
 
 	_cleanup(test_path)
-	failures.append_array(_test_v3_profile_round_trips_unchanged(test_path))
+	failures.append_array(_test_v3_to_v4_promotes_world_location(test_path))
+
+	_cleanup(test_path)
+	failures.append_array(_test_v3_to_v4_lift_works_without_the_shim(test_path))
+
+	_cleanup(test_path)
+	failures.append_array(_test_invalid_world_location_falls_back(test_path))
+
+	_cleanup(test_path)
+	failures.append_array(_test_no_coordinates_reach_the_disk(test_path))
+
+	_cleanup(test_path)
+	failures.append_array(_test_v4_profile_round_trips_unchanged(test_path))
 
 	_cleanup(test_path)
 	failures.append_array(_test_migration_is_idempotent(test_path))
 
 	_cleanup(test_path)
 	failures.append_array(_test_v1_migration_is_idempotent(test_path))
+
+	_cleanup(test_path)
+	failures.append_array(_test_every_version_lands_on_the_same_v4_shape(test_path))
 
 	_cleanup(test_path)
 	failures.append_array(_test_level_completed_api(test_path))
@@ -140,16 +160,24 @@ func _store_with_no_level_data_at_all(path: String) -> ProfileStore:
 # Real device profile: v1 fields carry over untouched
 # ---------------------------------------------------------------------------
 
-func _test_real_device_profile_preserves_v1_fields(path: String) -> Array:
+func _test_real_device_profile_preserves_v1_fields(path: String):
 	var failures: Array = []
 	_install_device_fixture(path)
 
 	var store := _store_with_ch2_fixture(path)
 	var migrated := store.load_profile()
 
-	if migrated.get("profileVersion") != 3:
-		failures.append("device profile: expected profileVersion 3 after migration, got %s"
+	if migrated.get("profileVersion") != 4:
+		failures.append("device profile: expected profileVersion 4 after migration, got %s"
 				% str(migrated.get("profileVersion")))
+	# v1 has no world location at all, so a v1 -> v4 migration must invent the
+	# only safe one: the bedroom default.
+	if String(migrated.get("currentRoomId", "")) != "bedroom":
+		failures.append("device profile: v1 -> v4 should default currentRoomId to 'bedroom', got %s"
+				% str(migrated.get("currentRoomId")))
+	if String(migrated.get("currentSpawnId", "")) != "default":
+		failures.append("device profile: v1 -> v4 should default currentSpawnId to 'default', got %s"
+				% str(migrated.get("currentSpawnId")))
 	if int(migrated.get("stars", -1)) != DEVICE_STARS:
 		failures.append("device profile: expected stars preserved as %d, got %s"
 				% [DEVICE_STARS, str(migrated.get("stars"))])
@@ -187,7 +215,7 @@ func _test_real_device_profile_preserves_v1_fields(path: String) -> Array:
 # missions.json.
 # ---------------------------------------------------------------------------
 
-func _test_real_device_profile_seeds_starsByLevel(path: String) -> Array:
+func _test_real_device_profile_seeds_starsByLevel(path: String):
 	var failures: Array = []
 	_install_device_fixture(path)
 
@@ -245,7 +273,7 @@ func _test_real_device_profile_seeds_starsByLevel(path: String) -> Array:
 	return failures
 
 
-func _test_seeding_never_inflates_task_stars(path: String) -> Array:
+func _test_seeding_never_inflates_task_stars(path: String):
 	var failures: Array = []
 	_install_device_fixture(path)
 
@@ -283,7 +311,7 @@ func _test_seeding_never_inflates_task_stars(path: String) -> Array:
 # hypothetical one.
 # ---------------------------------------------------------------------------
 
-func _test_real_content_seeds_starsByLevel_via_default_paths(path: String) -> Array:
+func _test_real_content_seeds_starsByLevel_via_default_paths(path: String):
 	var failures: Array = []
 	_install_device_fixture(path)
 
@@ -326,7 +354,7 @@ func _test_real_content_seeds_starsByLevel_via_default_paths(path: String) -> Ar
 # Absent level definitions: seeding must be skipped, never fail
 # ---------------------------------------------------------------------------
 
-func _test_missing_level_definitions_skips_seeding_safely(path: String) -> Array:
+func _test_missing_level_definitions_skips_seeding_safely(path: String):
 	var failures: Array = []
 	_install_device_fixture(path)
 
@@ -350,7 +378,7 @@ func _test_missing_level_definitions_skips_seeding_safely(path: String) -> Array
 	return failures
 
 
-func _test_chapter2_and_first_level_always_unlocked(path: String) -> Array:
+func _test_chapter2_and_first_level_always_unlocked(path: String):
 	var failures: Array = []
 	_install_device_fixture(path)
 
@@ -381,7 +409,7 @@ func _test_chapter2_and_first_level_always_unlocked(path: String) -> Array:
 # starsByLevel persistence
 # ---------------------------------------------------------------------------
 
-func _test_starsByLevel_persists_across_reload(path: String) -> Array:
+func _test_starsByLevel_persists_across_reload(path: String):
 	var failures: Array = []
 
 	var store := ProfileStore.new(path)
@@ -407,7 +435,7 @@ func _test_starsByLevel_persists_across_reload(path: String) -> Array:
 # SaveService.set_level_stars: max-wins
 # ---------------------------------------------------------------------------
 
-func _test_set_level_stars_is_max_wins(path: String) -> Array:
+func _test_set_level_stars_is_max_wins(path: String):
 	var failures: Array = []
 
 	var store := ProfileStore.new(path)
@@ -451,7 +479,7 @@ func _test_set_level_stars_is_max_wins(path: String) -> Array:
 # Two currencies never contaminate each other
 # ---------------------------------------------------------------------------
 
-func _test_stars_and_level_stars_do_not_contaminate(path: String) -> Array:
+func _test_stars_and_level_stars_do_not_contaminate(path: String):
 	var failures: Array = []
 
 	var store := ProfileStore.new(path)
@@ -481,7 +509,7 @@ func _test_stars_and_level_stars_do_not_contaminate(path: String) -> Array:
 # Unknown/newer profileVersion
 # ---------------------------------------------------------------------------
 
-func _test_unknown_future_version_does_not_crash(path: String) -> Array:
+func _test_unknown_future_version_does_not_crash(path: String):
 	var failures: Array = []
 
 	var raw_text := JSON.stringify({
@@ -503,8 +531,8 @@ func _test_unknown_future_version_does_not_crash(path: String) -> Array:
 	var store := _store_with_ch2_fixture(path)
 	var loaded := store.load_profile()
 
-	if loaded.get("profileVersion") != 3:
-		failures.append("unknown version: expected profileVersion normalized to 3, got %s" % str(loaded.get("profileVersion")))
+	if loaded.get("profileVersion") != 4:
+		failures.append("unknown version: expected profileVersion normalized to 4, got %s" % str(loaded.get("profileVersion")))
 	if int(loaded.get("stars", -1)) != 12:
 		failures.append("unknown version: expected stars preserved as 12, got %s" % str(loaded.get("stars")))
 	if String(loaded.get("currentChapter", "")) != "ch7":
@@ -550,10 +578,28 @@ func _sample_v3_profile() -> Dictionary:
 	return profile
 
 
+## A v3 profile that has actually been in the house: the world location lives
+## under `settings.worldState`, which is exactly what v3 shipped.
+func _sample_v3_profile_in_the_house() -> Dictionary:
+	var profile := _sample_v3_profile()
+	var settings: Dictionary = profile["settings"]
+	settings["worldState"] = {"currentRoomId": "kitchen", "currentSpawnId": "fromLivingRoom"}
+	profile["settings"] = settings
+	return profile
+
+
+func _sample_v4_profile() -> Dictionary:
+	var profile := _sample_v3_profile()
+	profile["profileVersion"] = 4
+	profile["currentRoomId"] = "livingRoom"
+	profile["currentSpawnId"] = "fromKitchen"
+	return profile
+
+
 ## v2 -> v3: every level already rated >= 1 star was obviously finished, so it
 ## becomes a completion. NOTHING else may change -- this migration adds one
 ## derived field and touches no existing one.
-func _test_v2_to_v3_marks_rated_levels_completed(path: String) -> Array:
+func _test_v2_to_v3_marks_rated_levels_completed(path: String):
 	var failures: Array = []
 
 	var original := _sample_v2_profile()
@@ -564,38 +610,46 @@ func _test_v2_to_v3_marks_rated_levels_completed(path: String) -> Array:
 	var store := _store_with_ch2_fixture(path)
 	var migrated := store.load_profile()
 
-	if migrated.get("profileVersion") != 3:
-		failures.append("v2->v3: expected profileVersion 3, got %s" % str(migrated.get("profileVersion")))
+	if migrated.get("profileVersion") != 4:
+		failures.append("v2->v4: expected profileVersion 4, got %s" % str(migrated.get("profileVersion")))
 
 	var completed_levels: Dictionary = migrated.get("levelCompleted", {})
 	for level_id: String in ["milkTime", "bedtime"]:
 		if not bool(completed_levels.get(level_id, false)):
-			failures.append("v2->v3: level '%s' had >= 1 star and must be marked completed, got %s"
+			failures.append("v2->v4: level '%s' had >= 1 star and must be marked completed, got %s"
 					% [level_id, str(completed_levels)])
 	# A 0-star v2 entry is not evidence of a finished level: under v2 every
 	# finished level was force-rated to at least 1 star.
 	if completed_levels.has("toysAndSmiles"):
-		failures.append("v2->v3: a 0-star level must not be marked completed, got %s" % str(completed_levels))
+		failures.append("v2->v4: a 0-star level must not be marked completed, got %s" % str(completed_levels))
 	if completed_levels.has("bathTime"):
-		failures.append("v2->v3: an unrated level must not be marked completed, got %s" % str(completed_levels))
+		failures.append("v2->v4: an unrated level must not be marked completed, got %s" % str(completed_levels))
 
-	# Everything else carries over verbatim.
+	# Everything else carries over verbatim -- INCLUDING settings, which proves
+	# the v3 -> v4 step does not invent a `settings.worldState` mirror on a
+	# profile that never had one.
 	for key: String in ["stars", "completedActivities", "currentChapter", "currentLevel",
 			"starsByLevel", "unlockedChapters", "unlockedLevels", "unlockedRooms", "settings"]:
 		if migrated.get(key) != original[key]:
-			failures.append("v2->v3: key '%s' changed, expected %s, got %s"
+			failures.append("v2->v4: key '%s' changed, expected %s, got %s"
 					% [key, str(original[key]), str(migrated.get(key))])
+
+	# ...and the v4 fields appear with the only honest value a v2 profile has.
+	if String(migrated.get("currentRoomId", "")) != "bedroom" \
+			or String(migrated.get("currentSpawnId", "")) != "default":
+		failures.append("v2->v4: expected the bedroom default, got %s/%s"
+				% [str(migrated.get("currentRoomId")), str(migrated.get("currentSpawnId"))])
 
 	return failures
 
 
-func _test_v3_profile_round_trips_unchanged(path: String) -> Array:
+func _test_v4_profile_round_trips_unchanged(path: String):
 	var failures: Array = []
 
 	var store := _store_with_ch2_fixture(path)
-	var original := _sample_v3_profile()
+	var original := _sample_v4_profile()
 	if not store.save_profile(original):
-		failures.append("v3 round trip: save_profile returned false")
+		failures.append("v4 round trip: save_profile returned false")
 		return failures
 
 	var reload_store := _store_with_ch2_fixture(path)
@@ -603,25 +657,231 @@ func _test_v3_profile_round_trips_unchanged(path: String) -> Array:
 
 	for key in original.keys():
 		if not reloaded.has(key):
-			failures.append("v3 round trip: key '%s' missing after reload" % key)
+			failures.append("v4 round trip: key '%s' missing after reload" % key)
 			continue
 		if reloaded[key] != original[key]:
-			failures.append("v3 round trip: key '%s' changed, expected %s, got %s"
+			failures.append("v4 round trip: key '%s' changed, expected %s, got %s"
 					% [key, str(original[key]), str(reloaded[key])])
 
 	return failures
 
 
-func _test_migration_is_idempotent(path: String) -> Array:
+## v3 -> v4, the migration this schema bump exists for: the world location is
+## promoted out of `settings.worldState` into top-level currentRoomId /
+## currentSpawnId, and every Chapter 2 fact is carried over untouched.
+func _test_v3_to_v4_promotes_world_location(path: String):
+	var failures: Array = []
+
+	var original := _sample_v3_profile_in_the_house()
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(original))
+	file.close()
+
+	var store := _store_with_ch2_fixture(path)
+	var migrated := store.load_profile()
+
+	if migrated.get("profileVersion") != 4:
+		failures.append("v3->v4: expected profileVersion 4, got %s"
+				% str(migrated.get("profileVersion")))
+	if String(migrated.get("currentRoomId", "")) != "kitchen":
+		failures.append("v3->v4: settings.worldState.currentRoomId was not promoted to the top "
+				+ "level, got %s" % str(migrated.get("currentRoomId")))
+	if String(migrated.get("currentSpawnId", "")) != "fromLivingRoom":
+		failures.append("v3->v4: settings.worldState.currentSpawnId was not promoted, got %s"
+				% str(migrated.get("currentSpawnId")))
+
+	# Chapter 2 is untouched by the promotion.
+	for key: String in ["stars", "completedActivities", "currentChapter", "currentLevel",
+			"starsByLevel", "levelCompleted", "unlockedChapters", "unlockedLevels",
+			"unlockedRooms"]:
+		if migrated.get(key) != original[key]:
+			failures.append("v3->v4: key '%s' changed, expected %s, got %s"
+					% [key, str(original[key]), str(migrated.get(key))])
+	var settings: Dictionary = migrated.get("settings", {})
+	for key: String in ["speechLocale", "speechEnabled", "thaiHints", "soundEnabled", "ttsSpeed",
+			"unlockedStickers"]:
+		if settings.get(key) != (original["settings"] as Dictionary)[key]:
+			failures.append("v3->v4: settings.%s changed, expected %s, got %s"
+					% [key, str((original["settings"] as Dictionary)[key]), str(settings.get(key))])
+
+	# The v3 key is kept for one release as a COMPATIBILITY MIRROR (see
+	# ProfileStore.DROP_LEGACY_WORLD_STATE: scripts/house/world_state.gd still
+	# reads it). Whether it is kept or dropped, it may never disagree with the
+	# authoritative top-level fields -- that is the bug that would send a child
+	# to the wrong room.
+	if settings.has("worldState"):
+		var mirror: Variant = settings["worldState"]
+		if typeof(mirror) != TYPE_DICTIONARY:
+			failures.append("v3->v4: the legacy mirror is no longer a Dictionary: %s" % str(mirror))
+		elif (mirror as Dictionary) != {
+			"currentRoomId": migrated.get("currentRoomId"),
+			"currentSpawnId": migrated.get("currentSpawnId"),
+		}:
+			failures.append("v3->v4: settings.worldState %s disagrees with the top-level %s/%s"
+					% [str(mirror), str(migrated.get("currentRoomId")),
+					str(migrated.get("currentSpawnId"))])
+
+	return failures
+
+
+## The v3 -> v4 lift, with the compatibility shim SWITCHED OFF.
+##
+## This exists because of a mutant that survived. While the shim is on,
+## `_sanitize()` reads `settings.worldState` on every load regardless of version,
+## so disabling `_migrate_v3_to_v4()` entirely changed nothing observable and the
+## whole suite stayed green. The step is redundant today and load-bearing the day
+## `DROP_LEGACY_WORLD_STATE` is flipped -- which is exactly the shape of change
+## that ships broken. Running the post-shim configuration here means the
+## migration is exercised as the ONLY thing lifting the location, now, rather
+## than for the first time on a returning child's device.
+func _test_v3_to_v4_lift_works_without_the_shim(path: String):
+	var failures: Array = []
+
+	var original := _sample_v3_profile_in_the_house()
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(original))
+	file.close()
+
+	var store := _store_with_ch2_fixture(path)
+	store.drop_legacy_world_state = true
+	var migrated := store.load_profile()
+
+	if String(migrated.get("currentRoomId", "")) != "kitchen":
+		failures.append("post-shim: the v3 -> v4 migration is the only thing that can lift "
+				+ "settings.worldState once the shim is off, and it did not: got %s"
+				% str(migrated.get("currentRoomId")))
+	if String(migrated.get("currentSpawnId", "")) != "fromLivingRoom":
+		failures.append("post-shim: the spawn was not lifted, got %s"
+				% str(migrated.get("currentSpawnId")))
+
+	var settings: Dictionary = migrated.get("settings", {})
+	if settings.has("worldState"):
+		failures.append("post-shim: settings.worldState should be gone once the shim is off, "
+				+ "got %s" % str(settings["worldState"]))
+	# ...and removing it costs nothing else.
+	if int(migrated.get("stars", -1)) != 64:
+		failures.append("post-shim: stars changed, got %s" % str(migrated.get("stars")))
+	if settings.get("unlockedStickers", null) != ["milkSticker"]:
+		failures.append("post-shim: the sticker list was collateral damage, got %s"
+				% str(settings.get("unlockedStickers")))
+
+	# Idempotent in that configuration too.
+	store.save_profile(migrated)
+	var again := store.load_profile()
+	if String(again.get("currentRoomId", "")) != "kitchen":
+		failures.append("post-shim: a second pass moved the child to %s"
+				% str(again.get("currentRoomId")))
+
+	return failures
+
+
+## A location that no longer resolves -- a hand-edited file, a downgraded build,
+## a persisted coordinate -- must land the child somewhere real rather than
+## nowhere. ProfileStore validates the SHAPE of an id (one camelCase segment);
+## whether that room exists in the house is world_state.gd's question, with the
+## same fallback.
+func _test_invalid_world_location_falls_back(path: String):
+	var failures: Array = []
+
+	var cases: Array = [
+		{"currentRoomId": "", "currentSpawnId": "default"},
+		{"currentRoomId": "   ", "currentSpawnId": "   "},
+		{"currentRoomId": "bedroom.bed", "currentSpawnId": "default"},
+		{"currentRoomId": "../../etc/passwd", "currentSpawnId": "default"},
+		{"currentRoomId": 7, "currentSpawnId": 9},
+		{"currentRoomId": ["bedroom"], "currentSpawnId": {"x": 1.0}},
+		{"currentRoomId": null, "currentSpawnId": null},
+		{"currentRoomId": "kitchen", "currentSpawnId": "from Living Room"},
+	]
+
+	for location: Dictionary in cases:
+		var raw: Dictionary = {
+			"profileVersion": 4,
+			"stars": 3,
+			"completedActivities": ["feedMilk"],
+		}
+		raw.merge(location, true)
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string(JSON.stringify(raw))
+		file.close()
+
+		var loaded := ProfileStore.new(path).load_profile()
+		var room: String = String(loaded.get("currentRoomId", ""))
+		var spawn: String = String(loaded.get("currentSpawnId", ""))
+
+		var requested_room: Variant = location.get("currentRoomId", null)
+		if typeof(requested_room) == TYPE_STRING and requested_room == "kitchen":
+			# A valid room with a rubbish spawn keeps the room.
+			if room != "kitchen":
+				failures.append("fallback: a bad SPAWN moved the child out of the kitchen, to '%s'"
+						% room)
+		elif room != "bedroom":
+			failures.append("fallback: %s should resolve to the bedroom, got '%s'"
+					% [str(location), room])
+		if spawn != "default":
+			failures.append("fallback: %s should resolve to the default spawn, got '%s'"
+					% [str(location), spawn])
+
+		# A fallback must never cost the child anything else.
+		if int(loaded.get("stars", -1)) != 3:
+			failures.append("fallback: %s lost the star total" % str(location))
+
+		_cleanup(path)
+
+	return failures
+
+
+## Contract §4: never persist a raw `Vector3` as authoritative state. Asserted
+## against the BYTES on disk, not the in-memory Dictionary, because that is what
+## a future build actually reads back.
+func _test_no_coordinates_reach_the_disk(path: String):
+	var failures: Array = []
+
+	var store := ProfileStore.new(path)
+	var profile := store.default_profile()
+	# Everything a well-meaning caller might try to stuff in.
+	profile["currentRoomId"] = "kitchen"
+	profile["currentSpawnId"] = "fromLivingRoom"
+	profile["currentPosition"] = Vector3(1.5, 0.0, -2.0)
+	profile["settings"]["worldState"] = {
+		"currentRoomId": "kitchen",
+		"currentSpawnId": "fromLivingRoom",
+		"position": Vector3(1.5, 0.0, -2.0),
+	}
+	store.save_profile(profile)
+
+	var file := FileAccess.open(path, FileAccess.READ)
+	var text: String = file.get_as_text()
+	file.close()
+
+	for forbidden: String in ["currentPosition", "Vector3", "(1.5", "1.5, 0"]:
+		if text.contains(forbidden):
+			failures.append("the saved profile contains '%s'; a coordinate that was valid when it "
+					% forbidden
+					+ "was written drifts out of the navmesh the moment a room is edited, and is "
+					+ "then a way of stranding a child with no route back")
+
+	var reloaded := ProfileStore.new(path).load_profile()
+	if String(reloaded.get("currentRoomId", "")) != "kitchen":
+		failures.append("the semantic location did not survive alongside the rejected coordinate")
+	var mirror: Variant = (reloaded.get("settings", {}) as Dictionary).get("worldState", null)
+	if typeof(mirror) == TYPE_DICTIONARY and (mirror as Dictionary).has("position"):
+		failures.append("the legacy mirror still carries a coordinate: %s" % str(mirror))
+
+	return failures
+
+
+func _test_migration_is_idempotent(path: String):
 	var failures: Array = []
 
 	var store := _store_with_ch2_fixture(path)
-	var original := _sample_v3_profile()
+	var original := _sample_v3_profile_in_the_house()
 	store.save_profile(original)
 
 	var first_load := store.load_profile()
-	# Re-saving and reloading an already-v3 profile a second time must not
-	# change anything further -- migration only ever runs for version <= 2.
+	# Re-saving and reloading an already-migrated profile must not change
+	# anything further -- migration only ever runs for version <= 3, and the
+	# v3 -> v4 promotion must not re-run against its own output.
 	store.save_profile(first_load)
 	var second_load := store.load_profile()
 
@@ -630,13 +890,25 @@ func _test_migration_is_idempotent(path: String) -> Array:
 			failures.append("idempotency: key '%s' changed on a second migration pass, %s -> %s"
 					% [key, str(first_load[key]), str(second_load.get(key))])
 
+	# A third pass too: two-pass stability can be an accident, three cannot.
+	store.save_profile(second_load)
+	var third_load := store.load_profile()
+	for key in second_load.keys():
+		if third_load.get(key) != second_load[key]:
+			failures.append("idempotency: key '%s' changed on a THIRD pass, %s -> %s"
+					% [key, str(second_load[key]), str(third_load.get(key))])
+
+	if String(third_load.get("currentRoomId", "")) != "kitchen":
+		failures.append("idempotency: the promoted world location drifted to '%s' after three "
+				% String(third_load.get("currentRoomId", "")) + "passes, expected 'kitchen'")
+
 	return failures
 
 
 ## The v1 path must be idempotent too: a migrated profile re-saved and reloaded
-## is a v3 profile, so the v1 seeding must not run a second time and (for
+## is a v4 profile, so the v1 seeding must not run a second time and (for
 ## instance) re-credit a level whose tasks are still in completedActivities.
-func _test_v1_migration_is_idempotent(path: String) -> Array:
+func _test_v1_migration_is_idempotent(path: String):
 	var failures: Array = []
 	_install_device_fixture(path)
 
@@ -654,10 +926,57 @@ func _test_v1_migration_is_idempotent(path: String) -> Array:
 
 
 # ---------------------------------------------------------------------------
+# Every entry point lands on the same shape
+# ---------------------------------------------------------------------------
+
+## The property that makes "three migrations" safe to reason about: v1, v2, v3
+## and v4 all converge on the SAME set of top-level keys. A field added to one
+## path and forgotten on another is the classic way a returning profile ends up
+## missing something the game then reads as 0.
+func _test_every_version_lands_on_the_same_v4_shape(path: String):
+	var failures: Array = []
+
+	var expected_keys: Array = ProfileStore.new(path).default_profile().keys()
+	expected_keys.sort()
+
+	var samples: Dictionary = {
+		"v1": {"profileVersion": 1, "stars": 5, "completedActivities": ["feedMilk"]},
+		"v2": _sample_v2_profile(),
+		"v3": _sample_v3_profile_in_the_house(),
+		"v4": _sample_v4_profile(),
+		"noVersionAtAll": {"stars": 5, "completedActivities": ["feedMilk"]},
+		"garbageVersion": {"profileVersion": "three", "stars": 5},
+	}
+
+	for label: String in samples.keys():
+		_cleanup(path)
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string(JSON.stringify(samples[label]))
+		file.close()
+
+		var loaded := ProfileStore.new(path).load_profile()
+		var keys: Array = loaded.keys()
+		keys.sort()
+		if keys != expected_keys:
+			failures.append("%s migrated to a different shape than default_profile(): %s vs %s"
+					% [label, str(keys), str(expected_keys)])
+		if int(loaded.get("profileVersion", 0)) != 4:
+			failures.append("%s did not reach profileVersion 4, got %s"
+					% [label, str(loaded.get("profileVersion"))])
+		if String(loaded.get("currentRoomId", "")).is_empty() \
+				or String(loaded.get("currentSpawnId", "")).is_empty():
+			failures.append("%s produced an empty world location; a child must always be "
+					% label + "somewhere")
+
+	_cleanup(path)
+	return failures
+
+
+# ---------------------------------------------------------------------------
 # SaveService: the levelCompleted API
 # ---------------------------------------------------------------------------
 
-func _test_level_completed_api(path: String) -> Array:
+func _test_level_completed_api(path: String):
 	var failures: Array = []
 
 	var store := ProfileStore.new(path)

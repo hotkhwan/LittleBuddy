@@ -74,7 +74,7 @@ func run():
 ## THE double-award test. The mission deliberately lists `dupTask` twice, so the
 ## runner is asked to complete the same taskId twice in one mission. It must
 ## award exactly one star and emit `task_completed` exactly once.
-func _test_no_double_award_for_same_task(runner_script: GDScript) -> Array:
+func _test_no_double_award_for_same_task(runner_script: GDScript):
 	var failures: Array = []
 	var library: FakeLibrary = FakeLibrary.new()
 	library.objects["milk"] = {
@@ -131,7 +131,7 @@ func _test_no_double_award_for_same_task(runner_script: GDScript) -> Array:
 
 ## No shipped task may be unplayable: that would be a task the child is shown and
 ## then cannot finish.
-func _test_shipped_tasks_are_all_playable(runner_script: GDScript) -> Array:
+func _test_shipped_tasks_are_all_playable(runner_script: GDScript):
 	var failures: Array = []
 	var library: RefCounted = _real_library()
 	if library == null:
@@ -157,7 +157,7 @@ func _test_shipped_tasks_are_all_playable(runner_script: GDScript) -> Array:
 
 ## A touch-only playthrough of every shipped mission must pay exactly the
 ## expected total -- no more (double award) and no less (unreachable task).
-func _test_missions_award_expected_total(runner_script: GDScript) -> Array:
+func _test_missions_award_expected_total(runner_script: GDScript):
 	var failures: Array = []
 	var library: RefCounted = _real_library()
 	if library == null:
@@ -211,7 +211,7 @@ func _test_missions_award_expected_total(runner_script: GDScript) -> Array:
 ## The no-dead-end guarantee, exercised the hard way: a child who only ever taps
 ## the wrong thing must STILL reach the end of the mission, kindly, with no stars
 ## and no punishment -- never stuck on a task forever.
-func _test_missions_never_dead_end(runner_script: GDScript) -> Array:
+func _test_missions_never_dead_end(runner_script: GDScript):
 	var failures: Array = []
 	var library: RefCounted = _real_library()
 	if library == null:
@@ -262,7 +262,7 @@ func _test_missions_never_dead_end(runner_script: GDScript) -> Array:
 
 
 ## An unknown or empty mission must not hang a caller waiting on mission_completed.
-func _test_empty_mission_still_finishes(runner_script: GDScript) -> Array:
+func _test_empty_mission_still_finishes(runner_script: GDScript):
 	var failures: Array = []
 	var runner: Node = runner_script.new()
 	var finished: Array = []
@@ -286,7 +286,7 @@ func _test_empty_mission_still_finishes(runner_script: GDScript) -> Array:
 
 ## A task content cannot support is skipped rather than presented and then being
 ## impossible to finish.
-func _test_unplayable_task_is_skipped_not_presented(runner_script: GDScript) -> Array:
+func _test_unplayable_task_is_skipped_not_presented(runner_script: GDScript):
 	var failures: Array = []
 	var library: FakeLibrary = FakeLibrary.new()
 	library.objects["ball"] = {

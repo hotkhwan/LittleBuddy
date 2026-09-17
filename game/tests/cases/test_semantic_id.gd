@@ -25,7 +25,7 @@ func run():
 	return failures
 
 
-func _test_compose() -> Array:
+func _test_compose():
 	var failures: Array = []
 
 	if SemanticId.compose("kitchen", "fridge") != "kitchen.fridge":
@@ -51,7 +51,7 @@ func _test_compose() -> Array:
 	return failures
 
 
-func _test_split() -> Array:
+func _test_split():
 	var failures: Array = []
 
 	var parts: Dictionary = SemanticId.split("kitchen.fridge")
@@ -74,7 +74,7 @@ func _test_split() -> Array:
 	return failures
 
 
-func _test_validity() -> Array:
+func _test_validity():
 	var failures: Array = []
 
 	for good: String in [
@@ -100,7 +100,7 @@ func _test_validity() -> Array:
 ## The rule from contract §1, as a test: an id is a semantic name, and the things
 ## it must never be are the things that break when somebody renames a node or
 ## moves a fridge.
-func _test_content_data_can_never_hold_a_node_path() -> Array:
+func _test_content_data_can_never_hold_a_node_path():
 	var failures: Array = []
 	var not_ids: Array[String] = [
 		"Rooms/Kitchen/Fridge",
@@ -116,7 +116,7 @@ func _test_content_data_can_never_hold_a_node_path() -> Array:
 	return failures
 
 
-func _test_rooms() -> Array:
+func _test_rooms():
 	var failures: Array = []
 	for room: String in ["bedroom", "bathroom", "kitchen", "livingRoom"]:
 		if not SemanticId.is_known_room(room):

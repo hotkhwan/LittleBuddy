@@ -99,7 +99,7 @@ static func _files_under(dir_path: String, suffix: String) -> PackedStringArray:
 # Icons
 # ---------------------------------------------------------------------------
 
-func _test_icons() -> Array:
+func _test_icons():
 	var failures: Array = []
 
 	for glyph: Variant in IconGlyphScript.ICON_PATHS.keys():
@@ -135,7 +135,7 @@ func _test_icons() -> Array:
 # 9-slice frames
 # ---------------------------------------------------------------------------
 
-func _test_styles() -> Array:
+func _test_styles():
 	var failures: Array = []
 
 	var paths: PackedStringArray = _files_under(STYLES_DIR, ".tres")
@@ -178,7 +178,7 @@ func _test_styles() -> Array:
 ## The reward moment must not land on the baby, who lives in the middle of the
 ## screen. This is the regression guard for the celebration that used to default
 ## to the screen centre and hide the character at the happiest moment.
-func _test_celebration_anchor() -> Array:
+func _test_celebration_anchor():
 	var failures: Array = []
 
 	for area: Vector2 in [SAFE_AREA_PHONE, SAFE_AREA_TABLET]:
@@ -228,7 +228,7 @@ func _test_celebration_anchor() -> Array:
 # Sticker book grid
 # ---------------------------------------------------------------------------
 
-func _test_sticker_columns() -> Array:
+func _test_sticker_columns():
 	var failures: Array = []
 
 	var width: float = StickerBookScreenScript.COLUMN_WIDTH
@@ -263,7 +263,7 @@ func _test_sticker_columns() -> Array:
 # Baby room layout
 # ---------------------------------------------------------------------------
 
-func _test_room_layout() -> Array:
+func _test_room_layout():
 	var failures: Array = []
 
 	if not ResourceLoader.exists(BABY_ROOM_SCENE):
@@ -333,7 +333,7 @@ func _test_room_layout() -> Array:
 
 ## The Story Mode caption must not sit under the grown-up gear (which would make
 ## one of them untappable) and must stay inside the safe area at both shapes.
-func _test_level_caption_clears_the_parent_gate(room: Node) -> Array:
+func _test_level_caption_clears_the_parent_gate(room: Node):
 	var failures: Array = []
 
 	var caption: Control = room.get_node_or_null(
@@ -375,7 +375,7 @@ func _test_level_caption_clears_the_parent_gate(room: Node) -> Array:
 # One frame system
 # ---------------------------------------------------------------------------
 
-func _test_one_frame_system() -> Array:
+func _test_one_frame_system():
 	var failures: Array = []
 
 	for scene_path: String in FRAME_ONLY_SCENES:

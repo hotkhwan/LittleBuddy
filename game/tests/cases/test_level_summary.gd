@@ -78,7 +78,7 @@ func run():
 ##   - the level IS completed and the next one opens (no dead end, no penalty
 ##     for using the escape hatch);
 ##   - it rates 0, not 1, and the child sees an encouraging screen anyway.
-func _test_skip_through_completes_without_a_star(root: Node) -> Array:
+func _test_skip_through_completes_without_a_star(root: Node):
 	var failures: Array = []
 
 	var library: RefCounted = ContentLibraryScript.create()
@@ -150,7 +150,7 @@ func _test_skip_through_completes_without_a_star(root: Node) -> Array:
 # The rating row
 # ---------------------------------------------------------------------------
 
-func _test_rating_row(root: Node) -> Array:
+func _test_rating_row(root: Node):
 	var failures: Array = []
 	var screen: Control = _make(root, failures)
 	if screen == null:
@@ -182,7 +182,7 @@ func _test_rating_row(root: Node) -> Array:
 	return failures
 
 
-func _test_no_level_hides_row(root: Node) -> Array:
+func _test_no_level_hides_row(root: Node):
 	var failures: Array = []
 	var screen: Control = _make(root, failures)
 	if screen == null:
@@ -209,7 +209,7 @@ func _test_no_level_hides_row(root: Node) -> Array:
 
 
 ## The regression guard. A weaker replay shows the best rating, not the new one.
-func _test_best_never_regresses(root: Node) -> Array:
+func _test_best_never_regresses(root: Node):
 	var failures: Array = []
 	var screen: Control = _make(root, failures)
 	if screen == null:
@@ -229,7 +229,7 @@ func _test_best_never_regresses(root: Node) -> Array:
 	return failures
 
 
-func _test_next_button_hidden_without_successor(root: Node) -> Array:
+func _test_next_button_hidden_without_successor(root: Node):
 	var failures: Array = []
 	var screen: Control = _make(root, failures)
 	if screen == null:
@@ -258,7 +258,7 @@ func _test_next_button_hidden_without_successor(root: Node) -> Array:
 	return failures
 
 
-func _test_signals_exist(root: Node) -> Array:
+func _test_signals_exist(root: Node):
 	var failures: Array = []
 	var screen: Control = _make(root, failures)
 	if screen == null:
@@ -300,7 +300,7 @@ func _test_signals_exist(root: Node) -> Array:
 ## Static read of the room script. Instantiating `baby_room.tscn` needs a 3D
 ## viewport and the full autoload set, which the headless runner does not have --
 ## but the wiring these assertions protect is a source-level fact.
-func _test_baby_room_routes_next_and_replay() -> Array:
+func _test_baby_room_routes_next_and_replay():
 	var failures: Array = []
 
 	var source: String = _read(BABY_ROOM_SCRIPT)
@@ -338,7 +338,7 @@ func _test_baby_room_routes_next_and_replay() -> Array:
 ## The escape hatch is protected here instead by checking the honest half --
 ## completion is recorded unconditionally -- so the child still moves on while
 ## the rating still means something.
-func _test_completion_is_split_from_stars(source: String) -> Array:
+func _test_completion_is_split_from_stars(source: String):
 	var failures: Array = []
 
 	if not source.contains("rate_session"):

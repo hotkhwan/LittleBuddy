@@ -45,7 +45,7 @@ func run():
 
 ## Text checks cannot catch a malformed .tscn, so actually instantiate each
 ## activity scene and confirm it exposes a usable context.
-func _test_scenes_instantiate(drop_zone: GDScript) -> Array:
+func _test_scenes_instantiate(drop_zone: GDScript):
 	var failures: Array = []
 	var tree: SceneTree = Engine.get_main_loop() as SceneTree
 	if tree == null:
@@ -83,7 +83,7 @@ func _test_scenes_instantiate(drop_zone: GDScript) -> Array:
 	return failures
 
 
-func _test_mapping_is_total(drop_zone: GDScript) -> Array:
+func _test_mapping_is_total(drop_zone: GDScript):
 	var failures: Array = []
 	for interaction: Variant in drop_zone.known_interactions():
 		var zone_id: String = drop_zone.zone_id_for_interaction(String(interaction))
@@ -101,7 +101,7 @@ func _test_mapping_is_total(drop_zone: GDScript) -> Array:
 
 ## The important one: shipped content must never name an interaction we cannot
 ## stage. A dangling interaction would be an unfinishable task.
-func _test_content_interactions_resolve(drop_zone: GDScript) -> Array:
+func _test_content_interactions_resolve(drop_zone: GDScript):
 	var failures: Array = []
 	var library_script: GDScript = load(LIBRARY_PATH) as GDScript
 	if library_script == null:
@@ -134,7 +134,7 @@ func _test_content_interactions_resolve(drop_zone: GDScript) -> Array:
 	return failures
 
 
-func _test_scenes_contain_every_zone(drop_zone: GDScript) -> Array:
+func _test_scenes_contain_every_zone(drop_zone: GDScript):
 	var failures: Array = []
 	for scene_path: String in ACTIVITY_SCENES:
 		var text: String = _read_text(scene_path)
@@ -158,7 +158,7 @@ func _test_scenes_contain_every_zone(drop_zone: GDScript) -> Array:
 
 ## Lighting/camera budget: exactly one DirectionalLight3D and one Camera3D exist
 ## in the project, and neither belongs to an activity scene.
-func _test_scenes_add_no_camera_or_light() -> Array:
+func _test_scenes_add_no_camera_or_light():
 	var failures: Array = []
 	for scene_path: String in ACTIVITY_SCENES:
 		var text: String = _read_text(scene_path)

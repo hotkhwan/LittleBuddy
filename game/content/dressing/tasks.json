@@ -190,6 +190,32 @@
       "reward": { "stars": 1 },
       "difficulty": 2,
       "cooldown": 4
+    },
+    {
+      "taskId": "sayShoes",
+      "category": "dressing",
+      "mode": "sayIt",
+      "objectId": "shoes",
+      "targetWords": ["shoes"],
+      "prompt": "My shoes are on!",
+      "instruction": "Say shoes.",
+      "repeatPrompt": "Can you say shoes?",
+      "acceptedCommands": [
+        "shoes",
+        "my shoes",
+        "these are my shoes",
+        "two shoes"
+      ],
+      "thaiHint": "พูดว่า shoes",
+      "interaction": "tap",
+      "reward": { "stars": 1 },
+      "difficulty": 2,
+      "cooldown": 5,
+      "stage": "toddler",
+      "speechRequired": false,
+      "targetId": "bedroom.wardrobe",
+      "characterAction": "point",
+      "assistAfterAttempts": 3
     }
   ]
 }

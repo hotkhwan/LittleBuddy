@@ -63,7 +63,7 @@ func run():
 	return failures
 
 
-func _test_chapter2_has_no_locomotion() -> Array:
+func _test_chapter2_has_no_locomotion():
 	var failures: Array = []
 	var scanned: int = 0
 	for directory: String in CHAPTER2_DIRS:
@@ -81,7 +81,7 @@ func _test_chapter2_has_no_locomotion() -> Array:
 	return failures
 
 
-func _test_house_does_not_reach_into_chapter2() -> Array:
+func _test_house_does_not_reach_into_chapter2():
 	var failures: Array = []
 	var scanned: int = 0
 	for directory: String in HOUSE_DIRS:
@@ -100,7 +100,7 @@ func _test_house_does_not_reach_into_chapter2() -> Array:
 
 ## The positive half: Chapter 2 still has the interaction model it shipped with.
 ## A guard that only forbids things would pass on an empty directory.
-func _test_baby_room_still_has_its_interaction_model() -> Array:
+func _test_baby_room_still_has_its_interaction_model():
 	var failures: Array = []
 	var text: String = _read(BABY_ROOM_SCENE)
 	if text.is_empty():
@@ -123,7 +123,7 @@ func _test_baby_room_still_has_its_interaction_model() -> Array:
 ## Chapter 2 and Chapter 3 share ONE character script. The toddler placeholder is
 ## a view, not a second movement implementation -- a fork would be two state
 ## machines to keep in step and is exactly what the contract forbids.
-func _test_the_character_api_is_shared_not_forked() -> Array:
+func _test_the_character_api_is_shared_not_forked():
 	var failures: Array = []
 	var house_scene: String = _read("res://scenes/house/house_world.tscn")
 	if not house_scene.contains("scripts/character/little_buddy_character.gd"):

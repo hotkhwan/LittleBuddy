@@ -74,7 +74,7 @@ func run():
 	return failures
 
 
-func _test_target_id_resolution() -> Array:
+func _test_target_id_resolution():
 	var failures: Array = []
 
 	if not NavigationController.target_id_for(null).is_empty():
@@ -114,7 +114,7 @@ func _test_target_id_resolution() -> Array:
 	return failures
 
 
-func _test_classify_tap() -> Array:
+func _test_classify_tap():
 	var failures: Array = []
 	var down: Vector3 = Vector3(0.0, -1.0, -1.0).normalized()
 	var origin := Vector3(0.0, 4.0, 4.0)
@@ -162,7 +162,7 @@ func _test_classify_tap() -> Array:
 	return failures
 
 
-func _test_apply_tap_routes_to_the_character() -> Array:
+func _test_apply_tap_routes_to_the_character():
 	var failures: Array = []
 	var controller: Node3D = NavigationController.new()
 	var character := FakeCharacter.new()
@@ -191,7 +191,7 @@ func _test_apply_tap_routes_to_the_character() -> Array:
 	return failures
 
 
-func _test_activity_target_node() -> Array:
+func _test_activity_target_node():
 	var failures: Array = []
 	var target: Area3D = ActivityTarget.new()
 	target.set("target_id", "toyBox")
@@ -255,7 +255,7 @@ func _test_activity_target_node() -> Array:
 ## The invariant behind required behaviour 3. Activity targets and draggable
 ## pickups must never share a collision layer, or tap-to-walk raycasts and drag
 ## picking would fight over the same objects.
-func _test_layers_do_not_collide_with_dragging() -> Array:
+func _test_layers_do_not_collide_with_dragging():
 	var failures: Array = []
 	var draggable_layer: int = 1  # set in DraggableObject._ready()
 	if ActivityTarget.ACTIVITY_TARGET_LAYER & draggable_layer != 0:

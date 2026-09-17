@@ -44,7 +44,7 @@ func run():
 
 
 ## Every objectId in objects.json must build a valid spec with no warnings.
-func _test_every_object_spawns(spawner: GDScript) -> Array:
+func _test_every_object_spawns(spawner: GDScript):
 	var failures: Array = []
 	var library_script: GDScript = load(LIBRARY_PATH) as GDScript
 	if library_script == null:
@@ -78,7 +78,7 @@ func _test_every_object_spawns(spawner: GDScript) -> Array:
 
 ## The measurement that matters: the on-screen grab area at the Baby Room camera
 ## (fov 50, 1366x1024) must be at least 220x220 px at every spawn point.
-func _test_grab_area(spawner: GDScript) -> Array:
+func _test_grab_area(spawner: GDScript):
 	var failures: Array = []
 	var minimum: float = float(spawner.MIN_GRAB_PX)
 
@@ -109,7 +109,7 @@ func _test_grab_area(spawner: GDScript) -> Array:
 
 
 ## Malformed content must degrade, never crash.
-func _test_defensive_defaults(spawner: GDScript) -> Array:
+func _test_defensive_defaults(spawner: GDScript):
 	var failures: Array = []
 
 	var empty: Dictionary = spawner.build_spec({})
@@ -139,7 +139,7 @@ func _test_defensive_defaults(spawner: GDScript) -> Array:
 
 ## Actually build a node for one record, to prove `spawn()` wires up a real,
 ## draggable, generously-collidable object and not just a Dictionary.
-func _test_real_node_construction(spawner: GDScript) -> Array:
+func _test_real_node_construction(spawner: GDScript):
 	var failures: Array = []
 	var node: Area3D = spawner.spawn({
 		"objectId": "milk", "word": "milk", "category": "feeding",
@@ -178,7 +178,7 @@ func _test_real_node_construction(spawner: GDScript) -> Array:
 
 ## A record naming a model must actually spawn that model -- textured from the
 ## shared atlas -- and not quietly keep the old primitive.
-func _test_model_visual(spawner: GDScript) -> Array:
+func _test_model_visual(spawner: GDScript):
 	var failures: Array = []
 	var node: Area3D = spawner.spawn({
 		"objectId": "milk", "word": "milk", "category": "feeding",
@@ -252,7 +252,7 @@ func _test_model_visual(spawner: GDScript) -> Array:
 
 ## The visible mesh must stay INSIDE the grab collider. A visual larger than its
 ## touch target would invite a child to aim at something the picker cannot hit.
-func _test_model_fits_inside_grab_area(spawner: GDScript) -> Array:
+func _test_model_fits_inside_grab_area(spawner: GDScript):
 	var failures: Array = []
 	var grab: float = float(spawner.GRAB_SIZE_M)
 	var centre: Vector3 = Vector3(0.0, float(spawner.VISUAL_CENTRE_Y), 0.0)
@@ -287,7 +287,7 @@ func _test_model_fits_inside_grab_area(spawner: GDScript) -> Array:
 ## default pack -- content written before packs existed keeps working, and both
 ## spellings must land on the SAME presentation entry, or an object would
 ## silently lose its authored rotation and come out edge-on.
-func _test_model_names(spawner: GDScript) -> Array:
+func _test_model_names(spawner: GDScript):
 	var failures: Array = []
 
 	if String(spawner.canonical_model("apple")) != "kenney-food-kit/apple":
@@ -324,7 +324,7 @@ func _test_model_names(spawner: GDScript) -> Array:
 ## shade and its metal stem are separate surfaces with separate materials. Both
 ## must be built AND registered, otherwise half the object would stay bright
 ## while the other half dimmed.
-func _test_untextured_model_parts(spawner: GDScript) -> Array:
+func _test_untextured_model_parts(spawner: GDScript):
 	var failures: Array = []
 	var model_name: String = "kenney-furniture-kit/lampRoundTable"
 	if not spawner.model_available(model_name):
@@ -369,7 +369,7 @@ func _test_untextured_model_parts(spawner: GDScript) -> Array:
 ## Generated models: one mesh, one material, and the record's colour still the
 ## source of truth -- the mesh carries only a greyscale shade, so the same
 ## cached mesh can serve any authored colour.
-func _test_procedural_visual(spawner: GDScript) -> Array:
+func _test_procedural_visual(spawner: GDScript):
 	var failures: Array = []
 	var node: Area3D = spawner.spawn({
 		"objectId": "blocks", "word": "block", "category": "play",
@@ -426,7 +426,7 @@ func _test_procedural_visual(spawner: GDScript) -> Array:
 ## The whole point of making `model` optional: a missing or broken model must
 ## degrade to the primitive the game already shipped, never to an invisible or
 ## untouchable object.
-func _test_missing_model_falls_back(spawner: GDScript) -> Array:
+func _test_missing_model_falls_back(spawner: GDScript):
 	var failures: Array = []
 	var record: Dictionary = {
 		"objectId": "apple", "word": "apple", "category": "feeding",

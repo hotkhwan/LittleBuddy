@@ -28,7 +28,7 @@ func run():
 
 ## A character standing slightly above or below the tap point has still arrived.
 ## If Y counted, a character on a rug would never reach anything.
-func _test_flat_distance_ignores_height() -> Array:
+func _test_flat_distance_ignores_height():
 	var failures: Array = []
 	var a := Vector3(0.0, 0.0, 0.0)
 	var b := Vector3(0.0, 5.0, 0.0)
@@ -47,7 +47,7 @@ func _test_flat_distance_ignores_height() -> Array:
 	return failures
 
 
-func _test_ray_to_floor() -> Array:
+func _test_ray_to_floor():
 	var failures: Array = []
 
 	# A ray angled down from a camera hits the floor at a finite point.
@@ -85,7 +85,7 @@ func _test_ray_to_floor() -> Array:
 ## The single most important rule in the whole spike: `map_get_path()` never says
 ## "unreachable", it silently returns a path that stops short. Comparing the
 ## path's real endpoint with what was asked for IS the reachability test.
-func _test_path_reaches() -> Array:
+func _test_path_reaches():
 	var failures: Array = []
 	var target := Vector3(5.0, 0.0, 0.0)
 
@@ -114,7 +114,7 @@ func _test_path_reaches() -> Array:
 	return failures
 
 
-func _test_advance_path_index() -> Array:
+func _test_advance_path_index():
 	var failures: Array = []
 	var path := PackedVector3Array([
 		Vector3(0.0, 0.0, 0.0), Vector3(1.0, 0.0, 0.0), Vector3(2.0, 0.0, 0.0), Vector3(3.0, 0.0, 0.0),
@@ -155,7 +155,7 @@ func _test_advance_path_index() -> Array:
 	return failures
 
 
-func _test_facing() -> Array:
+func _test_facing():
 	var failures: Array = []
 
 	# Godot's forward is -Z, so facing a point at -Z is yaw 0.
@@ -201,7 +201,7 @@ func _test_facing() -> Array:
 	return failures
 
 
-func _test_steer_velocity() -> Array:
+func _test_steer_velocity():
 	var failures: Array = []
 
 	var velocity: Vector3 = NavMath.steer_velocity(Vector3.ZERO, Vector3(10.0, 0.0, 0.0), 0.85, 0.016)
@@ -225,7 +225,7 @@ func _test_steer_velocity() -> Array:
 
 ## Standing to interact: always on the approach side, so Little Buddy never walks
 ## through an object to stand behind it.
-func _test_stand_position() -> Array:
+func _test_stand_position():
 	var failures: Array = []
 	var object_at := Vector3(0.0, 0.0, 0.0)
 

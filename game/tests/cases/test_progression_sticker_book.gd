@@ -69,7 +69,7 @@ func run():
 ## A self-intersecting polygon makes Godot's triangulator give up and draw
 ## nothing -- a blank card that only shows up on the device. Check every sticker
 ## at a few sizes instead.
-func _test_every_sticker_draws(stickers: Array) -> Array:
+func _test_every_sticker_draws(stickers: Array):
 	var failures: Array = []
 	var sizes: Array[float] = [64.0, 148.0, 320.0]
 
@@ -124,7 +124,7 @@ func _test_every_sticker_draws(stickers: Array) -> Array:
 # Thresholds: reachable and monotonic
 # ---------------------------------------------------------------------------
 
-func _test_thresholds(stickers: Array) -> Array:
+func _test_thresholds(stickers: Array):
 	var failures: Array = []
 	var previous: int = -1
 
@@ -164,7 +164,7 @@ func _test_thresholds(stickers: Array) -> Array:
 # Unlocking
 # ---------------------------------------------------------------------------
 
-func _test_nothing_unlocked_at_zero(library: Object) -> Array:
+func _test_nothing_unlocked_at_zero(library: Object):
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var book: Object = _book(save)
@@ -180,7 +180,7 @@ func _test_nothing_unlocked_at_zero(library: Object) -> Array:
 	return failures
 
 
-func _test_below_threshold(library: Object, stickers: Array) -> Array:
+func _test_below_threshold(library: Object, stickers: Array):
 	var failures: Array = []
 
 	for entry: Variant in stickers:
@@ -205,7 +205,7 @@ func _test_below_threshold(library: Object, stickers: Array) -> Array:
 	return failures
 
 
-func _test_idempotent(library: Object) -> Array:
+func _test_idempotent(library: Object):
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var book: Object = _book(save)
@@ -240,7 +240,7 @@ func _test_idempotent(library: Object) -> Array:
 # Persistence
 # ---------------------------------------------------------------------------
 
-func _test_persistence_round_trip(library: Object) -> Array:
+func _test_persistence_round_trip(library: Object):
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var book: Object = _book(save)
@@ -277,7 +277,7 @@ func _test_persistence_round_trip(library: Object) -> Array:
 	return failures
 
 
-func _test_star_drop_keeps_stickers(library: Object, stickers: Array) -> Array:
+func _test_star_drop_keeps_stickers(library: Object, stickers: Array):
 	var failures: Array = []
 	var save: FakeSave = FakeSave.new()
 	var book: Object = _book(save)
@@ -313,7 +313,7 @@ func _test_star_drop_keeps_stickers(library: Object, stickers: Array) -> Array:
 # Corruption
 # ---------------------------------------------------------------------------
 
-func _test_corrupt_data(library: Object) -> Array:
+func _test_corrupt_data(library: Object):
 	var failures: Array = []
 
 	var corrupt_values: Array = [
@@ -371,7 +371,7 @@ func _test_corrupt_data(library: Object) -> Array:
 # Celebrate-once
 # ---------------------------------------------------------------------------
 
-func _test_celebrate_once(library: Object, stickers: Array) -> Array:
+func _test_celebrate_once(library: Object, stickers: Array):
 	var failures: Array = []
 	if stickers.is_empty():
 		return failures
@@ -411,7 +411,7 @@ func _test_celebrate_once(library: Object, stickers: Array) -> Array:
 # No save service attached
 # ---------------------------------------------------------------------------
 
-func _test_no_save_service(library: Object) -> Array:
+func _test_no_save_service(library: Object):
 	var failures: Array = []
 	var book: Object = StickerBookScript.new()
 	book.attach(null)

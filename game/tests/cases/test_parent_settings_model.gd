@@ -46,7 +46,7 @@ func run():
 	return failures
 
 
-func _test_defaults() -> Array:
+func _test_defaults():
 	var failures: Array = []
 	var service := FakeSaveService.new()
 	var model: Object = ModelScript.new(service)
@@ -71,7 +71,7 @@ func _test_defaults() -> Array:
 	return failures
 
 
-func _test_keys_written() -> Array:
+func _test_keys_written():
 	var failures: Array = []
 	var service := FakeSaveService.new()
 	var model: Object = ModelScript.new(service)
@@ -102,7 +102,7 @@ func _test_keys_written() -> Array:
 	return failures
 
 
-func _test_tts_speed_validation() -> Array:
+func _test_tts_speed_validation():
 	var failures: Array = []
 	var service := FakeSaveService.new()
 	var model: Object = ModelScript.new(service)
@@ -120,7 +120,7 @@ func _test_tts_speed_validation() -> Array:
 	return failures
 
 
-func _test_corrupt_values_fall_back() -> Array:
+func _test_corrupt_values_fall_back():
 	var failures: Array = []
 	var service := FakeSaveService.new()
 	service.settings = {"thaiHints": "yes", "speechEnabled": 3, "ttsSpeed": 7}
@@ -136,7 +136,7 @@ func _test_corrupt_values_fall_back() -> Array:
 	return failures
 
 
-func _test_without_service() -> Array:
+func _test_without_service():
 	var failures: Array = []
 	# No SaveService autoload (scene preview / headless test): must not crash.
 	var model: Object = ModelScript.new(null)
@@ -158,7 +158,7 @@ func _test_without_service() -> Array:
 	return failures
 
 
-func _test_reset() -> Array:
+func _test_reset():
 	var failures: Array = []
 	var service := FakeSaveService.new()
 	service.stars = 12

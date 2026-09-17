@@ -23,6 +23,15 @@ extends RefCounted
 ## walks while carrying is WALKING with `is_carrying()` true, so the animation
 ## layer can pick a carry-walk clip without inventing a sixth state.
 ##
+## The same trick covers held poses. Sitting and sleeping are postures, not
+## events, so `request_action(name, duration, true)` runs its settle timer, ends
+## it like any other action, and then parks the character in its RESTING state
+## with `get_held_action()` naming the pose. There is no SITTING state and no
+## SLEEPING state: a posture is not a reason to stop accepting instructions, and
+## a state per action is exactly the overbuild this file exists to avoid. The
+## hold is released by any new request, by `cancel()`, by `release_hold()` or by
+## being disabled, so a child's next tap always works.
+##
 ## ## The rules worth knowing
 ##
 ## * **One destination, never a queue.** A new move request replaces the path in
@@ -108,6 +117,12 @@ var _move_serial: int = 0
 
 var _action_name: String = ""
 var _action_remaining: float = 0.0
+## True while the action currently running is a posture that will persist once
+## its settle timer ends, rather than a one-shot that returns to rest.
+var _action_holds: bool = false
+## The posture currently being held ("sit", "sleep", "hold"), or "" for none.
+## Orthogonal to `_state` on purpose -- see the class doc.
+var _held_action: String = ""
 
 
 static func create(provider: RefCounted = null) -> RefCounted:
@@ -180,19 +195,47 @@ func request_move(destination: Vector3, options: Dictionary = {}) -> int:
 ## Plays a semantic action ("drink", "brushTeeth", "celebrate"...).
 ##
 ## The controller neither knows nor cares whether an animation for `action_name`
-## exists. It always runs a timer and always returns to a resting state, so an
-## action whose clip has not been authored yet is a short pause, never a stuck
-## character. Walking is cancelled first -- the child asked for something else.
-func request_action(action_name: String, duration: float = -1.0) -> bool:
+## exists, nor what the word means. It always runs a timer and always ENDS the
+## action, so an action whose clip has not been authored yet is a short pause,
+## never a stuck character. Walking is cancelled first -- the child asked for
+## something else -- and any posture already being held is released, because you
+## cannot start brushing your teeth while still asleep.
+##
+## `hold` is the one-shot/posture distinction, passed in rather than looked up:
+## the vocabulary lives in `character_action_driver.gd` and this object stays a
+## pure timer and state machine. When true, the action still finishes normally
+## after `duration`, and the character then rests *in* the pose --
+## `get_held_action()` reports it until something releases it.
+func request_action(action_name: String, duration: float = -1.0, hold: bool = false) -> bool:
 	if _disabled:
 		return false
 	if action_name.strip_edges().is_empty():
 		return false
 	_clear_path()
+	_held_action = ""
 	_action_name = action_name
+	_action_holds = hold
 	_action_remaining = duration if duration > 0.0 else DEFAULT_ACTION_SEC
 	_state = State.INTERACTING
 	return true
+
+
+## Ends a held posture and returns to rest. Returns the posture that was
+## released, or "" if there was nothing to release -- so a caller can tell the
+## difference between "stood up" and "was already standing" without asking first.
+func release_hold() -> String:
+	var released: String = _held_action
+	_held_action = ""
+	return released
+
+
+## The posture currently held ("sit", "sleep", "hold"), or "".
+func get_held_action() -> String:
+	return _held_action
+
+
+func is_holding() -> bool:
+	return not _held_action.is_empty()
 
 
 ## Stops whatever is happening and returns to rest. Emits no arrival: a cancelled
@@ -201,6 +244,8 @@ func cancel() -> void:
 	_clear_path()
 	_action_name = ""
 	_action_remaining = 0.0
+	_action_holds = false
+	_held_action = ""
 	if not _disabled:
 		_state = _resting_state()
 
@@ -226,6 +271,8 @@ func set_disabled(disabled: bool) -> void:
 		_clear_path()
 		_action_name = ""
 		_action_remaining = 0.0
+		_action_holds = false
+		_held_action = ""
 		_state = State.DISABLED
 	else:
 		_state = _resting_state()
@@ -250,6 +297,7 @@ func is_disabled() -> bool:
 ##   `actionFinished`   bool
 ##   `targetId`         String
 ##   `actionName`       String
+##   `heldAction`       String       -- the posture being held, or ""
 func advance(position: Vector3, yaw: float, delta: float) -> Dictionary:
 	_last_known_position = position
 
@@ -263,6 +311,7 @@ func advance(position: Vector3, yaw: float, delta: float) -> Dictionary:
 		"actionFinished": false,
 		"targetId": _target_id,
 		"actionName": _action_name,
+		"heldAction": _held_action,
 	}
 	if _disabled:
 		return step
@@ -282,6 +331,7 @@ func advance(position: Vector3, yaw: float, delta: float) -> Dictionary:
 	# with "" here would make `action_finished` fire with no name at all.
 	if not bool(step["actionFinished"]):
 		step["actionName"] = _action_name
+	step["heldAction"] = _held_action
 	return step
 
 
@@ -329,8 +379,13 @@ func _advance_interacting(delta: float, step: Dictionary) -> void:
 		return
 	step["actionFinished"] = true
 	step["actionName"] = _action_name
+	# A posture is now *held*: the action is genuinely over (a mission awaiting
+	# `action_finished` is released, so nothing can dead-end), but the character
+	# stays in the pose until something releases it.
+	_held_action = _action_name if _action_holds else ""
 	_action_name = ""
 	_action_remaining = 0.0
+	_action_holds = false
 	_state = _resting_state()
 
 
@@ -416,6 +471,11 @@ func _adopt_path(path: PackedVector3Array, destination: Vector3, options: Dictio
 	_interaction_ready_emitted = false
 	_action_name = ""
 	_action_remaining = 0.0
+	_action_holds = false
+	# You cannot walk while sitting or asleep. Accepting a walk releases the pose,
+	# which is why a child can never tap the character into a corner it cannot get
+	# out of.
+	_held_action = ""
 	_move_serial += 1
 	_state = State.WALKING
 

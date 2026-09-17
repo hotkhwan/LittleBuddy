@@ -100,7 +100,7 @@ static func from_dict(raw: Variant) -> RefCounted:
 	if typeof(raw) != TYPE_DICTIONARY:
 		return create()
 	var map: Dictionary = raw
-	return create(String(map.get(ROOM_FIELD, "")), String(map.get(SPAWN_FIELD, "")))
+	return create(str(map.get(ROOM_FIELD, "")), str(map.get(SPAWN_FIELD, "")))
 
 
 ## -- Profile round trip --------------------------------------------------------
