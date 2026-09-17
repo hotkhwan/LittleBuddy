@@ -64,6 +64,7 @@ extends Node
 const MissionRunnerScript := preload("res://scripts/gameplay/mission_runner.gd")
 ## The same runner, playing the day in the order it was authored. See the file.
 const HouseMissionRunnerScript := preload("res://scripts/gameplay/house_mission_runner.gd")
+const PromptSpeakerScript := preload("res://scripts/speech/prompt_speaker.gd")
 const ContentLibraryScript := preload("res://scripts/content/content_library.gd")
 const LevelSystemScript := preload("res://scripts/progression/level_system.gd")
 const StarRulesScript := preload("res://scripts/progression/star_rules.gd")
@@ -211,6 +212,12 @@ func bind(world: Node) -> void:
 	_runner = HouseMissionRunnerScript.new()
 	_runner.name = "MissionRunner"
 	add_child(_runner)
+
+	# Mission intro/outro phrases ("Good morning!", "Good night.") reach only a
+	# Label otherwise -- invisible to a pre-reader, which is every player. The
+	# speaker queues rather than interrupts and stays quiet for any line the
+	# mode handler already spoke, so prompts never stutter or chop each other.
+	PromptSpeakerScript.attach(_runner, get_node_or_null("/root/TtsService"))
 	_runner.connect("mission_started", _on_mission_started)
 	_runner.connect("mission_progress", _on_mission_progress)
 	_runner.connect("task_started", _on_task_started)

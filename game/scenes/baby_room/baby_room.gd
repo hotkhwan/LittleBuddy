@@ -39,6 +39,7 @@ const MissionRunnerScript := preload("res://scripts/gameplay/mission_runner.gd")
 const ContentLibraryScript := preload("res://scripts/content/content_library.gd")
 const StickerBookScript := preload("res://scripts/progression/sticker_book.gd")
 const CelebrationScript := preload("res://scripts/progression/celebration.gd")
+const PromptSpeakerScript := preload("res://scripts/speech/prompt_speaker.gd")
 # Preloaded rather than referenced by `class_name`: global class names come from
 # the editor's script-class cache, which the headless `--script` test runner does
 # not build. A `class_name` reference here parse-errors the whole room there.
@@ -253,6 +254,12 @@ func _begin_mission_mode() -> void:
 	_runner = MissionRunnerScript.new()
 	_runner.name = "MissionRunner"
 	add_child(_runner)
+
+	# Mission intro/outro phrases ("Good morning!", "Good night.") reach only a
+	# Label otherwise -- invisible to a pre-reader, which is every player. The
+	# speaker queues rather than interrupts and stays quiet for any line the
+	# mode handler already spoke, so prompts never stutter or chop each other.
+	PromptSpeakerScript.attach(_runner, get_node_or_null("/root/TtsService"))
 
 	_runner.mission_started.connect(_on_mission_started)
 	_runner.mission_progress.connect(_on_mission_progress)
