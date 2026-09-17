@@ -3,6 +3,7 @@
   "objectsFile": "res://content/objects.json",
   "vocabularyFile": "res://content/vocabulary/vocabulary.json",
   "missionsFile": "res://content/missions/missions.json",
+  "chaptersFile": "res://content/chapters/chapters.json",
   "stickersFile": "res://content/stickers/stickers.json",
   "legacyActivityFile": "res://content/feeding/feed_milk.json",
   "modes": ["findIt", "sayIt", "followInstruction"],

@@ -39,6 +39,11 @@ const MissionRunnerScript := preload("res://scripts/gameplay/mission_runner.gd")
 const ContentLibraryScript := preload("res://scripts/content/content_library.gd")
 const StickerBookScript := preload("res://scripts/progression/sticker_book.gd")
 const CelebrationScript := preload("res://scripts/progression/celebration.gd")
+# Preloaded rather than referenced by `class_name`: global class names come from
+# the editor's script-class cache, which the headless `--script` test runner does
+# not build. A `class_name` reference here parse-errors the whole room there.
+const LevelSystemScript := preload("res://scripts/progression/level_system.gd")
+const StarRulesScript := preload("res://scripts/progression/star_rules.gd")
 
 const ENCOURAGEMENT_GREAT: String = "Great!"
 const ENCOURAGEMENT_TRY_AGAIN: String = "Try again!"
@@ -139,6 +144,12 @@ var _parent_settings_open: bool = false
 
 var _legacy_started: bool = false
 var _last_mission_id: String = ""
+## Built lazily and tolerated as null: every level feature below degrades to the
+## pre-Phase-1 behaviour rather than breaking the room.
+var _level_system: RefCounted = null
+## Set by the summary's Next button so the next mission is the authored successor
+## rather than the usual random pick. Cleared as soon as it is consumed.
+var _forced_next_mission_id: String = ""
 var _mission_new_stickers: Array = []
 var _task_speak_enabled: bool = false
 var _happy_reaction_generation: int = 0
@@ -355,11 +366,20 @@ func _pick_mission_id() -> String:
 	return String(choices[randi() % choices.size()])
 
 
-func _start_next_mission() -> void:
+## `preferred_mission_id` lets the summary drive the choice -- the authored next
+## level, or the same level again for a replay. Empty falls back to the original
+## random pick, so every pre-Phase-1 caller behaves exactly as before. A preferred
+## mission that turns out to be unplayable is ignored rather than started, so the
+## child can never be dropped into an empty room.
+func _start_next_mission(preferred_mission_id: String = "") -> void:
 	if _mode != Mode.MISSION or _runner == null:
 		return
 
-	var mission_id: String = _pick_mission_id()
+	var mission_id: String = ""
+	if not preferred_mission_id.is_empty() and _playable_task_count(preferred_mission_id) > 0:
+		mission_id = preferred_mission_id
+	else:
+		mission_id = _pick_mission_id()
 	if mission_id.is_empty():
 		# Content vanished under us. Rather than showing an empty room, hand the
 		# child back the legacy feeding loop, which needs no content at all.
@@ -541,7 +561,68 @@ func _on_mission_completed(_mission_id: String, _stars_earned: int) -> void:
 	if ledger != null and ledger.has_method("get_session_stars"):
 		session_stars = int(ledger.call("get_session_stars"))
 
-	_show_summary(session_stars, _reward_manager.get_stars(), _mission_new_stickers)
+	_show_summary(session_stars, _reward_manager.get_stars(), _mission_new_stickers, _rate_and_record_level(_mission_id))
+
+
+## Rates the run that just ended, stores the level's best-ever rating and works
+## out what the summary should offer next. Returns `{}` for a mission that is not
+## an authored level, which leaves the summary exactly as it was before Phase 1.
+##
+## The two star currencies stay separate here: `RewardManager` owns lifetime task
+## `stars` (stickers), and this owns per-level 0..3 (`starsByLevel`). Nothing adds
+## them together -- see docs/PHASE1_CONTRACT.md.
+func _rate_and_record_level(mission_id: String) -> Dictionary:
+	var system: RefCounted = _ensure_level_system()
+	if system == null or _runner == null:
+		return {}
+
+	var level: RefCounted = system.call("get_level_for_mission", mission_id)
+	if level == null or not level.call("is_authored_level"):
+		return {}
+	var level_id: String = String(level.call("get_level_id"))
+	if level_id.is_empty():
+		return {}
+
+	var session: Dictionary = StarRulesScript.session(_runner.call("get_awarded_task_ids"))
+	# Reaching the end of a level always earns the first star, even if every task
+	# was skipped. The skip button is the room's no-dead-end escape hatch and it
+	# already "looks exactly like a completion on the progress dots"; letting it
+	# lock the next level instead would turn that promise into a penalty. Stars 2
+	# and 3 are never granted this way, so the rating still means something.
+	var rated: int = maxi(int(system.call("rate_session", level_id, session)), 1)
+
+	# Max-wins and idempotent inside `LevelSystem`, so a replay can only ever
+	# raise a rating, and re-applying the same result changes nothing.
+	var applied: Dictionary = system.call("apply_completion", level_id, rated)
+	var best: int = int(applied.get("stars", rated))
+
+	var next_level_id: String = String(system.call("get_next_level_id", level_id))
+	var next_mission_id: String = ""
+	if not next_level_id.is_empty():
+		next_mission_id = String(system.call("get_mission_id_for_level", next_level_id))
+		# An authored successor whose content cannot actually be played is worse
+		# than no Next button at all.
+		if _playable_task_count(next_mission_id) <= 0:
+			next_mission_id = ""
+
+	_forced_next_mission_id = next_mission_id
+
+	return {
+		"levelId": level_id,
+		"levelTitle": level.call("get_title"),
+		"levelStars": rated,
+		"bestStars": best,
+		"hasNextLevel": not next_mission_id.is_empty(),
+	}
+
+
+func _ensure_level_system() -> RefCounted:
+	if _level_system != null:
+		return _level_system
+	if _library == null:
+		return null
+	_level_system = LevelSystemScript.create(_library)
+	return _level_system
 
 
 func _on_mission_prompt_changed(prompt: String, thai_hint: String) -> void:
@@ -617,7 +698,7 @@ func _on_award_granted(_completion_id: String, granted: int, previous_total: int
 
 ## -- Overlays: summary, sticker book, parent settings -------------------------------
 
-func _show_summary(stars_earned: int, total_stars: int, new_stickers: Array) -> void:
+func _show_summary(stars_earned: int, total_stars: int, new_stickers: Array, level_result: Dictionary = {}) -> void:
 	var summary: Control = _ensure_summary()
 	if summary == null:
 		# The summary scene is missing. Never dead-end on it: go straight into
@@ -627,7 +708,7 @@ func _show_summary(stars_earned: int, total_stars: int, new_stickers: Array) -> 
 		call_deferred("_start_next_mission")
 		return
 	summary.call("reset")
-	summary.call("show_summary", stars_earned, total_stars, new_stickers)
+	summary.call("show_summary", stars_earned, total_stars, new_stickers, level_result)
 	summary.visible = true
 	_refresh_input_blocking()
 
@@ -640,6 +721,8 @@ func _ensure_summary() -> Control:
 		return null
 	if _summary.has_signal("play_again"):
 		_summary.connect("play_again", _on_summary_play_again)
+	if _summary.has_signal("next_level"):
+		_summary.connect("next_level", _on_summary_next_level)
 	if _summary.has_signal("closed"):
 		_summary.connect("closed", _on_summary_closed)
 	return _summary
@@ -651,15 +734,31 @@ func _hide_summary() -> void:
 	_refresh_input_blocking()
 
 
+## Replay means *this* level again, not "some other level". `_last_mission_id` is
+## still the run that just finished, and it is read before `_start_next_mission`
+## overwrites it.
 func _on_summary_play_again() -> void:
 	_hide_summary()
-	_start_next_mission()
+	var replay_id: String = _last_mission_id
+	_forced_next_mission_id = ""
+	_start_next_mission(replay_id)
+
+
+## Next advances to the authored successor. `_forced_next_mission_id` was already
+## checked for playable content when the summary was built, and is consumed here
+## so a later random pick cannot inherit it.
+func _on_summary_next_level() -> void:
+	_hide_summary()
+	var next_id: String = _forced_next_mission_id
+	_forced_next_mission_id = ""
+	_start_next_mission(next_id)
 
 
 ## The summary's back button leads forward too: there is nowhere else to go, and
 ## a child must never be able to close their way into an empty screen.
 func _on_summary_closed() -> void:
 	_hide_summary()
+	_forced_next_mission_id = ""
 	_start_next_mission()
 
 

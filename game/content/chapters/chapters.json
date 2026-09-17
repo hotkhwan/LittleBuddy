@@ -1,0 +1,31 @@
+{
+  "contentVersion": 1,
+  "chapters": [
+    {
+      "chapterId": "ch2",
+      "chapterNumber": 2,
+      "title": "Baby Days",
+      "thaiTitle": "วันของเบบี๋",
+      "status": "shipped",
+      "summary": "Little Buddy is a newborn. Every level here runs on missions and tasks that already ship and are already validated.",
+      "levelIds": [
+        "milkTime",
+        "bathTime",
+        "bedtime",
+        "toysAndSmiles",
+        "firstWords"
+      ]
+    },
+    {
+      "chapterId": "ch3",
+      "chapterNumber": 3,
+      "title": "Toddler Adventures",
+      "thaiTitle": "การผจญภัยวัยเตาะแตะ",
+      "status": "planned",
+      "summary": "Provisional. Only the levels whose content already ships are listed; the movement-based levels are not built yet. 'sayItChallenge' is a bonus level, so it never blocks chapter completion.",
+      "levelIds": [
+        "gettingDressed"
+      ]
+    }
+  ]
+}

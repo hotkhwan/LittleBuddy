@@ -16,7 +16,19 @@
         "wearShoes",
         "feedMilk",
         "findSpoon"
-      ]
+      ],
+      "chapterId": "ch3",
+      "levelId": "gettingDressed",
+      "levelTitle": "Getting Dressed",
+      "levelThaiTitle": "แต่งตัว",
+      "levelNumber": 13,
+      "storyBeat": "Buddy wants to dress themselves; the player helps.",
+      "template": "placeIt",
+      "starRules": {
+        "coreTaskIds": ["wearPants", "wearRedShirt", "wearShoes"],
+        "listeningTaskIds": ["findShoes", "findSpoon"],
+        "optionalTaskIds": ["feedMilk"]
+      }
     },
     {
       "missionId": "feedingTime",
@@ -33,7 +45,19 @@
         "feedBanana",
         "findBowl",
         "sayMilk"
-      ]
+      ],
+      "chapterId": "ch2",
+      "levelId": "milkTime",
+      "levelTitle": "Milk Time",
+      "levelThaiTitle": "เวลานม",
+      "levelNumber": 6,
+      "storyBeat": "Buddy is hungry for the first time and the player answers.",
+      "template": "fetchAndGive",
+      "starRules": {
+        "coreTaskIds": ["feedMilk", "feedWater", "feedApple"],
+        "listeningTaskIds": ["findBowl", "sayMilk"],
+        "optionalTaskIds": ["feedBanana"]
+      }
     },
     {
       "missionId": "playTime",
@@ -51,7 +75,19 @@
         "findStar",
         "sayBall",
         "tidyToyBox"
-      ]
+      ],
+      "chapterId": "ch2",
+      "levelId": "toysAndSmiles",
+      "levelTitle": "Toys & Smiles",
+      "levelThaiTitle": "ของเล่นและรอยยิ้ม",
+      "levelNumber": 9,
+      "storyBeat": "Care becomes play; Buddy laughs for the first time.",
+      "template": "fetchAndGive",
+      "starRules": {
+        "coreTaskIds": ["giveBall", "giveTeddy", "blockInToyBox"],
+        "listeningTaskIds": ["findBall", "findStar", "sayBall"],
+        "optionalTaskIds": ["tidyToyBox"]
+      }
     },
     {
       "missionId": "bathTime",
@@ -69,7 +105,19 @@
         "dryWithTowel",
         "giveBathToy",
         "sayToothbrush"
-      ]
+      ],
+      "chapterId": "ch2",
+      "levelId": "bathTime",
+      "levelTitle": "Bath Time",
+      "levelThaiTitle": "เวลาอาบน้ำ",
+      "levelNumber": 7,
+      "storyBeat": "Buddy gets messy and the player makes it fun, not a chore.",
+      "template": "sequenceRoutine",
+      "starRules": {
+        "coreTaskIds": ["giveSoap", "giveCup", "brushTeeth", "dryWithTowel"],
+        "listeningTaskIds": ["findTowel", "sayToothbrush"],
+        "optionalTaskIds": ["giveBathToy"]
+      }
     },
     {
       "missionId": "bedtimeRoutine",
@@ -86,7 +134,19 @@
         "bedtimeBlanket",
         "turnOffLamp",
         "sayGoodNight"
-      ]
+      ],
+      "chapterId": "ch2",
+      "levelId": "bedtime",
+      "levelTitle": "Bedtime",
+      "levelThaiTitle": "เวลานอน",
+      "levelNumber": 8,
+      "storyBeat": "The day ends softly; the first repeatable comfort ritual.",
+      "template": "sequenceRoutine",
+      "starRules": {
+        "coreTaskIds": ["bedtimePajamas", "bedtimeTeddy", "bedtimePillow", "bedtimeBlanket"],
+        "listeningTaskIds": ["sayGoodNight"],
+        "optionalTaskIds": ["turnOffLamp"]
+      }
     },
     {
       "missionId": "colorsAndShapes",
@@ -105,7 +165,19 @@
         "findStar",
         "sayBlue",
         "sayCircle"
-      ]
+      ],
+      "chapterId": "ch2",
+      "levelId": "firstWords",
+      "levelTitle": "First Words",
+      "levelThaiTitle": "คำแรก",
+      "levelNumber": 10,
+      "storyBeat": "Buddy says a word back - the chapter's emotional payoff.",
+      "template": "chooseCorrectObject",
+      "starRules": {
+        "coreTaskIds": ["wearRedShirt", "wearBlueShirt", "wearYellowShirt"],
+        "listeningTaskIds": ["findCircle", "findSquare", "findStar", "sayBlue"],
+        "optionalTaskIds": ["sayCircle"]
+      }
     },
     {
       "missionId": "sayItChallenge",
@@ -124,7 +196,19 @@
         "sayCircle",
         "sayPillow",
         "sayGoodNight"
-      ]
+      ],
+      "chapterId": "ch3",
+      "levelId": "sayItChallenge",
+      "levelTitle": "Say It Challenge",
+      "levelThaiTitle": "ท้าพูดภาษาอังกฤษ",
+      "levelNumber": 0,
+      "storyBeat": "A bonus word round. Every prompt is passable by tapping the word.",
+      "template": "chooseCorrectObject",
+      "starRules": {
+        "coreTaskIds": ["sayMilk", "sayBanana", "sayBlue", "sayTowel"],
+        "listeningTaskIds": ["sayToothbrush", "sayCircle", "sayPillow"],
+        "optionalTaskIds": ["sayGoodNight"]
+      }
     }
   ]
 }

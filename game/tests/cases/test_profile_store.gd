@@ -36,6 +36,9 @@ func run() -> Array:
 	failures.append_array(_test_duplicate_completed_activities(test_path))
 
 	_cleanup(test_path)
+	failures.append_array(_test_wrong_typed_v2_fields(test_path))
+
+	_cleanup(test_path)
 	return failures
 
 
@@ -58,12 +61,25 @@ func _test_fresh_defaults(path: String) -> Array:
 	var store := ProfileStore.new(path)
 	var profile := store.load_profile()
 
-	if profile.get("profileVersion") != 1:
-		failures.append("fresh load: expected profileVersion 1, got %s" % str(profile.get("profileVersion")))
+	if profile.get("profileVersion") != 2:
+		failures.append("fresh load: expected profileVersion 2, got %s" % str(profile.get("profileVersion")))
 	if profile.get("stars") != 0:
 		failures.append("fresh load: expected stars 0, got %s" % str(profile.get("stars")))
 	if typeof(profile.get("completedActivities")) != TYPE_ARRAY or profile["completedActivities"].size() != 0:
 		failures.append("fresh load: expected empty completedActivities array")
+
+	if String(profile.get("currentChapter", "")) != "ch1":
+		failures.append("fresh load: expected currentChapter 'ch1', got %s" % str(profile.get("currentChapter")))
+	if String(profile.get("currentLevel", "MISSING")) != "":
+		failures.append("fresh load: expected currentLevel '', got %s" % str(profile.get("currentLevel")))
+	if typeof(profile.get("starsByLevel")) != TYPE_DICTIONARY or not profile["starsByLevel"].is_empty():
+		failures.append("fresh load: expected empty starsByLevel dictionary")
+	if typeof(profile.get("unlockedChapters")) != TYPE_ARRAY or profile["unlockedChapters"] != ["ch1"]:
+		failures.append("fresh load: expected unlockedChapters == ['ch1'], got %s" % str(profile.get("unlockedChapters")))
+	if typeof(profile.get("unlockedLevels")) != TYPE_ARRAY or not profile["unlockedLevels"].is_empty():
+		failures.append("fresh load: expected empty unlockedLevels array")
+	if typeof(profile.get("unlockedRooms")) != TYPE_ARRAY or not profile["unlockedRooms"].is_empty():
+		failures.append("fresh load: expected empty unlockedRooms array")
 
 	var settings = profile.get("settings")
 	if typeof(settings) != TYPE_DICTIONARY:
@@ -88,6 +104,12 @@ func _test_round_trip(path: String) -> Array:
 	profile["settings"]["speechEnabled"] = false
 	profile["settings"]["thaiHints"] = false
 	profile["settings"]["speechLocale"] = "th-TH"
+	profile["currentChapter"] = "ch2"
+	profile["currentLevel"] = "milkTime"
+	profile["starsByLevel"] = {"milkTime": 2}
+	profile["unlockedChapters"] = ["ch1", "ch2"]
+	profile["unlockedLevels"] = ["milkTime"]
+	profile["unlockedRooms"] = ["nursery"]
 
 	if not store.save_profile(profile):
 		failures.append("round trip: save_profile returned false")
@@ -100,6 +122,19 @@ func _test_round_trip(path: String) -> Array:
 		failures.append("round trip: expected stars 7, got %s" % str(reloaded.get("stars")))
 	if reloaded.get("completedActivities") != ["feedMilk"]:
 		failures.append("round trip: expected completedActivities [feedMilk], got %s" % str(reloaded.get("completedActivities")))
+	if String(reloaded.get("currentChapter", "")) != "ch2":
+		failures.append("round trip: expected currentChapter 'ch2', got %s" % str(reloaded.get("currentChapter")))
+	if String(reloaded.get("currentLevel", "")) != "milkTime":
+		failures.append("round trip: expected currentLevel 'milkTime', got %s" % str(reloaded.get("currentLevel")))
+	var stars_by_level: Dictionary = reloaded.get("starsByLevel", {})
+	if int(stars_by_level.get("milkTime", -1)) != 2:
+		failures.append("round trip: expected starsByLevel.milkTime == 2, got %s" % str(stars_by_level.get("milkTime")))
+	if reloaded.get("unlockedChapters") != ["ch1", "ch2"]:
+		failures.append("round trip: expected unlockedChapters ['ch1','ch2'], got %s" % str(reloaded.get("unlockedChapters")))
+	if reloaded.get("unlockedLevels") != ["milkTime"]:
+		failures.append("round trip: expected unlockedLevels ['milkTime'], got %s" % str(reloaded.get("unlockedLevels")))
+	if reloaded.get("unlockedRooms") != ["nursery"]:
+		failures.append("round trip: expected unlockedRooms ['nursery'], got %s" % str(reloaded.get("unlockedRooms")))
 
 	var settings: Dictionary = reloaded.get("settings", {})
 	if settings.get("speechEnabled") != false:
@@ -205,5 +240,52 @@ func _test_duplicate_completed_activities(path: String) -> Array:
 
 	if completed.count("feedMilk") != 1:
 		failures.append("duplicate completed activities: expected de-duplication, got %s" % str(completed))
+
+	return failures
+
+
+## Corruption coverage for the schema-v2 fields, mirroring the same
+## never-crash, safe-defaults contract the v1 fields already have. Wrong key
+## or value types are dropped individually rather than discarding the whole
+## profile; out-of-range starsByLevel values are clamped to 0..3.
+func _test_wrong_typed_v2_fields(path: String) -> Array:
+	var failures: Array = []
+	var raw := JSON.stringify({
+		"profileVersion": 2,
+		"currentChapter": 7,
+		"currentLevel": null,
+		"starsByLevel": {"milkTime": 99, "bathTime": -5, "badKey": "nope", "invalidValue": {"nested": 1}, "goodLevel": 2},
+		"unlockedChapters": "not an array",
+		"unlockedLevels": [1, 2, "milkTime", "milkTime"],
+		"unlockedRooms": {"not": "an array"},
+	})
+	_write_raw(path, raw)
+	var store := ProfileStore.new(path)
+	var profile := store.load_profile()
+
+	if typeof(profile.get("currentChapter")) != TYPE_STRING:
+		failures.append("wrong typed v2 fields: expected currentChapter coerced to a string default")
+	if typeof(profile.get("currentLevel")) != TYPE_STRING:
+		failures.append("wrong typed v2 fields: expected currentLevel coerced to a string default")
+
+	var stars_by_level: Dictionary = profile.get("starsByLevel", {})
+	if int(stars_by_level.get("milkTime", -1)) != 3:
+		failures.append("wrong typed v2 fields: expected out-of-range 99 clamped to 3, got %s" % str(stars_by_level.get("milkTime")))
+	if int(stars_by_level.get("bathTime", -1)) != 0:
+		failures.append("wrong typed v2 fields: expected out-of-range -5 clamped to 0, got %s" % str(stars_by_level.get("bathTime")))
+	if stars_by_level.has("badKey"):
+		failures.append("wrong typed v2 fields: expected non-numeric starsByLevel value dropped, got %s" % str(stars_by_level))
+	if int(stars_by_level.get("goodLevel", -1)) != 2:
+		failures.append("wrong typed v2 fields: expected a valid sibling entry preserved, got %s" % str(stars_by_level))
+
+	if typeof(profile.get("unlockedChapters")) != TYPE_ARRAY or not profile["unlockedChapters"].is_empty():
+		failures.append("wrong typed v2 fields: expected unlockedChapters replaced with an empty array default")
+
+	var unlocked_levels: Array = profile.get("unlockedLevels", [])
+	if unlocked_levels.count("milkTime") != 1:
+		failures.append("wrong typed v2 fields: expected non-string entries dropped and 'milkTime' de-duplicated, got %s" % str(unlocked_levels))
+
+	if typeof(profile.get("unlockedRooms")) != TYPE_ARRAY or not profile["unlockedRooms"].is_empty():
+		failures.append("wrong typed v2 fields: expected unlockedRooms replaced with an empty array default")
 
 	return failures

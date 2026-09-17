@@ -15,11 +15,22 @@ extends Control
 ## `closed()`.
 
 signal play_again()
+signal next_level()
 signal closed()
 
 const _Celebration := preload("res://scripts/progression/celebration.gd")
 
 const SFX_GENTLE_TAP: String = "gentle_tap"
+
+## The level rating is a separate currency from `stars`. `stars` is the lifetime
+## task total that drives stickers; this is 0..3 for *this* level, best-ever.
+## They are never summed -- see docs/PHASE1_CONTRACT.md.
+const MAX_LEVEL_STARS: int = 3
+
+const STAR_EARNED_TINT: Color = Color(1.0, 0.78, 0.24, 1.0)
+## Not grey and not red: an unearned star is a thing still to find, never a mark
+## against the child. It stays the same warm hue, just quiet.
+const STAR_EMPTY_TINT: Color = Color(0.85, 0.78, 0.66, 0.45)
 
 var _earned_label: Label = null
 var _total_label: Label = null
@@ -28,11 +39,18 @@ var _sticker_row: Control = null
 var _sticker_cell: Control = null
 var _sticker_label: Label = null
 var _play_again_button: Button = null
+var _next_button: Button = null
 var _close_button: Button = null
+var _level_label: Label = null
+var _rating_row: Control = null
+var _rating_stars: Array[CanvasItem] = []
 
 var _celebration: Control = null
 var _shown: bool = false
 var _resolved: bool = false
+## -1 means "no level result supplied" (legacy mode), which is different from a
+## genuine 0-star rating and must not be shown or spoken as one.
+var _rated_stars: int = -1
 
 
 func _ready() -> void:
@@ -57,10 +75,21 @@ func _ensure_resolved() -> void:
 	_sticker_cell = get_node_or_null("%StickerCell") as Control
 	_sticker_label = get_node_or_null("%StickerLabel") as Label
 	_play_again_button = get_node_or_null("%PlayAgainButton") as Button
+	_next_button = get_node_or_null("%NextButton") as Button
 	_close_button = get_node_or_null("%CloseButton") as Button
+	_level_label = get_node_or_null("%LevelLabel") as Label
+	_rating_row = get_node_or_null("%RatingRow") as Control
+
+	_rating_stars = []
+	for index: int in range(MAX_LEVEL_STARS):
+		var star: CanvasItem = get_node_or_null("%%RatingStar%d" % (index + 1)) as CanvasItem
+		if star != null:
+			_rating_stars.append(star)
 
 	if _play_again_button != null and not _play_again_button.pressed.is_connected(_on_play_again_pressed):
 		_play_again_button.pressed.connect(_on_play_again_pressed)
+	if _next_button != null and not _next_button.pressed.is_connected(_on_next_pressed):
+		_next_button.pressed.connect(_on_next_pressed)
 	if _close_button != null and not _close_button.pressed.is_connected(_on_close_pressed):
 		_close_button.pressed.connect(_on_close_pressed)
 
@@ -76,17 +105,30 @@ func _ensure_resolved() -> void:
 	if _sticker_row != null:
 		_sticker_row.visible = false
 
+	# Hidden until a level result is actually supplied. Legacy mode has no level,
+	# and an all-empty rating row would read as "you earned nothing".
+	_apply_level_result({})
+
 
 ## Fills in and (optionally) celebrates.
 ##
 ## `new_stickers` should be the list returned by
 ## `StickerBook.register_star_change()` -- already de-duplicated, so a sticker
 ## cannot be celebrated a second time by re-showing this screen.
-func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = []) -> void:
+## `level_result` is optional and additive, so every existing caller keeps working
+## unchanged. Recognised keys:
+##   `levelTitle`  String  -- shown above the rating
+##   `levelStars`  int     -- 0..3 earned in *this* run
+##   `bestStars`   int     -- 0..3 best ever, so a weaker replay never looks like
+##                            a demotion (the row shows the best, never less)
+##   `hasNextLevel` bool   -- false hides Next, so the button never dead-ends
+func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [], level_result: Dictionary = {}) -> void:
 	_ensure_resolved()
 
 	var earned: int = maxi(stars_earned, 0)
 	var total: int = maxi(total_stars, 0)
+
+	_apply_level_result(level_result)
 
 	if _earned_label != null:
 		_earned_label.text = "+%d" % earned
@@ -112,7 +154,13 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [])
 	# summary never replays the reward moment (or its sound) for the same run.
 	if not _shown:
 		_shown = true
-		_speak(_headline(earned))
+		# A level rating is the more meaningful number when there is one: "two
+		# stars on Bath Time" is what the child just achieved, whereas `earned`
+		# is a running task tally they have no way to see.
+		if _rated_stars >= 0:
+			_speak(_level_headline(_rated_stars))
+		else:
+			_speak(_headline(earned))
 		if _celebration != null:
 			# In the celebration's own top-right corner, the same place the
 			# reward moment plays in the baby room -- not over the panel.
@@ -131,13 +179,69 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [])
 func reset() -> void:
 	_ensure_resolved()
 	_shown = false
+	_rated_stars = -1
 	if _sticker_row != null:
 		_sticker_row.visible = false
+	_apply_level_result({})
 
 
 # ---------------------------------------------------------------------------
 # Internal
 # ---------------------------------------------------------------------------
+
+## Paints the per-level rating row. Safe to call with `{}`, which hides it.
+func _apply_level_result(level_result: Variant) -> void:
+	var result: Dictionary = level_result as Dictionary if typeof(level_result) == TYPE_DICTIONARY else {}
+
+	var has_level: bool = result.has("levelStars") or result.has("bestStars")
+	if not has_level:
+		_rated_stars = -1
+		if _rating_row != null:
+			_rating_row.visible = false
+		if _level_label != null:
+			_level_label.visible = false
+		# Without a level there is no "next level", so Replay is the only
+		# forward move and Next would lead nowhere.
+		if _next_button != null:
+			_next_button.visible = false
+		return
+
+	var earned_now: int = clampi(int(result.get("levelStars", 0)), 0, MAX_LEVEL_STARS)
+	# Show the best ever, never this run's score on its own: a child who replays
+	# a 3-star level and gets 2 must not watch a star disappear.
+	var shown: int = maxi(earned_now, clampi(int(result.get("bestStars", 0)), 0, MAX_LEVEL_STARS))
+	_rated_stars = earned_now
+
+	var title: String = String(result.get("levelTitle", "")).strip_edges()
+	if _level_label != null:
+		_level_label.text = title
+		_level_label.visible = not title.is_empty()
+
+	if _rating_row != null:
+		_rating_row.visible = true
+	for index: int in range(_rating_stars.size()):
+		var star: CanvasItem = _rating_stars[index]
+		if star == null:
+			continue
+		var tint: Color = STAR_EARNED_TINT if index < shown else STAR_EMPTY_TINT
+		if "tint" in star:
+			star.set("tint", tint)
+		else:
+			star.modulate = tint
+
+	if _next_button != null:
+		_next_button.visible = bool(result.get("hasNextLevel", true))
+
+
+static func _level_headline(stars: int) -> String:
+	if stars <= 0:
+		return "Nice playing!"
+	if stars == 1:
+		return "Well done! One star."
+	if stars >= MAX_LEVEL_STARS:
+		return "Amazing! Three stars!"
+	return "Great! %d stars." % stars
+
 
 static func _headline(earned: int) -> String:
 	if earned <= 0:
@@ -157,6 +261,11 @@ static func _first_sticker(stickers: Array) -> Dictionary:
 func _on_play_again_pressed() -> void:
 	_play_sfx(SFX_GENTLE_TAP)
 	play_again.emit()
+
+
+func _on_next_pressed() -> void:
+	_play_sfx(SFX_GENTLE_TAP)
+	next_level.emit()
 
 
 func _on_close_pressed() -> void:

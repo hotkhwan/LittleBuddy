@@ -1,0 +1,10 @@
+{
+	"comment": "Test-only stand-in for Agent LEVEL's res://content/levels/levels.json, mirroring the Chapter 2 mapping table in docs/PHASE1_CONTRACT.md. Used to test v1->v2 star/unlock seeding against the real committed device profile without depending on the level layer's files, which do not exist yet.",
+	"levels": [
+		{ "levelId": "milkTime", "chapterId": "ch2", "missionId": "feedingTime" },
+		{ "levelId": "bathTime", "chapterId": "ch2", "missionId": "bathTime" },
+		{ "levelId": "bedtime", "chapterId": "ch2", "missionId": "bedtimeRoutine" },
+		{ "levelId": "toysAndSmiles", "chapterId": "ch2", "missionId": "playTime" },
+		{ "levelId": "firstWords", "chapterId": "ch2", "missionId": "colorsAndShapes" }
+	]
+}
