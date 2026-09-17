@@ -42,6 +42,9 @@ const FORBIDDEN_METHODS: Array[String] = [
 	"play_animation", "get_animation_player", "set_path",
 ]
 
+## The case that now owns the domain-layer source scan.
+const ARCHITECTURE_GUARD_CASE: String = "res://tests/cases/test_architecture_guard.gd"
+
 ## The domain layer whose 3D-free status this test protects.
 const DOMAIN_SCRIPTS: Array[String] = [
 	"res://scripts/gameplay/mission_runner.gd",
@@ -413,21 +416,31 @@ func _test_forbidden_methods_absent() -> Array:
 
 
 ## Static check 3: the property that made this whole architecture worth keeping.
+## Moved to `test_architecture_guard.gd`, which scans the same four files with
+## the same (now wider) token list but strips comments first.
+##
+## This version read RAW source, so it failed on a doc comment that merely
+## *mentioned* a forbidden type. Verified: adding
+## `## Note: this module deliberately holds no Vector3 and no Node3D.`
+## to task_picker.gd turned this test red while the comment-stripped guard
+## correctly stayed green. A test that punishes accurate documentation gets
+## weakened rather than fixed, so it is better to have one scanner that is right.
+##
+## What remains here is the part only this file can check: that the *character's*
+## own public surface never exposes a 3D type. That is a live API boundary, not a
+## file scan, and it stays.
 func _test_domain_layer_stays_3d_free() -> Array:
 	var failures: Array = []
-	for path: String in DOMAIN_SCRIPTS:
-		var source: String = _read(path)
-		if source.is_empty():
-			failures.append("could not read %s" % path)
-			continue
-		for forbidden: String in FORBIDDEN_TYPES:
-			if source.contains(forbidden):
-				failures.append("%s now references %s; the domain layer must stay engine-agnostic"
-						% [path, forbidden])
-		# Nor may it reach into the movement layer's implementation.
-		for leaked: String in ["scripts/navigation/", "scripts/character/"]:
-			if source.contains(leaked):
-				failures.append("%s now depends on %s" % [path, leaked])
+
+	# Fail loudly if the guard that took over this duty is ever removed, rather
+	# than quietly losing the coverage.
+	if not FileAccess.file_exists(ARCHITECTURE_GUARD_CASE):
+		failures.append(
+			("%s is missing. It owns the domain-layer 3D scan that used to live here; "
+			+ "without it nothing checks that mission/content code stays engine-agnostic.")
+			% ARCHITECTURE_GUARD_CASE
+		)
+
 	return failures
 
 
