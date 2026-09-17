@@ -138,8 +138,8 @@ nm /tmp/lb_dd/Build/Products/Debug-iphoneos/LittleBuddy.app/LittleBuddy | grep -
 
 | Severity | Issue |
 |---|---|
-| **Blocking for release** | **Speech has never been observed working on a physical device.** All mechanical evidence is good (framework linked, entry symbol bound, on-device selectors present, zero networking frameworks linked) but no permission prompt or recognition has ever been seen. **Do not claim speech works until it is run on an iPhone.** |
-| Medium | **5 of 16 stickers** (banana, soap, towel, toothbrush, pillow) still use hand-drawn polygons next to 11 professional glyphs and look visibly hand-made. Toothbrush reads ambiguously. |
+| ~~Blocking~~ **RESOLVED 2026-09-17** | **Speech is now proven working on a physical iPhone 14 Pro Max (iOS 26.6.2).** Device telemetry: a listen session recognised twice and added zero new failures; stars went 46 -> 64 with sayPillow/sayBanana/sayTowel completed. Two device-only bugs were fixed to get there - see the speech section below. |
+| ~~Medium~~ **RESOLVED** | The 5 remaining polygon stickers (banana, soap, towel, toothbrush, pillow) now use authored glyphs in the same visual language; all 16 read as one set. Polygon fallbacks kept as a safety net. |
 | Medium | **`shoes` is the weakest 3D object** — "two brown pebbles" cold. Best candidate for a commissioned asset. |
 | Low | Sticker-button icon is a treasure chest — a compromise; no real sticker-sheet glyph exists in the pack. |
 | Low | `"1 / 16"` on the sticker book is a fraction on a pre-reader's screen. Deliberate (collection progress, not a score) but worth a decision. |
@@ -150,8 +150,11 @@ nm /tmp/lb_dd/Build/Products/Debug-iphoneos/LittleBuddy.app/LittleBuddy | grep -
 
 ## Next recommended task
 
-**Run the app on a physical iPhone and validate speech end-to-end.** It is the one blocking
-item and it cannot be done from a Mac alone. Everything else is polish.
+~~Run the app on a physical iPhone and validate speech end-to-end.~~ **Done 2026-09-17 —
+speech is proven working on device.**
+
+Next: the remaining visual polish in `docs/ART_UPGRADE_REPORT.md` — the `shoes` model is the
+weakest object, and the nursery would benefit from the Tiny Treats swap (needs a purchase).
 
 1. Rebuild the speech plugin (above) — **a fresh clone has no binaries**.
 2. `./tools/export_ios.sh debug`
