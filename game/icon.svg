@@ -1,6 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-<rect width="128" height="128" rx="24" fill="#7ec8e3"/>
-<rect x="54" y="20" width="20" height="10" rx="4" fill="#fff5e6"/>
-<path d="M50 30h28l4 14v54a10 10 0 0 1-10 10H56a10 10 0 0 1-10-10V44z" fill="#fff5e6" stroke="#4a90a4" stroke-width="3"/>
-<rect x="46" y="56" width="36" height="10" fill="#4a90a4"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+<radialGradient id="field" cx="0.5" cy="0.32" r="0.82"><stop offset="0.0" stop-color="#8FC6EA" stop-opacity="1.0"/><stop offset="0.5" stop-color="#5A9BD1" stop-opacity="1.0"/><stop offset="1.0" stop-color="#2F6EA6" stop-opacity="1.0"/></radialGradient>
+<radialGradient id="halo" cx="0.5" cy="0.5" r="0.5"><stop offset="0.0" stop-color="#FFF4E0" stop-opacity="0.3"/><stop offset="0.55" stop-color="#FFF4E0" stop-opacity="0.12"/><stop offset="1.0" stop-color="#FFF4E0" stop-opacity="0.0"/></radialGradient>
+<radialGradient id="ground" cx="0.5" cy="0.5" r="0.5"><stop offset="0.0" stop-color="#2E5C82" stop-opacity="0.26"/><stop offset="0.6" stop-color="#2E5C82" stop-opacity="0.1"/><stop offset="1.0" stop-color="#2E5C82" stop-opacity="0.0"/></radialGradient>
+<linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0.0" stop-color="#FFFFFF" stop-opacity="1.0"/><stop offset="1.0" stop-color="#DCEBF4" stop-opacity="1.0"/></linearGradient>
+<linearGradient id="milk" x1="0" y1="0" x2="0" y2="1"><stop offset="0.0" stop-color="#FFF7E8" stop-opacity="1.0"/><stop offset="1.0" stop-color="#FFE1B6" stop-opacity="1.0"/></linearGradient>
+<linearGradient id="collar" x1="0" y1="0" x2="0" y2="1"><stop offset="0.0" stop-color="#FAB7CE" stop-opacity="1.0"/><stop offset="1.0" stop-color="#E4739C" stop-opacity="1.0"/></linearGradient>
+<linearGradient id="teat" x1="0" y1="0" x2="0" y2="1"><stop offset="0.0" stop-color="#FCD6BC" stop-opacity="1.0"/><stop offset="1.0" stop-color="#EFA57D" stop-opacity="1.0"/></linearGradient>
+<linearGradient id="shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0.0" stop-color="#FFFFFF" stop-opacity="0.62"/><stop offset="1.0" stop-color="#FFFFFF" stop-opacity="0.04"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#field)"/>
+<circle cx="512" cy="506" r="420" fill="url(#halo)"/>
+<ellipse cx="512" cy="846" rx="232" ry="52" fill="url(#ground)"/>
+<path d="M414 352 L414 425 C414 458 352 474 352 545 L352 744 C352 784 382 816 420 816 L604 816 C642 816 672 784 672 744 L672 545 C672 474 610 458 610 425 L610 352 Z" fill="url(#glass)"/>
+<path d="M352 570 C404 536 460 536 512 562 C564 588 620 586 672 554 L672 744 C672 784 642 816 604 816 L420 816 C382 816 352 784 352 744 Z" fill="url(#milk)"/>
+<rect x="392" y="500" width="44" height="250" rx="22" fill="url(#shine)"/>
+<path d="M434 300 C434 250 442 216 462 200 C480 184 544 184 562 200 C582 216 590 250 590 300 Z" fill="url(#teat)"/>
+<rect x="400" y="264" width="224" height="92" rx="44" fill="url(#collar)"/>
 </svg>
