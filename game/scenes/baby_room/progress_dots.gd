@@ -1,28 +1,42 @@
 extends Control
 
-## "How far through are we?" for a child who cannot read: one soft dot per task
-## in the current mission, filled in from the left as tasks are finished, with
-## the task being played right now drawn slightly larger and outlined.
+## "How far through are we?" for a child who cannot read: one slot per task in
+## the current mission, filled in from the left as tasks are finished, with the
+## task being played right now sitting slightly larger on a soft halo.
+##
+## A finished task is the same gold star that sits on the counter, pops in the
+## celebration and heads the session summary -- earning one *is* how you get a
+## star, so the row reads as "these are the stars from this round" rather than
+## as an abstract row of dots. A task still to come is the outline of that same
+## star, so the child can see the shape they are filling in.
 ##
 ## Deliberately NOT a score: there is no number, no percentage, no fraction and
 ## no "you missed one". A skipped task fills in exactly like a completed one --
 ## the child sees progress, never a mark against them.
 ##
-## Cheap: a handful of `draw_circle` calls, redrawn only when the state changes.
+## Cheap: one shared texture, a handful of `draw_texture_rect` calls, redrawn
+## only when the state changes.
 
-const DOT_RADIUS: float = 11.0
-const CURRENT_RADIUS: float = 15.0
-const SPACING: float = 34.0
-const OUTLINE_WIDTH: float = 3.0
+## Kept alive for the lifetime of the script, not loaded per draw: `_draw()` only
+## records commands and the renderer binds the texture later in the frame, so a
+## texture held in nothing but a local would be freed before it was ever drawn
+## and the row would come out as solid squares.
+const STAR: Texture2D = preload("res://assets/ui/icons/star.svg")
 
-const DONE_COLOR: Color = Color(1.0, 0.78, 0.28)
-const DONE_OUTLINE: Color = Color(0.86, 0.58, 0.12)
-const CURRENT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.95)
-const CURRENT_OUTLINE: Color = Color(0.99, 0.72, 0.32)
-const TODO_COLOR: Color = Color(1.0, 1.0, 1.0, 0.55)
-const TODO_OUTLINE: Color = Color(0.62, 0.57, 0.5, 0.45)
+const SLOT_SIZE: float = 40.0
+const CURRENT_SIZE: float = 54.0
+const SPACING: float = 52.0
 
-## Hard cap so a hostile/odd content file can never draw a thousand dots.
+## Filled: the same warm gold as the star counter and the celebration.
+const DONE_COLOR: Color = Color(1.0, 0.78, 0.24)
+const DONE_SHADOW: Color = Color(0.72, 0.5, 0.11, 0.55)
+## Still to come: a pale ghost of the same star on the cream bubble.
+const TODO_COLOR: Color = Color(0.86, 0.79, 0.67, 0.75)
+## The halo behind the task in play, so "you are here" survives on any backdrop.
+const CURRENT_HALO: Color = Color(1.0, 1.0, 1.0, 0.85)
+const CURRENT_HALO_RIM: Color = Color(0.99, 0.72, 0.32, 0.9)
+
+## Hard cap so a hostile/odd content file can never draw a thousand stars.
 const MAX_DOTS: int = 12
 
 var _total: int = 0
@@ -52,7 +66,7 @@ func set_current(index: int) -> void:
 	queue_redraw()
 
 
-## Fills in the dot for the task that just ended (completed OR skipped -- they
+## Fills in the slot for the task that just ended (completed OR skipped -- they
 ## look identical on purpose).
 func mark_current_done() -> void:
 	_completed = clampi(maxi(_completed, _current), 0, _total)
@@ -82,17 +96,24 @@ func _draw() -> void:
 	for i: int in range(_total):
 		var center: Vector2 = Vector2(start_x + SPACING * float(i), center_y)
 		var slot: int = i + 1
-		var radius: float = DOT_RADIUS
-		var fill: Color = TODO_COLOR
-		var outline: Color = TODO_OUTLINE
+		var side: float = SLOT_SIZE
+		var color: Color = TODO_COLOR
 
 		if slot <= _completed:
-			fill = DONE_COLOR
-			outline = DONE_OUTLINE
+			color = DONE_COLOR
 		elif slot == _current:
-			radius = CURRENT_RADIUS
-			fill = CURRENT_COLOR
-			outline = CURRENT_OUTLINE
+			side = CURRENT_SIZE
+			color = DONE_COLOR
+			# A soft disc under the current star: on a pale nursery wall a gold
+			# outline alone is not enough to say "this one".
+			var halo: float = side * 0.62
+			draw_circle(center, halo, CURRENT_HALO)
+			draw_arc(center, halo, 0.0, TAU, 28, CURRENT_HALO_RIM, 3.0, true)
 
-		draw_circle(center, radius, fill)
-		draw_arc(center, radius, 0.0, TAU, 24, outline, OUTLINE_WIDTH, true)
+		var box: Rect2 = Rect2(center - Vector2(side, side) * 0.5, Vector2(side, side))
+		if slot <= _completed:
+			# A one-pixel drop keeps a gold star legible against the cream
+			# speech bubble directly above it.
+			draw_texture_rect(
+				STAR, Rect2(box.position + Vector2(0.0, 2.0), box.size), false, DONE_SHADOW)
+		draw_texture_rect(STAR, box, false, color)

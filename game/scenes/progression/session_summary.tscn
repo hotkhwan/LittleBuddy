@@ -153,7 +153,7 @@ alignment = 1
 
 [node name="CloseButton" type="Button" parent="SafeArea/Center/Panel/Margin/VBox/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 140)
+custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
 size_flags_vertical = 4
 focus_mode = 0
@@ -168,20 +168,20 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 22.0
-offset_top = 16.0
-offset_right = -22.0
-offset_bottom = -32.0
+offset_left = 30.0
+offset_top = 22.0
+offset_right = -30.0
+offset_bottom = -50.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("3")
 glyph = 1
-tint = Color(0.678, 0.404, 0.2, 1)
+tint = Color(0.506, 0.302, 0.149, 1)
 
 [node name="PlayAgainButton" type="Button" parent="SafeArea/Center/Panel/Margin/VBox/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(460, 140)
+custom_minimum_size = Vector2(500, 180)
 layout_mode = 2
 size_flags_vertical = 4
 focus_mode = 0
@@ -198,7 +198,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 34.0
 offset_right = -34.0
-offset_bottom = -16.0
+offset_bottom = -34.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -206,18 +206,18 @@ theme_override_constants/separation = 10
 alignment = 1
 
 [node name="PlayAgainIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton/PlayAgainBox"]
-custom_minimum_size = Vector2(110, 110)
+custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 script = ExtResource("3")
 glyph = 3
-tint = Color(0.157, 0.412, 0.333, 1)
+tint = Color(0.137, 0.365, 0.294, 1)
 
 [node name="PlayAgainLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/Buttons/PlayAgainButton/PlayAgainBox"]
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.157, 0.412, 0.333, 1)
+theme_override_colors/font_color = Color(0.137, 0.365, 0.294, 1)
 theme_override_font_sizes/font_size = 46
 text = "Play again"

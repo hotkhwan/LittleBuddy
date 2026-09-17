@@ -29,11 +29,20 @@ const SFX_GENTLE_TAP: String = "gentle_tap"
 ## half empty, so the count is derived from the width that is actually there.
 const COLUMNS_MIN: int = 3
 const COLUMNS_MAX: int = 8
-## One cell plus one gap, matching `StickerCell.MIN_SIZE.x` and the grid's
-## `h_separation`.
-const COLUMN_WIDTH: float = 210.0
+## Gap between cards, matching the grid's `h_separation` / `v_separation`.
+const GAP: float = 20.0
+## One cell plus one gap, matching `StickerCell.MIN_SIZE.x`.
+const COLUMN_WIDTH: float = StickerCell.MIN_SIZE.x + GAP
 ## How far below the widest fitting count we will drop to get a tidier last row.
 const COLUMN_SLACK: int = 3
+## Room for the vertical scrollbar, so a card is never clipped by it.
+const SCROLLBAR_ALLOWANCE: float = 28.0
+
+## How far a card may grow past its minimum to fill the page. Two rows of
+## sixteen used to sit in the top 60% of a phone-shaped screen with nothing
+## underneath, which read as "the book is nearly empty" rather than "these are
+## the ones left to earn".
+const CELL_MAX_WIDTH: float = 330.0
 
 var _grid: GridContainer = null
 var _count_label: Label = null
@@ -69,6 +78,12 @@ func _ensure_resolved() -> void:
 	var viewport: Viewport = get_viewport()
 	if viewport != null and not viewport.size_changed.is_connected(_update_columns):
 		viewport.size_changed.connect(_update_columns)
+
+	# The page only knows how tall a card may grow once the scroll area has been
+	# laid out, which happens a frame after the viewport reports its size.
+	var scroll: Control = get_node_or_null("%Scroll") as Control
+	if scroll != null and not scroll.resized.is_connected(_update_columns):
+		scroll.resized.connect(_update_columns)
 
 	if _library == null:
 		_library = _ContentLibrary.create()
@@ -150,18 +165,60 @@ func _sync_with_save() -> void:
 func _update_columns() -> void:
 	if _grid == null or not is_inside_tree():
 		return
-	# Measured from the safe area, never from the grid's own row: the row is
-	# sized by the grid, so reading it back would feed the column count into
-	# itself and settle on whatever it guessed first.
+	# Measured from the safe area and the scroll viewport, never from the grid's
+	# own row: the row is sized by the grid, so reading it back would feed the
+	# column count into itself and settle on whatever it guessed first.
 	var available: float = get_viewport_rect().size.x
 	var host: Control = get_node_or_null("SafeArea") as Control
 	if host != null and host.size.x > COLUMN_WIDTH:
 		available = host.size.x
-	# Leave room for the vertical scrollbar.
-	available -= 28.0
+	available -= SCROLLBAR_ALLOWANCE
 	if available <= 0.0:
 		return
-	_grid.columns = pick_columns(available, _grid.get_child_count())
+
+	var total: int = _grid.get_child_count()
+	var columns: int = pick_columns(available, total)
+	_grid.columns = columns
+
+	var page_height: float = 0.0
+	var scroll: Control = get_node_or_null("%Scroll") as Control
+	if scroll != null and scroll.size.y > 1.0:
+		page_height = scroll.size.y
+
+	var cell: Vector2 = cell_size(available, page_height, columns, total)
+	for child: Node in _grid.get_children():
+		var card: Control = child as Control
+		if card != null:
+			card.custom_minimum_size = cell
+
+
+## The card size that fills the page without overflowing it.
+##
+## Square-ish cards grown from `StickerCell.MIN_SIZE` until either the row runs
+## out of width or the column runs out of height, so the book fills an iPad page
+## and a phone-shaped landscape page equally rather than hugging the top.
+##
+## `page_height <= 0` means "not laid out yet" -- fall back to the minimum, which
+## is always safe, and the next `resized` pass will grow it.
+##
+## Static and pure so it can be reasoned about (and tested) without a viewport.
+static func cell_size(available_width: float, page_height: float, columns: int,
+		total: int) -> Vector2:
+	var minimum: Vector2 = StickerCell.MIN_SIZE
+	if columns <= 0 or total <= 0:
+		return minimum
+
+	if page_height <= 1.0:
+		# Not laid out yet. Growing on width alone would size the cards from half
+		# the information and show one wrong frame before the next pass corrects
+		# it; the minimum always fits.
+		return minimum
+
+	var rows: int = _row_count(columns, total)
+	var width: float = (available_width - GAP * float(columns - 1)) / float(columns)
+	var height: float = (page_height - GAP * float(rows - 1)) / float(rows)
+	width = clampf(minf(width, height / StickerCell.ASPECT), minimum.x, CELL_MAX_WIDTH)
+	return Vector2(width, width * StickerCell.ASPECT)
 
 
 ## The column count that needs the fewest rows within the width that fits,

@@ -1,88 +1,16 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scenes/parent/parent_settings.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/safe_area.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/parent_settings/parental_gate.gd" id="3"]
 [ext_resource type="Script" path="res://scenes/parent/gear_visual.gd" id="4"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
-bg_color = Color(1, 0.957, 0.878, 1)
-corner_radius_top_left = 32
-corner_radius_top_right = 32
-corner_radius_bottom_right = 32
-corner_radius_bottom_left = 32
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.91, 0.812, 0.639, 1)
-shadow_color = Color(0.35, 0.33, 0.3, 0.16)
-shadow_size = 12
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_soft"]
-bg_color = Color(1, 0.98, 0.94, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.878, 0.812, 0.686, 1)
-content_margin_left = 22.0
-content_margin_right = 22.0
-content_margin_top = 12.0
-content_margin_bottom = 12.0
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_soft_pressed"]
-bg_color = Color(0.92, 0.89, 0.85, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.74, 0.69, 0.66, 1)
-content_margin_left = 22.0
-content_margin_right = 22.0
-content_margin_top = 12.0
-content_margin_bottom = 12.0
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_primary"]
-bg_color = Color(0.435, 0.686, 0.588, 1)
-corner_radius_top_left = 20
-corner_radius_top_right = 20
-corner_radius_bottom_right = 20
-corner_radius_bottom_left = 20
-content_margin_left = 30.0
-content_margin_right = 30.0
-content_margin_top = 14.0
-content_margin_bottom = 14.0
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_primary_pressed"]
-bg_color = Color(0.353, 0.596, 0.502, 1)
-corner_radius_top_left = 20
-corner_radius_top_right = 20
-corner_radius_bottom_right = 20
-corner_radius_bottom_left = 20
-content_margin_left = 30.0
-content_margin_right = 30.0
-content_margin_top = 14.0
-content_margin_bottom = 14.0
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_segment_on"]
-bg_color = Color(0.435, 0.584, 0.737, 1)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-content_margin_left = 26.0
-content_margin_right = 26.0
-content_margin_top = 10.0
-content_margin_bottom = 10.0
+[ext_resource type="Script" path="res://scripts/progression/icon_glyph.gd" id="5"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/panel_cream.tres" id="6"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/small/btn_cream.tres" id="7"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/small/btn_cream_flat.tres" id="8"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/small/btn_blue.tres" id="9"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/small/btn_mint.tres" id="10"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/small/btn_mint_down.tres" id="11"]
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_speed"]
 
@@ -107,7 +35,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(1, 0.965, 0.878, 0.97)
+color = Color(0.937, 0.886, 0.792, 0.97)
 
 [node name="SafeArea" type="Control" parent="."]
 layout_mode = 1
@@ -144,295 +72,361 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("4")
 
-[node name="Panel" type="PanelContainer" parent="SafeArea"]
-unique_name_in_owner = true
-visible = false
+[node name="Center" type="CenterContainer" parent="SafeArea"]
 layout_mode = 1
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -560.0
-offset_top = -320.0
-offset_right = 560.0
-offset_bottom = 320.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+mouse_filter = 2
 
-[node name="Margin" type="MarginContainer" parent="SafeArea/Panel"]
+[node name="Panel" type="PanelContainer" parent="SafeArea/Center"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(1120, 0)
 layout_mode = 2
-theme_override_constants/margin_left = 44
-theme_override_constants/margin_top = 28
-theme_override_constants/margin_right = 44
-theme_override_constants/margin_bottom = 28
+theme_override_styles/panel = ExtResource("6")
 
-[node name="Content" type="VBoxContainer" parent="SafeArea/Panel/Margin"]
+[node name="Margin" type="MarginContainer" parent="SafeArea/Center/Panel"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/margin_left = 46
+theme_override_constants/margin_top = 26
+theme_override_constants/margin_right = 46
+theme_override_constants/margin_bottom = 30
 
-[node name="Title" type="Label" parent="SafeArea/Panel/Margin/Content"]
+[node name="Content" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
-theme_override_colors/font_color = Color(0.28, 0.33, 0.42, 1)
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="SafeArea/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 46
+theme_override_colors/font_color = Color(0.29, 0.2, 0.09, 1)
 text = "For grown-ups"
 
-[node name="Subtitle" type="Label" parent="SafeArea/Panel/Margin/Content"]
+[node name="Subtitle" type="Label" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.45, 0.47, 0.5, 1)
-text = "These settings stay on this iPad. Nothing is shared."
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
+text = "These settings stay on this iPad. Nothing is shared, nothing is uploaded."
 
-[node name="Divider" type="HSeparator" parent="SafeArea/Panel/Margin/Content"]
+[node name="Divider" type="HSeparator" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
+theme_override_constants/separation = 10
 
-[node name="ThaiRow" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content"]
+[node name="ThaiRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 24
 
-[node name="ThaiText" type="VBoxContainer" parent="SafeArea/Panel/Margin/Content/ThaiRow"]
+[node name="ThaiText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/ThaiRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 4
 theme_override_constants/separation = 2
 
-[node name="ThaiTitle" type="Label" parent="SafeArea/Panel/Margin/Content/ThaiRow/ThaiText"]
+[node name="ThaiTitle" type="Label" parent="SafeArea/Center/Panel/Margin/Content/ThaiRow/ThaiText"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
-theme_override_colors/font_color = Color(0.3, 0.32, 0.36, 1)
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.29, 0.22, 0.12, 1)
 text = "Thai hints"
 
-[node name="ThaiHelp" type="Label" parent="SafeArea/Panel/Margin/Content/ThaiRow/ThaiText"]
+[node name="ThaiHelp" type="Label" parent="SafeArea/Center/Panel/Margin/Content/ThaiRow/ThaiText"]
 layout_mode = 2
 autowrap_mode = 2
-theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(0.5, 0.52, 0.55, 1)
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
 text = "Show a short Thai hint under each English phrase."
 
-[node name="ThaiButtons" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content/ThaiRow"]
+[node name="ThaiButtons" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/ThaiRow"]
 layout_mode = 2
 size_flags_vertical = 4
-theme_override_constants/separation = 10
+theme_override_constants/separation = 12
 
-[node name="ThaiOnButton" type="Button" parent="SafeArea/Panel/Margin/Content/ThaiRow/ThaiButtons"]
+[node name="ThaiOnButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/ThaiRow/ThaiButtons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 0)
+custom_minimum_size = Vector2(148, 78)
 layout_mode = 2
+focus_mode = 0
 toggle_mode = true
 button_pressed = true
 button_group = SubResource("ButtonGroup_thai")
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
-theme_override_colors/font_hover_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_soft")
-theme_override_styles/hover = SubResource("StyleBoxFlat_soft")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_segment_on")
-theme_override_styles/focus = SubResource("StyleBoxFlat_soft")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
 text = "On"
 
-[node name="ThaiOffButton" type="Button" parent="SafeArea/Panel/Margin/Content/ThaiRow/ThaiButtons"]
+[node name="ThaiOffButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/ThaiRow/ThaiButtons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 0)
+custom_minimum_size = Vector2(148, 78)
 layout_mode = 2
+focus_mode = 0
 toggle_mode = true
 button_group = SubResource("ButtonGroup_thai")
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
-theme_override_colors/font_hover_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_soft")
-theme_override_styles/hover = SubResource("StyleBoxFlat_soft")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_segment_on")
-theme_override_styles/focus = SubResource("StyleBoxFlat_soft")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
 text = "Off"
 
-[node name="VoiceRow" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content"]
+[node name="VoiceRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 24
 
-[node name="VoiceText" type="VBoxContainer" parent="SafeArea/Panel/Margin/Content/VoiceRow"]
+[node name="VoiceText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/VoiceRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 4
 theme_override_constants/separation = 2
 
-[node name="VoiceTitle" type="Label" parent="SafeArea/Panel/Margin/Content/VoiceRow/VoiceText"]
+[node name="VoiceTitle" type="Label" parent="SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceText"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
-theme_override_colors/font_color = Color(0.3, 0.32, 0.36, 1)
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.29, 0.22, 0.12, 1)
 text = "Voice practice"
 
-[node name="VoiceHelp" type="Label" parent="SafeArea/Panel/Margin/Content/VoiceRow/VoiceText"]
+[node name="VoiceHelp" type="Label" parent="SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceText"]
 layout_mode = 2
 autowrap_mode = 2
-theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(0.5, 0.52, 0.55, 1)
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
 text = "Let your child say the words out loud. Tapping always works too."
 
-[node name="VoiceButtons" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content/VoiceRow"]
+[node name="VoiceButtons" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/VoiceRow"]
 layout_mode = 2
 size_flags_vertical = 4
-theme_override_constants/separation = 10
+theme_override_constants/separation = 12
 
-[node name="VoiceOnButton" type="Button" parent="SafeArea/Panel/Margin/Content/VoiceRow/VoiceButtons"]
+[node name="VoiceOnButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceButtons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 0)
+custom_minimum_size = Vector2(148, 78)
 layout_mode = 2
+focus_mode = 0
 toggle_mode = true
 button_pressed = true
 button_group = SubResource("ButtonGroup_voice")
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
-theme_override_colors/font_hover_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_soft")
-theme_override_styles/hover = SubResource("StyleBoxFlat_soft")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_segment_on")
-theme_override_styles/focus = SubResource("StyleBoxFlat_soft")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
 text = "On"
 
-[node name="VoiceOffButton" type="Button" parent="SafeArea/Panel/Margin/Content/VoiceRow/VoiceButtons"]
+[node name="VoiceOffButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceButtons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 0)
+custom_minimum_size = Vector2(148, 78)
 layout_mode = 2
+focus_mode = 0
 toggle_mode = true
 button_group = SubResource("ButtonGroup_voice")
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
-theme_override_colors/font_hover_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_soft")
-theme_override_styles/hover = SubResource("StyleBoxFlat_soft")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_segment_on")
-theme_override_styles/focus = SubResource("StyleBoxFlat_soft")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
 text = "Off"
 
-[node name="SpeedRow" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content"]
+[node name="SpeedRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="SpeedText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/SpeedRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="SpeedTitle" type="Label" parent="SafeArea/Center/Panel/Margin/Content/SpeedRow/SpeedText"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.29, 0.22, 0.12, 1)
+text = "Speaking speed"
+
+[node name="SpeedHelp" type="Label" parent="SafeArea/Center/Panel/Margin/Content/SpeedRow/SpeedText"]
+layout_mode = 2
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
+text = "How fast Little Buddy says the English phrases."
+
+[node name="SpeedButtons" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/SpeedRow"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 12
+
+[node name="SpeedSlowButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/SpeedRow/SpeedButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(148, 78)
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+button_group = SubResource("ButtonGroup_speed")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
+text = "Slow"
+
+[node name="SpeedNormalButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/SpeedRow/SpeedButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(148, 78)
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+button_pressed = true
+button_group = SubResource("ButtonGroup_speed")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
+text = "Normal"
+
+[node name="Divider2" type="HSeparator" parent="SafeArea/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BottomRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="SpeedText" type="VBoxContainer" parent="SafeArea/Panel/Margin/Content/SpeedRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 2
-
-[node name="SpeedTitle" type="Label" parent="SafeArea/Panel/Margin/Content/SpeedRow/SpeedText"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 28
-theme_override_colors/font_color = Color(0.3, 0.32, 0.36, 1)
-text = "Speaking speed"
-
-[node name="SpeedHelp" type="Label" parent="SafeArea/Panel/Margin/Content/SpeedRow/SpeedText"]
-layout_mode = 2
-autowrap_mode = 2
-theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(0.5, 0.52, 0.55, 1)
-text = "How fast Little Buddy says the English phrases."
-
-[node name="SpeedButtons" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content/SpeedRow"]
+[node name="StarsBox" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/BottomRow"]
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_constants/separation = 10
 
-[node name="SpeedSlowButton" type="Button" parent="SafeArea/Panel/Margin/Content/SpeedRow/SpeedButtons"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 0)
+[node name="StarsIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/Content/BottomRow/StarsBox"]
+custom_minimum_size = Vector2(46, 46)
 layout_mode = 2
-toggle_mode = true
-button_group = SubResource("ButtonGroup_speed")
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
-theme_override_colors/font_hover_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_soft")
-theme_override_styles/hover = SubResource("StyleBoxFlat_soft")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_segment_on")
-theme_override_styles/focus = SubResource("StyleBoxFlat_soft")
-text = "Slow"
+size_flags_vertical = 4
+mouse_filter = 2
+script = ExtResource("5")
+glyph = 0
+tint = Color(0.92, 0.7, 0.19, 1)
 
-[node name="SpeedNormalButton" type="Button" parent="SafeArea/Panel/Margin/Content/SpeedRow/SpeedButtons"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 0)
-layout_mode = 2
-toggle_mode = true
-button_pressed = true
-button_group = SubResource("ButtonGroup_speed")
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
-theme_override_colors/font_hover_color = Color(0.32, 0.34, 0.38, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_soft")
-theme_override_styles/hover = SubResource("StyleBoxFlat_soft")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_segment_on")
-theme_override_styles/focus = SubResource("StyleBoxFlat_soft")
-text = "Normal"
-
-[node name="Divider2" type="HSeparator" parent="SafeArea/Panel/Margin/Content"]
-layout_mode = 2
-
-[node name="StarsLabel" type="Label" parent="SafeArea/Panel/Margin/Content"]
+[node name="StarsLabel" type="Label" parent="SafeArea/Center/Panel/Margin/Content/BottomRow/StarsBox"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.4, 0.42, 0.45, 1)
-text = "Stars earned: 0"
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+text = "0 stars earned"
 
-[node name="ResetRow" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content"]
+[node name="BottomSpacer" type="Control" parent="SafeArea/Center/Panel/Margin/Content/BottomRow"]
 layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
 
-[node name="ResetButton" type="Button" parent="SafeArea/Panel/Margin/Content/ResetRow"]
+[node name="ResetRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/BottomRow"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.45, 0.35, 0.38, 1)
-theme_override_colors/font_hover_color = Color(0.45, 0.35, 0.38, 1)
-theme_override_colors/font_pressed_color = Color(0.45, 0.35, 0.38, 1)
-theme_override_colors/font_disabled_color = Color(0.68, 0.65, 0.64, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_soft")
-theme_override_styles/hover = SubResource("StyleBoxFlat_soft")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_soft_pressed")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_soft")
-theme_override_styles/focus = SubResource("StyleBoxFlat_soft")
-text = "Reset progress..."
+size_flags_vertical = 4
 
-[node name="ConfirmBox" type="VBoxContainer" parent="SafeArea/Panel/Margin/Content"]
+[node name="ResetButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/BottomRow/ResetRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.4, 0.28, 0.24, 1)
+theme_override_colors/font_hover_color = Color(0.4, 0.28, 0.24, 1)
+theme_override_colors/font_pressed_color = Color(0.4, 0.28, 0.24, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.4, 0.28, 0.24, 1)
+theme_override_colors/font_disabled_color = Color(0.58, 0.5, 0.42, 1)
+theme_override_styles/normal = ExtResource("7")
+theme_override_styles/hover = ExtResource("7")
+theme_override_styles/pressed = ExtResource("8")
+theme_override_styles/disabled = ExtResource("7")
+theme_override_styles/focus = ExtResource("7")
+text = "Reset progress"
+
+[node name="DoneButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/BottomRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 78)
+layout_mode = 2
+size_flags_vertical = 4
+focus_mode = 0
+theme_override_font_sizes/font_size = 32
+theme_override_colors/font_color = Color(0.09, 0.27, 0.21, 1)
+theme_override_colors/font_hover_color = Color(0.09, 0.27, 0.21, 1)
+theme_override_colors/font_pressed_color = Color(0.09, 0.27, 0.21, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.09, 0.27, 0.21, 1)
+theme_override_styles/normal = ExtResource("10")
+theme_override_styles/hover = ExtResource("10")
+theme_override_styles/pressed = ExtResource("11")
+theme_override_styles/focus = ExtResource("10")
+text = "Done"
+
+[node name="ConfirmBox" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 12
 
-[node name="ConfirmText" type="Label" parent="SafeArea/Panel/Margin/Content/ConfirmBox"]
+[node name="ConfirmText" type="Label" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox"]
 layout_mode = 2
 autowrap_mode = 2
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.45, 0.35, 0.38, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.4, 0.28, 0.24, 1)
 text = "This erases all stars and stickers, and starts the whole adventure again from the beginning. It cannot be undone."
 
-[node name="ConfirmButtons" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content/ConfirmBox"]
+[node name="ConfirmButtons" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox"]
 layout_mode = 2
-theme_override_constants/separation = 18
+theme_override_constants/separation = 20
 
-[node name="CancelResetButton" type="Button" parent="SafeArea/Panel/Margin/Content/ConfirmBox/ConfirmButtons"]
+[node name="CancelResetButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmButtons"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 78)
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.3, 0.32, 0.36, 1)
-theme_override_colors/font_hover_color = Color(0.3, 0.32, 0.36, 1)
-theme_override_colors/font_pressed_color = Color(0.3, 0.32, 0.36, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_soft")
-theme_override_styles/hover = SubResource("StyleBoxFlat_soft")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_soft_pressed")
-theme_override_styles/focus = SubResource("StyleBoxFlat_soft")
+focus_mode = 0
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_styles/normal = ExtResource("7")
+theme_override_styles/hover = ExtResource("7")
+theme_override_styles/pressed = ExtResource("8")
+theme_override_styles/focus = ExtResource("7")
 text = "Keep my stars"
 
-[node name="ConfirmHold" type="Control" parent="SafeArea/Panel/Margin/Content/ConfirmBox/ConfirmButtons"]
+[node name="ConfirmHold" type="Control" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmButtons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 60)
+custom_minimum_size = Vector2(380, 78)
 layout_mode = 2
 script = ExtResource("3")
 hold_duration = 3.0
 style = 1
 
-[node name="HoldLabel" type="Label" parent="SafeArea/Panel/Margin/Content/ConfirmBox/ConfirmButtons/ConfirmHold"]
+[node name="HoldLabel" type="Label" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmButtons/ConfirmHold"]
 layout_mode = 1
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -441,36 +435,15 @@ grow_vertical = 2
 mouse_filter = 2
 horizontal_alignment = 1
 vertical_alignment = 1
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.36, 0.3, 0.32, 1)
+theme_override_font_sizes/font_size = 25
+theme_override_colors/font_color = Color(0.36, 0.2, 0.26, 1)
 text = "Hold 3 seconds to erase"
 
-[node name="StatusLabel" type="Label" parent="SafeArea/Panel/Margin/Content"]
+[node name="StatusLabel" type="Label" parent="SafeArea/Center/Panel/Margin/Content"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 autowrap_mode = 2
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.32, 0.5, 0.42, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.13, 0.36, 0.28, 1)
 text = ""
-
-[node name="Spacer" type="Control" parent="SafeArea/Panel/Margin/Content"]
-layout_mode = 2
-size_flags_vertical = 3
-mouse_filter = 2
-
-[node name="DoneRow" type="HBoxContainer" parent="SafeArea/Panel/Margin/Content"]
-layout_mode = 2
-alignment = 2
-
-[node name="DoneButton" type="Button" parent="SafeArea/Panel/Margin/Content/DoneRow"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 28
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_primary")
-theme_override_styles/hover = SubResource("StyleBoxFlat_primary")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_primary_pressed")
-theme_override_styles/focus = SubResource("StyleBoxFlat_primary")
-text = "Done"

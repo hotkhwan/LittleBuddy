@@ -40,6 +40,7 @@ var _syncing: bool = false
 @onready var _speed_slow: Button = %SpeedSlowButton
 @onready var _speed_normal: Button = %SpeedNormalButton
 @onready var _stars_label: Label = %StarsLabel
+@onready var _reset_row: Control = %ResetRow
 @onready var _reset_button: Button = %ResetButton
 @onready var _confirm_box: VBoxContainer = %ConfirmBox
 @onready var _confirm_hold: ParentalGateScript = %ConfirmHold
@@ -76,7 +77,7 @@ func open_settings() -> void:
 	_backdrop.visible = true
 	_panel.visible = true
 	_hide_reset_confirmation()
-	_status_label.text = ""
+	_set_status("")
 	_sync_from_model()
 	opened.emit()
 
@@ -116,7 +117,8 @@ func _sync_from_model() -> void:
 	var slow: bool = _model.is_tts_slow()
 	_speed_slow.button_pressed = slow
 	_speed_normal.button_pressed = not slow
-	_stars_label.text = "Stars earned: %d" % _model.get_stars()
+	var stars: int = _model.get_stars()
+	_stars_label.text = "%d star earned" % stars if stars == 1 else "%d stars earned" % stars
 	_syncing = false
 
 
@@ -142,16 +144,18 @@ func _on_speed_chosen(speed: String) -> void:
 
 func _on_reset_requested() -> void:
 	# Step 1 of 2: reveal the confirmation. Nothing is erased yet.
-	_status_label.text = ""
+	_set_status("")
 	_confirm_box.visible = true
 	_confirm_hold.reset()
-	_reset_button.disabled = true
+	# Swapped out rather than greyed out: the panel sizes itself to its content,
+	# and leaving a dead button above the confirmation only made it taller.
+	_reset_row.visible = false
 
 
 func _hide_reset_confirmation() -> void:
 	_confirm_box.visible = false
 	_confirm_hold.reset()
-	_reset_button.disabled = false
+	_reset_row.visible = true
 
 
 func _on_reset_confirmed() -> void:
@@ -159,4 +163,10 @@ func _on_reset_confirmed() -> void:
 	_model.reset_progress()
 	_hide_reset_confirmation()
 	_sync_from_model()
-	_status_label.text = "Progress reset. Stars and stickers are back to zero."
+	_set_status("Progress reset. Stars and stickers are back to zero.")
+
+
+## Hidden when empty so an empty label never reserves a gap in the panel.
+func _set_status(text: String) -> void:
+	_status_label.text = text
+	_status_label.visible = not text.is_empty()

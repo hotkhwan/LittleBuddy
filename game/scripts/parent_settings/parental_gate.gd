@@ -36,12 +36,20 @@ const DEFAULT_HOLD_SECONDS := 3.0
 @export var backdrop_color: Color = Color(0.32, 0.31, 0.29, 0.16)
 @export var fill_color: Color = Color(0.9, 0.62, 0.62) # soft pink (BAR)
 
+## BAR style uses the same re-paletted Kenney 9-slices as every other control:
+## a cream track with a soft-pink fill sliding across it. The fill is drawn at
+## the track's full width into a child that clips to the progress, because
+## drawing a nine-patch at a fraction of its width would squash its corners
+## instead of revealing them.
+const BAR_TRACK: StyleBox = preload("res://assets/ui/styles/small/btn_cream_flat.tres")
+const BAR_FILL: StyleBox = preload("res://assets/ui/styles/small/btn_pink.tres")
+
 var _holding: bool = false
 var _elapsed: float = 0.0
 var _has_unlocked: bool = false
 
-var _bar_backdrop := StyleBoxFlat.new()
-var _bar_fill := StyleBoxFlat.new()
+var _fill_clip: Control = null
+var _fill_art: Control = null
 
 
 # -- Pure logic (directly testable) -------------------------------------------
@@ -119,6 +127,8 @@ func _ready() -> void:
 	set_process(false)
 	if not mouse_exited.is_connected(cancel_hold):
 		mouse_exited.connect(cancel_hold)
+	if style == Style.BAR:
+		_build_bar_fill()
 	queue_redraw()
 
 
@@ -216,18 +226,44 @@ func _draw_ring() -> void:
 func _draw_bar() -> void:
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
-	var corner: int = int(minf(size.y * 0.5, 28.0))
+	draw_style_box(BAR_TRACK, Rect2(Vector2.ZERO, size))
+	_update_bar_fill()
 
-	_bar_backdrop.bg_color = Color(0.94, 0.91, 0.87, 1.0)
-	_bar_backdrop.set_corner_radius_all(corner)
-	_bar_backdrop.border_color = Color(0.82, 0.74, 0.70, 1.0)
-	_bar_backdrop.set_border_width_all(2)
-	draw_style_box(_bar_backdrop, Rect2(Vector2.ZERO, size))
 
+## Builds the clipped fill. Only for BAR style, and only from `_ready()`, so a
+## RING gate -- and a gate built in a test with no scene tree -- never pays for
+## nodes it does not use.
+func _build_bar_fill() -> void:
+	if _fill_clip != null:
+		return
+	_fill_clip = Control.new()
+	_fill_clip.name = "BarFill"
+	_fill_clip.clip_contents = true
+	_fill_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_fill_clip)
+	# Behind whatever the scene put inside the gate: the label on the
+	# hold-to-erase bar has to stay readable as the fill slides under it.
+	move_child(_fill_clip, 0)
+
+	_fill_art = Control.new()
+	_fill_art.name = "BarFillArt"
+	_fill_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fill_art.draw.connect(_on_fill_art_draw)
+	_fill_clip.add_child(_fill_art)
+
+
+func _update_bar_fill() -> void:
+	if _fill_clip == null:
+		return
 	var progress: float = get_progress()
-	if progress > 0.0:
-		_bar_fill.bg_color = fill_color
-		_bar_fill.set_corner_radius_all(corner)
-		draw_style_box(
-			_bar_fill, Rect2(Vector2.ZERO, Vector2(maxf(size.x * progress, 1.0), size.y))
-		)
+	_fill_clip.visible = progress > 0.0
+	_fill_clip.position = Vector2.ZERO
+	_fill_clip.size = Vector2(size.x * progress, size.y)
+	_fill_art.size = size
+	_fill_art.queue_redraw()
+
+
+func _on_fill_art_draw() -> void:
+	if _fill_art == null:
+		return
+	_fill_art.draw_style_box(BAR_FILL, Rect2(Vector2.ZERO, _fill_art.size))

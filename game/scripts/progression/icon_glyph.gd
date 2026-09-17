@@ -10,12 +10,17 @@ extends TextureRect
 ## are the *same* star. This used to be a `_draw()` polygon per glyph, which is
 ## why the old UI mixed hand-drawn arrows with an imported mic.
 ##
-## The source SVGs all sit on the pack's shared `0 0 10 10` grid, so a mic, a
-## star and an arrow optically match at the same box size without per-icon
-## fiddling. They ship `fill="currentColor"` (which Godot resolves to black, and
-## `modulate` multiplies, so tinting would silently fail); the copies under
-## `assets/ui/icons/` are re-filled white at import time -- see
-## `docs/ASSET_SOURCING_PLAN.md` §6.
+## The copies under `assets/ui/icons/` are derived from the pack's `no-padding`
+## variants and then re-boxed onto one shared optical grid: each tight viewBox is
+## squared around its own centre and expanded so the artwork covers 86% of the
+## box. A mic, a star and an arrow therefore match at the same control size
+## without per-icon fiddling -- and none of them is left swimming in the ~20% of
+## dead margin per side that the pack's `padding` variants carry, which is what
+## made the Speak mic read small inside its 240px circle.
+##
+## They ship `fill="currentColor"` (which Godot resolves to black, and `modulate`
+## multiplies, so tinting would silently fail); the bundled copies are re-filled
+## white -- see `docs/ASSET_SOURCING_PLAN.md` §6.
 ##
 ## Purely decorative -- it never eats a touch (`MOUSE_FILTER_IGNORE`), so it can
 ## sit inside a `Button` without stealing its input.
@@ -29,7 +34,9 @@ enum Glyph {
 	NEXT,
 	PLAY,
 	MIC,
-	BOOK,
+	## The sticker book. A treasure chest, not a book: a child who cannot read a
+	## spine still knows a chest is where the things they collected live.
+	STICKERS,
 	SETTINGS,
 }
 
@@ -39,7 +46,7 @@ const ICON_PATHS: Dictionary = {
 	Glyph.NEXT: "res://assets/ui/icons/next.svg",
 	Glyph.PLAY: "res://assets/ui/icons/play.svg",
 	Glyph.MIC: "res://assets/ui/icons/mic.svg",
-	Glyph.BOOK: "res://assets/ui/icons/book.svg",
+	Glyph.STICKERS: "res://assets/ui/icons/stickers.svg",
 	Glyph.SETTINGS: "res://assets/ui/icons/settings.svg",
 }
 

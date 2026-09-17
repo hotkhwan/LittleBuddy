@@ -100,7 +100,9 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [])
 		_sticker_row.visible = not sticker.is_empty()
 	if not sticker.is_empty():
 		if _sticker_cell != null:
-			_sticker_cell.call("setup", sticker, true, false)
+			# No caption on the card: the label beside it already prints the word,
+			# and this screen used to say "Milk" twice, a centimetre apart.
+			_sticker_cell.call("setup", sticker, true, false, false)
 		if _sticker_label != null:
 			_sticker_label.text = String(sticker.get("displayName", sticker.get("word", "")))
 
@@ -112,13 +114,13 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [])
 		_shown = true
 		_speak(_headline(earned))
 		if _celebration != null:
-			# Over the panel rather than in the corner, so the stars read as
-			# "these are the ones you just earned". Taken proportionally from the
-			# viewport rather than from the panel's rect: the panel is centred,
-			# and on the very first show its layout has not been solved yet.
-			var viewport_size: Vector2 = get_viewport_rect().size
-			_celebration.call("set_origin_global",
-					Vector2(viewport_size.x * 0.5, viewport_size.y * 0.30))
+			# In the celebration's own top-right corner, the same place the
+			# reward moment plays in the baby room -- not over the panel.
+			# Anywhere over the panel puts a rising 74px star through either the
+			# "Great job!" headline or the new sticker, and the panel is centred,
+			# so a proportional guess lands somewhere different at every aspect
+			# ratio. The corner is empty dim backdrop at all of them.
+			_celebration.call("clear_origin")
 			# Stars only. The panel behind already shows the new sticker on its
 			# own card, and the flourish used to spring an identical second card
 			# straight on top of it.

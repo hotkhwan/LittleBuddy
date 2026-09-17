@@ -18,8 +18,22 @@ const CelebrationScript := preload("res://scripts/progression/celebration.gd")
 const StickerBookScreenScript := preload("res://scenes/progression/sticker_book_screen.gd")
 
 const BABY_ROOM_SCENE: String = "res://scenes/baby_room/baby_room.tscn"
+const PARENT_SCENE: String = "res://scenes/parent/parent_settings.tscn"
 const STYLES_DIR: String = "res://assets/ui/styles"
 const ICONS_DIR: String = "res://assets/ui/icons"
+
+## Screens that must be built entirely from the shared 9-slice frames. A
+## `StyleBoxFlat` here is how the parent screen drifted into looking like a
+## different product: it is the path of least resistance for a compact control,
+## because the full-size frame's 32-unit corner folds in on itself below about
+## 70 units of height. The answer is the small-corner frame set in
+## `assets/ui/styles/small/`, not a hand-rolled rounded rectangle.
+const FRAME_ONLY_SCENES: Array[String] = [
+	BABY_ROOM_SCENE,
+	PARENT_SCENE,
+	"res://scenes/progression/sticker_book.tscn",
+	"res://scenes/progression/session_summary.tscn",
+]
 
 ## Landscape safe-area sizes, in the project's 1366x1024 design space, for the
 ## two shapes the game ships on: an iPhone (~2.17:1) and an iPad (~1.44:1).
@@ -52,7 +66,25 @@ func run() -> Array:
 	failures.append_array(_test_celebration_anchor())
 	failures.append_array(_test_sticker_columns())
 	failures.append_array(_test_room_layout())
+	failures.append_array(_test_one_frame_system())
 	return failures
+
+
+## Walks `dir` and every directory under it, returning full `res://` paths of the
+## files whose name ends with `suffix`. The icon and style sets are nested now
+## (`icons/stickers/`, `styles/small/`), and a flat listing would quietly stop
+## checking most of them.
+static func _files_under(dir_path: String, suffix: String) -> PackedStringArray:
+	var found: PackedStringArray = PackedStringArray()
+	var dir: DirAccess = DirAccess.open(dir_path)
+	if dir == null:
+		return found
+	for file_name: String in dir.get_files():
+		if file_name.ends_with(suffix):
+			found.append("%s/%s" % [dir_path, file_name])
+	for sub: String in dir.get_directories():
+		found.append_array(_files_under("%s/%s" % [dir_path, sub], suffix))
+	return found
 
 
 # ---------------------------------------------------------------------------
@@ -70,14 +102,11 @@ func _test_icons() -> Array:
 		if load(path) == null:
 			failures.append("icon %s did not load as a texture" % path)
 
-	var dir: DirAccess = DirAccess.open(ICONS_DIR)
-	if dir == null:
-		return ["%s is missing" % ICONS_DIR]
+	var sources: PackedStringArray = _files_under(ICONS_DIR, ".svg")
+	if sources.is_empty():
+		return ["%s has no icons" % ICONS_DIR]
 
-	for file_name: String in dir.get_files():
-		if not file_name.ends_with(".svg"):
-			continue
-		var source: String = "%s/%s" % [ICONS_DIR, file_name]
+	for source: String in sources:
 		var text: String = FileAccess.get_file_as_string(source)
 		if text.contains("currentColor"):
 			failures.append(
@@ -101,16 +130,11 @@ func _test_icons() -> Array:
 func _test_styles() -> Array:
 	var failures: Array = []
 
-	var dir: DirAccess = DirAccess.open(STYLES_DIR)
-	if dir == null:
-		return ["%s is missing" % STYLES_DIR]
+	var paths: PackedStringArray = _files_under(STYLES_DIR, ".tres")
 
 	var count: int = 0
-	for file_name: String in dir.get_files():
-		if not file_name.ends_with(".tres"):
-			continue
+	for path: String in paths:
 		count += 1
-		var path: String = "%s/%s" % [STYLES_DIR, file_name]
 		var style: Resource = load(path)
 		if style == null or not (style is StyleBoxTexture):
 			failures.append("%s did not load as a StyleBoxTexture" % path)
@@ -169,6 +193,23 @@ func _test_celebration_anchor() -> Array:
 
 		if celebration.mouse_filter != Control.MOUSE_FILTER_IGNORE:
 			failures.append("the celebration does not ignore touches")
+
+		# The stars have to play in the gap under the card for their whole
+		# flight. They used to start inside its bottom edge and then rise
+		# straight up behind it, so most of the reward moment was invisible.
+		var star: float = CelebrationScript.STAR_SIZE
+		var burst: Vector2 = origin + Vector2(0.0, CelebrationScript.STAR_DROP)
+		var top: float = burst.y - star * 0.5 - CelebrationScript.STAR_RISE_WITH_CARD
+		var flight: Rect2 = Rect2(
+			Vector2(burst.x - star, top),
+			Vector2(star * 2.0, (burst.y + star * 0.5) - top))
+
+		if flight.intersects(card):
+			failures.append("at %s the star burst %s flies behind the sticker card %s"
+					% [str(area), str(flight), str(card)])
+		if not Rect2(Vector2.ZERO, area).encloses(flight):
+			failures.append("at %s the star burst %s escapes the safe area"
+					% [str(area), str(flight)])
 
 		celebration.free()
 
@@ -277,6 +318,48 @@ func _test_room_layout() -> Array:
 							% [str(area), String(names[i]), String(names[j])])
 
 	room.free()
+	return failures
+
+
+# ---------------------------------------------------------------------------
+# One frame system
+# ---------------------------------------------------------------------------
+
+func _test_one_frame_system() -> Array:
+	var failures: Array = []
+
+	for scene_path: String in FRAME_ONLY_SCENES:
+		if not ResourceLoader.exists(scene_path):
+			failures.append("%s does not exist" % scene_path)
+			continue
+		var packed: PackedScene = load(scene_path) as PackedScene
+		if packed == null or not packed.can_instantiate():
+			failures.append("%s cannot be instantiated" % scene_path)
+			continue
+		var root: Node = packed.instantiate()
+		failures.append_array(_find_flat_styleboxes(root, root, scene_path.get_file()))
+		root.free()
+
+	return failures
+
+
+func _find_flat_styleboxes(node: Node, root: Node, scene_name: String) -> Array:
+	var failures: Array = []
+
+	var control: Control = node as Control
+	if control != null:
+		for property: Dictionary in control.get_property_list():
+			var name: String = String(property.get("name", ""))
+			if not name.begins_with("theme_override_styles/"):
+				continue
+			var style: Variant = control.get(name)
+			if style is StyleBoxFlat:
+				failures.append("%s: %s sets %s to a StyleBoxFlat; use a frame from %s/"
+						% [scene_name, String(root.get_path_to(node)), name, STYLES_DIR])
+
+	for child: Node in node.get_children():
+		failures.append_array(_find_flat_styleboxes(child, root, scene_name))
+
 	return failures
 
 

@@ -51,7 +51,7 @@ theme_override_constants/separation = 24
 
 [node name="BackButton" type="Button" parent="SafeArea/Layout/Header"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 140)
+custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
 size_flags_vertical = 4
 focus_mode = 0
@@ -66,16 +66,16 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 22.0
-offset_top = 16.0
-offset_right = -22.0
-offset_bottom = -32.0
+offset_left = 30.0
+offset_top = 22.0
+offset_right = -30.0
+offset_bottom = -50.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("3")
 glyph = 1
-tint = Color(0.678, 0.404, 0.2, 1)
+tint = Color(0.506, 0.302, 0.149, 1)
 
 [node name="Title" type="Label" parent="SafeArea/Layout/Header"]
 layout_mode = 2
@@ -120,18 +120,26 @@ text = "0 / 0"
 vertical_alignment = 1
 
 [node name="Scroll" type="ScrollContainer" parent="SafeArea/Layout"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="GridRow" type="HBoxContainer" parent="SafeArea/Layout/Scroll"]
+[node name="Page" type="VBoxContainer" parent="SafeArea/Layout/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 0
+size_flags_vertical = 3
 mouse_filter = 2
 alignment = 1
 
-[node name="StickerGrid" type="GridContainer" parent="SafeArea/Layout/Scroll/GridRow"]
+[node name="GridRow" type="HBoxContainer" parent="SafeArea/Layout/Scroll/Page"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
+alignment = 1
+
+[node name="StickerGrid" type="GridContainer" parent="SafeArea/Layout/Scroll/Page/GridRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 0

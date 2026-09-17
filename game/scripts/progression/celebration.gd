@@ -54,8 +54,20 @@ const STICKER_DURATION: float = 1.25
 const EDGE_MARGIN: float = 10.0
 const TOP_MARGIN: float = 96.0
 
-## Stars burst just below the card so the sticker never hides them.
-const STAR_DROP: float = 118.0
+## How far a star drifts as it fades. Shorter when a card is on screen, so the
+## rise stays in the gap under it instead of disappearing behind it.
+const STAR_RISE: float = 130.0
+const STAR_RISE_WITH_CARD: float = 56.0
+
+## Stars burst below the card so the sticker never hides them.
+##
+## Derived rather than a round number, and derived from the *end* of the flight
+## rather than its start: at a flat 118 the stars began inside the card's bottom
+## edge and then rose straight up behind it, so most of the reward moment
+## happened where nobody could see it. Half the card, half a star, the whole
+## rise, and a 16px gap.
+const STAR_DROP: float = STICKER_SIZE.y * 0.5 + STAR_SIZE * 0.5 \
+	+ STAR_RISE_WITH_CARD + 16.0
 
 ## Warm gold, matching the star on the counter and on the summary.
 const STAR_COLOR: Color = Color(1.0, 0.78, 0.24)
@@ -121,15 +133,19 @@ func celebrate(star_count: int = 1, stickers: Array = []) -> void:
 
 	# With a card on screen the stars start below it, so the card never hides
 	# them; on their own they pop right at the anchor.
+	var has_card: bool = not first_sticker.is_empty()
 	var burst_origin: Vector2 = _moment_origin()
-	if not first_sticker.is_empty():
+	var rise: float = STAR_RISE
+	if has_card:
 		burst_origin += Vector2(0.0, STAR_DROP)
+		rise = STAR_RISE_WITH_CARD
+		# The card goes down first so it sits *under* the stars. They should not
+		# overlap at all, but if a clamp on a narrow screen ever pushes them
+		# together, a star over the card reads better than half a star behind it.
+		_spawn_sticker(first_sticker)
 
 	for i: int in range(stars):
-		_spawn_star(burst_origin, i, stars)
-
-	if not first_sticker.is_empty():
-		_spawn_sticker(first_sticker)
+		_spawn_star(burst_origin, i, stars, rise)
 
 	if _pending == 0:
 		_playing = false
@@ -145,7 +161,8 @@ func chime() -> void:
 # Internal
 # ---------------------------------------------------------------------------
 
-func _spawn_star(burst_origin: Vector2, index: int, total: int) -> void:
+func _spawn_star(burst_origin: Vector2, index: int, total: int,
+		rise_distance: float = STAR_RISE) -> void:
 	var star: Control = _IconGlyph.new()
 	star.set("glyph", _IconGlyph.Glyph.STAR)
 	star.set("tint", STAR_COLOR)
@@ -167,7 +184,7 @@ func _spawn_star(burst_origin: Vector2, index: int, total: int) -> void:
 
 	# The end of the drift is clamped as well as the start: an unclamped target
 	# is what let the outermost star slide off the edge of an iPad.
-	var rise: Vector2 = _clamped(start + Vector2(spread * 70.0, -130.0), star.size)
+	var rise: Vector2 = _clamped(start + Vector2(spread * 70.0, -rise_distance), star.size)
 	var tween: Tween = create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(star, "position", rise, STAR_DURATION) \

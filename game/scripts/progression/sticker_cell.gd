@@ -24,12 +24,22 @@ const LABEL_COLOR: Color = Color(0.349, 0.259, 0.169)
 const LABEL_COLOR_LOCKED: Color = Color(0.639, 0.616, 0.678)
 
 ## Big, forgiving touch target for small fingers. Six of these plus their gaps
-## still fit across an iPad in landscape inside the safe area.
+## still fit across an iPad in landscape inside the safe area. The book grows
+## them from here to fill the page -- see `StickerBookScreen.cell_size()`.
 const MIN_SIZE: Vector2 = Vector2(190.0, 210.0)
+
+## Height as a multiple of width. The extra is the strip the word sits in.
+const ASPECT: float = MIN_SIZE.y / MIN_SIZE.x
+
+## Caption band, as a fraction of the card height, so a card that grew to fill an
+## iPad page does not keep a phone-sized word wedged under it.
+const CAPTION_RATIO: float = 0.2
+const CAPTION_FONT_RATIO: float = 0.125
 
 var _sticker: Dictionary = {}
 var _unlocked: bool = false
 var _interactive: bool = true
+var _show_caption: bool = true
 var _held: bool = false
 var _label: Label
 
@@ -46,10 +56,16 @@ func _ready() -> void:
 
 
 ## `sticker` is a content-library sticker dictionary.
-func setup(sticker: Dictionary, unlocked: bool, interactive: bool = true) -> void:
+##
+## `show_caption` off leaves the picture alone on the card: the session summary
+## already prints the word large beside it, and printing it twice was the single
+## most redundant thing on that screen.
+func setup(sticker: Dictionary, unlocked: bool, interactive: bool = true,
+		show_caption: bool = true) -> void:
 	_sticker = sticker.duplicate(true)
 	_unlocked = unlocked
 	_interactive = interactive
+	_show_caption = show_caption
 	if is_inside_tree():
 		mouse_filter = Control.MOUSE_FILTER_STOP if _interactive else Control.MOUSE_FILTER_IGNORE
 		_ensure_label()
@@ -88,7 +104,6 @@ func _ensure_label() -> void:
 		_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		_label.add_theme_font_size_override("font_size", 26)
 		add_child(_label)
 	_layout_label()
 
@@ -96,15 +111,26 @@ func _ensure_label() -> void:
 func _layout_label() -> void:
 	if _label == null:
 		return
-	_label.position = Vector2(0.0, size.y - 42.0)
-	_label.size = Vector2(size.x, 36.0)
+	var band: float = _caption_band()
+	_label.position = Vector2(0.0, size.y - band - 6.0)
+	_label.size = Vector2(size.x, band)
+	_label.add_theme_font_size_override(
+		"font_size", maxi(int(round(size.y * CAPTION_FONT_RATIO)), 20))
+
+
+## Height reserved under the picture for the word; zero when there is no word.
+func _caption_band() -> float:
+	if not _unlocked or not _show_caption:
+		return 0.0
+	return maxf(size.y * CAPTION_RATIO, 30.0)
 
 
 func _refresh() -> void:
 	if _label != null:
 		# The word is shown for earned stickers only -- a locked card stays a
 		# pure silhouette so there is nothing to feel bad about.
-		_label.text = String(_sticker.get("displayName", get_word())) if _unlocked else ""
+		var captioned: bool = _unlocked and _show_caption
+		_label.text = String(_sticker.get("displayName", get_word())) if captioned else ""
 		_label.add_theme_color_override(
 			"font_color", LABEL_COLOR if _unlocked else LABEL_COLOR_LOCKED)
 		_layout_label()
@@ -127,10 +153,11 @@ func _draw() -> void:
 	if _sticker.is_empty():
 		return
 
-	var art_height: float = card.size.y - (44.0 if _unlocked else 16.0)
+	var inset: float = maxf(card.size.x * 0.06, 8.0)
+	var art_height: float = card.size.y - _caption_band() - inset * 1.6
 	var art: Rect2 = Rect2(
-		card.position + Vector2(10.0, 8.0),
-		Vector2(card.size.x - 20.0, maxf(art_height, 24.0)))
+		card.position + Vector2(inset, inset * 0.8),
+		Vector2(card.size.x - inset * 2.0, maxf(art_height, 24.0)))
 	_StickerArt.draw_sticker(self, _sticker, art, not _unlocked)
 
 
