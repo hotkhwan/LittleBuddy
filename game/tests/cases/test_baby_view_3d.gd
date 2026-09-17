@@ -17,6 +17,13 @@ extends RefCounted
 ##   3. The baby stays the size and pose the nursery is built around: roughly
 ##      0.6-0.8 m tall, standing on y = 0, inside the play volume that
 ##      `nursery_props.tscn` is contractually required to keep clear.
+##   4. Every AnimationPlayer track resolves to a real node. Track paths are
+##      relative to the player's PARENT, so `Head:rotation:x` silently animates
+##      nothing (Head is nested under Body) -- the clip still "plays", the baby
+##      just stops reacting. This has shipped broken once already.
+##   5. The face still has its two moving parts: the `Eyes` blink pivot closes
+##      and reopens under `_process`, and the mouth swaps between the smile and
+##      the open "o" so hungry/drinking do not wear a happy face.
 ##
 ## Note on the harness: under `--headless --script` the runner does everything
 ## in `SceneTree._initialize()`, where the root `Window` is not yet inside the
@@ -64,6 +71,9 @@ func run() -> Array:
 	failures.append_array(_test_markers(view))
 	failures.append_array(_test_markers_follow_the_body(view))
 	failures.append_array(_test_fits_play_volume(view))
+	failures.append_array(_test_animation_tracks_resolve(view))
+	failures.append_array(_test_blink(view))
+	failures.append_array(_test_mouth_changes_with_state(view))
 	failures.append_array(_test_global_getters_if_tree_is_live(view))
 
 	view.free()
@@ -169,6 +179,78 @@ func _test_fits_play_volume(view: Node3D) -> Array:
 			or far.y > PLAY_VOLUME.end.y:
 		failures.append("the baby (%s .. %s) escapes the play volume the nursery keeps clear (%s .. %s)"
 				% [str(box.position), str(far), str(PLAY_VOLUME.position), str(PLAY_VOLUME.end)])
+	return failures
+
+
+## An animation whose track path points at nothing plays happily and animates
+## nothing at all, so this can only be caught by resolving the paths. Paths are
+## relative to the AnimationPlayer's parent, i.e. the view itself.
+func _test_animation_tracks_resolve(view: Node3D) -> Array:
+	var failures: Array = []
+	var player: AnimationPlayer = null
+	for child: Node in view.get_children():
+		if child is AnimationPlayer:
+			player = child as AnimationPlayer
+			break
+	if player == null:
+		return ["BabyView3D has no AnimationPlayer; no state can animate"]
+
+	var clips: PackedStringArray = player.get_animation_list()
+	for state: String in STATES:
+		if not player.has_animation(state):
+			failures.append("no '%s' animation; that state will freeze" % state)
+	for clip_name: String in clips:
+		var anim: Animation = player.get_animation(clip_name)
+		if anim.get_track_count() == 0:
+			failures.append("animation '%s' has no tracks; it cannot move anything" % clip_name)
+		for track: int in anim.get_track_count():
+			var path: NodePath = anim.track_get_path(track)
+			var target: Node = view.get_node_or_null(NodePath(path.get_concatenated_names()))
+			if target == null:
+				failures.append("animation '%s' track '%s' resolves to no node" % [clip_name, str(path)])
+	return failures
+
+
+## The blink is a `_process` timer, not an animation track, precisely so it
+## survives every state change. Drive it by hand: the eyes must actually shut
+## and then reopen all the way.
+func _test_blink(view: Node3D) -> Array:
+	var failures: Array = []
+	var eyes: Node3D = _find(view, "Eyes")
+	if eyes == null:
+		return ["no Eyes pivot; the blink has nothing to close"]
+	if not view.has_method("_process"):
+		return ["BabyView3D lost _process(); the blink will never fire"]
+
+	view.set("_blink_timer", 0.0)
+	var closest: float = 1.0
+	for step: int in 60:
+		view.call("_process", 0.02)
+		closest = minf(closest, eyes.scale.y)
+	if closest > 0.5:
+		failures.append("the eyes never closed; narrowest scale.y was %.2f" % closest)
+	if not is_equal_approx(eyes.scale.y, 1.0):
+		failures.append("the eyes did not reopen; scale.y settled at %.2f" % eyes.scale.y)
+	return failures
+
+
+## Hungry and drinking must not wear the same face as happy.
+func _test_mouth_changes_with_state(view: Node3D) -> Array:
+	var failures: Array = []
+	var smile: Node3D = _find(view, "Smile")
+	var open_mouth: Node3D = _find(view, "MouthOpen")
+	if smile == null or open_mouth == null:
+		return ["the mouth lost its Smile/MouthOpen shapes; every state looks identical"]
+
+	for state: String in ["hungry", "drinking"]:
+		view.call("set_view_state", state)
+		if not open_mouth.visible or smile.visible:
+			failures.append("'%s' must show the open mouth, not the smile" % state)
+	for state: String in ["idle", "happy", "hugging"]:
+		view.call("set_view_state", state)
+		if not smile.visible or open_mouth.visible:
+			failures.append("'%s' must show the smile, not the open mouth" % state)
+	view.call("set_view_state", "idle")
 	return failures
 
 
