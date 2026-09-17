@@ -54,6 +54,12 @@ const TARGET_REGISTRY_SCRIPT_PATH: String = "res://scripts/navigation/activity_t
 const CONTENT_LIBRARY_SCRIPT_PATH: String = "res://scripts/content/content_library.gd"
 const CONTENT_VALIDATOR_SCRIPT_PATH: String = "res://scripts/content/content_validator.gd"
 
+## Story Mode's level loop -- the thing that turns four walkable rooms into "A
+## Day With Little Buddy". `load()`ed rather than `preload()`ed so a house that
+## has no level loop yet (or whose level loop fails to parse) still builds,
+## still walks and still renders.
+const LEVEL_DIRECTOR_SCRIPT_PATH: String = "res://scripts/gameplay/house_level_director.gd"
+
 const CAMERA_FOV: float = 55.0
 ## Only a fallback for callers with no viewport; anything real is fitted to the
 ## live aspect ratio.
@@ -96,6 +102,10 @@ var _rooms_by_id: Dictionary = {}
 var _regions: Dictionary = {}
 var _registered_target_ids: Array = []
 var _world_state: RefCounted = null
+## Story Mode's level loop, built on the first frame. Null in Free Play and in
+## every headless test that never asks for it.
+var _director: Node = null
+var _director_booted: bool = false
 ## Optional: agentTARGET's semantic-id lookup. Null when that file is absent, in
 ## which case `get_target_by_semantic_id()` falls back to asking the rooms.
 var _registry: RefCounted = null
@@ -122,6 +132,28 @@ func _ready() -> void:
 		viewport.size_changed.connect(_reframe_current_room)
 	if auto_validate_content and OS.is_debug_build():
 		_report_content_problems()
+
+
+## Story Mode picks up its level loop on the FIRST FRAME rather than in
+## `_ready()`, and that timing is deliberate.
+##
+## The headless `--script` runner fires no frames at all, so every existing test
+## of this world keeps exercising exactly what it exercised before: a bare,
+## objective-free, walkable house. A real run reaches frame one a few
+## milliseconds later and the day begins. Tests that DO want the level loop ask
+## for it by name with `ensure_level_director()`, which is honest about what it
+## is building.
+##
+## Free Play never builds one: it has no objective by definition.
+func _process(_delta: float) -> void:
+	if _director_booted:
+		return
+	_director_booted = true
+	if is_free_play():
+		return
+	var director: Node = ensure_level_director()
+	if director != null and director.has_method("start"):
+		director.call("start")
 
 
 ## The house owns its navigation map, so it must give the RID back; a leaked map
@@ -443,6 +475,36 @@ func get_character() -> Node:
 func get_transition_controller() -> Node:
 	build_world()
 	return _transition
+
+
+## Story Mode's level loop, or null when it has not been built (Free Play, or a
+## headless test that never asked for one).
+func get_level_director() -> Node:
+	return _director
+
+
+## Builds and binds the level loop, without starting a level. Idempotent, and
+## duck-typed throughout: a house whose director script is missing or malformed
+## degrades to a walkable house with no objective rather than failing to load.
+func ensure_level_director() -> Node:
+	build_world()
+	if _director != null and is_instance_valid(_director):
+		return _director
+	if not ResourceLoader.exists(LEVEL_DIRECTOR_SCRIPT_PATH):
+		return null
+	var script: Resource = load(LEVEL_DIRECTOR_SCRIPT_PATH)
+	if not (script is GDScript):
+		return null
+	var director: Object = (script as GDScript).new()
+	if not (director is Node) or not director.has_method("bind"):
+		if director is Node:
+			(director as Node).free()
+		return null
+	_director = director as Node
+	_director.name = "LevelDirector"
+	add_child(_director)
+	_director.call("bind", self)
+	return _director
 
 
 func get_navigation_map() -> RID:
@@ -803,6 +865,24 @@ func _set_status(message: String) -> void:
 	if _status_label != null:
 		_status_label.text = message
 	status_changed.emit(message)
+
+
+## Hides (or shows) the world's own status line.
+##
+## Free Play keeps it: "Off you go!" and "At the sink!" are the only words on
+## screen there. A Story level turns it off, because the level already has one
+## voice telling the child what to do and two lines of text competing for the top
+## of the screen is one more thing than a pre-reader can read. `status_changed`
+## still fires, so nothing that listens to it is affected.
+func set_status_visible(value: bool) -> void:
+	build_world()
+	if _status_label != null:
+		_status_label.visible = value
+
+
+func is_status_visible() -> bool:
+	build_world()
+	return _status_label != null and _status_label.visible
 
 
 ## -- Content cross-check -------------------------------------------------------
