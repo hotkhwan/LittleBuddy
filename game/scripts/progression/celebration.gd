@@ -5,6 +5,10 @@ extends Control
 ## plays, and -- when a sticker was just earned -- the sticker itself springs in
 ## once before fading.
 ##
+## It plays in the top-right corner by default, deliberately away from the
+## middle of the screen: the baby lives there, and hiding the character at the
+## happiest moment of the loop is exactly the wrong thing to do.
+##
 ## Deliberately cheap: everything is procedurally drawn `Control` nodes animated
 ## with `Tween`. No particle systems, no shaders, no post-processing, no glow, no
 ## GI. It costs a handful of small draw calls for about a second and then frees
@@ -37,19 +41,47 @@ const MAX_STARS: int = 5
 
 const STAR_SIZE: float = 74.0
 const STAR_DURATION: float = 0.85
-const STICKER_SIZE: Vector2 = Vector2(210.0, 230.0)
+const STICKER_SIZE: Vector2 = Vector2(200.0, 220.0)
 const STICKER_DURATION: float = 1.25
 
-## Where the stars burst from, in this control's local space. Defaults to the
-## centre; `set_origin()` moves it (e.g. over the star counter).
+## Inset of the default anchor from the top-right corner.
+##
+## The reward moment used to default to the middle of the screen, which put a
+## 210x230 sticker card squarely over the baby at the one moment the child most
+## wants to see them react. It now plays in the top-right corner instead: empty
+## in both landscape aspects, clear of the speech bubble and the progress dots,
+## and below the parent gear.
+const EDGE_MARGIN: float = 10.0
+const TOP_MARGIN: float = 96.0
+
+## Stars burst just below the card so the sticker never hides them.
+const STAR_DROP: float = 118.0
+
+## Warm gold, matching the star on the counter and on the summary.
+const STAR_COLOR: Color = Color(1.0, 0.78, 0.24)
+
+## Centre of the reward moment, in this control's local space. `Vector2.INF`
+## means "use the default top-right anchor"; `set_origin_global()` overrides it
+## (the session summary points it at its own star row).
 var origin: Vector2 = Vector2.INF
 
 var _playing: bool = false
 var _pending: int = 0
 
 
+func _init() -> void:
+	# In `_init`, not `_ready`: an overlay that has not entered the tree yet must
+	# already be incapable of swallowing a touch.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# `set_anchors_preset()` defaults to keep_offsets = TRUE, which pinned this
+	# node at its original zero size and left `_effective_size()` silently
+	# falling back to the whole viewport -- so the reward moment ignored the safe
+	# area entirely and could spill past the screen edge. The offsets have to be
+	# reset with the anchors.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	# An overlay must never swallow a child's touch on the room underneath.
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
@@ -85,15 +117,17 @@ func celebrate(star_count: int = 1, stickers: Array = []) -> void:
 	var stars: int = clampi(star_count, 1, MAX_STARS)
 	_play_sfx(SFX_STAR_EARNED)
 
-	var area: Vector2 = _effective_size()
-	var burst_origin: Vector2 = origin
-	if burst_origin == Vector2.INF:
-		burst_origin = Vector2(area.x * 0.5, area.y * 0.55)
+	var first_sticker: Dictionary = _first_sticker(stickers)
+
+	# With a card on screen the stars start below it, so the card never hides
+	# them; on their own they pop right at the anchor.
+	var burst_origin: Vector2 = _moment_origin()
+	if not first_sticker.is_empty():
+		burst_origin += Vector2(0.0, STAR_DROP)
 
 	for i: int in range(stars):
 		_spawn_star(burst_origin, i, stars)
 
-	var first_sticker: Dictionary = _first_sticker(stickers)
 	if not first_sticker.is_empty():
 		_spawn_sticker(first_sticker)
 
@@ -114,6 +148,7 @@ func chime() -> void:
 func _spawn_star(burst_origin: Vector2, index: int, total: int) -> void:
 	var star: Control = _IconGlyph.new()
 	star.set("glyph", _IconGlyph.Glyph.STAR)
+	star.set("tint", STAR_COLOR)
 	star.custom_minimum_size = Vector2(STAR_SIZE, STAR_SIZE)
 	star.size = Vector2(STAR_SIZE, STAR_SIZE)
 	star.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -124,12 +159,15 @@ func _spawn_star(burst_origin: Vector2, index: int, total: int) -> void:
 	# Fan the stars out symmetrically -- deterministic, so it looks composed
 	# rather than random, and never lands off-screen.
 	var spread: float = 0.0 if total <= 1 else (float(index) / float(total - 1)) - 0.5
-	var start: Vector2 = burst_origin + Vector2(spread * 150.0, 0.0) - star.size * 0.5
+	var start: Vector2 = _clamped(
+		burst_origin + Vector2(spread * 120.0, 0.0) - star.size * 0.5, star.size)
 	star.position = start
 	add_child(star)
 	_pending += 1
 
-	var rise: Vector2 = start + Vector2(spread * 90.0, -130.0)
+	# The end of the drift is clamped as well as the start: an unclamped target
+	# is what let the outermost star slide off the edge of an iPad.
+	var rise: Vector2 = _clamped(start + Vector2(spread * 70.0, -130.0), star.size)
 	var tween: Tween = create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(star, "position", rise, STAR_DURATION) \
@@ -149,7 +187,11 @@ func _spawn_sticker(sticker: Dictionary) -> void:
 	var cell: Control = _StickerCell.new()
 	cell.custom_minimum_size = STICKER_SIZE
 	cell.size = STICKER_SIZE
-	cell.position = (_effective_size() - STICKER_SIZE) * 0.5
+	# Belt and braces: `setup(..., interactive = false)` also does this, but the
+	# cell is in the tree for an instant before that call and must never be able
+	# to swallow a touch meant for the room underneath.
+	cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cell.position = _clamped(_moment_origin() - STICKER_SIZE * 0.5, STICKER_SIZE)
 	cell.pivot_offset = STICKER_SIZE * 0.5
 	cell.scale = Vector2(0.4, 0.4)
 	cell.modulate = Color(1.0, 1.0, 1.0, 0.0)
@@ -181,6 +223,26 @@ func _on_piece_finished(piece: Node) -> void:
 		_pending = 0
 		_playing = false
 		finished.emit()
+
+
+## Centre of the reward moment in local space: whatever `set_origin_global()`
+## was given, else the default top-right anchor.
+func _moment_origin() -> Vector2:
+	if origin != Vector2.INF:
+		return origin
+	var area: Vector2 = _effective_size()
+	return Vector2(
+		area.x - EDGE_MARGIN - STICKER_SIZE.x * 0.5,
+		TOP_MARGIN + STICKER_SIZE.y * 0.5)
+
+
+## Keeps a `piece_size` box fully inside this control, so a narrow phone in
+## landscape can never push the card out past the safe area.
+func _clamped(pos: Vector2, piece_size: Vector2) -> Vector2:
+	var area: Vector2 = _effective_size()
+	return Vector2(
+		clampf(pos.x, 0.0, maxf(area.x - piece_size.x, 0.0)),
+		clampf(pos.y, 0.0, maxf(area.y - piece_size.y, 0.0)))
 
 
 ## `size` can still be zero on the frame this node is added, which would pile the

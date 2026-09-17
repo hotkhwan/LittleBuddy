@@ -66,7 +66,12 @@ func _ensure_resolved() -> void:
 
 	if _celebration == null:
 		_celebration = _Celebration.new()
-		add_child(_celebration)
+		# Under the SafeArea, not the root: the celebration anchors itself to the
+		# top-right corner, which must be the safe corner on a notched device.
+		var host: Node = get_node_or_null("SafeArea")
+		if host == null:
+			host = self
+		host.add_child(_celebration)
 
 	if _sticker_row != null:
 		_sticker_row.visible = false
@@ -107,7 +112,17 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [])
 		_shown = true
 		_speak(_headline(earned))
 		if _celebration != null:
-			_celebration.call("celebrate", maxi(earned, 1), new_stickers)
+			# Over the panel rather than in the corner, so the stars read as
+			# "these are the ones you just earned". Taken proportionally from the
+			# viewport rather than from the panel's rect: the panel is centred,
+			# and on the very first show its layout has not been solved yet.
+			var viewport_size: Vector2 = get_viewport_rect().size
+			_celebration.call("set_origin_global",
+					Vector2(viewport_size.x * 0.5, viewport_size.y * 0.30))
+			# Stars only. The panel behind already shows the new sticker on its
+			# own card, and the flourish used to spring an identical second card
+			# straight on top of it.
+			_celebration.call("celebrate", maxi(earned, 1), [])
 
 
 ## Lets the same instance be reused for the next mission.

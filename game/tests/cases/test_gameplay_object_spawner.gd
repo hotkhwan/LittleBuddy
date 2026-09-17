@@ -37,6 +37,9 @@ func run() -> Array:
 	failures.append_array(_test_model_visual(spawner))
 	failures.append_array(_test_model_fits_inside_grab_area(spawner))
 	failures.append_array(_test_missing_model_falls_back(spawner))
+	failures.append_array(_test_model_names(spawner))
+	failures.append_array(_test_untextured_model_parts(spawner))
+	failures.append_array(_test_procedural_visual(spawner))
 	return failures
 
 
@@ -277,6 +280,146 @@ func _test_model_fits_inside_grab_area(spawner: GDScript) -> Array:
 		if biggest > grab:
 			failures.append("model '%s' presents at %.3f m, larger than the %.3f m grab collider"
 					% [model_name, biggest, grab])
+	return failures
+
+
+## Model names are `pack/name`, and a bare name must still resolve against the
+## default pack -- content written before packs existed keeps working, and both
+## spellings must land on the SAME presentation entry, or an object would
+## silently lose its authored rotation and come out edge-on.
+func _test_model_names(spawner: GDScript) -> Array:
+	var failures: Array = []
+
+	if String(spawner.canonical_model("apple")) != "kenney-food-kit/apple":
+		failures.append("a bare model name did not resolve to the default pack: %s"
+				% str(spawner.canonical_model("apple")))
+	if String(spawner.model_pack("kenney-cube-pets/animal-polar")) != "kenney-cube-pets":
+		failures.append("model_pack() did not split a qualified name")
+	if String(spawner.canonical_model("")) != "":
+		failures.append("an empty model name produced a non-empty canonical name")
+
+	var bare: Dictionary = spawner.model_presentation("apple")
+	var qualified: Dictionary = spawner.model_presentation("kenney-food-kit/apple")
+	if not Vector3(bare["rotation"]).is_equal_approx(Vector3(qualified["rotation"])) \
+			or absf(float(bare["size"]) - float(qualified["size"])) > 0.0001:
+		failures.append("the bare and qualified spellings of a model disagree on presentation")
+
+	# Every presentation key must name a model that exists, otherwise the entry
+	# is dead weight that looks like it is doing something.
+	for model_name: String in spawner.MODEL_PRESENTATION.keys():
+		if not spawner.model_available(model_name):
+			failures.append("MODEL_PRESENTATION has an entry for '%s', which does not resolve"
+					% model_name)
+
+	# Every pack referenced by a presentation entry must be registered, or its
+	# models would silently lose their atlas and render flat white.
+	for model_name: String in spawner.MODEL_PRESENTATION.keys():
+		if not spawner.PACK_TEXTURES.has(String(spawner.model_pack(model_name))):
+			failures.append("model '%s' belongs to a pack with no PACK_TEXTURES entry" % model_name)
+
+	return failures
+
+
+## A pack with no atlas (Kenney Furniture Kit) is coloured per PART: the lamp's
+## shade and its metal stem are separate surfaces with separate materials. Both
+## must be built AND registered, otherwise half the object would stay bright
+## while the other half dimmed.
+func _test_untextured_model_parts(spawner: GDScript) -> Array:
+	var failures: Array = []
+	var model_name: String = "kenney-furniture-kit/lampRoundTable"
+	if not spawner.model_available(model_name):
+		return ["the untextured-pack test model '%s' is missing" % model_name]
+
+	var node: Area3D = spawner.spawn({
+		"objectId": "lamp", "word": "lamp", "category": "bedtime",
+		"primitive": "sphere", "model": model_name, "color": "#FFE9A8",
+		"defaultInteraction": "tap",
+	})
+	if node == null:
+		return ["spawn() returned null for an untextured-pack record"]
+
+	var visual: MeshInstance3D = null
+	for child: Node in node.get_children():
+		if child is MeshInstance3D:
+			visual = child as MeshInstance3D
+	if visual == null or visual.mesh == null:
+		node.free()
+		return ["the untextured-pack record produced no mesh"]
+
+	if visual.mesh.get_surface_count() < 2:
+		failures.append("the two-part model baked to %d surface(s); the parts were merged"
+				% visual.mesh.get_surface_count())
+	if visual.material_override != null:
+		failures.append("an untextured model used a single material_override, flattening its parts")
+
+	var colors: Array = []
+	for material: StandardMaterial3D in spawner.visual_materials(visual):
+		if material.albedo_texture != null:
+			failures.append("an untextured model was given an atlas texture")
+		colors.append(material.albedo_color)
+	if colors.size() < 2:
+		failures.append("only %d material(s) were built for a two-part model" % colors.size())
+	elif colors[0].is_equal_approx(colors[1]):
+		failures.append("both parts of the two-part model got the same colour %s" % str(colors[0]))
+
+	node.free()
+	return failures
+
+
+## Generated models: one mesh, one material, and the record's colour still the
+## source of truth -- the mesh carries only a greyscale shade, so the same
+## cached mesh can serve any authored colour.
+func _test_procedural_visual(spawner: GDScript) -> Array:
+	var failures: Array = []
+	var node: Area3D = spawner.spawn({
+		"objectId": "blocks", "word": "block", "category": "play",
+		"primitive": "box", "model": "proc/blocks", "color": "#6BCB77",
+		"defaultInteraction": "dragToToyBox",
+	})
+	if node == null:
+		return ["spawn() returned null for a procedural record"]
+
+	var visual: MeshInstance3D = null
+	for child: Node in node.get_children():
+		if child is MeshInstance3D:
+			visual = child as MeshInstance3D
+	if visual == null or visual.mesh == null:
+		node.free()
+		return ["a procedural record produced no mesh"]
+
+	if visual.mesh is PrimitiveMesh:
+		failures.append("the procedural visual fell back to a built-in primitive")
+	var material: StandardMaterial3D = visual.material_override as StandardMaterial3D
+	if material == null:
+		failures.append("the procedural visual has no material")
+	else:
+		if not material.vertex_color_use_as_albedo:
+			failures.append("the procedural material ignores vertex colour, so the shading is lost")
+		if not material.albedo_color.is_equal_approx(spawner.pastel(Color("#6BCB77"))):
+			failures.append("the procedural material did not take the record's pastel colour: %s"
+					% str(material.albedo_color))
+
+	# The mesh must be colour-independent: the SAME cached mesh has to serve a
+	# differently-coloured record, or the cache would hand out the wrong colour.
+	var other: Area3D = spawner.spawn({
+		"objectId": "blocks", "word": "block", "category": "play",
+		"primitive": "box", "model": "proc/blocks", "color": "#FF6B6B",
+		"defaultInteraction": "dragToToyBox",
+	})
+	if other != null:
+		for child: Node in other.get_children():
+			if child is MeshInstance3D:
+				var second: MeshInstance3D = child as MeshInstance3D
+				if second.mesh != visual.mesh:
+					failures.append("the procedural mesh was rebuilt instead of cached")
+				var second_material: StandardMaterial3D = \
+						second.material_override as StandardMaterial3D
+				if second_material != null \
+						and second_material.albedo_color.is_equal_approx(material.albedo_color):
+					failures.append("two differently-coloured records shared one colour")
+		other.free()
+
+	node.free()
 	return failures
 
 

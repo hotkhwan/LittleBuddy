@@ -25,8 +25,15 @@ const _StickerCell := preload("res://scripts/progression/sticker_cell.gd")
 const SFX_SOFT_POP: String = "soft_pop"
 const SFX_GENTLE_TAP: String = "gentle_tap"
 
-const COLUMNS_LANDSCAPE: int = 6
-const COLUMNS_PORTRAIT: int = 4
+## Grid sizing. A fixed six columns left a phone-shaped landscape screen almost
+## half empty, so the count is derived from the width that is actually there.
+const COLUMNS_MIN: int = 3
+const COLUMNS_MAX: int = 8
+## One cell plus one gap, matching `StickerCell.MIN_SIZE.x` and the grid's
+## `h_separation`.
+const COLUMN_WIDTH: float = 210.0
+## How far below the widest fitting count we will drop to get a tidier last row.
+const COLUMN_SLACK: int = 3
 
 var _grid: GridContainer = null
 var _count_label: Label = null
@@ -69,7 +76,6 @@ func _ensure_resolved() -> void:
 		_book = _StickerBook.create(_autoload("SaveService"))
 
 	_sync_with_save()
-	_update_columns()
 	refresh()
 
 
@@ -108,6 +114,9 @@ func refresh() -> void:
 	if _count_label != null:
 		_count_label.text = "%d / %d" % [unlocked_count, entries.size()]
 
+	# After the cells exist: the column count depends on how many there are.
+	_update_columns()
+
 
 ## Lets a caller (or a test harness) drive the screen with its own library and
 ## book instead of the bundled ones.
@@ -141,10 +150,61 @@ func _sync_with_save() -> void:
 func _update_columns() -> void:
 	if _grid == null or not is_inside_tree():
 		return
-	var viewport: Vector2 = get_viewport_rect().size
-	if viewport.x <= 0.0 or viewport.y <= 0.0:
+	# Measured from the safe area, never from the grid's own row: the row is
+	# sized by the grid, so reading it back would feed the column count into
+	# itself and settle on whatever it guessed first.
+	var available: float = get_viewport_rect().size.x
+	var host: Control = get_node_or_null("SafeArea") as Control
+	if host != null and host.size.x > COLUMN_WIDTH:
+		available = host.size.x
+	# Leave room for the vertical scrollbar.
+	available -= 28.0
+	if available <= 0.0:
 		return
-	_grid.columns = COLUMNS_LANDSCAPE if viewport.x >= viewport.y else COLUMNS_PORTRAIT
+	_grid.columns = pick_columns(available, _grid.get_child_count())
+
+
+## The column count that needs the fewest rows within the width that fits,
+## breaking ties on the tidiest last row.
+##
+## Fewest rows first, not tidiest last row first: a narrower grid can always
+## square off the last row, but it does so by pushing the book onto an extra row
+## the child then has to scroll to. 16 stickers land on 8 x 2 on a phone-shaped
+## landscape screen and 6 + 6 + 4 on an iPad -- both fit without scrolling.
+##
+## Static and pure so it can be reasoned about (and tested) without a viewport.
+static func pick_columns(available_width: float, total: int) -> int:
+	var widest: int = clampi(int(floor(available_width / COLUMN_WIDTH)), COLUMNS_MIN, COLUMNS_MAX)
+	if total <= 0:
+		return widest
+	if total <= widest:
+		return total
+
+	var best: int = widest
+	var best_rows: int = _row_count(widest, total)
+	var best_gap: int = _last_row_gap(widest, total)
+	for candidate: int in range(widest - 1, maxi(widest - COLUMN_SLACK, COLUMNS_MIN) - 1, -1):
+		var rows: int = _row_count(candidate, total)
+		var gap: int = _last_row_gap(candidate, total)
+		if rows < best_rows or (rows == best_rows and gap < best_gap):
+			best = candidate
+			best_rows = rows
+			best_gap = gap
+	return best
+
+
+static func _row_count(columns: int, total: int) -> int:
+	if columns <= 0:
+		return total
+	return int(ceil(float(total) / float(columns)))
+
+
+## Empty slots left in the final row.
+static func _last_row_gap(columns: int, total: int) -> int:
+	if columns <= 0:
+		return total
+	var remainder: int = total % columns
+	return 0 if remainder == 0 else columns - remainder
 
 
 func _on_sticker_pressed(sticker_id: String, unlocked: bool) -> void:

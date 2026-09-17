@@ -1,38 +1,57 @@
-[gd_scene load_steps=31 format=3]
+[gd_scene load_steps=46 format=3]
+
+; Nursery set dressing. Contract (relied on by baby_room.gd and every activity
+; scene): NO camera, NO UI, NO Area3D, nothing interactive, and exactly ONE
+; DirectionalLight3D. The volume x[-0.8, 0.8] y[0, 1.0] z[-0.4, 0.8] around the
+; origin is left clear for the baby, the bottle and the teddy.
+;
+; Furniture is the Kenney Furniture Kit (CC0). The kit is untextured, so
+; `nursery_props.gd` retints every surface by material name onto the nursery
+; palette at load. See that script for why.
+
+[ext_resource type="Script" path="res://scenes/nursery/nursery_props.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://cbj4a75o7puvp" path="res://assets/models/kenney-furniture-kit/rugRounded.glb" id="2"]
+[ext_resource type="PackedScene" uid="uid://b7fuvbhvbbf1j" path="res://assets/models/kenney-furniture-kit/bedSingle.glb" id="3"]
+[ext_resource type="PackedScene" uid="uid://bjj06ixw0d3xi" path="res://assets/models/kenney-furniture-kit/lampRoundFloor.glb" id="4"]
+[ext_resource type="PackedScene" uid="uid://llltt3km5ji0" path="res://assets/models/kenney-furniture-kit/bookcaseClosedWide.glb" id="5"]
+[ext_resource type="PackedScene" uid="uid://jgy2n4md2jmn" path="res://assets/models/kenney-furniture-kit/books.glb" id="6"]
+[ext_resource type="PackedScene" uid="uid://cp05t8cotnpge" path="res://assets/models/kenney-furniture-kit/cardboardBoxOpen.glb" id="7"]
+[ext_resource type="PackedScene" uid="uid://cc06jmc4q6vik" path="res://assets/models/kenney-furniture-kit/pottedPlant.glb" id="8"]
+[ext_resource type="PackedScene" uid="uid://c2cgj7cuys3y7" path="res://assets/models/kenney-furniture-kit/plantSmall2.glb" id="9"]
 
 [sub_resource type="Environment" id="Environment_nursery"]
 background_mode = 1
 background_color = Color(0.85, 0.9, 0.95, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.95, 0.9, 0.86, 1)
-ambient_light_energy = 0.7
+ambient_light_color = Color(0.96, 0.93, 0.9, 1)
+ambient_light_energy = 0.84
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_floor"]
 size = Vector2(4.4, 4.6)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
-albedo_color = Color(0.8, 0.64, 0.46, 1)
-roughness = 0.95
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_rug"]
-size = Vector2(1.4, 1.0)
-
-[sub_resource type="StandardMaterial3D" id="Mat_rug"]
-albedo_color = Color(0.86, 0.6, 0.62, 1)
+albedo_color = Color(0.84, 0.73, 0.59, 1)
 roughness = 1.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_back_wall"]
 size = Vector3(4.4, 2.4, 0.1)
 
 [sub_resource type="StandardMaterial3D" id="Mat_wall_cream"]
-albedo_color = Color(0.92, 0.85, 0.74, 1)
+albedo_color = Color(0.94, 0.88, 0.78, 1)
 roughness = 1.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_wainscot"]
 size = Vector3(4.4, 0.55, 0.02)
 
 [sub_resource type="StandardMaterial3D" id="Mat_wainscot"]
-albedo_color = Color(0.63, 0.75, 0.86, 1)
+albedo_color = Color(0.68, 0.79, 0.88, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_wainscot_rail"]
+size = Vector3(4.4, 0.035, 0.035)
+
+[sub_resource type="StandardMaterial3D" id="Mat_trim_white"]
+albedo_color = Color(0.98, 0.96, 0.93, 1)
 roughness = 1.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_side_wall"]
@@ -41,131 +60,205 @@ size = Vector3(0.1, 2.4, 3.0)
 [sub_resource type="BoxMesh" id="BoxMesh_skirting_back"]
 size = Vector3(4.4, 0.1, 0.03)
 
-[sub_resource type="StandardMaterial3D" id="Mat_skirting"]
-albedo_color = Color(0.68, 0.53, 0.38, 1)
-roughness = 0.9
-
 [sub_resource type="BoxMesh" id="BoxMesh_skirting_side"]
 size = Vector3(0.03, 0.1, 3.0)
 
 [sub_resource type="BoxMesh" id="BoxMesh_window_frame"]
-size = Vector3(0.9, 0.9, 0.04)
-
-[sub_resource type="StandardMaterial3D" id="Mat_window_frame"]
-albedo_color = Color(0.98, 0.97, 0.94, 1)
-roughness = 0.9
+size = Vector3(0.78, 0.68, 0.04)
 
 [sub_resource type="BoxMesh" id="BoxMesh_window_glass"]
-size = Vector3(0.78, 0.78, 0.02)
+size = Vector3(0.68, 0.58, 0.02)
 
 [sub_resource type="StandardMaterial3D" id="Mat_window_glass"]
-albedo_color = Color(0.68, 0.82, 0.9, 1)
-roughness = 0.4
+albedo_color = Color(0.72, 0.86, 0.93, 1)
+roughness = 0.6
 
 [sub_resource type="BoxMesh" id="BoxMesh_window_cross_h"]
-size = Vector3(0.78, 0.035, 0.03)
+size = Vector3(0.68, 0.03, 0.03)
 
 [sub_resource type="BoxMesh" id="BoxMesh_window_cross_v"]
-size = Vector3(0.035, 0.78, 0.03)
+size = Vector3(0.03, 0.58, 0.03)
 
-[sub_resource type="StandardMaterial3D" id="Mat_wood_pale"]
-albedo_color = Color(0.78, 0.62, 0.46, 1)
-roughness = 0.9
+[sub_resource type="BoxMesh" id="BoxMesh_window_sill"]
+size = Vector3(0.9, 0.04, 0.09)
 
-[sub_resource type="BoxMesh" id="BoxMesh_crib_headboard"]
-size = Vector3(0.6, 0.5, 0.04)
+[sub_resource type="BoxMesh" id="BoxMesh_bunting_string"]
+size = Vector3(3.4, 0.012, 0.012)
 
-[sub_resource type="BoxMesh" id="BoxMesh_crib_footboard"]
-size = Vector3(0.6, 0.36, 0.04)
-
-[sub_resource type="BoxMesh" id="BoxMesh_crib_rail"]
-size = Vector3(0.04, 0.3, 0.9)
-
-[sub_resource type="BoxMesh" id="BoxMesh_crib_mattress"]
-size = Vector3(0.55, 0.08, 0.85)
-
-[sub_resource type="StandardMaterial3D" id="Mat_mattress"]
-albedo_color = Color(0.92, 0.8, 0.8, 1)
+[sub_resource type="StandardMaterial3D" id="Mat_bunting_string"]
+albedo_color = Color(0.82, 0.74, 0.64, 1)
 roughness = 1.0
 
-[sub_resource type="BoxMesh" id="BoxMesh_shelf_board"]
-size = Vector3(0.55, 0.04, 0.22)
+[sub_resource type="PrismMesh" id="PrismMesh_bunting"]
+size = Vector3(0.135, 0.16, 0.012)
 
-[sub_resource type="BoxMesh" id="BoxMesh_toybox"]
-size = Vector3(0.5, 0.32, 0.32)
+[sub_resource type="StandardMaterial3D" id="Mat_bunting_pink"]
+albedo_color = Color(0.93, 0.68, 0.72, 1)
+roughness = 1.0
 
-[sub_resource type="StandardMaterial3D" id="Mat_toybox"]
-albedo_color = Color(0.84, 0.58, 0.63, 1)
-roughness = 0.9
+[sub_resource type="StandardMaterial3D" id="Mat_bunting_blue"]
+albedo_color = Color(0.68, 0.81, 0.9, 1)
+roughness = 1.0
 
-[sub_resource type="BoxMesh" id="BoxMesh_toybox_lid"]
-size = Vector3(0.52, 0.05, 0.34)
+[sub_resource type="StandardMaterial3D" id="Mat_bunting_cream"]
+albedo_color = Color(0.98, 0.91, 0.76, 1)
+roughness = 1.0
 
-[sub_resource type="StandardMaterial3D" id="Mat_toybox_lid"]
-albedo_color = Color(0.63, 0.75, 0.86, 1)
-roughness = 0.9
+[sub_resource type="StandardMaterial3D" id="Mat_bunting_sage"]
+albedo_color = Color(0.71, 0.85, 0.72, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_bookcase_back"]
+size = Vector3(0.8, 0.79, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="Mat_bookcase_back"]
+albedo_color = Color(0.58, 0.72, 0.84, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_wainscot_side"]
+size = Vector3(0.02, 0.55, 3.0)
+
+[sub_resource type="BoxMesh" id="BoxMesh_wainscot_rail_side"]
+size = Vector3(0.035, 0.035, 3.0)
+
+[sub_resource type="BoxMesh" id="BoxMesh_art_frame_a"]
+size = Vector3(0.02, 0.26, 0.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_art_panel_a"]
+size = Vector3(0.012, 0.2, 0.14)
+
+[sub_resource type="BoxMesh" id="BoxMesh_art_frame_b"]
+size = Vector3(0.02, 0.2, 0.16)
+
+[sub_resource type="BoxMesh" id="BoxMesh_art_panel_b"]
+size = Vector3(0.012, 0.15, 0.11)
+
+[sub_resource type="StandardMaterial3D" id="Mat_art_frame"]
+albedo_color = Color(0.76, 0.63, 0.5, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_art_sky"]
+albedo_color = Color(0.74, 0.86, 0.93, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_art_blush"]
+albedo_color = Color(0.94, 0.76, 0.76, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_art_sage"]
+albedo_color = Color(0.76, 0.87, 0.76, 1)
+roughness = 1.0
 
 [node name="NurseryProps" type="Node3D"]
+script = ExtResource("1")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_nursery")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.8296, -0.4356, 0.3494, 0, 0.6248, 0.7808, -0.5583, -0.6479, 0.5185, 0, 3, 1.5)
-light_energy = 1.0
-shadow_enabled = false
+light_energy = 0.72
+light_specular = 0.1
+shadow_enabled = true
+shadow_bias = 0.02
+shadow_normal_bias = 0.8
+shadow_opacity = 0.5
+shadow_blur = 1.0
+directional_shadow_mode = 0
+directional_shadow_max_distance = 6.0
+directional_shadow_fade_start = 1.0
 
 [node name="Floor" type="MeshInstance3D" parent="."]
+cast_shadow = 0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.3)
 mesh = SubResource("PlaneMesh_floor")
 surface_material_override/0 = SubResource("Mat_floor")
 
-[node name="Rug" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.005, 0.15)
-mesh = SubResource("PlaneMesh_rug")
-surface_material_override/0 = SubResource("Mat_rug")
+[node name="Rug" type="Node3D" parent="."]
+transform = Transform3D(0.95, 0, 0, 0, 1, 0, 0, 0, 1.15, 0, 0.004, 0.16)
+metadata/no_shadow = true
+
+[node name="Model" parent="Rug" instance=ExtResource("2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.785, 0, 0.46)
 
 [node name="BackWall" type="MeshInstance3D" parent="."]
+cast_shadow = 0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, -1.95)
 mesh = SubResource("BoxMesh_back_wall")
 surface_material_override/0 = SubResource("Mat_wall_cream")
 
 [node name="BackWallWainscot" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.275, -1.92)
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.275, -1.888)
 mesh = SubResource("BoxMesh_wainscot")
 surface_material_override/0 = SubResource("Mat_wainscot")
 
+[node name="BackWallRail" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.555, -1.878)
+mesh = SubResource("BoxMesh_wainscot_rail")
+surface_material_override/0 = SubResource("Mat_trim_white")
+
 [node name="SkirtingBack" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -1.9)
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -1.878)
 mesh = SubResource("BoxMesh_skirting_back")
-surface_material_override/0 = SubResource("Mat_skirting")
+surface_material_override/0 = SubResource("Mat_trim_white")
 
 [node name="LeftWall" type="MeshInstance3D" parent="."]
+cast_shadow = 0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.75, 1.2, -0.45)
 mesh = SubResource("BoxMesh_side_wall")
 surface_material_override/0 = SubResource("Mat_wall_cream")
 
 [node name="SkirtingLeft" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.72, 0.05, -0.45)
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.683, 0.05, -0.45)
 mesh = SubResource("BoxMesh_skirting_side")
-surface_material_override/0 = SubResource("Mat_skirting")
+surface_material_override/0 = SubResource("Mat_trim_white")
 
 [node name="RightWall" type="MeshInstance3D" parent="."]
+cast_shadow = 0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.75, 1.2, -0.45)
 mesh = SubResource("BoxMesh_side_wall")
 surface_material_override/0 = SubResource("Mat_wall_cream")
 
 [node name="SkirtingRight" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.72, 0.05, -0.45)
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.683, 0.05, -0.45)
 mesh = SubResource("BoxMesh_skirting_side")
-surface_material_override/0 = SubResource("Mat_skirting")
+surface_material_override/0 = SubResource("Mat_trim_white")
+
+[node name="LeftWallWainscot" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.69, 0.275, -0.45)
+mesh = SubResource("BoxMesh_wainscot_side")
+surface_material_override/0 = SubResource("Mat_wainscot")
+
+[node name="LeftWallRail" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.678, 0.555, -0.45)
+mesh = SubResource("BoxMesh_wainscot_rail_side")
+surface_material_override/0 = SubResource("Mat_trim_white")
+
+[node name="RightWallWainscot" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.69, 0.275, -0.45)
+mesh = SubResource("BoxMesh_wainscot_side")
+surface_material_override/0 = SubResource("Mat_wainscot")
+
+[node name="RightWallRail" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.678, 0.555, -0.45)
+mesh = SubResource("BoxMesh_wainscot_rail_side")
+surface_material_override/0 = SubResource("Mat_trim_white")
 
 [node name="Window" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.55, -1.88)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.22, 1.0, -1.88)
 
 [node name="Frame" type="MeshInstance3D" parent="Window"]
 mesh = SubResource("BoxMesh_window_frame")
-surface_material_override/0 = SubResource("Mat_window_frame")
+surface_material_override/0 = SubResource("Mat_trim_white")
 
 [node name="Glass" type="MeshInstance3D" parent="Window"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.02)
@@ -175,55 +268,163 @@ surface_material_override/0 = SubResource("Mat_window_glass")
 [node name="CrossH" type="MeshInstance3D" parent="Window"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.03)
 mesh = SubResource("BoxMesh_window_cross_h")
-surface_material_override/0 = SubResource("Mat_window_frame")
+surface_material_override/0 = SubResource("Mat_trim_white")
 
 [node name="CrossV" type="MeshInstance3D" parent="Window"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.03)
 mesh = SubResource("BoxMesh_window_cross_v")
-surface_material_override/0 = SubResource("Mat_window_frame")
+surface_material_override/0 = SubResource("Mat_trim_white")
 
-[node name="Crib" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.25, 0, -1.0)
+[node name="Sill" type="MeshInstance3D" parent="Window"]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.37, 0.03)
+mesh = SubResource("BoxMesh_window_sill")
+surface_material_override/0 = SubResource("Mat_trim_white")
 
-[node name="Headboard" type="MeshInstance3D" parent="Crib"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, -0.45)
-mesh = SubResource("BoxMesh_crib_headboard")
-surface_material_override/0 = SubResource("Mat_wood_pale")
+[node name="Bunting" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.29, -1.86)
 
-[node name="Footboard" type="MeshInstance3D" parent="Crib"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, 0.45)
-mesh = SubResource("BoxMesh_crib_footboard")
-surface_material_override/0 = SubResource("Mat_wood_pale")
+[node name="String" type="MeshInstance3D" parent="Bunting"]
+mesh = SubResource("BoxMesh_bunting_string")
+surface_material_override/0 = SubResource("Mat_bunting_string")
 
-[node name="SideRailLeft" type="MeshInstance3D" parent="Crib"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.29, 0.2, 0)
-mesh = SubResource("BoxMesh_crib_rail")
-surface_material_override/0 = SubResource("Mat_wood_pale")
+[node name="Flag1" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, -1.6, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_pink")
 
-[node name="SideRailRight" type="MeshInstance3D" parent="Crib"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.29, 0.2, 0)
-mesh = SubResource("BoxMesh_crib_rail")
-surface_material_override/0 = SubResource("Mat_wood_pale")
+[node name="Flag2" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, -1.2, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_cream")
 
-[node name="Mattress" type="MeshInstance3D" parent="Crib"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.34, 0)
-mesh = SubResource("BoxMesh_crib_mattress")
-surface_material_override/0 = SubResource("Mat_mattress")
+[node name="Flag3" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, -0.8, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_blue")
 
-[node name="Shelf" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35, 0, -1.1)
+[node name="Flag4" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, -0.4, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_sage")
 
-[node name="Board" type="MeshInstance3D" parent="Shelf"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)
-mesh = SubResource("BoxMesh_shelf_board")
-surface_material_override/0 = SubResource("Mat_wood_pale")
+[node name="Flag5" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, 0, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_pink")
 
-[node name="ToyBox" type="MeshInstance3D" parent="Shelf"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.16, 0)
-mesh = SubResource("BoxMesh_toybox")
-surface_material_override/0 = SubResource("Mat_toybox")
+[node name="Flag6" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, 0.4, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_cream")
 
-[node name="ToyBoxLid" type="MeshInstance3D" parent="Shelf"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.325, 0)
-mesh = SubResource("BoxMesh_toybox_lid")
-surface_material_override/0 = SubResource("Mat_toybox_lid")
+[node name="Flag7" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, 0.8, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_blue")
+
+[node name="Flag8" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, 1.2, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_sage")
+
+[node name="Flag9" type="MeshInstance3D" parent="Bunting"]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, 1, 1.6, -0.085, 0)
+mesh = SubResource("PrismMesh_bunting")
+surface_material_override/0 = SubResource("Mat_bunting_pink")
+
+[node name="Bed" type="Node3D" parent="."]
+transform = Transform3D(0.98481, 0, -0.17365, 0, 1, 0, 0.17365, 0, 0.98481, -1.3, 0, -1.0)
+
+[node name="Model" parent="Bed" instance=ExtResource("3")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.6705, 0, 0.5625)
+
+[node name="FloorLamp" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.95, 0, -1.8)
+
+[node name="Model" parent="FloorLamp" instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.06, 0, 0.06)
+
+[node name="BookcaseBack" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.28, 0.395, -1.885)
+mesh = SubResource("BoxMesh_bookcase_back")
+surface_material_override/0 = SubResource("Mat_bookcase_back")
+
+[node name="Bookcase" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.28, 0, -1.775)
+metadata/tint = {
+"wood": Color(0.72, 0.84, 0.92, 1)
+}
+
+[node name="Model" parent="Bookcase" instance=ExtResource("5")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.4, 0, 0.125)
+
+[node name="BooksLower" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.02, 0.79, -1.76)
+
+[node name="Model" parent="BooksLower" instance=ExtResource("6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0752, 0, 0.0472)
+
+[node name="BooksUpper" type="Node3D" parent="."]
+transform = Transform3D(0.90631, 0, 0.42262, 0, 1, 0, -0.42262, 0, 0.90631, 1.5, 0.79, -1.74)
+metadata/tint = {
+"carpetDarker": Color(0.62, 0.76, 0.88, 1)
+}
+
+[node name="Model" parent="BooksUpper" instance=ExtResource("6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0752, 0, 0.0472)
+
+[node name="ShelfPlant" parent="." instance=ExtResource("9")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.26, 0.79, -1.74)
+
+[node name="ToyBox" type="Node3D" parent="."]
+transform = Transform3D(0.95106, 0, 0.30902, 0, 1, 0, -0.30902, 0, 0.95106, 1.25, 0, -0.62)
+metadata/tint = {
+"wood": Color(0.96, 0.86, 0.62, 1),
+"woodDark": Color(0.85, 0.74, 0.5, 1)
+}
+
+[node name="Model" parent="ToyBox" instance=ExtResource("7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.1062, 0, 0.1062)
+
+[node name="CornerPlant" parent="." instance=ExtResource("8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0, -1.05)
+
+[node name="WallArt" type="Node3D" parent="."]
+
+[node name="LeftFrameA" type="MeshInstance3D" parent="WallArt"]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.685, 0.98, -1.3)
+mesh = SubResource("BoxMesh_art_frame_a")
+surface_material_override/0 = SubResource("Mat_art_frame")
+
+[node name="LeftPanelA" type="MeshInstance3D" parent="WallArt"]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.678, 0.98, -1.3)
+mesh = SubResource("BoxMesh_art_panel_a")
+surface_material_override/0 = SubResource("Mat_art_sky")
+
+[node name="LeftFrameB" type="MeshInstance3D" parent="WallArt"]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.685, 0.86, -0.99)
+mesh = SubResource("BoxMesh_art_frame_b")
+surface_material_override/0 = SubResource("Mat_art_frame")
+
+[node name="LeftPanelB" type="MeshInstance3D" parent="WallArt"]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.678, 0.86, -0.99)
+mesh = SubResource("BoxMesh_art_panel_b")
+surface_material_override/0 = SubResource("Mat_art_blush")
+
+[node name="RightFrame" type="MeshInstance3D" parent="WallArt"]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.685, 0.92, -0.95)
+mesh = SubResource("BoxMesh_art_frame_a")
+surface_material_override/0 = SubResource("Mat_art_frame")
+
+[node name="RightPanel" type="MeshInstance3D" parent="WallArt"]
+cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.678, 0.92, -0.95)
+mesh = SubResource("BoxMesh_art_panel_b")
+surface_material_override/0 = SubResource("Mat_art_sage")

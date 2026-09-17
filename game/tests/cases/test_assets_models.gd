@@ -1,33 +1,36 @@
 extends RefCounted
 
-## Bundled 3D models: the Kenney Food Kit props that make each teaching object
-## read as its English word.
+## Bundled 3D models: the CC0 packs that make each teaching object read as its
+## English word, plus the meshes `ObjectSpawner` generates itself.
 ##
-## This case guards the two things that are easy to get silently wrong and
+## This case guards the things that are easy to get silently wrong and
 ## impossible to notice in a headless run:
 ##
-##   1. **Provenance.** The kit is CC0 and needs no attribution, but the
-##      `License.txt` must ship next to the models so the repo can always answer
+##   1. **Provenance.** Every pack is CC0 and needs no attribution, but its
+##      `License.txt` must ship next to its models so the repo can always answer
 ##      "where did this come from?" (see `docs/ASSET_SOURCING_PLAN.md`).
-##   2. **The external texture.** Kenney `.glb`s are NOT self-contained -- they
-##      reference `Textures/colormap.png` *relative to the model file*. Ship the
-##      models without it and every prop renders flat white while the project
-##      still loads and every other test still passes.
+##   2. **The external textures.** Kenney `.glb`s are NOT self-contained -- they
+##      reference `Textures/colormap.png` *relative to the model file*, and the
+##      three shipped packs have three DIFFERENT atlases. Ship the models without
+##      their atlas and every prop renders flat white while the project still
+##      loads and every other test still passes.
+##   3. **Procedural models resolve too.** `proc/...` names have no file on disk,
+##      so the "is the model in the repo?" check must not demand one -- but a
+##      typo'd procedural name must still be caught, not silently fall back to a
+##      primitive in front of a child.
 ##
-## It also holds the mobile budget: one shared 512x512 atlas for the whole prop
-## set, and small meshes.
+## It also holds the mobile budget: one shared atlas per pack, and small meshes.
 ##
 ## Scripts are loaded BY PATH, never by `class_name`: `--headless --script` does
 ## not rebuild `.godot/global_script_class_cache.cfg`.
 
 const SPAWNER_PATH: String = "res://scripts/gameplay/object_spawner.gd"
 const OBJECTS_JSON: String = "res://content/objects.json"
-const MODEL_DIR: String = "res://assets/models/kenney-food-kit"
-const LICENSE_PATH: String = "res://assets/models/kenney-food-kit/License.txt"
-const TEXTURE_PATH: String = "res://assets/models/kenney-food-kit/Textures/colormap.png"
+const MODEL_ROOT: String = "res://assets/models"
 
-## Kenney food props measure 44-136 tris. A generous ceiling that would still
-## catch someone dropping a film-resolution mesh into the mobile build.
+## Kenney props measure 44-576 tris and the generated meshes 40-588. A ceiling
+## that leaves headroom but would still catch someone dropping a
+## film-resolution mesh into the mobile build.
 const MAX_TRIANGLES_PER_MODEL: int = 600
 
 
@@ -41,58 +44,88 @@ func run() -> Array:
 	if spawner == null:
 		return ["could not load %s" % SPAWNER_PATH]
 
-	failures.append_array(_test_provenance())
-	failures.append_array(_test_shared_texture())
+	failures.append_array(_test_provenance(spawner))
+	failures.append_array(_test_pack_textures(spawner))
 	failures.append_array(_test_every_declared_model_exists(spawner))
+	failures.append_array(_test_procedural_models(spawner))
+	failures.append_array(_test_bake_keeps_every_part(spawner))
 	failures.append_array(_test_mesh_budget(spawner))
 	return failures
 
 
+## The packs actually used by the shipped content, as `pack -> true`. Derived
+## from `objects.json` rather than hard-coded, so adding a pack does not need
+## this file edited -- and so a pack that stops being used stops being asserted.
+func _packs_in_use(spawner: GDScript) -> Dictionary:
+	var packs: Dictionary = {}
+	for model_name: String in _declared_models().values():
+		var pack: String = String(spawner.model_pack(model_name))
+		if pack != String(spawner.PROCEDURAL_PACK):
+			packs[pack] = true
+	return packs
+
+
 ## CC0 requires no attribution, but the licence file is what makes that
 ## checkable later. Losing it turns a known-clean asset into an unknown one.
-func _test_provenance() -> Array:
+func _test_provenance(spawner: GDScript) -> Array:
 	var failures: Array = []
-	if not DirAccess.dir_exists_absolute(ProjectSettings.globalize_path(MODEL_DIR)) \
-			and DirAccess.open(MODEL_DIR) == null:
-		failures.append("model directory %s is missing" % MODEL_DIR)
+	var packs: Dictionary = _packs_in_use(spawner)
+	if packs.is_empty():
+		failures.append("no object in %s uses a bundled model pack" % OBJECTS_JSON)
 		return failures
-	if not FileAccess.file_exists(LICENSE_PATH):
-		failures.append("%s is missing -- asset provenance must ship with the assets" % LICENSE_PATH)
-		return failures
-	var text: String = FileAccess.get_file_as_string(LICENSE_PATH)
-	if not text.to_lower().contains("creative commons zero"):
-		failures.append("%s no longer states the CC0 licence" % LICENSE_PATH)
+
+	for pack: String in packs.keys():
+		var license_path: String = "%s/%s/License.txt" % [MODEL_ROOT, pack]
+		if not FileAccess.file_exists(license_path):
+			failures.append("%s is missing -- asset provenance must ship with the assets"
+					% license_path)
+			continue
+		var text: String = FileAccess.get_file_as_string(license_path)
+		if not text.to_lower().contains("creative commons zero"):
+			failures.append("%s no longer states the CC0 licence" % license_path)
 	return failures
 
 
-## The gotcha that renders every prop flat white if it regresses.
-func _test_shared_texture() -> Array:
+## The gotcha that renders a whole pack flat white if it regresses. Checked per
+## pack, because the atlases are NOT interchangeable: the three bundled packs
+## ship three different 512x512 colormaps.
+func _test_pack_textures(spawner: GDScript) -> Array:
 	var failures: Array = []
-	if not ResourceLoader.exists(TEXTURE_PATH):
-		failures.append("the shared colormap atlas %s is missing -- models would render untextured"
-				% TEXTURE_PATH)
-		return failures
-
-	# One atlas for the whole prop set is the mobile budget. More than one file
-	# here means someone imported a per-model texture copy.
-	var dir: DirAccess = DirAccess.open(MODEL_DIR + "/Textures")
-	if dir == null:
-		failures.append("could not open %s/Textures" % MODEL_DIR)
-		return failures
-	var textures: Array = []
-	for file_name: String in dir.get_files():
-		if file_name.ends_with(".import") or file_name.ends_with(".remap"):
+	for pack: String in _packs_in_use(spawner).keys():
+		var texture_path: String = String(spawner.pack_texture_path(pack))
+		if texture_path.is_empty():
+			# A pack with no atlas (Kenney Furniture Kit) colours its parts from
+			# `MODEL_PRESENTATION.surfaces` instead, so there is nothing to check.
 			continue
-		textures.append(file_name)
-	if textures.size() != 1:
-		failures.append("expected exactly one shared atlas, found %d: %s" % [textures.size(), str(textures)])
+		if not texture_path.begins_with("%s/%s/" % [MODEL_ROOT, pack]):
+			failures.append("pack '%s' points at an atlas outside its own folder: %s"
+					% [pack, texture_path])
+		if not ResourceLoader.exists(texture_path):
+			failures.append("the atlas %s is missing -- '%s' models would render untextured"
+					% [texture_path, pack])
+			continue
 
-	var texture: Texture2D = ResourceLoader.load(TEXTURE_PATH) as Texture2D
-	if texture == null:
-		failures.append("%s did not load as a Texture2D" % TEXTURE_PATH)
-	elif texture.get_width() > 1024 or texture.get_height() > 1024:
-		failures.append("the atlas is %dx%d -- too large for the mobile budget"
-				% [texture.get_width(), texture.get_height()])
+		# One atlas per pack is the mobile budget. More than one file here means
+		# someone imported a per-model texture copy.
+		var dir: DirAccess = DirAccess.open("%s/%s/Textures" % [MODEL_ROOT, pack])
+		if dir == null:
+			failures.append("could not open %s/%s/Textures" % [MODEL_ROOT, pack])
+			continue
+		var textures: Array = []
+		for file_name: String in dir.get_files():
+			if file_name.ends_with(".import") or file_name.ends_with(".remap"):
+				continue
+			textures.append(file_name)
+		if textures.size() != 1:
+			failures.append("pack '%s' should have exactly one shared atlas, found %d: %s"
+					% [pack, textures.size(), str(textures)])
+
+		var texture: Texture2D = ResourceLoader.load(texture_path) as Texture2D
+		if texture == null:
+			failures.append("%s did not load as a Texture2D" % texture_path)
+		elif texture.get_width() > 1024 or texture.get_height() > 1024:
+			failures.append("the '%s' atlas is %dx%d -- too large for the mobile budget"
+					% [pack, texture.get_width(), texture.get_height()])
 	return failures
 
 
@@ -109,19 +142,120 @@ func _test_every_declared_model_exists(spawner: GDScript) -> Array:
 
 	for object_id: String in declared.keys():
 		var model_name: String = declared[object_id]
-		# Source file AND imported resource. `ResourceLoader.exists()` is happy
-		# with a stale `.godot/imported` entry, so a deleted `.glb` would still
-		# run locally while being unrebuildable from a fresh clone.
-		if not FileAccess.file_exists(spawner.model_path_for(model_name)):
+		var path: String = String(spawner.model_path_for(model_name))
+		# Source file AND imported resource, for file-backed models.
+		# `ResourceLoader.exists()` is happy with a stale `.godot/imported`
+		# entry, so a deleted `.glb` would still run locally while being
+		# unrebuildable from a fresh clone. Procedural models have no file.
+		if not path.is_empty() and not FileAccess.file_exists(path):
 			failures.append("object '%s' declares model '%s' but the source file %s is not in the repo"
-					% [object_id, model_name, spawner.model_path_for(model_name)])
+					% [object_id, model_name, path])
 		if not spawner.model_available(model_name):
-			failures.append("object '%s' declares model '%s' but %s is not in the build"
-					% [object_id, model_name, spawner.model_path_for(model_name)])
+			failures.append("object '%s' declares model '%s' which does not resolve in this build"
+					% [object_id, model_name])
 			continue
 		if spawner.load_model_mesh(model_name) == null:
-			failures.append("model '%s' imported but contains no mesh" % model_name)
+			failures.append("model '%s' resolved but produced no mesh" % model_name)
 	return failures
+
+
+## The procedural half of the model layer. A generated mesh has no file to go
+## missing, so the failure mode is different: a builder that silently returns
+## null, or a name in `PROCEDURAL_MODELS` with no `match` arm behind it.
+func _test_procedural_models(spawner: GDScript) -> Array:
+	var failures: Array = []
+	var names: Array = spawner.PROCEDURAL_MODELS
+	if names.is_empty():
+		failures.append("PROCEDURAL_MODELS is empty")
+
+	for model: String in names:
+		var qualified: String = "%s/%s" % [String(spawner.PROCEDURAL_PACK), model]
+		if not spawner.model_available(qualified):
+			failures.append("'%s' is listed in PROCEDURAL_MODELS but is not available" % qualified)
+			continue
+		if not String(spawner.model_path_for(qualified)).is_empty():
+			failures.append("'%s' claims a file path; procedural models have no file" % qualified)
+		var mesh: Mesh = spawner.load_model_mesh(qualified)
+		if mesh == null:
+			failures.append("'%s' has no builder -- build_procedural_mesh() returned null" % qualified)
+			continue
+		if mesh.get_aabb().get_volume() <= 0.0:
+			failures.append("'%s' generated a degenerate mesh" % qualified)
+
+	# A name nobody implemented must NOT quietly become a primitive-backed
+	# object: `model_available()` is the gate that turns it into a warning.
+	if spawner.model_available("%s/no-such-generator" % String(spawner.PROCEDURAL_PACK)):
+		failures.append("an unimplemented procedural model reported itself as available")
+	return failures
+
+
+## The bake must keep EVERY part of a model, not just the first one it finds.
+##
+## Kenney is not consistent about this: a Food Kit apple is a single mesh, but a
+## Cube Pet is five (body plus four legs) and a Furniture Kit lamp is one mesh
+## with two materials. An earlier version of the loader took only the first mesh
+## it found, which spawned a legless bear -- and nothing failed, because the
+## object was still visible, still touchable and still roughly the right size.
+## Comparing the baked triangle count against the source scene is what makes
+## that silent, plausible-looking loss detectable.
+func _test_bake_keeps_every_part(spawner: GDScript) -> Array:
+	var failures: Array = []
+	for object_id: String in _declared_models().keys():
+		var model_name: String = _declared_models()[object_id]
+		var path: String = String(spawner.model_path_for(model_name))
+		if path.is_empty() or not ResourceLoader.exists(path):
+			continue
+		var packed: PackedScene = ResourceLoader.load(path) as PackedScene
+		if packed == null:
+			failures.append("model '%s' did not load as a PackedScene" % model_name)
+			continue
+		var root: Node = packed.instantiate()
+		if root == null:
+			failures.append("model '%s' could not be instantiated" % model_name)
+			continue
+		# Triangles, part count and combined bounds, measured by walking the
+		# imported scene here rather than by asking the loader -- a second,
+		# independent implementation, which is the only way this can disagree
+		# with the loader when the loader is wrong.
+		var source: Array = [0, 0, AABB()]
+		_measure_source_meshes(root, Transform3D.IDENTITY, source)
+		root.free()
+
+		if int(source[1]) <= 0:
+			failures.append("model '%s' has no mesh in its imported scene" % model_name)
+			continue
+		var baked: Mesh = spawner.load_model_mesh(model_name)
+		if baked == null:
+			failures.append("model '%s' baked to nothing" % model_name)
+			continue
+		if _triangles(baked) != int(source[0]):
+			failures.append("model '%s' baked %d tris from %d source part(s) totalling %d -- parts were dropped"
+					% [model_name, _triangles(baked), int(source[1]), int(source[0])])
+		# Bounds catch what a triangle count cannot: parts that survived the
+		# bake but lost their node transform and collapsed onto the origin.
+		var expected: AABB = source[2]
+		var actual: AABB = baked.get_aabb()
+		if not actual.position.is_equal_approx(expected.position) \
+				or not actual.size.is_equal_approx(expected.size):
+			failures.append("model '%s' baked to bounds %s but its source parts span %s -- a part lost its transform"
+					% [model_name, str(actual), str(expected)])
+	return failures
+
+
+func _measure_source_meshes(node: Node, parent_transform: Transform3D, totals: Array) -> void:
+	var here: Transform3D = parent_transform
+	if node is Node3D and node.get_parent() != null:
+		here = parent_transform * (node as Node3D).transform
+
+	var instance: MeshInstance3D = node as MeshInstance3D
+	if instance != null and instance.mesh != null:
+		totals[0] = int(totals[0]) + _triangles(instance.mesh)
+		var bounds: AABB = here * instance.mesh.get_aabb()
+		totals[2] = bounds if int(totals[1]) == 0 else (totals[2] as AABB).merge(bounds)
+		totals[1] = int(totals[1]) + 1
+
+	for child: Node in node.get_children():
+		_measure_source_meshes(child, here, totals)
 
 
 func _test_mesh_budget(spawner: GDScript) -> Array:
@@ -130,20 +264,33 @@ func _test_mesh_budget(spawner: GDScript) -> Array:
 		var mesh: Mesh = spawner.load_model_mesh(model_name)
 		if mesh == null:
 			continue
-		if mesh.get_surface_count() != 1:
-			failures.append("model '%s' has %d surfaces; the kit is one-surface/one-material"
+		# One surface per source material. Two is the most any bundled model
+		# needs (a Furniture Kit lamp is shade + metal); more than that means
+		# the bake stopped grouping and every part became its own draw call.
+		if mesh.get_surface_count() > 2:
+			failures.append("model '%s' baked to %d surfaces; at most 2 are expected"
 					% [model_name, mesh.get_surface_count()])
-		var triangles: int = 0
-		for surface: int in range(mesh.get_surface_count()):
-			var arrays: Array = mesh.surface_get_arrays(surface)
-			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-			triangles += indices.size() / 3
+		var triangles: int = _triangles(mesh)
+		if triangles <= 0:
+			failures.append("model '%s' baked to an empty mesh" % model_name)
 		if triangles > MAX_TRIANGLES_PER_MODEL:
 			failures.append("model '%s' is %d tris, over the %d budget"
 					% [model_name, triangles, MAX_TRIANGLES_PER_MODEL])
 		if mesh.get_aabb().get_volume() <= 0.0:
 			failures.append("model '%s' has a degenerate bounding box" % model_name)
 	return failures
+
+
+func _triangles(mesh: Mesh) -> int:
+	var total: int = 0
+	for surface: int in range(mesh.get_surface_count()):
+		var arrays: Array = mesh.surface_get_arrays(surface)
+		var indices: Variant = arrays[Mesh.ARRAY_INDEX]
+		if indices == null:
+			total += int((arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 3)
+		else:
+			total += int((indices as PackedInt32Array).size() / 3)
+	return total
 
 
 ## objectId -> model name, read straight from the shipped JSON.

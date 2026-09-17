@@ -14,10 +14,12 @@ signal pressed(sticker_id: String, unlocked: bool)
 
 const _StickerArt := preload("res://scripts/progression/sticker_art.gd")
 
-const CARD_UNLOCKED: Color = Color(1.0, 0.98, 0.93)
-const CARD_LOCKED: Color = Color(0.957, 0.945, 0.973)
-const CARD_BORDER_UNLOCKED: Color = Color(1.0, 0.847, 0.42)
-const CARD_BORDER_LOCKED: Color = Color(0.894, 0.878, 0.922)
+## The card is the same re-paletted Kenney 9-slice as every other panel in the
+## game, so a sticker card, the speech bubble and the summary panel share one
+## corner radius and one edge treatment instead of each inventing their own.
+const CARD_UNLOCKED: StyleBox = preload("res://assets/ui/styles/panel_cream.tres")
+const CARD_LOCKED: StyleBox = preload("res://assets/ui/styles/panel_lilac.tres")
+
 const LABEL_COLOR: Color = Color(0.349, 0.259, 0.169)
 const LABEL_COLOR_LOCKED: Color = Color(0.639, 0.616, 0.678)
 
@@ -120,12 +122,7 @@ func _draw() -> void:
 		return
 
 	var card: Rect2 = Rect2(Vector2(4.0, 4.0), size - Vector2(8.0, 8.0))
-	var card_points: PackedVector2Array = _StickerArt.rounded_rect_points(card, 24.0)
-	draw_colored_polygon(card_points, CARD_UNLOCKED if _unlocked else CARD_LOCKED)
-
-	var border: PackedVector2Array = card_points.duplicate()
-	border.append(card_points[0])
-	draw_polyline(border, CARD_BORDER_UNLOCKED if _unlocked else CARD_BORDER_LOCKED, 4.0, true)
+	draw_style_box(CARD_UNLOCKED if _unlocked else CARD_LOCKED, card)
 
 	if _sticker.is_empty():
 		return
