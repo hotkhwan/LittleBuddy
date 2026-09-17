@@ -1,0 +1,16 @@
+{
+	"backend": "ios",
+	"failedCount": 3,
+	"hasPermission": true,
+	"isAvailable": true,
+	"lastFailureReason": "recognition_error",
+	"launchCount": 2,
+	"listenCount": 4,
+	"modelName": "iPhone15,3",
+	"nativeSingletonPresent": true,
+	"platform": "iOS",
+	"recognizedCount": 7,
+	"speechEnabledSetting": true,
+	"ttsAvailable": true,
+	"writtenAt": "2026-09-17T11:21:03"
+}

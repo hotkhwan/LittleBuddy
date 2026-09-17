@@ -62,6 +62,37 @@
 //      (`sampleRate <= 0`), which some devices can report if queried before
 //      the audio session has fully settled.
 //
+// DEVICE-VERIFIED FIX ROUND (this pass) -- first real hardware run
+// (iPhone 14 Pro Max) surfaced two concrete, confirmed-on-device bugs:
+//   7. `listenCount: 3` but `recognizedCount: 5` / `failedCount: 3` in
+//      on-device diagnostics: SFSpeechRecognitionTask routinely reports a
+//      trailing NSError (e.g. kAFAssistantErrorDomain 216/1110, "no speech
+//      detected") immediately AFTER delivering a perfectly good final
+//      result, as the audio session/tap tears down. That trailing error was
+//      overwriting a successful recognition with `recognition_failed`,
+//      showing "Try again!" to a child who had just been understood. Fixed
+//      via `hasReportedResult`: the instant a session emits `recognized`
+//      (final result, or a best-effort partial used at the ~5s timeout), it
+//      is latched, and the error branch of the result handler becomes a
+//      no-op for the rest of that session -- teardown (`_finishListening`)
+//      still runs exactly the same, and `listening_stopped` still fires
+//      exactly once (it is idempotent/guarded by `wasListening` already).
+//      The failure reason string was also upgraded from the bare
+//      "recognition_error" to "recognition_error:<domain>:<code>" (e.g.
+//      "recognition_error:kAFAssistantErrorDomain:216") for any *genuine*
+//      failure, since on-device this string is the only telemetry
+//      available -- still just a short code, never a transcript.
+//   8. TTS/game audio was reported audibly quieter every time the mic
+//      opened ("เสียงพูดเบาลง"). Root cause: `AVAudioSessionModeMeasurement`
+//      disables system audio signal processing and can route output to the
+//      receiver/earpiece instead of the speaker. Changed to
+//      `AVAudioSessionModeDefault` and added an explicit
+//      `overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker` call
+//      right after session activation to force the active route back to
+//      the speaker (in addition to the pre-existing `DefaultToSpeaker`
+//      category option, which only sets the *default*, not the *active*,
+//      route).
+//
 // DELIBERATE NON-CHANGE (see README.md "On-device only, by design, always"):
 // `requiresOnDeviceRecognition` remains hard-forced to `YES` and `isAvailable`
 // still gates on `supportsOnDeviceRecognition`. The task brief that prompted
@@ -114,6 +145,16 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 // Never written to disk -- kept in memory only, like every other buffer
 // in this file, and cleared on every teardown.
 @property(nonatomic, copy) NSString *lastPartialTranscript;
+// Set the moment this session has already emitted a `recognized` signal
+// (final result, or a best-effort partial used at timeout). SFSpeechRecognitionTask
+// commonly reports a trailing NSError (e.g. kAFAssistantErrorDomain 216/1110,
+// "no speech detected") immediately AFTER delivering a perfectly usable final
+// result, as the audio session/tap tears down -- a known SFSpeechRecognizer
+// quirk, not a real failure. Once a session has produced a transcript, that
+// session is a success, full stop: this flag makes the error branch of the
+// result handler a no-op instead of overwriting a good recognition with
+// `recognition_failed`. Reset to NO at the top of every start_listening call.
+@property(nonatomic, assign) BOOL hasReportedResult;
 // Cancellable ~5s auto-stop timeout; created per start_listening() call,
 // cancelled/cleared in _finishListening so it never fires after a
 // final result or a manual stop has already torn things down.
@@ -268,6 +309,11 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 		return;
 	}
 
+	// Reset the per-session "already produced a transcript" latch up front,
+	// unconditionally, so a stale value from a previous session can never
+	// leak into this one and (wrongly) suppress a genuine failure.
+	self.hasReportedResult = NO;
+
 	if (locale != nil && ![locale isEqualToString:self.localeIdentifier]) {
 		self.localeIdentifier = locale;
 		self.recognizer = [[SFSpeechRecognizer alloc]
@@ -291,16 +337,27 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	// and exclusive -- it can silence or interrupt whatever audio Godot's
 	// own iOS audio driver already has playing (background music, TTS
 	// prompts) through the *same* shared AVAudioSession, which was flagged
-	// as the most likely reason speech never worked at runtime. `.measurement`
-	// mode is kept for on-device recognition accuracy (minimal system audio
-	// processing), and `DefaultToSpeaker` keeps game audio routed to the
-	// speaker rather than the receiver while the mic is in use.
-	// `MixWithOthers` avoids forcing an exclusive activation that could
-	// interrupt Godot's own concurrently-active audio graph.
+	// as the most likely reason speech never worked at runtime.
+	//
+	// Mode is `.default`, NOT `.measurement`. `.measurement` disables system
+	// audio signal processing AND routes output to the receiver/earpiece
+	// instead of the speaker -- confirmed on-device as the cause of Little
+	// Buddy's own TTS/SFX becoming noticeably quieter every time the mic
+	// opened. `.default` (or `.spokenAudio`, for narration-style ducking)
+	// keeps normal system processing/routing for a `.playAndRecord` session
+	// while on-device recognition accuracy is unaffected in practice.
+	// `DefaultToSpeaker` keeps game audio routed to the speaker rather than
+	// the receiver while the mic is in use, and the explicit
+	// `overrideOutputAudioPort:` call below additionally forces the *active*
+	// route back to the speaker immediately after activation, since
+	// `DefaultToSpeaker` alone only sets the *default* route and can still
+	// be overridden by category/mode side effects. `MixWithOthers` avoids
+	// forcing an exclusive activation that could interrupt Godot's own
+	// concurrently-active audio graph.
 	NSError *sessionError = nil;
 	AVAudioSession *session = [AVAudioSession sharedInstance];
 	[session setCategory:AVAudioSessionCategoryPlayAndRecord
-				   mode:AVAudioSessionModeMeasurement
+				   mode:AVAudioSessionModeDefault
 				options:AVAudioSessionCategoryOptionDefaultToSpeaker |
 						AVAudioSessionCategoryOptionAllowBluetoothHFP |
 						AVAudioSessionCategoryOptionMixWithOthers
@@ -316,6 +373,14 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 		}
 		return;
 	}
+	// Belt-and-suspenders: force the active route to the speaker right after
+	// activation. This is a routing hint, not a hard requirement for speech
+	// recognition to function, so a failure here is logged-and-ignored rather
+	// than treated as a fatal `audio_session_error` -- the child's mic input
+	// still works either way, this only affects how loud the *output* (TTS/
+	// SFX) is while/after the mic session is active.
+	NSError *overrideError = nil;
+	[session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&overrideError];
 #endif
 
 	self.request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
@@ -420,9 +485,29 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 							   }
 							   if (error != nil) {
 								   dispatch_async(dispatch_get_main_queue(), ^{
+									 // A final result already reached GDScript for this
+									 // session (see the property doc on hasReportedResult):
+									 // SFSpeechRecognitionTask routinely reports a trailing
+									 // NSError (e.g. kAFAssistantErrorDomain 216/1110, "no
+									 // speech detected") right after a perfectly good final
+									 // result, as the audio session/tap tears down. Treat
+									 // that as teardown noise, not a failure: still run the
+									 // normal teardown (idempotent -- isListening is already
+									 // NO, so `listening_stopped` will not double-fire) but
+									 // never let it overwrite a successful recognition with
+									 // `recognition_failed`.
+									 BOOL alreadySucceeded = strongSelf.hasReportedResult;
 									 [strongSelf _finishListening];
-									 if (strongSelf.owner != nullptr) {
-										 strongSelf.owner->_emit_recognition_failed(String("recognition_error"));
+									 if (strongSelf.owner != nullptr && !alreadySucceeded) {
+										 // Log the real domain/code, not just a bare string --
+										 // on-device this reason string is our only telemetry.
+										 // Still just a short code: never the transcript/audio.
+										 NSString *domain = error.domain != nil ? error.domain : @"unknown";
+										 NSString *reason = [NSString
+												 stringWithFormat:@"recognition_error:%@:%ld", domain,
+																   (long)error.code];
+										 strongSelf.owner->_emit_recognition_failed(
+												 String([reason UTF8String]));
 									 }
 								   });
 								   return;
@@ -441,6 +526,13 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 								   return;
 							   }
 							   dispatch_async(dispatch_get_main_queue(), ^{
+								 // Mark the session complete BEFORE tearing down: cancelling
+								 // the task inside _finishListening can itself trigger one
+								 // more asynchronous resultHandler invocation (typically a
+								 // trailing cancellation/no-speech NSError) on this exact
+								 // task, and that later invocation's error branch above must
+								 // already see hasReportedResult == YES.
+								 strongSelf.hasReportedResult = YES;
 								 [strongSelf _finishListening];
 								 if (strongSelf.owner != nullptr) {
 									 strongSelf.owner->_emit_recognized(
@@ -456,11 +548,20 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 // _finishListening first, which is what actually emits `listening_stopped`.
 - (void)_onListenTimeout {
 	NSString *transcript = self.lastPartialTranscript;
+	BOOL hasTranscript = transcript != nil && transcript.length > 0;
+	// Mark the session complete BEFORE tearing down: [self.task cancel] inside
+	// _finishListening can itself trigger one more asynchronous resultHandler
+	// invocation (typically a cancellation NSError) on this same task. If that
+	// happens after we already have a usable transcript here, the error-branch
+	// guard below (`self.hasReportedResult`) must already see this as YES.
+	if (hasTranscript) {
+		self.hasReportedResult = YES;
+	}
 	[self _finishListening];
 	if (self.owner == nullptr) {
 		return;
 	}
-	if (transcript != nil && transcript.length > 0) {
+	if (hasTranscript) {
 		self.owner->_emit_recognized(String([transcript UTF8String]));
 	} else {
 		self.owner->_emit_recognition_failed(String("timeout"));
