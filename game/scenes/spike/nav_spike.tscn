@@ -1,0 +1,144 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://scenes/spike/nav_spike.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/character/little_buddy_character.gd" id="2"]
+[ext_resource type="Script" path="res://scenes/spike/spike_buddy_view.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/navigation/navigation_controller.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/navigation/activity_target.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/navigation/interaction_point.gd" id="6"]
+[ext_resource type="Script" path="res://scenes/spike/spike_ball.gd" id="7"]
+
+[sub_resource type="Environment" id="Environment_spike"]
+background_mode = 1
+background_color = Color(0.68, 0.86, 0.94, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.9, 0.9, 0.85, 1)
+ambient_light_energy = 0.9
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_buddy"]
+radius = 0.15
+height = 0.7
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_toybox"]
+size = Vector3(0.6, 0.3, 0.6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_toybox"]
+size = Vector3(0.6, 0.3, 0.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_toybox"]
+albedo_color = Color(0.95, 0.75, 0.82, 1)
+roughness = 1.0
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_ball"]
+radius = 0.26
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball"]
+radius = 0.16
+height = 0.32
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ball"]
+albedo_color = Color(0.98, 0.83, 0.45, 1)
+roughness = 1.0
+
+[node name="NavSpike" type="Node3D"]
+script = ExtResource("1")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_spike")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.8296, -0.4356, 0.3494, 0, 0.6248, 0.7808, -0.5583, -0.6479, 0.5185, 0, 4, 2)
+shadow_enabled = false
+
+[node name="Camera3D" type="Camera3D" parent="."]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 0.7853, 0.6191, 0, -0.6191, 0.7853, 0, 4.9, 6.1)
+fov = 52.0
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+unique_name_in_owner = true
+
+[node name="NavigationController" type="Node3D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("4")
+floor_height = 0.0
+
+[node name="LittleBuddy" type="CharacterBody3D" parent="."]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.3)
+motion_mode = 1
+collision_layer = 0
+collision_mask = 0
+script = ExtResource("2")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LittleBuddy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
+shape = SubResource("CapsuleShape3D_buddy")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="LittleBuddy"]
+path_desired_distance = 0.12
+target_desired_distance = 0.18
+avoidance_enabled = false
+
+[node name="BuddyView" type="Node3D" parent="LittleBuddy"]
+script = ExtResource("3")
+
+[node name="ToyBox" type="Area3D" parent="."]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 0.15, -1.6)
+collision_layer = 2
+collision_mask = 0
+input_ray_pickable = false
+script = ExtResource("5")
+target_id = "toyBox"
+display_name = "toy box"
+target_enabled = true
+stand_distance = 0.55
+arrival_radius = 0.22
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ToyBox"]
+shape = SubResource("BoxShape3D_toybox")
+
+[node name="Mesh" type="MeshInstance3D" parent="ToyBox"]
+mesh = SubResource("BoxMesh_toybox")
+material_override = SubResource("StandardMaterial3D_toybox")
+
+[node name="InteractionPoint" type="Marker3D" parent="ToyBox"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, 0.75)
+script = ExtResource("6")
+
+[node name="Ball" type="Area3D" parent="."]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.16, 1.5)
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("7")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ball"]
+shape = SubResource("SphereShape3D_ball")
+
+[node name="Mesh" type="MeshInstance3D" parent="Ball"]
+mesh = SubResource("SphereMesh_ball")
+material_override = SubResource("StandardMaterial3D_ball")
+
+[node name="BallDropZone" type="Area3D" parent="."]
+unique_name_in_owner = true
+monitoring = false
+monitorable = false
+collision_layer = 0
+collision_mask = 0
+input_ray_pickable = false
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="StatusLabel" type="Label" parent="UI"]
+unique_name_in_owner = true
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 40.0
+offset_bottom = 110.0
+theme_override_font_sizes/font_size = 44
+grow_horizontal = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "Tap the floor."
