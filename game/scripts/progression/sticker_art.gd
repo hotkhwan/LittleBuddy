@@ -13,10 +13,13 @@ extends RefCounted
 ##     icon set as the rest of the UI (`assets/ui/icons/stickers/`), so the milk
 ##     on a sticker card and the milk anywhere else are the same drawing.
 ##   * The remaining five -- banana, soap, towel, toothbrush, pillow -- have no
-##     on-theme glyph anywhere in the 815-icon pack, so they keep their polygon
-##     recipe. `build_parts()` still covers every word, which also makes it the
-##     safety net: a sticker can never come out blank because an image failed to
-##     import.
+##     on-theme glyph anywhere in the 815-icon pack (the nearest candidates were
+##     a pear, a paint brush and a bed, each of which would teach the wrong
+##     word), so they are drawn for this project in the pack's own language and
+##     sit in the same folder. See the note above `GLYPH_PATHS`.
+##
+## `build_parts()` still covers every word, which makes it the safety net: a
+## sticker can never come out blank because an image failed to import.
 ##
 ## Both paths render in the same language: flat pastel shapes, each carrying a
 ## darker die-cut rim, like a real sticker. A glyph gets that rim from
@@ -41,15 +44,17 @@ const LOCKED_OUTLINE: Color = Color(0.784, 0.753, 0.835)
 
 const ARC_STEPS: int = 20
 
-## Sticker word -> bundled Nieobie glyph (CC0), on the same optical grid as the
-## rest of the UI icons. A word that is absent here falls through to
-## `build_parts()` and keeps its polygon recipe.
+## Sticker word -> bundled glyph, on the same optical grid as the rest of the UI
+## icons. A word that is absent here falls through to `build_parts()` and is
+## drawn from polygons instead.
 ##
-## Absent on purpose, because the 815-icon pack has nothing on-theme for them:
-##   banana, soap, towel, toothbrush, pillow.
-## The nearest candidates were a pear (not a banana), a paint brush (not a
-## toothbrush) and a pair of closed eyes (not a pillow) -- each of which would
-## teach the wrong word, which is worse than a hand-drawn shape.
+## Eleven come straight from the Nieobie pack (CC0). Five -- banana, soap,
+## towel, toothbrush, pillow -- are drawn for this project, because the pack's
+## 815 icons contain nothing on-theme for them and the near misses (a pear, a
+## paint brush, a bed) would each teach the wrong word. They follow the pack's
+## rules exactly so the sixteen read as one set: solid white fills, no strokes,
+## no `currentColor`, fully rounded forms, and a square viewBox re-boxed so the
+## artwork covers 86% of it -- the same optical weight as their neighbours.
 const GLYPH_PATHS: Dictionary = {
 	"milk": "res://assets/ui/icons/stickers/milk.svg",
 	"teddy": "res://assets/ui/icons/stickers/teddy.svg",
@@ -62,6 +67,11 @@ const GLYPH_PATHS: Dictionary = {
 	"heart": "res://assets/ui/icons/stickers/heart.svg",
 	"cloud": "res://assets/ui/icons/stickers/cloud.svg",
 	"rainbow": "res://assets/ui/icons/stickers/rainbow.svg",
+	"banana": "res://assets/ui/icons/stickers/banana.svg",
+	"soap": "res://assets/ui/icons/stickers/soap.svg",
+	"towel": "res://assets/ui/icons/stickers/towel.svg",
+	"toothbrush": "res://assets/ui/icons/stickers/toothbrush.svg",
+	"pillow": "res://assets/ui/icons/stickers/pillow.svg",
 }
 
 ## Die-cut rim around a glyph, as a fraction of the sticker's side. Without it a
@@ -176,6 +186,12 @@ static func color_from_hex(hex: String, fallback: Color) -> Color:
 
 ## The drawing recipe for one sticker: a list of
 ## `{kind: "poly"|"circle"|"arc", ...}` dictionaries.
+##
+## Every sticker now has a bundled glyph, so nothing below is reached in a
+## healthy build. It is kept, and kept covering all sixteen words, because it is
+## the safety net: if a glyph is ever missing or fails to import, `draw_sticker()`
+## falls through to here and the child still sees the right picture rather than
+## an empty card.
 ##
 ## Public so tests can check that every polygon actually triangulates -- a
 ## self-intersecting polygon makes Godot's triangulator bail out and silently

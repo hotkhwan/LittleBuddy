@@ -11,6 +11,13 @@
 ## playable regardless of backend state.
 extends Node
 
+## Name the native iOS plugin registers itself under (see IosSpeechBackend).
+const IOS_SINGLETON_NAME: String = "LittleBuddySpeech"
+
+## Local-only capability snapshot, for diagnosing speech on a device where
+## there is no console. Contains no audio and no transcripts.
+const DIAG_PATH: String = "user://speech_diag.json"
+
 signal availability_changed(available: bool)
 signal permission_result(granted: bool)
 signal listening_started()
@@ -21,11 +28,85 @@ signal recognition_failed(reason: String)
 var _backend: SpeechBackend = null
 var _backend_name: String = "unavailable"
 
+## Diagnostic counters. Deliberately record only WHETHER recognition happened,
+## never what was said -- a transcript of a child's speech is exactly the kind
+## of derived personal data this project refuses to persist.
+var _listen_count: int = 0
+var _recognized_count: int = 0
+var _failed_count: int = 0
+var _last_failure_reason: String = ""
+var _launch_count: int = 1
+
 
 func _ready() -> void:
+	_load_diagnostics()
 	_select_backend()
 	# Announce initial state so UI can reflect it without polling.
 	availability_changed.emit(is_available())
+	_write_diagnostics()
+
+
+## Restores the counters from a previous run. Without this, every relaunch
+## resets them to zero and a tester's evidence is silently destroyed -- which is
+## exactly what happened the first time this was used on a device.
+func _load_diagnostics() -> void:
+	if not FileAccess.file_exists(DIAG_PATH):
+		return
+	var file := FileAccess.open(DIAG_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if not (parsed is Dictionary):
+		return
+	var prev: Dictionary = parsed
+	_listen_count = int(prev.get("listenCount", 0))
+	_recognized_count = int(prev.get("recognizedCount", 0))
+	_failed_count = int(prev.get("failedCount", 0))
+	_last_failure_reason = String(prev.get("lastFailureReason", ""))
+	_launch_count = int(prev.get("launchCount", 0)) + 1
+
+
+## Writes a small snapshot of the speech stack to `user://speech_diag.json`.
+##
+## On a device there is no console to read, so this is the only way to find out
+## whether the native plugin actually registered its singleton and which backend
+## was chosen. Pull it with:
+##   xcrun devicectl device copy from --device <UDID> \
+##     --domain-type appDataContainer --domain-identifier com.pointit.littlebuddy \
+##     --source Documents/speech_diag.json --destination ./speech_diag.json
+##
+## Local only. Contains no audio, no transcripts and no personal data -- just
+## capability flags. Never uploaded.
+func _write_diagnostics() -> void:
+	var diag: Dictionary = {
+		"platform": OS.get_name(),
+		"modelName": OS.get_model_name(),
+		"backend": get_backend_name(),
+		"nativeSingletonPresent": Engine.has_singleton(IOS_SINGLETON_NAME),
+		"isAvailable": is_available(),
+		"hasPermission": has_permission(),
+		"speechEnabledSetting": _speech_enabled(),
+		"ttsAvailable": _tts_available(),
+		"listenCount": _listen_count,
+		"recognizedCount": _recognized_count,
+		"failedCount": _failed_count,
+		"lastFailureReason": _last_failure_reason,
+		"launchCount": _launch_count,
+		"writtenAt": Time.get_datetime_string_from_system(true),
+	}
+	var file := FileAccess.open(DIAG_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(JSON.stringify(diag, "\t"))
+	file.close()
+
+
+func _tts_available() -> bool:
+	var tts: Node = get_node_or_null("/root/TtsService")
+	if tts != null and tts.has_method("is_available"):
+		return bool(tts.call("is_available"))
+	return false
 
 
 func is_available() -> bool:
@@ -144,6 +225,8 @@ func _on_permission_result(granted: bool) -> void:
 
 
 func _on_listening_started() -> void:
+	_listen_count += 1
+	_write_diagnostics()
 	listening_started.emit()
 
 
@@ -152,10 +235,15 @@ func _on_listening_stopped() -> void:
 
 
 func _on_recognized(text: String) -> void:
+	_recognized_count += 1
+	_write_diagnostics()
 	recognized.emit(text)
 
 
 func _on_recognition_failed(reason: String) -> void:
+	_failed_count += 1
+	_last_failure_reason = reason
+	_write_diagnostics()
 	recognition_failed.emit(reason)
 
 

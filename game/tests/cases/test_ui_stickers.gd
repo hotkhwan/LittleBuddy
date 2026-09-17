@@ -15,11 +15,12 @@ const StickerCellScript := preload("res://scripts/progression/sticker_cell.gd")
 const StickerBookScreenScript := preload("res://scenes/progression/sticker_book_screen.gd")
 const ContentLibraryScript := preload("res://scripts/content/content_library.gd")
 
-## The five words the 815-icon Nieobie pack has nothing on-theme for. They keep
-## their polygon recipe; see `StickerArt.GLYPH_PATHS`.
-const POLYGON_WORDS: Array[String] = [
-	"banana", "soap", "towel", "toothbrush", "pillow",
-]
+## Every sticker in the book is drawn from a bundled glyph -- eleven from the
+## Nieobie pack, five drawn for this project in the same language. A word that
+## quietly loses its glyph falls back to polygons, which still draws the right
+## picture but at a visibly different weight, so the fall-back is treated as a
+## regression rather than as a supported state.
+const POLYGON_WORDS: Array[String] = []
 
 ## Landscape safe-area sizes in the project's 1366x1024 design space, matching
 ## `test_ui_chrome.gd`: an iPhone (~2.17:1) and an iPad (~1.44:1).
@@ -67,13 +68,22 @@ func _test_glyphs_load() -> Array:
 			failures.append(
 				"%s still uses fill=\"currentColor\"; Godot resolves that to black " % path
 				+ "and the sticker tint multiplies, so every sticker would come out black")
+		if not source.contains("fill=\"#ffffff\""):
+			failures.append(
+				"%s is not filled white; `_draw_glyph()` tints the glyph by " % path
+				+ "multiplying, so anything but white comes out muddy")
+		# The pack is entirely stroke-free, and that is what makes the icons read
+		# as chunky and soft. One stroked glyph in sixteen looks hand-made.
+		if source.contains("stroke"):
+			failures.append("%s uses a stroke; the sticker glyphs are solid fills only" % path)
 
 	return failures
 
 
-## Every sticker in the content pack must resolve to *something* drawable:
-## either a bundled glyph, or a polygon recipe. A word that has neither would
-## reach the device as an empty card.
+## Every sticker in the content pack must resolve to a bundled glyph, AND must
+## still have a polygon recipe behind it. A word with neither would reach the
+## device as an empty card; a word with only the recipe would reach it visibly
+## hand-drawn next to fifteen icons.
 func _test_every_sticker_has_art() -> Array:
 	var failures: Array = []
 
@@ -91,18 +101,18 @@ func _test_every_sticker_has_art() -> Array:
 			failures.append("a sticker in the content pack has no word")
 			continue
 
-		if StickerArtScript.glyph_for(word) != null:
-			continue
+		if StickerArtScript.glyph_for(word) == null:
+			seen_polygons.append(word)
 
-		seen_polygons.append(word)
-		# No glyph -- the polygon recipe has to produce something.
+		# The recipe is the safety net for a glyph that fails to import, so it
+		# has to stay populated for every word, glyph or not.
 		var base: Color = StickerArtScript.color_from_hex(
 				String(sticker.get("color", "")), StickerArtScript.PEACH)
 		var parts: Array = StickerArtScript.build_parts(
 				word, String(sticker.get("primitive", "sphere")).to_lower(),
 				Rect2(Vector2.ZERO, Vector2(200.0, 200.0)), base)
 		if parts.is_empty():
-			failures.append("sticker '%s' has neither a glyph nor a polygon recipe" % word)
+			failures.append("sticker '%s' has no polygon recipe to fall back on" % word)
 
 	seen_polygons.sort()
 	var expected: Array[String] = POLYGON_WORDS.duplicate()
@@ -126,9 +136,10 @@ func _test_glyph_cache_keeps_a_reference() -> Array:
 		return ["glyph_for() returns a fresh texture each call; a texture held only "
 			+ "by a local is freed before _draw()'s commands are rendered, which "
 			+ "paints the sticker as a solid square"]
-	# An unknown word must be cached as "nothing", not re-probed forever.
-	if StickerArtScript.glyph_for("banana") != null:
-		return ["'banana' resolved to a glyph; it is meant to keep its polygon recipe"]
+	# An unknown word must be cached as "nothing", not re-probed forever, and
+	# must not take the book down on its way.
+	if StickerArtScript.glyph_for("not-a-sticker") != null:
+		return ["an unknown word resolved to a glyph"]
 	return []
 
 
