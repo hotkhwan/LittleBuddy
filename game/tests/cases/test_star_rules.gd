@@ -37,7 +37,7 @@ func test_name() -> String:
 	return "star_rules"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	failures.append_array(_test_truth_table())
 	failures.append_array(_test_partial_progress())

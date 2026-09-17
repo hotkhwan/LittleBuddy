@@ -29,7 +29,7 @@ func test_name() -> String:
 	return "audio_assets"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var loader_script: Resource = load("res://scripts/audio/wav_loader.gd")

@@ -3,6 +3,23 @@
 Shared interface for the Phase 1 agents. **Approved product decisions are recorded in
 `docs/ARCHITECTURE_MIGRATION_PLAN.md` §7.4.**
 
+> ## ⚠️ Superseded on two points — see `docs/PHASE2_DECISIONS.md`
+>
+> Phase 1 shipped as described here and is committed as `f422555`. The product owner then
+> approved two changes, so the following statements below are **no longer true of the code**:
+>
+> | This document says | Actually true now |
+> |---|---|
+> | schema version **2** | schema version **3** |
+> | unlocking gates on `starsByLevel` ≥ 1 | unlocking gates on `levelCompleted`, a separate key |
+> | finishing a level always earns ★1 | ★1 requires the core objective to be **genuinely** completed; a skip-through completes the level with **0 stars** |
+>
+> Everything else here — the two-star-currency rule, the Chapter 2 mapping, the SaveService
+> level-stars API, and the migration's preserve-`stars`/`completedActivities` guarantee — still
+> holds exactly as written. The two-currency rule in particular is now enforced by *three*
+> keys rather than two: `stars` (lifetime tasks) · `starsByLevel` (0–3 rating) ·
+> `levelCompleted` (progression gate). None of them are ever summed.
+
 ## The crux: two different star currencies
 
 Getting this wrong double-counts stars and breaks all 16 existing sticker thresholds.

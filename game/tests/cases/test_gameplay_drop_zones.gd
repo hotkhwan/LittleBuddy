@@ -29,7 +29,7 @@ func test_name() -> String:
 	return "gameplay_drop_zones"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	var drop_zone: GDScript = load(DROP_ZONE_PATH) as GDScript
 	if drop_zone == null:

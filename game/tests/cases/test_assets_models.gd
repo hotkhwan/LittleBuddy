@@ -39,7 +39,7 @@ func test_name() -> String:
 	return "assets_models"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	var spawner: GDScript = load(SPAWNER_PATH) as GDScript
 	if spawner == null:

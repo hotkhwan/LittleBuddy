@@ -27,7 +27,7 @@ func test_name() -> String:
 	return "rewards_pacing_invariant"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var throttle_ms: int = int(RewardLedgerScript.DEFAULT_MIN_INTERVAL_MS)

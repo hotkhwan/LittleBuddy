@@ -12,7 +12,7 @@ func test_name() -> String:
 	return "baby_state"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var state: BabyState = BabyState.new()

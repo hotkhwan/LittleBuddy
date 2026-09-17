@@ -24,7 +24,7 @@ func test_name() -> String:
 	return "gameplay_object_spawner"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	var spawner: GDScript = load(SPAWNER_PATH) as GDScript
 	if spawner == null:

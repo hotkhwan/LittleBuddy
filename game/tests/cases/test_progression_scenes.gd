@@ -18,7 +18,7 @@ func test_name() -> String:
 	return "progression_scenes"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var root: Node = _root()

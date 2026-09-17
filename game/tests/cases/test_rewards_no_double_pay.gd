@@ -94,7 +94,7 @@ func test_name() -> String:
 	return "rewards_no_double_pay"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	# The shared ledger is a process-wide static, so install a test one with a

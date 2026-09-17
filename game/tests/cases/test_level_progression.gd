@@ -1,12 +1,12 @@
 extends RefCounted
 ## `LevelSystem` -- chapters, the Chapter 2 mapping, and unlock progression.
 ##
-## The rule that matters most here: **progression gates on completion (>= 1
-## star), never on a star count.** A child must never be locked out of the next
-## level for playing imperfectly. `bathTime` still carries the legacy
-## `unlockAtStars: 10`, so "complete `milkTime` with a single star and `bathTime`
-## opens" is precisely the assertion that fails if anyone reinstates star-count
-## gating for chapter levels.
+## The rule that matters most here: **progression gates on COMPLETION, never on
+## a star count** -- and completion is a separate fact from the rating. A child
+## who skipped every task still reaches the end, still unlocks the next level,
+## and still honestly scores 0. `bathTime` carries the legacy `unlockAtStars:
+## 10`, so "finish `milkTime` with ZERO stars and `bathTime` opens" is precisely
+## the assertion that fails if anyone reinstates star gating for chapter levels.
 ##
 ## The seven pre-existing missions must also keep loading, keep validating and
 ## keep their old `unlockAtStars` semantics wherever something still uses them.
@@ -52,13 +52,22 @@ const LEGACY_UNLOCK_AT_STARS: Dictionary = {
 ## Records what a SaveService would have been asked to do, without needing one.
 class StubSaveService extends RefCounted:
 	var stars_by_level: Dictionary = {}
+	var level_completed: Dictionary = {}
 	var set_calls: Array = []
+	var completion_calls: Array = []
 	var unlocked_levels: Array = []
 	var unlocked_chapters: Array = []
 	var current_level: String = ""
 
 	func get_stars_by_level() -> Dictionary:
 		return stars_by_level.duplicate(true)
+
+	func get_level_completed() -> Dictionary:
+		return level_completed.duplicate(true)
+
+	func mark_level_completed(level_id: String) -> void:
+		completion_calls.append(level_id)
+		level_completed[level_id] = true
 
 	func set_level_stars(level_id: String, stars: int) -> void:
 		set_calls.append([level_id, stars])
@@ -99,7 +108,7 @@ func test_name() -> String:
 	return "level_progression"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	_library = ContentLibraryScript.create()
@@ -113,6 +122,7 @@ func run() -> Array:
 	failures.append_array(_test_chapter_2_mapping())
 	failures.append_array(_test_chapter_2_star_rules())
 	failures.append_array(_test_unlock_is_ordered())
+	failures.append_array(_test_completion_is_separate_from_stars())
 	failures.append_array(_test_completing_a_chapter_unlocks_the_next())
 	failures.append_array(_test_speech_free_player_reaches_three_stars())
 	failures.append_array(_test_replay_never_lowers())
@@ -282,23 +292,30 @@ func _test_unlock_is_ordered() -> Array:
 		failures.append("chapter 3 must be locked on a fresh profile")
 
 	# THE rule: completion, not a star count. `bathTime` carries the legacy
-	# `unlockAtStars: 10`, and one star on `milkTime` must still open it.
-	var one_star: Dictionary = {"milkTime": 1}
-	if not _system.is_level_unlocked("bathTime", one_star):
+	# `unlockAtStars: 10`, and finishing `milkTime` must open it.
+	var finished: Dictionary = {"milkTime": true}
+	if not _system.is_level_unlocked("bathTime", finished):
 		failures.append(
-			"a single star on 'milkTime' must unlock 'bathTime' -- progression gates on "
+			"finishing 'milkTime' must unlock 'bathTime' -- progression gates on "
 			+ "completion, never on a star count"
 		)
-	if _system.is_level_unlocked("bedtime", one_star):
+	if _system.is_level_unlocked("bedtime", finished):
 		failures.append("'bedtime' must stay locked until 'bathTime' is completed")
 
-	# Zero stars is not completion.
-	if _system.is_level_unlocked("bathTime", {"milkTime": 0}):
-		failures.append("0 stars on 'milkTime' must not unlock 'bathTime'")
+	# Not finishing is not completion.
+	if _system.is_level_unlocked("bathTime", {"milkTime": false}):
+		failures.append("an unfinished 'milkTime' must not unlock 'bathTime'")
+	if _system.is_level_unlocked("bathTime", {}):
+		failures.append("an empty completion map must not unlock the second level")
+
+	# A v2-era star map is still read correctly, so a profile that somehow
+	# arrives un-migrated never locks a child out of progress they already have.
+	if not _system.is_level_unlocked("bathTime", {"milkTime": 1}):
+		failures.append("a legacy star map (milkTime: 1) should still read as completion")
 
 	# Out-of-order progress cannot leapfrog the chain.
-	if _system.is_level_unlocked("firstWords", {"toysAndSmiles": 3}):
-		failures.append("a rating on a later level must not unlock the level after it")
+	if _system.is_level_unlocked("firstWords", {"toysAndSmiles": true}):
+		failures.append("finishing a later level must not unlock the level after it")
 
 	# Walking the chapter one level at a time opens exactly one more each time.
 	var progress: Dictionary = {}
@@ -306,7 +323,7 @@ func _test_unlock_is_ordered() -> Array:
 		var level_id: String = String(CHAPTER_2[i][0])
 		if not _system.is_level_unlocked(level_id, progress):
 			failures.append("'%s' should be unlocked by the time it is reached" % level_id)
-		progress[level_id] = 1
+		progress[level_id] = true
 		if i + 1 < CHAPTER_2.size():
 			var next_id: String = String(CHAPTER_2[i + 1][0])
 			if _system.get_next_level_id(level_id) != next_id:
@@ -320,12 +337,83 @@ func _test_unlock_is_ordered() -> Array:
 	return failures
 
 
+# ---------------------------------------------------------------------------
+# Completion vs stars: the skip-everything playthrough
+# ---------------------------------------------------------------------------
+
+## A child who used the Next button on every single task reached the end of the
+## level. That must:
+##   - complete the level and unlock the next one (the escape hatch is never a
+##     trap), and
+##   - score 0, not 1 (a skipped objective is not an achievement).
+func _test_completion_is_separate_from_stars() -> Array:
+	var failures: Array = []
+
+	var skipped_everything: Dictionary = _system.resolve_completion("milkTime", 0, {}, {})
+
+	if int(skipped_everything.get("stars", -1)) != 0:
+		failures.append(
+			"a level finished by skipping every task must rate 0, got %s -- skipped tasks are not achievements"
+			% str(skipped_everything.get("stars"))
+		)
+	if not bool(skipped_everything.get("completed", false)):
+		failures.append("reaching the end of a level must complete it even with 0 stars")
+	if not bool((skipped_everything["levelCompleted"] as Dictionary).get("milkTime", false)):
+		failures.append("the returned completion map must record the level")
+	if not (skipped_everything["newlyUnlockedLevels"] as PackedStringArray).has("bathTime"):
+		failures.append(
+			"a 0-star completion must still unlock the next level -- the skip button is the "
+			+ "room's no-dead-end escape hatch and must never become a lock"
+		)
+	if bool(skipped_everything.get("bonusSticker", true)):
+		failures.append("a 0-star completion must not hand out the 3-star bonus sticker")
+
+	# A whole chapter can be completed at 0 stars, and it opens the next one.
+	var zero_star_run: Dictionary = {}
+	var no_stars: Dictionary = {}
+	for row: Array in CHAPTER_2:
+		zero_star_run[String(row[0])] = true
+		no_stars[String(row[0])] = 0
+	if not _system.is_chapter_complete("ch2", zero_star_run):
+		failures.append("a chapter finished with 0 stars everywhere must still count as complete")
+	if not _system.is_chapter_unlocked("ch3", zero_star_run):
+		failures.append("a child may unlock the next chapter with 0 stars")
+	if _system.is_level_unlocked("bathTime", no_stars):
+		failures.append(
+			"the star map must NOT be mistaken for a completion map: 0 stars is not completion"
+		)
+
+	# Persistence: completion is written, a 0 rating writes no star.
+	var save: StubSaveService = StubSaveService.new()
+	var system: RefCounted = LevelSystemScript.create(_library)
+	system.set_save_service(save)
+
+	system.apply_completion("milkTime", 0)
+	if save.completion_calls != ["milkTime"]:
+		failures.append("apply_completion must mark the level completed, got %s" % str(save.completion_calls))
+	if int(save.stars_by_level.get("milkTime", 0)) != 0:
+		failures.append("a 0-star run must not be stored as a star, got %s" % str(save.stars_by_level))
+	if not save.unlocked_levels.has("bathTime"):
+		failures.append("a 0-star completion must persist the next level's unlock, got %s" % str(save.unlocked_levels))
+
+	# Replaying it properly later raises the rating without re-issuing anything.
+	system.apply_completion("milkTime", 2)
+	if int(save.stars_by_level.get("milkTime", 0)) != 2:
+		failures.append("a later, better run must raise the rating to 2, got %s" % str(save.stars_by_level))
+	if save.completion_calls.size() != 2:
+		failures.append("apply_completion should mark completion every time; SaveService de-duplicates")
+	if save.unlocked_levels.count("bathTime") != 1:
+		failures.append("a replay must not re-issue an unlock, got %s" % str(save.unlocked_levels))
+
+	return failures
+
+
 func _test_completing_a_chapter_unlocks_the_next() -> Array:
 	var failures: Array = []
 
 	var almost: Dictionary = {}
 	for i: int in range(CHAPTER_2.size() - 1):
-		almost[String(CHAPTER_2[i][0])] = 3
+		almost[String(CHAPTER_2[i][0])] = true
 	if _system.is_chapter_complete("ch2", almost):
 		failures.append("chapter 2 must not be complete with a level outstanding")
 	if _system.is_chapter_unlocked("ch3", almost):
@@ -334,9 +422,9 @@ func _test_completing_a_chapter_unlocks_the_next() -> Array:
 		failures.append("a chapter 3 level must stay locked while chapter 2 is unfinished")
 
 	var done: Dictionary = almost.duplicate()
-	done[String(CHAPTER_2[CHAPTER_2.size() - 1][0])] = 1
+	done[String(CHAPTER_2[CHAPTER_2.size() - 1][0])] = true
 	if not _system.is_chapter_complete("ch2", done):
-		failures.append("one star on every level must complete chapter 2")
+		failures.append("finishing every level must complete chapter 2")
 	if not _system.is_chapter_unlocked("ch3", done):
 		failures.append("completing chapter 2 must unlock chapter 3")
 	if not _system.is_level_unlocked("gettingDressed", done):

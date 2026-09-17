@@ -4,17 +4,23 @@ extends Node
 ## completed activities, level/chapter progression, and settings. No
 ## network, no cloud sync, no analytics, no accounts.
 ##
-## Two star currencies live side by side here and are never summed:
+## Three separate facts live side by side here and are never summed or
+## conflated:
 ##   - "stars" (get_stars/add_stars) is the lifetime TASK star total that
 ##     feeds sticker unlockAtStars thresholds. Unchanged by this phase.
 ##   - starsByLevel (get_level_stars/set_level_stars) is a per-level 0..3
-##     rating that drives level/chapter unlocking. set_level_stars is
-##     max-wins: replaying a level with a worse result never lowers the
-##     stored rating.
+##     HONEST rating. set_level_stars is max-wins: replaying a level with a
+##     worse result never lowers the stored rating. A level finished entirely
+##     by skipping rates 0 -- skipped tasks are not achievements.
+##   - levelCompleted (is_level_completed/mark_level_completed) is "the child
+##     reached the end of this level", true even when every task was skipped.
+##     UNLOCKING GATES ON THIS, never on a star count, so the skip button can
+##     never trap a child and a 0-star completion still opens the next level.
 
 signal profile_changed(profile: Dictionary)
 signal stars_changed(stars: int)
 signal level_stars_changed(level_id: String, stars: int)
+signal level_completed_changed(level_id: String)
 
 var _store: ProfileStore
 var _profile: Dictionary = {}
@@ -133,6 +139,40 @@ func get_total_level_stars() -> int:
 	for level_id in stars_by_level.keys():
 		total += int(stars_by_level[level_id])
 	return total
+
+
+## ---------------------------------------------------------------------------
+## Level completion -- deliberately parallel to the per-level rating above and
+## deliberately independent of it. Completion answers "did the child reach the
+## end?"; the rating answers "how well did it go?". A level can be completed
+## with 0 stars, and only completion may gate progression.
+## ---------------------------------------------------------------------------
+
+func is_level_completed(level_id: String) -> bool:
+	var completed: Dictionary = _profile.get("levelCompleted", {})
+	return bool(completed.get(level_id, false))
+
+
+## Idempotent: marking an already-completed level again writes nothing and
+## emits nothing, so a replay or a re-fired signal cannot double-apply.
+func mark_level_completed(level_id: String) -> void:
+	if level_id == "":
+		return
+	var completed: Dictionary = _profile.get("levelCompleted", {})
+	if bool(completed.get(level_id, false)):
+		return
+	completed[level_id] = true
+	_profile["levelCompleted"] = completed
+	save_profile()
+	level_completed_changed.emit(level_id)
+	profile_changed.emit(get_profile())
+
+
+## Deep copy so callers cannot mutate internal state. Keys are exactly the
+## levels the child has finished; there are no `false` entries.
+func get_level_completed() -> Dictionary:
+	var completed: Dictionary = _profile.get("levelCompleted", {})
+	return completed.duplicate(true)
 
 
 ## ---------------------------------------------------------------------------

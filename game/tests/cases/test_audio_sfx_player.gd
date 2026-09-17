@@ -12,7 +12,7 @@ func test_name() -> String:
 	return "audio_sfx_player"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var script: Resource = load(PLAYER_SCRIPT)

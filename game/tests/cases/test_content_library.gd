@@ -12,7 +12,7 @@ func test_name() -> String:
 	return "content_library"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	# A compile error in a content script makes `new()` return null, and every

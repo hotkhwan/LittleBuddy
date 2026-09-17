@@ -59,7 +59,7 @@ func test_name() -> String:
 	return "progression_rewards"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	failures.append_array(_test_single_award())

@@ -56,7 +56,7 @@ func test_name() -> String:
 	return "gameplay_mission_runner"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	var runner_script: GDScript = load(RUNNER_PATH) as GDScript
 	if runner_script == null:

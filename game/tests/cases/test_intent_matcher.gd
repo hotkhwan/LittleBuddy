@@ -5,7 +5,7 @@ func test_name() -> String:
 	return "intent_matcher"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	const ACCEPTED_COMMANDS := [

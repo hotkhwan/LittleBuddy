@@ -52,14 +52,22 @@ const LAID_OUT_NODES: Array = [
 	"UI/SafeArea/NextButton",
 	"UI/SafeArea/MicButton",
 	"UI/SafeArea/ListeningLabel",
+	# Story Mode's entire UI: one small "which chapter/level am I in" caption.
+	"UI/SafeArea/LevelChapterLabel",
 ]
+
+## The grown-up gear lives in its own overlay scene, pinned to the top-right
+## corner of the SAME safe area. It is not part of the room's own layout, so the
+## collision check above cannot see it -- and the top-right corner is exactly
+## where a "where am I" caption wants to go.
+const PARENT_GATE_NODE: String = "SafeArea/EntryGate"
 
 
 func test_name() -> String:
 	return "ui_chrome"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	failures.append_array(_test_icons())
 	failures.append_array(_test_styles())
@@ -317,7 +325,49 @@ func _test_room_layout() -> Array:
 					failures.append("at %s, %s overlaps %s"
 							% [str(area), String(names[i]), String(names[j])])
 
+	failures.append_array(_test_level_caption_clears_the_parent_gate(room))
+
 	room.free()
+	return failures
+
+
+## The Story Mode caption must not sit under the grown-up gear (which would make
+## one of them untappable) and must stay inside the safe area at both shapes.
+func _test_level_caption_clears_the_parent_gate(room: Node) -> Array:
+	var failures: Array = []
+
+	var caption: Control = room.get_node_or_null(
+			NodePath("UI/SafeArea/LevelChapterLabel")) as Control
+	if caption == null:
+		return ["the baby room has no UI/SafeArea/LevelChapterLabel"]
+	if caption.visible:
+		failures.append("the level caption starts visible; it must stay hidden until there is a level to name")
+
+	if not ResourceLoader.exists(PARENT_SCENE):
+		return failures
+	var parent_packed: PackedScene = load(PARENT_SCENE) as PackedScene
+	if parent_packed == null:
+		return failures
+	var parent_screen: Node = parent_packed.instantiate()
+	var gate: Control = parent_screen.get_node_or_null(NodePath(PARENT_GATE_NODE)) as Control
+	if gate == null:
+		parent_screen.free()
+		return ["the parent settings screen has no %s to check the caption against" % PARENT_GATE_NODE]
+
+	for area: Vector2 in [SAFE_AREA_PHONE, SAFE_AREA_TABLET]:
+		var caption_rect: Rect2 = _stored_rect(caption, area)
+		var gate_rect: Rect2 = _stored_rect(gate, area)
+		if caption_rect.intersects(gate_rect):
+			failures.append("at %s the level caption %s sits under the grown-up gear %s"
+					% [str(area), str(caption_rect), str(gate_rect)])
+		if not Rect2(Vector2.ZERO, area).encloses(caption_rect):
+			failures.append("at %s the level caption %s escapes the safe area"
+					% [str(area), str(caption_rect)])
+		if caption_rect.size.x < 200.0 or caption_rect.size.y < 60.0:
+			failures.append("at %s the level caption is %s; too small to read a chapter and a level in"
+					% [str(area), str(caption_rect.size)])
+
+	parent_screen.free()
 	return failures
 
 

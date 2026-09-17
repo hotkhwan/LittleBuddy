@@ -14,7 +14,7 @@ func test_name() -> String:
 	return "content_picker"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var library: Object = ContentLibraryScript.new()

@@ -1,13 +1,17 @@
 extends RefCounted
 
-## Tests for the v1 -> v2 save migration and the schema-v2 additions it
-## introduces: currentChapter/currentLevel, starsByLevel, and the
-## unlockedChapters/unlockedLevels/unlockedRooms unlock sets.
+## Tests for the save migrations (v1 -> v3 and v2 -> v3) and the schema
+## additions they introduce: currentChapter/currentLevel, starsByLevel,
+## levelCompleted, and the unlockedChapters/unlockedLevels/unlockedRooms
+## unlock sets.
 ##
-## The crux under test throughout: "stars" (lifetime task total, feeds
-## sticker thresholds) and "starsByLevel" (per-level 0..3 rating, feeds
-## level/chapter unlocking) are two different currencies and must never be
-## summed or otherwise contaminate one another.
+## Two cruxes under test throughout:
+##   1. "stars" (lifetime task total, feeds sticker thresholds) and
+##      "starsByLevel" (per-level 0..3 rating) are different currencies and must
+##      never be summed or otherwise contaminate one another.
+##   2. "levelCompleted" (did the child reach the end?) and "starsByLevel" (how
+##      well did it go?) are different facts. Unlocking reads the first; the
+##      second stays honest and may be 0 for a completed level.
 ##
 ## Uses a temp user:// path (never the real profile.json) and the REAL
 ## committed device fixture (`device_profile_v1.json`: v1, 64 stars, 33
@@ -17,10 +21,11 @@ extends RefCounted
 const SaveServiceScript := preload("res://scripts/save/save_service.gd")
 
 const DEVICE_FIXTURE_PATH := "res://tests/fixtures/device_profile_v1.json"
-const LEVELS_FIXTURE_PATH := "res://tests/fixtures/levels_fixture_ch2.json"
 const REAL_MISSIONS_PATH := "res://content/missions/missions.json"
-const NONEXISTENT_LEVELS_PATH := "res://tests/fixtures/does_not_exist_levels.json"
+const REAL_CHAPTERS_PATH := "res://content/chapters/chapters.json"
+const MISSIONS_FIXTURE_PATH := "res://tests/fixtures/missions_fixture_ch2.json"
 const NONEXISTENT_MISSIONS_PATH := "res://tests/fixtures/does_not_exist_missions.json"
+const NONEXISTENT_CHAPTERS_PATH := "res://tests/fixtures/does_not_exist_chapters.json"
 
 const DEVICE_STARS := 64
 const DEVICE_COMPLETED_COUNT := 33
@@ -31,7 +36,7 @@ func test_name() -> String:
 	return "save_migration"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	var test_path := "user://test_migration_%d.json" % randi()
 
@@ -66,10 +71,19 @@ func run() -> Array:
 	failures.append_array(_test_unknown_future_version_does_not_crash(test_path))
 
 	_cleanup(test_path)
-	failures.append_array(_test_v2_profile_round_trips_unchanged(test_path))
+	failures.append_array(_test_v2_to_v3_marks_rated_levels_completed(test_path))
+
+	_cleanup(test_path)
+	failures.append_array(_test_v3_profile_round_trips_unchanged(test_path))
 
 	_cleanup(test_path)
 	failures.append_array(_test_migration_is_idempotent(test_path))
+
+	_cleanup(test_path)
+	failures.append_array(_test_v1_migration_is_idempotent(test_path))
+
+	_cleanup(test_path)
+	failures.append_array(_test_level_completed_api(test_path))
 
 	_cleanup(test_path)
 	return failures
@@ -99,22 +113,27 @@ func _install_device_fixture(path: String) -> void:
 	dst.close()
 
 
+## The injectable-path seam: a store reading a committed FIXTURE mission/chapter
+## pair instead of the shipped content, so these assertions stay stable if the
+## real chapter chain is re-authored later.
 func _store_with_ch2_fixture(path: String) -> ProfileStore:
-	return ProfileStore.new(path, LEVELS_FIXTURE_PATH, REAL_MISSIONS_PATH)
+	return ProfileStore.new(path, MISSIONS_FIXTURE_PATH, REAL_CHAPTERS_PATH)
 
 
-## The dedicated levels.json is absent, but taskIds/chapterId/levelId are
-## authored directly onto missions.json (the real, currently-shipped shape --
-## see LevelDefinition.is_authored_level()). Seeding must still work.
+## No path arguments at all: exactly what the game constructs at runtime.
+## taskIds/chapterId/levelId are authored directly onto missions.json (see
+## LevelDefinition.is_authored_level()), and the chapter order lives in
+## chapters.json. Seeding must work off those two files and nothing else --
+## there is no levels.json and there never was.
 func _store_with_real_content_defaults(path: String) -> ProfileStore:
 	return ProfileStore.new(path)
 
 
-## Neither a dedicated levels.json NOR any level-tagged missions.json exists.
-## This is the fully-absent case the contract requires migration to survive:
-## seeding is skipped, nothing crashes, nothing is lost.
+## Neither missions.json nor chapters.json can be read. This is the fully-absent
+## case the contract requires migration to survive: seeding is skipped, nothing
+## crashes, nothing is lost.
 func _store_with_no_level_data_at_all(path: String) -> ProfileStore:
-	return ProfileStore.new(path, NONEXISTENT_LEVELS_PATH, NONEXISTENT_MISSIONS_PATH)
+	return ProfileStore.new(path, NONEXISTENT_MISSIONS_PATH, NONEXISTENT_CHAPTERS_PATH)
 
 
 # ---------------------------------------------------------------------------
@@ -128,8 +147,8 @@ func _test_real_device_profile_preserves_v1_fields(path: String) -> Array:
 	var store := _store_with_ch2_fixture(path)
 	var migrated := store.load_profile()
 
-	if migrated.get("profileVersion") != 2:
-		failures.append("device profile: expected profileVersion 2 after migration, got %s"
+	if migrated.get("profileVersion") != 3:
+		failures.append("device profile: expected profileVersion 3 after migration, got %s"
 				% str(migrated.get("profileVersion")))
 	if int(migrated.get("stars", -1)) != DEVICE_STARS:
 		failures.append("device profile: expected stars preserved as %d, got %s"
@@ -207,6 +226,22 @@ func _test_real_device_profile_seeds_starsByLevel(path: String) -> Array:
 	if not unlocked_chapters.has("ch2"):
 		failures.append("device profile: expected chapter 'ch2' unlocked, got %s" % str(unlocked_chapters))
 
+	# v1 -> v3: exactly the levels that earned the seeded star are marked
+	# completed. Never fewer (that would send this child backwards) and never
+	# more (that would credit a level they never finished).
+	var completed_levels: Dictionary = migrated.get("levelCompleted", {})
+	for level_id: String in ["bedtime", "firstWords"]:
+		if not bool(completed_levels.get(level_id, false)):
+			failures.append("device profile: level '%s' was seeded a star but not marked completed, got %s"
+					% [level_id, str(completed_levels)])
+	for level_id: String in ["milkTime", "bathTime", "toysAndSmiles"]:
+		if completed_levels.has(level_id):
+			failures.append("device profile: incomplete level '%s' was marked completed, got %s"
+					% [level_id, str(completed_levels)])
+	if completed_levels.keys().size() != stars_by_level.keys().size():
+		failures.append("device profile: levelCompleted and the seeded starsByLevel disagree: %s vs %s"
+				% [str(completed_levels), str(stars_by_level)])
+
 	return failures
 
 
@@ -228,6 +263,12 @@ func _test_seeding_never_inflates_task_stars(path: String) -> Array:
 	var stars_by_level: Dictionary = migrated.get("starsByLevel", {})
 	for level_id in stars_by_level.keys():
 		total_level_stars += int(stars_by_level[level_id])
+		# Seeding may never grant more than the single core-completion star: we
+		# cannot know retroactively whether the listening or optional star was
+		# earned, and over-crediting is not recoverable.
+		if int(stars_by_level[level_id]) > 1:
+			failures.append("device profile: level '%s' was seeded %s stars; seeding must never exceed 1"
+					% [str(level_id), str(stars_by_level[level_id])])
 	if total_level_stars == 0:
 		failures.append("device profile: expected at least one seeded level star to make this assertion meaningful")
 
@@ -270,6 +311,14 @@ func _test_real_content_seeds_starsByLevel_via_default_paths(path: String) -> Ar
 		failures.append("real content: expected currentLevel fallback 'milkTime' (chapters.json ch2's first level), got %s"
 				% str(migrated.get("currentLevel")))
 
+	var completed_levels: Dictionary = migrated.get("levelCompleted", {})
+	for level_id: String in ["bedtime", "firstWords"]:
+		if not bool(completed_levels.get(level_id, false)):
+			failures.append("real content: expected level '%s' marked completed via missions.json, got %s"
+					% [level_id, str(completed_levels)])
+	if completed_levels.has("milkTime"):
+		failures.append("real content: level 'milkTime' (incomplete in the fixture) must not be marked completed")
+
 	return failures
 
 
@@ -293,6 +342,10 @@ func _test_missing_level_definitions_skips_seeding_safely(path: String) -> Array
 	var stars_by_level: Dictionary = migrated.get("starsByLevel", {})
 	if not stars_by_level.is_empty():
 		failures.append("missing level defs: expected no seeded starsByLevel, got %s" % str(stars_by_level))
+
+	var completed_levels: Dictionary = migrated.get("levelCompleted", {})
+	if not completed_levels.is_empty():
+		failures.append("missing level defs: expected no seeded levelCompleted, got %s" % str(completed_levels))
 
 	return failures
 
@@ -450,8 +503,8 @@ func _test_unknown_future_version_does_not_crash(path: String) -> Array:
 	var store := _store_with_ch2_fixture(path)
 	var loaded := store.load_profile()
 
-	if loaded.get("profileVersion") != 2:
-		failures.append("unknown version: expected profileVersion normalized to 2, got %s" % str(loaded.get("profileVersion")))
+	if loaded.get("profileVersion") != 3:
+		failures.append("unknown version: expected profileVersion normalized to 3, got %s" % str(loaded.get("profileVersion")))
 	if int(loaded.get("stars", -1)) != 12:
 		failures.append("unknown version: expected stars preserved as 12, got %s" % str(loaded.get("stars")))
 	if String(loaded.get("currentChapter", "")) != "ch7":
@@ -465,7 +518,7 @@ func _test_unknown_future_version_does_not_crash(path: String) -> Array:
 
 
 # ---------------------------------------------------------------------------
-# v2 round trip / idempotent migration
+# v3 round trip / idempotent migration
 # ---------------------------------------------------------------------------
 
 func _sample_v2_profile() -> Dictionary:
@@ -475,7 +528,7 @@ func _sample_v2_profile() -> Dictionary:
 		"completedActivities": ["feedMilk", "bedtimeBlanket"],
 		"currentChapter": "ch2",
 		"currentLevel": "bathTime",
-		"starsByLevel": {"milkTime": 1, "bedtime": 3},
+		"starsByLevel": {"milkTime": 1, "bedtime": 3, "toysAndSmiles": 0},
 		"unlockedChapters": ["ch1", "ch2"],
 		"unlockedLevels": ["milkTime", "bathTime", "bedtime"],
 		"unlockedRooms": ["nursery"],
@@ -490,13 +543,59 @@ func _sample_v2_profile() -> Dictionary:
 	}
 
 
-func _test_v2_profile_round_trips_unchanged(path: String) -> Array:
+func _sample_v3_profile() -> Dictionary:
+	var profile := _sample_v2_profile()
+	profile["profileVersion"] = 3
+	profile["levelCompleted"] = {"milkTime": true, "bedtime": true}
+	return profile
+
+
+## v2 -> v3: every level already rated >= 1 star was obviously finished, so it
+## becomes a completion. NOTHING else may change -- this migration adds one
+## derived field and touches no existing one.
+func _test_v2_to_v3_marks_rated_levels_completed(path: String) -> Array:
+	var failures: Array = []
+
+	var original := _sample_v2_profile()
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(original))
+	file.close()
+
+	var store := _store_with_ch2_fixture(path)
+	var migrated := store.load_profile()
+
+	if migrated.get("profileVersion") != 3:
+		failures.append("v2->v3: expected profileVersion 3, got %s" % str(migrated.get("profileVersion")))
+
+	var completed_levels: Dictionary = migrated.get("levelCompleted", {})
+	for level_id: String in ["milkTime", "bedtime"]:
+		if not bool(completed_levels.get(level_id, false)):
+			failures.append("v2->v3: level '%s' had >= 1 star and must be marked completed, got %s"
+					% [level_id, str(completed_levels)])
+	# A 0-star v2 entry is not evidence of a finished level: under v2 every
+	# finished level was force-rated to at least 1 star.
+	if completed_levels.has("toysAndSmiles"):
+		failures.append("v2->v3: a 0-star level must not be marked completed, got %s" % str(completed_levels))
+	if completed_levels.has("bathTime"):
+		failures.append("v2->v3: an unrated level must not be marked completed, got %s" % str(completed_levels))
+
+	# Everything else carries over verbatim.
+	for key: String in ["stars", "completedActivities", "currentChapter", "currentLevel",
+			"starsByLevel", "unlockedChapters", "unlockedLevels", "unlockedRooms", "settings"]:
+		if migrated.get(key) != original[key]:
+			failures.append("v2->v3: key '%s' changed, expected %s, got %s"
+					% [key, str(original[key]), str(migrated.get(key))])
+
+	return failures
+
+
+func _test_v3_profile_round_trips_unchanged(path: String) -> Array:
 	var failures: Array = []
 
 	var store := _store_with_ch2_fixture(path)
-	var original := _sample_v2_profile()
+	var original := _sample_v3_profile()
 	if not store.save_profile(original):
-		failures.append("v2 round trip: save_profile returned false")
+		failures.append("v3 round trip: save_profile returned false")
 		return failures
 
 	var reload_store := _store_with_ch2_fixture(path)
@@ -504,10 +603,10 @@ func _test_v2_profile_round_trips_unchanged(path: String) -> Array:
 
 	for key in original.keys():
 		if not reloaded.has(key):
-			failures.append("v2 round trip: key '%s' missing after reload" % key)
+			failures.append("v3 round trip: key '%s' missing after reload" % key)
 			continue
 		if reloaded[key] != original[key]:
-			failures.append("v2 round trip: key '%s' changed, expected %s, got %s"
+			failures.append("v3 round trip: key '%s' changed, expected %s, got %s"
 					% [key, str(original[key]), str(reloaded[key])])
 
 	return failures
@@ -517,12 +616,12 @@ func _test_migration_is_idempotent(path: String) -> Array:
 	var failures: Array = []
 
 	var store := _store_with_ch2_fixture(path)
-	var original := _sample_v2_profile()
+	var original := _sample_v3_profile()
 	store.save_profile(original)
 
 	var first_load := store.load_profile()
-	# Re-saving and reloading an already-v2 profile a second time must not
-	# change anything further -- migration only ever runs for version <= 1.
+	# Re-saving and reloading an already-v3 profile a second time must not
+	# change anything further -- migration only ever runs for version <= 2.
 	store.save_profile(first_load)
 	var second_load := store.load_profile()
 
@@ -531,4 +630,79 @@ func _test_migration_is_idempotent(path: String) -> Array:
 			failures.append("idempotency: key '%s' changed on a second migration pass, %s -> %s"
 					% [key, str(first_load[key]), str(second_load.get(key))])
 
+	return failures
+
+
+## The v1 path must be idempotent too: a migrated profile re-saved and reloaded
+## is a v3 profile, so the v1 seeding must not run a second time and (for
+## instance) re-credit a level whose tasks are still in completedActivities.
+func _test_v1_migration_is_idempotent(path: String) -> Array:
+	var failures: Array = []
+	_install_device_fixture(path)
+
+	var store := _store_with_ch2_fixture(path)
+	var first_load := store.load_profile()
+	store.save_profile(first_load)
+	var second_load := store.load_profile()
+
+	for key in first_load.keys():
+		if second_load.get(key) != first_load[key]:
+			failures.append("v1 idempotency: key '%s' changed on a second pass, %s -> %s"
+					% [key, str(first_load[key]), str(second_load.get(key))])
+
+	return failures
+
+
+# ---------------------------------------------------------------------------
+# SaveService: the levelCompleted API
+# ---------------------------------------------------------------------------
+
+func _test_level_completed_api(path: String) -> Array:
+	var failures: Array = []
+
+	var store := ProfileStore.new(path)
+	var save: Node = SaveServiceScript.new(store)
+
+	var seen: Array = []
+	save.connect("level_completed_changed", func(level_id: String) -> void: seen.append(level_id))
+
+	if save.is_level_completed("milkTime"):
+		failures.append("levelCompleted API: a fresh profile must have no completed levels")
+
+	save.mark_level_completed("milkTime")
+	if not save.is_level_completed("milkTime"):
+		failures.append("levelCompleted API: mark_level_completed did not stick")
+	if seen != ["milkTime"]:
+		failures.append("levelCompleted API: expected one level_completed_changed emission, got %s" % str(seen))
+
+	# Idempotent: replaying a finished level must not re-emit or re-write.
+	save.mark_level_completed("milkTime")
+	if seen.size() != 1:
+		failures.append("levelCompleted API: re-marking an already-completed level re-emitted, got %s" % str(seen))
+
+	save.mark_level_completed("")
+	if save.get_level_completed().has(""):
+		failures.append("levelCompleted API: an empty level id was stored")
+
+	# Completion is independent of the rating: this level is finished with 0 stars.
+	if save.get_level_stars("milkTime") != 0:
+		failures.append("levelCompleted API: marking a level completed granted it %d stars; completion and rating are separate"
+				% save.get_level_stars("milkTime"))
+	if save.get_stars() != 0:
+		failures.append("levelCompleted API: marking a level completed changed the lifetime task-star total")
+
+	# Deep copy: a caller cannot reach in and grant itself progress.
+	var snapshot: Dictionary = save.get_level_completed()
+	snapshot["bathTime"] = true
+	if save.is_level_completed("bathTime"):
+		failures.append("levelCompleted API: get_level_completed handed out a live reference")
+
+	# ...and it survives a reload.
+	var reloaded: Dictionary = ProfileStore.new(path).load_profile().get("levelCompleted", {})
+	if not bool(reloaded.get("milkTime", false)):
+		failures.append("levelCompleted API: completion did not persist across reload, got %s" % str(reloaded))
+	if reloaded.has("bathTime"):
+		failures.append("levelCompleted API: a mutated snapshot leaked into the saved profile")
+
+	(save as Node).free()
 	return failures

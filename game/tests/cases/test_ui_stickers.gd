@@ -32,7 +32,7 @@ func test_name() -> String:
 	return "ui_stickers"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	failures.append_array(_test_glyphs_load())
 	failures.append_array(_test_every_sticker_has_art())

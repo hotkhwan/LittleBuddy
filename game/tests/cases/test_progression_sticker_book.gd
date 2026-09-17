@@ -35,7 +35,7 @@ func test_name() -> String:
 	return "progression_sticker_book"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var library: Object = ContentLibraryScript.new()

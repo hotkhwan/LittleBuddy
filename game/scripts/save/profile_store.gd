@@ -5,41 +5,49 @@ extends RefCounted
 ## Owns reading/writing user://profile.json and defending against every
 ## corruption/failure mode so gameplay never crashes or silently loses stars.
 ##
-## Schema v2 adds level/chapter progression on top of the v1 schema. There are
-## two separate, never-summed star currencies:
-##   - "stars"        lifetime TASK star total (+1 per completed task). Still
-##                     the only thing that feeds sticker unlockAtStars
-##                     thresholds. Never touched by level seeding/migration.
-##   - "starsByLevel"  per-level 0..3 RATING (best-ever, max-wins). Drives
-##                     level/chapter unlocking. Never folded into "stars".
+## Schema v3 splits *finishing* a level from *how well* it was played. Three
+## independent things live side by side here and are never summed or conflated:
+##   - "stars"          lifetime TASK star total (+1 per completed task). Still
+##                       the only thing that feeds sticker unlockAtStars
+##                       thresholds. Never touched by level seeding/migration.
+##   - "starsByLevel"    per-level 0..3 RATING (best-ever, max-wins). An honest
+##                       score: star 1 means the core objective was genuinely
+##                       completed, so a level finished entirely by skipping
+##                       rates 0. Never folded into "stars".
+##   - "levelCompleted"  levelId -> true. "The child reached the end of this
+##                       level", true even if every task was skipped. THIS is
+##                       what gates unlocking, so the skip button can never trap
+##                       a child, while a 0-star completion stays honest.
 
 const DEFAULT_PATH := "user://profile.json"
-const CURRENT_VERSION := 2
+const CURRENT_VERSION := 3
 
-## Where Agent LEVEL's level->task/chapter mapping is expected to live at
-## runtime. This file does not exist yet as of Phase 1 SAVE landing; reading
-## it is fully defensive (see `_load_level_definitions`) so migration never
-## depends on it existing.
-const DEFAULT_LEVELS_PATH := "res://content/levels/levels.json"
+## Levels are authored directly onto the mission records (see
+## `LevelDefinition.is_authored_level()`), and their play order lives in
+## chapters.json. There is deliberately no separate levels.json: a
+## `DEFAULT_LEVELS_PATH` constant pointed at one for the whole of Phase 1 and
+## the file was never created, so the read always fell through. Both paths are
+## constructor arguments purely as a test seam.
 const DEFAULT_MISSIONS_PATH := "res://content/missions/missions.json"
+const DEFAULT_CHAPTERS_PATH := "res://content/chapters/chapters.json"
 
-## Chapter 2 must always be unlocked after a v1->v2 migration so a returning
-## profile is never stranded (see docs/PHASE1_CONTRACT.md). If the level
-## definitions file is absent we still need *some* concrete first-level id to
-## unlock; "milkTime" is the id given for that slot in the contract's own
-## schema example.
+## The first chapter and its first level must always be unlocked after a
+## migration so a returning profile is never stranded (see
+## docs/PHASE1_CONTRACT.md). These constants are only the last-resort answer for
+## when chapters.json/missions.json cannot be read at all; normally both are
+## derived from the content itself.
 const CH1_CHAPTER_ID := "ch1"
 const CH2_CHAPTER_ID := "ch2"
 const CH2_FALLBACK_FIRST_LEVEL_ID := "milkTime"
 
 var path: String
-var levels_path: String
 var missions_path: String
+var chapters_path: String
 
-func _init(p_path: String = DEFAULT_PATH, p_levels_path: String = DEFAULT_LEVELS_PATH, p_missions_path: String = DEFAULT_MISSIONS_PATH) -> void:
+func _init(p_path: String = DEFAULT_PATH, p_missions_path: String = DEFAULT_MISSIONS_PATH, p_chapters_path: String = DEFAULT_CHAPTERS_PATH) -> void:
 	path = p_path
-	levels_path = p_levels_path
 	missions_path = p_missions_path
+	chapters_path = p_chapters_path
 
 
 ## Canonical default schema. Always returns a fresh Dictionary (no shared
@@ -52,6 +60,7 @@ func default_profile() -> Dictionary:
 		"currentChapter": CH1_CHAPTER_ID,
 		"currentLevel": "",
 		"starsByLevel": {},
+		"levelCompleted": {},
 		"unlockedChapters": [CH1_CHAPTER_ID],
 		"unlockedLevels": [],
 		"unlockedRooms": [],
@@ -101,8 +110,9 @@ func _sanitize(raw: Dictionary) -> Dictionary:
 
 	# Forward-compatible migration hook keyed on profileVersion. Versions <= 1
 	# (including missing/malformed version values, treated as legacy) run the
-	# additive v1->v2 migration once. Version 2 is passed through untouched so
-	# migration is idempotent. An unknown/newer version is never migrated --
+	# additive v1->v3 migration once; a v2 profile runs the small v2->v3 step.
+	# Version 3 is passed through untouched so migration is idempotent. An
+	# unknown/newer version is never migrated --
 	# it simply falls through to the same field-by-field validation below,
 	# exactly like corrupt data, so a save from a future build never crashes
 	# an older one.
@@ -142,6 +152,13 @@ func _sanitize(raw: Dictionary) -> Dictionary:
 			stars_by_level_result[level_id] = clampi(int(value), 0, 3)
 	result["starsByLevel"] = stars_by_level_result
 
+	# levelCompleted: Dictionary<String levelId, true>. Deliberately parallel to
+	# starsByLevel and deliberately NOT derived from it -- a level can be
+	# completed with 0 stars. Only truthy entries are kept, so the key set is
+	# exactly "the levels the child has reached the end of"; a stored `false` (or
+	# 0) is dropped rather than preserved as a negative fact.
+	result["levelCompleted"] = _sanitize_completion_map(raw.get("levelCompleted", null))
+
 	# unlockedChapters / unlockedLevels / unlockedRooms: arrays of unique
 	# strings, same shape/validation as completedActivities.
 	result["unlockedChapters"] = _sanitize_string_array(raw.get("unlockedChapters", null))
@@ -173,6 +190,37 @@ func _sanitize(raw: Dictionary) -> Dictionary:
 	return result
 
 
+## Normalizes an arbitrary value into `{levelId: true}`. Accepts the canonical
+## Dictionary form, and also a plain Array of ids, so a hand-edited or
+## half-written profile still yields something sane.
+func _sanitize_completion_map(raw_value: Variant) -> Dictionary:
+	var cleaned: Dictionary = {}
+	if typeof(raw_value) == TYPE_ARRAY:
+		for item in raw_value:
+			if typeof(item) == TYPE_STRING and item != "":
+				cleaned[item] = true
+		return cleaned
+	if typeof(raw_value) != TYPE_DICTIONARY:
+		return cleaned
+	var raw_map: Dictionary = raw_value
+	for level_id in raw_map.keys():
+		if typeof(level_id) != TYPE_STRING or level_id == "":
+			continue
+		if _is_truthy(raw_map[level_id]):
+			cleaned[level_id] = true
+	return cleaned
+
+
+static func _is_truthy(value: Variant) -> bool:
+	match typeof(value):
+		TYPE_BOOL:
+			return value
+		TYPE_INT, TYPE_FLOAT:
+			return float(value) >= 1.0
+		_:
+			return false
+
+
 ## De-duplicating string-array sanitizer shared by every array-of-ids field.
 func _sanitize_string_array(raw_value: Variant) -> Array:
 	var cleaned: Array = []
@@ -184,17 +232,44 @@ func _sanitize_string_array(raw_value: Variant) -> Array:
 	return cleaned
 
 
-## Migration hook. Only legacy (<=1, including missing/malformed) versions are
-## migrated; version 2 (and any unknown future version) pass through
-## unchanged and rely on _sanitize()'s field-by-field validation, which keeps
-## migration idempotent by construction (running it twice is a no-op).
+## Migration hook. Legacy (<=1, including missing/malformed) versions run the
+## full v1->v3 migration; a v2 profile runs only the small v2->v3 step. Version
+## 3 -- and any unknown future version -- passes through unchanged and relies on
+## _sanitize()'s field-by-field validation, which keeps migration idempotent by
+## construction (running it twice is a no-op).
 func _migrate(raw: Dictionary, version: int) -> Dictionary:
 	if version <= 1:
-		return _migrate_v1_to_v2(raw)
+		return _migrate_v1_to_v3(raw)
+	if version == 2:
+		return _migrate_v2_to_v3(raw)
 	return raw
 
 
-## Additive, lossless v1 -> v2 migration.
+## v2 -> v3. The only new fact is `levelCompleted`, and the only honest thing a
+## v2 profile can say about it is "a level I rated at least 1 star on was
+## obviously finished". Nothing else changes: stars, completedActivities,
+## starsByLevel, the unlock sets and settings are all carried over verbatim.
+##
+## A v2 rating of 0 is NOT treated as completion. Under v2 every finished level
+## was force-rated to at least 1 star, so a stored 0 cannot have come from a
+## finished level -- and under-crediting is safe while over-crediting is not.
+func _migrate_v2_to_v3(raw: Dictionary) -> Dictionary:
+	var migrated := raw.duplicate(true)
+
+	var completed_levels: Dictionary = _sanitize_completion_map(migrated.get("levelCompleted", null))
+	if typeof(migrated.get("starsByLevel", null)) == TYPE_DICTIONARY:
+		var stars_by_level: Dictionary = migrated["starsByLevel"]
+		for level_id in stars_by_level.keys():
+			if typeof(level_id) != TYPE_STRING or level_id == "":
+				continue
+			if _is_truthy(stars_by_level[level_id]):
+				completed_levels[level_id] = true
+	migrated["levelCompleted"] = completed_levels
+
+	return migrated
+
+
+## Additive, lossless v1 -> v3 migration.
 ##
 ## - "stars", "completedActivities" and every "settings" key (including
 ##   "unlockedStickers") are carried over untouched; this function does not
@@ -205,10 +280,11 @@ func _migrate(raw: Dictionary, version: int) -> Dictionary:
 ##   completion only -- we cannot retroactively know whether the listening or
 ##   optional star was earned, and under-crediting is safe while
 ##   over-crediting is not).
-## - Chapter 2 and its first level are always unlocked afterwards so no
-##   profile can be stranded, even if the level definitions file described
-##   below is missing.
-func _migrate_v1_to_v2(raw: Dictionary) -> Dictionary:
+## - The same levels -- and only those -- are marked in levelCompleted, so a
+##   returning child keeps exactly the progression they already had.
+## - The first chapter and its first level are always unlocked afterwards so no
+##   profile can be stranded, even if the content files are missing.
+func _migrate_v1_to_v3(raw: Dictionary) -> Dictionary:
 	var migrated := raw.duplicate(true)
 
 	var completed: Array = []
@@ -222,20 +298,30 @@ func _migrate_v1_to_v2(raw: Dictionary) -> Dictionary:
 	var unlocked_levels: Array = seed["unlockedLevels"]
 	var unlocked_chapters: Array = seed["unlockedChapters"]
 
+	# Completion is seeded from exactly the levels that earned the seeded star:
+	# never fewer (that would send a returning child backwards) and never more.
+	var completed_levels: Dictionary = _sanitize_completion_map(migrated.get("levelCompleted", null))
+	for level_id in stars_by_level.keys():
+		completed_levels[String(level_id)] = true
+
+	var first_chapter: String = seed["firstChapterId"]
+	if first_chapter == "":
+		first_chapter = CH2_CHAPTER_ID
 	if not unlocked_chapters.has(CH1_CHAPTER_ID):
 		unlocked_chapters.append(CH1_CHAPTER_ID)
-	if not unlocked_chapters.has(CH2_CHAPTER_ID):
-		unlocked_chapters.append(CH2_CHAPTER_ID)
+	if not unlocked_chapters.has(first_chapter):
+		unlocked_chapters.append(first_chapter)
 
-	var first_ch2_level: String = seed["firstCh2LevelId"]
-	if first_ch2_level == "":
-		first_ch2_level = CH2_FALLBACK_FIRST_LEVEL_ID
-	if not unlocked_levels.has(first_ch2_level):
-		unlocked_levels.append(first_ch2_level)
+	var first_level: String = seed["firstLevelId"]
+	if first_level == "":
+		first_level = CH2_FALLBACK_FIRST_LEVEL_ID
+	if not unlocked_levels.has(first_level):
+		unlocked_levels.append(first_level)
 
-	migrated["currentChapter"] = CH2_CHAPTER_ID
-	migrated["currentLevel"] = first_ch2_level
+	migrated["currentChapter"] = first_chapter
+	migrated["currentLevel"] = first_level
 	migrated["starsByLevel"] = stars_by_level
+	migrated["levelCompleted"] = completed_levels
 	migrated["unlockedChapters"] = unlocked_chapters
 	migrated["unlockedLevels"] = unlocked_levels
 	if typeof(migrated.get("unlockedRooms", null)) != TYPE_ARRAY:
@@ -245,23 +331,20 @@ func _migrate_v1_to_v2(raw: Dictionary) -> Dictionary:
 
 
 ## Builds starsByLevel/unlockedLevels/unlockedChapters seeds from a list of
-## already-completed activity ids, using whatever level definitions can be
-## read at runtime (see `_load_level_definitions`). Levels are only granted a
+## already-completed activity ids, using the level definitions authored onto
+## missions.json and the play order in chapters.json. Levels are only granted a
 ## star when every one of their tasks is already completed; nothing here ever
 ## touches "stars" (the task-star total).
 func _seed_level_progress(completed: Array) -> Dictionary:
 	var stars_by_level: Dictionary = {}
 	var unlocked_levels: Array = []
 	var unlocked_chapters: Array = []
-	var first_ch2_level_id := ""
 
 	for level_def in _load_level_definitions():
 		var level_id: String = String(level_def.get("levelId", ""))
 		if level_id.is_empty():
 			continue
 		var chapter_id: String = String(level_def.get("chapterId", ""))
-		if chapter_id == CH2_CHAPTER_ID and first_ch2_level_id.is_empty():
-			first_ch2_level_id = level_id
 
 		var task_ids: Array = level_def.get("taskIds", [])
 		if task_ids.is_empty():
@@ -280,81 +363,77 @@ func _seed_level_progress(completed: Array) -> Dictionary:
 		if not chapter_id.is_empty() and not unlocked_chapters.has(chapter_id):
 			unlocked_chapters.append(chapter_id)
 
+	var start := _first_chapter_and_level()
+
 	return {
 		"starsByLevel": stars_by_level,
 		"unlockedLevels": unlocked_levels,
 		"unlockedChapters": unlocked_chapters,
-		"firstCh2LevelId": first_ch2_level_id,
+		"firstChapterId": String(start.get("chapterId", "")),
+		"firstLevelId": String(start.get("levelId", "")),
 	}
 
 
-## Reads the level->task/chapter mapping needed to seed starsByLevel. Fully
-## defensive throughout: any missing file, unreadable file, invalid JSON, or
-## unexpected shape simply yields an empty Array so migration seeds nothing
-## rather than failing.
-##
-## Tries two sources, in order, since the level layer is authored
-## concurrently by another agent and this must not depend on exactly which
-## shape it lands in:
-##   1. A dedicated `levels_path` file (defaults to
-##      res://content/levels/levels.json): { "levels": [ { "levelId": "...",
-##      "chapterId": "...", "taskIds": [...] } OR { "missionId": "..." } ] }.
-##      Entries may specify "missionId" instead of "taskIds", in which case
-##      the task list is resolved from missions_path.
-##   2. Levels authored directly onto `missions_path` (defaults to the
-##      already-shipped res://content/missions/missions.json), matching
-##      `LevelDefinition.is_authored_level()`: a mission entry with a
-##      non-empty "levelId" AND "chapterId" is a level, using that mission's
-##      own "taskIds".
-func _load_level_definitions() -> Array:
-	var from_levels_file := _load_level_definitions_from_levels_file()
-	if not from_levels_file.is_empty():
-		return from_levels_file
-	return _load_level_definitions_from_missions_file()
+## The start of the authored journey: the lowest-numbered chapter in
+## chapters.json and the first level of its chain. Returns empty strings for any
+## missing/unreadable/malformed input, in which case the caller falls back to the
+## CH2_* constants so a migration can never strand a profile.
+func _first_chapter_and_level() -> Dictionary:
+	var empty := {"chapterId": "", "levelId": ""}
+	if chapters_path.is_empty() or not FileAccess.file_exists(chapters_path):
+		return empty
 
-
-func _load_level_definitions_from_levels_file() -> Array:
-	if levels_path.is_empty() or not FileAccess.file_exists(levels_path):
-		return []
-
-	var file := FileAccess.open(levels_path, FileAccess.READ)
+	var file := FileAccess.open(chapters_path, FileAccess.READ)
 	if file == null:
-		return []
+		return empty
 	var text := file.get_as_text()
 	file.close()
 
 	var parsed = JSON.parse_string(text)
 	if typeof(parsed) != TYPE_DICTIONARY:
-		return []
+		return empty
+	var chapters_raw = parsed.get("chapters", null)
+	if typeof(chapters_raw) != TYPE_ARRAY:
+		return empty
 
-	var levels_raw = parsed.get("levels", null)
-	if typeof(levels_raw) != TYPE_ARRAY:
-		return []
-
-	var resolved: Array = []
-	for entry in levels_raw:
+	var best_number := 0
+	var best := empty
+	for entry in chapters_raw:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
-		var level_id: String = String(entry.get("levelId", ""))
-		if level_id.is_empty():
+		var chapter: Dictionary = entry
+		var chapter_id: String = String(chapter.get("chapterId", "")).strip_edges()
+		if chapter_id.is_empty():
 			continue
-		var chapter_id: String = String(entry.get("chapterId", ""))
-
-		var task_ids = entry.get("taskIds", null)
-		if typeof(task_ids) != TYPE_ARRAY or (task_ids as Array).is_empty():
-			var mission_id: String = String(entry.get("missionId", ""))
-			if not mission_id.is_empty():
-				task_ids = _resolve_mission_task_ids(mission_id)
-		if typeof(task_ids) != TYPE_ARRAY:
-			task_ids = []
-
-		resolved.append({
-			"levelId": level_id,
+		var level_ids = chapter.get("levelIds", null)
+		if typeof(level_ids) != TYPE_ARRAY or (level_ids as Array).is_empty():
+			continue
+		var number := 0
+		var number_value = chapter.get("chapterNumber", 0)
+		if typeof(number_value) == TYPE_INT or typeof(number_value) == TYPE_FLOAT:
+			number = int(number_value)
+		if best["chapterId"] != "" and number >= best_number:
+			continue
+		best_number = number
+		best = {
 			"chapterId": chapter_id,
-			"taskIds": task_ids,
-		})
+			"levelId": String((level_ids as Array)[0]).strip_edges(),
+		}
 
-	return resolved
+	return best
+
+
+## Reads the level->task/chapter mapping needed to seed starsByLevel and
+## levelCompleted. Fully defensive throughout: any missing file, unreadable
+## file, invalid JSON, or unexpected shape simply yields an empty Array so
+## migration seeds nothing rather than failing.
+##
+## Levels are authored directly onto the mission records in `missions_path`
+## (default res://content/missions/missions.json), matching
+## `LevelDefinition.is_authored_level()`: a mission entry with a non-empty
+## "levelId" AND "chapterId" is a level, using that mission's own "taskIds".
+func _load_level_definitions() -> Array:
+	return _load_level_definitions_from_missions_file()
 
 
 ## Reads levels authored directly onto mission records, e.g.:
@@ -401,39 +480,6 @@ func _load_level_definitions_from_missions_file() -> Array:
 		})
 
 	return resolved
-
-
-## Defensively resolves a mission's taskIds from missions_path. Missing file,
-## unreadable file, invalid JSON, or an unknown mission id all yield an empty
-## Array rather than raising.
-func _resolve_mission_task_ids(mission_id: String) -> Array:
-	if missions_path.is_empty() or not FileAccess.file_exists(missions_path):
-		return []
-
-	var file := FileAccess.open(missions_path, FileAccess.READ)
-	if file == null:
-		return []
-	var text := file.get_as_text()
-	file.close()
-
-	var parsed = JSON.parse_string(text)
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return []
-
-	var missions_raw = parsed.get("missions", null)
-	if typeof(missions_raw) != TYPE_ARRAY:
-		return []
-
-	for mission_entry in missions_raw:
-		if typeof(mission_entry) != TYPE_DICTIONARY:
-			continue
-		if String((mission_entry as Dictionary).get("missionId", "")) == mission_id:
-			var task_ids = (mission_entry as Dictionary).get("taskIds", [])
-			if typeof(task_ids) == TYPE_ARRAY:
-				return task_ids
-			return []
-
-	return []
 
 
 ## Writes the profile to disk, sanitizing it first so a bad in-memory state

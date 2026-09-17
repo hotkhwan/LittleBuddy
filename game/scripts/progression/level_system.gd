@@ -7,20 +7,33 @@ extends RefCounted
 ##
 ## ## Unlock rule
 ##
-## **Progression gates on completion (>= 1 star), never on a star count.** A
-## child must never be locked out of the next level for playing imperfectly, and
-## 2/3 already passes. Concretely:
+## **Progression gates on COMPLETION, never on a star count.** Completion and
+## rating are two different facts:
+##
+##   - `levelCompleted[id]` -- the child reached the end of the level. True even
+##     if they skipped every task. This, and only this, unlocks anything.
+##   - `starsByLevel[id]` -- the honest 0..3 rating. Star 1 requires genuinely
+##     completing the core objective, so a skipped-through level rates 0.
+##
+## A child may therefore unlock the whole journey with 0 stars, which is the
+## point: the skip button is the room's no-dead-end escape hatch and must never
+## become a lock, while a skipped level must never be flattered as a success.
+## Concretely:
 ##
 ##   - the first level of the first chapter is always unlocked;
-##   - level N+1 unlocks when level N has >= 1 star;
-##   - chapter C+1 unlocks when every chained level of chapter C has >= 1 star;
+##   - level N+1 unlocks when level N is completed;
+##   - chapter C+1 unlocks when every chained level of chapter C is completed;
 ##   - a level tagged with a `chapterId` but absent from that chapter's
 ##     `levelIds` chain is a bonus level: it unlocks with the chapter and never
 ##     blocks chapter completion.
 ##
-## The unlocked set is *derived* from `starsByLevel` rather than accumulated, so
-## it is idempotent by construction: replaying a level, or applying the same
-## result twice, cannot produce a different answer.
+## The unlocked set is *derived* from the completion map rather than
+## accumulated, so it is idempotent by construction: replaying a level, or
+## applying the same result twice, cannot produce a different answer.
+##
+## Every method that takes a `completed_levels` Dictionary accepts truthy values
+## of any shape (`true`, or a v2-era star count >= 1), so an older caller or an
+## un-migrated map still reads correctly instead of silently locking a child out.
 ##
 ## The old `unlockAtStars` gate is untouched. `ContentLibrary.get_unlocked_
 ## missions()` still works, stickers still use it, and `is_mission_available()`
@@ -349,25 +362,29 @@ func get_next_level_id(level_id: String) -> String:
 # Progression -- pure, no autoloads
 # ---------------------------------------------------------------------------
 
-func is_level_complete(level_id: String, stars_by_level: Dictionary) -> bool:
-	return _stars_for(level_id, stars_by_level) >= 1
+## "Did the child reach the end of this level?" -- NOT "did they earn a star?".
+## A level completed entirely by skipping is complete and rates 0.
+func is_level_complete(level_id: String, completed_levels: Dictionary) -> bool:
+	if not completed_levels.has(level_id):
+		return false
+	return _is_truthy(completed_levels[level_id])
 
 
 ## A chapter is complete when every CHAINED level in it has been completed.
 ## Bonus levels never block it.
-func is_chapter_complete(chapter_id: String, stars_by_level: Dictionary) -> bool:
+func is_chapter_complete(chapter_id: String, completed_levels: Dictionary) -> bool:
 	var chain: Array = _array(get_chapter(chapter_id).get("levelIds", []))
 	if chain.is_empty():
 		return false
 	for level_id: Variant in chain:
-		if not is_level_complete(String(level_id), stars_by_level):
+		if not is_level_complete(String(level_id), completed_levels):
 			return false
 	return true
 
 
-## The full derived unlock state for a given `starsByLevel` map.
+## The full derived unlock state for a given `levelCompleted` map.
 ## Returns `{"levels": PackedStringArray, "chapters": PackedStringArray}`.
-func compute_unlocks(stars_by_level: Dictionary) -> Dictionary:
+func compute_unlocks(completed_levels: Dictionary) -> Dictionary:
 	var levels: PackedStringArray = PackedStringArray()
 	var chapters: PackedStringArray = PackedStringArray()
 
@@ -384,23 +401,23 @@ func compute_unlocks(stars_by_level: Dictionary) -> Dictionary:
 			if not previous_complete:
 				break
 			levels.append(String(level_id))
-			previous_complete = is_level_complete(String(level_id), stars_by_level)
+			previous_complete = is_level_complete(String(level_id), completed_levels)
 
 		# Bonus levels ride along with the chapter itself.
 		for level_id: Variant in _array(chapter_dict.get("bonusLevelIds", [])):
 			levels.append(String(level_id))
 
-		chapter_unlocked = is_chapter_complete(chapter_id, stars_by_level)
+		chapter_unlocked = is_chapter_complete(chapter_id, completed_levels)
 
 	return {"levels": levels, "chapters": chapters}
 
 
-func is_level_unlocked(level_id: String, stars_by_level: Dictionary) -> bool:
-	return (compute_unlocks(stars_by_level)["levels"] as PackedStringArray).has(level_id)
+func is_level_unlocked(level_id: String, completed_levels: Dictionary) -> bool:
+	return (compute_unlocks(completed_levels)["levels"] as PackedStringArray).has(level_id)
 
 
-func is_chapter_unlocked(chapter_id: String, stars_by_level: Dictionary) -> bool:
-	return (compute_unlocks(stars_by_level)["chapters"] as PackedStringArray).has(chapter_id)
+func is_chapter_unlocked(chapter_id: String, completed_levels: Dictionary) -> bool:
+	return (compute_unlocks(completed_levels)["chapters"] as PackedStringArray).has(chapter_id)
 
 
 ## Routes a mission to whichever gate owns it.
@@ -410,36 +427,41 @@ func is_chapter_unlocked(chapter_id: String, stars_by_level: Dictionary) -> bool
 ##
 ## `task_stars` is the LIFETIME TASK-STAR TOTAL (`SaveService.get_stars()`), not
 ## a level rating. The two currencies are never summed.
-func is_mission_available(mission_id: String, task_stars: int, stars_by_level: Dictionary) -> bool:
+func is_mission_available(mission_id: String, task_stars: int, completed_levels: Dictionary) -> bool:
 	var definition: RefCounted = get_level_for_mission(mission_id)
 	if definition == null:
 		return true
 	if bool(definition.call("is_authored_level")):
-		return is_level_unlocked(String(definition.call("get_level_id")), stars_by_level)
+		return is_level_unlocked(String(definition.call("get_level_id")), completed_levels)
 	return int(definition.call("get_unlock_at_stars")) <= task_stars
 
 
-## Levels that `stars_by_level` opens up which `previous_stars_by_level` did not.
-func newly_unlocked_levels(previous_stars_by_level: Dictionary, stars_by_level: Dictionary) -> PackedStringArray:
+## Levels that `completed_levels` opens up which `previous_completed` did not.
+func newly_unlocked_levels(previous_completed: Dictionary, completed_levels: Dictionary) -> PackedStringArray:
 	return _difference(
-		compute_unlocks(previous_stars_by_level)["levels"],
-		compute_unlocks(stars_by_level)["levels"]
+		compute_unlocks(previous_completed)["levels"],
+		compute_unlocks(completed_levels)["levels"]
 	)
 
 
-func newly_unlocked_chapters(previous_stars_by_level: Dictionary, stars_by_level: Dictionary) -> PackedStringArray:
+func newly_unlocked_chapters(previous_completed: Dictionary, completed_levels: Dictionary) -> PackedStringArray:
 	return _difference(
-		compute_unlocks(previous_stars_by_level)["chapters"],
-		compute_unlocks(stars_by_level)["chapters"]
+		compute_unlocks(previous_completed)["chapters"],
+		compute_unlocks(completed_levels)["chapters"]
 	)
 
 
-## Applies a level result to a `starsByLevel` map and returns the outcome.
-## Pure -- takes and returns plain data, writes nothing.
+## Applies a finished play of a level and returns the outcome. Pure -- takes and
+## returns plain data, writes nothing.
 ##
-## `stars` is max-merged, so a worse replay never lowers the rating and a
-## repeated award never stacks.
-func resolve_completion(level_id: String, awarded_stars: int, stars_by_level: Dictionary) -> Dictionary:
+## Reaching this function means the child reached the end of the level, so the
+## level is COMPLETED here unconditionally, however many tasks were skipped.
+## `awarded_stars` is the separate, honest rating and is max-merged, so a worse
+## replay never lowers it and a repeated award never stacks. Unlocks are derived
+## from the completion map only -- `awarded_stars` never affects them, which is
+## what makes "a child may unlock the next level with 0 stars" true by
+## construction rather than by discipline.
+func resolve_completion(level_id: String, awarded_stars: int, stars_by_level: Dictionary, completed_levels: Dictionary = {}) -> Dictionary:
 	var star_rules: GDScript = load(STAR_RULES_SCRIPT_PATH) as GDScript
 	var previous: int = _stars_for(level_id, stars_by_level)
 	var awarded: int = awarded_stars
@@ -453,8 +475,12 @@ func resolve_completion(level_id: String, awarded_stars: int, stars_by_level: Di
 	var updated: Dictionary = stars_by_level.duplicate(true)
 	updated[level_id] = merged
 
-	var unlocked_levels: PackedStringArray = newly_unlocked_levels(stars_by_level, updated)
-	var unlocked_chapters: PackedStringArray = newly_unlocked_chapters(stars_by_level, updated)
+	var was_completed: bool = is_level_complete(level_id, completed_levels)
+	var updated_completed: Dictionary = completed_levels.duplicate(true)
+	updated_completed[level_id] = true
+
+	var unlocked_levels: PackedStringArray = newly_unlocked_levels(completed_levels, updated_completed)
+	var unlocked_chapters: PackedStringArray = newly_unlocked_chapters(completed_levels, updated_completed)
 
 	return {
 		"levelId": level_id,
@@ -463,6 +489,9 @@ func resolve_completion(level_id: String, awarded_stars: int, stars_by_level: Di
 		"stars": merged,
 		"improved": merged > previous,
 		"starsByLevel": updated,
+		"completed": true,
+		"newlyCompleted": not was_completed,
+		"levelCompleted": updated_completed,
 		"newlyUnlockedLevels": unlocked_levels,
 		"newlyUnlockedChapters": unlocked_chapters,
 		"nextLevelId": get_next_level_id(level_id),
@@ -492,6 +521,16 @@ func seed_stars_from_completed_activities(completed_activities: Variant) -> Dict
 				break
 		if all_done:
 			seeded[String(level_id)] = 1
+	return seeded
+
+
+## The completion half of the same seeding answer: exactly the levels that earn
+## the seeded star are marked completed, so a returning child is never sent
+## backwards and is never credited with a level they did not finish.
+func seed_completed_from_completed_activities(completed_activities: Variant) -> Dictionary:
+	var seeded: Dictionary = {}
+	for level_id: Variant in seed_stars_from_completed_activities(completed_activities).keys():
+		seeded[String(level_id)] = true
 	return seeded
 
 
@@ -527,16 +566,35 @@ func load_stars_by_level() -> Dictionary:
 	return (stored as Dictionary).duplicate(true)
 
 
+## Current completion map from SaveService, or `{}` when it is absent.
+func load_completed_levels() -> Dictionary:
+	var service: Object = get_save_service()
+	if service == null or not service.has_method("get_level_completed"):
+		return {}
+	var stored: Variant = service.call("get_level_completed")
+	if typeof(stored) != TYPE_DICTIONARY:
+		return {}
+	return (stored as Dictionary).duplicate(true)
+
+
 ## `resolve_completion()` plus persistence, when a SaveService is available.
 ## Every call is probed with `has_method`, so a partial or missing SaveService
 ## degrades to "return the computed result, persist nothing".
+##
+## Completion is recorded even when `awarded_stars` is 0 -- that is the whole
+## point of the split, and it is what lets a child who skipped everything still
+## move on.
 func apply_completion(level_id: String, awarded_stars: int) -> Dictionary:
 	var stars_by_level: Dictionary = load_stars_by_level()
-	var outcome: Dictionary = resolve_completion(level_id, awarded_stars, stars_by_level)
+	var completed_levels: Dictionary = load_completed_levels()
+	var outcome: Dictionary = resolve_completion(level_id, awarded_stars, stars_by_level, completed_levels)
 
 	var service: Object = get_save_service()
 	if service == null:
 		return outcome
+
+	if service.has_method("mark_level_completed"):
+		service.call("mark_level_completed", level_id)
 
 	if bool(outcome.get("improved", false)) and service.has_method("set_level_stars"):
 		service.call("set_level_stars", level_id, int(outcome.get("stars", 0)))
@@ -634,6 +692,19 @@ static func _difference(before: Variant, after: Variant) -> PackedStringArray:
 			if not previous.has(text) and not result.has(text):
 				result.append(text)
 	return result
+
+
+## Completion maps store `true`. A v2-era star count (>= 1) is also accepted, so
+## a caller that has not yet switched to the completion map degrades to the old
+## answer instead of locking a child out of their own progress.
+static func _is_truthy(value: Variant) -> bool:
+	match typeof(value):
+		TYPE_BOOL:
+			return value
+		TYPE_INT, TYPE_FLOAT:
+			return float(value) >= 1.0
+		_:
+			return false
 
 
 static func _as_int(value: Variant) -> int:

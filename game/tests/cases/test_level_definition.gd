@@ -30,7 +30,7 @@ func test_name() -> String:
 	return "level_definition"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	failures.append_array(_test_authored_level())
 	failures.append_array(_test_legacy_mission_still_works())

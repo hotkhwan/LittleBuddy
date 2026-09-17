@@ -92,7 +92,7 @@ func test_name() -> String:
 	return "ui_contrast"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	failures.append_array(_test_labels())
 	failures.append_array(_test_toggles())

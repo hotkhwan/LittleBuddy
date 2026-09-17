@@ -37,7 +37,7 @@ func test_name() -> String:
 	return "gameplay_modes"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	failures.append_array(_test_find_it_wrong_choice_is_kind())
 	failures.append_array(_test_no_double_completion_on_mash())

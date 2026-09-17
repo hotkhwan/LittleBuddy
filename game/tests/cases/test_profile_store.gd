@@ -7,7 +7,7 @@ func test_name() -> String:
 	return "profile_store"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	var test_path := "user://test_profile_%d.json" % randi()
 
@@ -39,6 +39,9 @@ func run() -> Array:
 	failures.append_array(_test_wrong_typed_v2_fields(test_path))
 
 	_cleanup(test_path)
+	failures.append_array(_test_wrong_typed_completion_map(test_path))
+
+	_cleanup(test_path)
 	return failures
 
 
@@ -61,8 +64,8 @@ func _test_fresh_defaults(path: String) -> Array:
 	var store := ProfileStore.new(path)
 	var profile := store.load_profile()
 
-	if profile.get("profileVersion") != 2:
-		failures.append("fresh load: expected profileVersion 2, got %s" % str(profile.get("profileVersion")))
+	if profile.get("profileVersion") != 3:
+		failures.append("fresh load: expected profileVersion 3, got %s" % str(profile.get("profileVersion")))
 	if profile.get("stars") != 0:
 		failures.append("fresh load: expected stars 0, got %s" % str(profile.get("stars")))
 	if typeof(profile.get("completedActivities")) != TYPE_ARRAY or profile["completedActivities"].size() != 0:
@@ -74,6 +77,9 @@ func _test_fresh_defaults(path: String) -> Array:
 		failures.append("fresh load: expected currentLevel '', got %s" % str(profile.get("currentLevel")))
 	if typeof(profile.get("starsByLevel")) != TYPE_DICTIONARY or not profile["starsByLevel"].is_empty():
 		failures.append("fresh load: expected empty starsByLevel dictionary")
+	if typeof(profile.get("levelCompleted")) != TYPE_DICTIONARY or not profile["levelCompleted"].is_empty():
+		failures.append("fresh load: expected empty levelCompleted dictionary, got %s"
+				% str(profile.get("levelCompleted")))
 	if typeof(profile.get("unlockedChapters")) != TYPE_ARRAY or profile["unlockedChapters"] != ["ch1"]:
 		failures.append("fresh load: expected unlockedChapters == ['ch1'], got %s" % str(profile.get("unlockedChapters")))
 	if typeof(profile.get("unlockedLevels")) != TYPE_ARRAY or not profile["unlockedLevels"].is_empty():
@@ -287,5 +293,40 @@ func _test_wrong_typed_v2_fields(path: String) -> Array:
 
 	if typeof(profile.get("unlockedRooms")) != TYPE_ARRAY or not profile["unlockedRooms"].is_empty():
 		failures.append("wrong typed v2 fields: expected unlockedRooms replaced with an empty array default")
+
+	return failures
+
+
+## Corruption coverage for the schema-v3 `levelCompleted` map. It gates
+## unlocking, so a malformed entry must never be read as "completed" (which
+## would skip a child forward) and a valid sibling must never be lost (which
+## would lock a child out of progress they already have).
+func _test_wrong_typed_completion_map(path: String) -> Array:
+	var failures: Array = []
+	var raw := JSON.stringify({
+		"profileVersion": 3,
+		"levelCompleted": {
+			"milkTime": true,
+			"bathTime": false,
+			"bedtime": "yes",
+			"toysAndSmiles": {"nested": true},
+			"firstWords": 1,
+		},
+	})
+	_write_raw(path, raw)
+	var store := ProfileStore.new(path)
+	var profile := store.load_profile()
+
+	var completed: Dictionary = profile.get("levelCompleted", {})
+	if not bool(completed.get("milkTime", false)):
+		failures.append("levelCompleted: a genuine completion was lost, got %s" % str(completed))
+	if completed.has("bathTime"):
+		failures.append("levelCompleted: a stored `false` must not survive as a key, got %s" % str(completed))
+	for level_id: String in ["bedtime", "toysAndSmiles"]:
+		if completed.has(level_id):
+			failures.append("levelCompleted: wrong-typed entry '%s' was read as completed, got %s"
+					% [level_id, str(completed)])
+	if not bool(completed.get("firstWords", false)):
+		failures.append("levelCompleted: a numeric 1 should still read as completed, got %s" % str(completed))
 
 	return failures

@@ -45,7 +45,7 @@ func test_name() -> String:
 	return "content_scripts"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	for path: String in CONTENT_SCRIPTS:

@@ -35,7 +35,7 @@ func test_name() -> String:
 	return "parent_settings_model"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	failures += _test_defaults()
 	failures += _test_keys_written()

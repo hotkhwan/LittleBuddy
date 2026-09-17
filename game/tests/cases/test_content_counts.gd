@@ -19,7 +19,7 @@ func test_name() -> String:
 	return "content_counts"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var library: Object = ContentLibraryScript.new()

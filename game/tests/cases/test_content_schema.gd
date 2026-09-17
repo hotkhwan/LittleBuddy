@@ -25,7 +25,7 @@ const REQUIRED_ACCEPTED_COMMANDS := [
 func test_name() -> String:
 	return "content_schema"
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	if not FileAccess.file_exists(FEED_MILK_PATH):

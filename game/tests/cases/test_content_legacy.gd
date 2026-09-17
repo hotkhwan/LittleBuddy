@@ -43,7 +43,7 @@ func test_name() -> String:
 	return "content_legacy"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	# The validator owns the canonical contract check.

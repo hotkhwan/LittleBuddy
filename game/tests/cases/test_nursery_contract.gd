@@ -25,7 +25,7 @@ func test_name() -> String:
 	return "nursery_contract"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	if not ResourceLoader.exists(NURSERY_PATH):

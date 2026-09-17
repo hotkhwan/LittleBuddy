@@ -1,0 +1,41 @@
+{
+	"comment": "Test-only stand-in for res://content/missions/missions.json, in the exact shape ProfileStore reads at runtime: levels are authored ONTO mission records (levelId + chapterId + taskIds), which is why there is no levels.json and no DEFAULT_LEVELS_PATH. Mirrors the Chapter 2 mapping table in docs/PHASE1_CONTRACT.md so the v1->v3 seeding assertions stay stable even if the shipped chapter chain is re-authored.",
+	"contentVersion": 1,
+	"missions": [
+		{
+			"missionId": "feedingTime",
+			"chapterId": "ch2",
+			"levelId": "milkTime",
+			"taskIds": ["feedMilk", "feedWater", "feedApple", "feedBanana", "findBowl", "sayMilk"]
+		},
+		{
+			"missionId": "bathTime",
+			"chapterId": "ch2",
+			"levelId": "bathTime",
+			"taskIds": ["giveSoap", "giveCup", "brushTeeth", "findTowel", "dryWithTowel", "giveBathToy", "sayToothbrush"]
+		},
+		{
+			"missionId": "bedtimeRoutine",
+			"chapterId": "ch2",
+			"levelId": "bedtime",
+			"taskIds": ["bedtimePajamas", "bedtimeTeddy", "bedtimePillow", "bedtimeBlanket", "turnOffLamp", "sayGoodNight"]
+		},
+		{
+			"missionId": "playTime",
+			"chapterId": "ch2",
+			"levelId": "toysAndSmiles",
+			"taskIds": ["findBall", "giveBall", "giveTeddy", "blockInToyBox", "findStar", "sayBall", "tidyToyBox"]
+		},
+		{
+			"missionId": "colorsAndShapes",
+			"chapterId": "ch2",
+			"levelId": "firstWords",
+			"taskIds": ["wearRedShirt", "wearBlueShirt", "wearYellowShirt", "findCircle", "findSquare", "findStar", "sayBlue", "sayCircle"]
+		},
+		{
+			"missionId": "plainLegacyMission",
+			"unlockAtStars": 20,
+			"taskIds": ["feedMilk"]
+		}
+	]
+}

@@ -5,7 +5,7 @@ func test_name() -> String:
 	return "activity_loader"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	# Force the "missing/malformed file" fallback path deterministically —

@@ -56,7 +56,7 @@ func test_name() -> String:
 	return "baby_view_3d"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	var script: GDScript = load(VIEW_PATH) as GDScript
 	if script == null:

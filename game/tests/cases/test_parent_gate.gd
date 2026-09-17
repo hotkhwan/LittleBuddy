@@ -11,7 +11,7 @@ func test_name() -> String:
 	return "parent_gate"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 	failures += _test_progress_accumulates()
 	failures += _test_early_release_resets()

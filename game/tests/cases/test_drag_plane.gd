@@ -5,7 +5,7 @@ func test_name() -> String:
 	return "drag_plane"
 
 
-func run() -> Array:
+func run():
 	var failures: Array = []
 
 	var anchor: Vector3 = Vector3(1.0, 0.5, 0.2)
