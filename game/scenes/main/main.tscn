@@ -1,27 +1,56 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scenes/main/main.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/safe_area.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/progression/icon_glyph.gd" id="3"]
+[ext_resource type="Script" path="res://scenes/main/house_glyph.gd" id="4"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/panel_cream.tres" id="5"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_mint.tres" id="6"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_mint_down.tres" id="7"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_peach.tres" id="8"]
+[ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_peach_down.tres" id="9"]
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
-background_color = Color(0.596078, 0.831373, 0.905882, 1)
+background_color = Color(0.604, 0.753, 0.851, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.8, 0.85, 0.9, 1)
-ambient_light_energy = 1.0
+ambient_light_color = Color(0.96, 0.94, 0.9, 1)
+ambient_light_energy = 0.55
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_1"]
-size = Vector2(6, 6)
+size = Vector2(24, 24)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
-albedo_color = Color(0.55, 0.75, 0.5, 1)
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
+albedo_color = Color(0.525, 0.804, 0.686, 1)
+roughness = 0.95
+metallic = 0.0
 
-[sub_resource type="SphereMesh" id="SphereMesh_1"]
-radius = 0.5
-height = 1.0
+[sub_resource type="SphereMesh" id="SphereMesh_peach"]
+radius = 0.55
+height = 1.1
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2"]
-albedo_color = Color(0.95, 0.85, 0.6, 1)
+[sub_resource type="SphereMesh" id="SphereMesh_lavender"]
+radius = 0.4
+height = 0.8
+
+[sub_resource type="SphereMesh" id="SphereMesh_pink"]
+radius = 0.29
+height = 0.58
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_peach"]
+albedo_color = Color(1.0, 0.827, 0.714, 1)
+roughness = 0.9
+metallic = 0.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lavender"]
+albedo_color = Color(0.839, 0.78, 0.941, 1)
+roughness = 0.9
+metallic = 0.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pink"]
+albedo_color = Color(1.0, 0.757, 0.8, 1)
+roughness = 0.9
+metallic = 0.0
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1")
@@ -30,24 +59,34 @@ script = ExtResource("1")
 environment = SubResource("Environment_1")
 
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.9624497, 0.27146018, 0, -0.27146018, 0.96244967, 0, 1.6, 3.4)
 fov = 50.0
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.8296, -0.4356, 0.3494, 0, 0.6248, 0.7808, -0.5583, -0.6479, 0.5185, 0, 3, 0)
+shadow_enabled = false
 
 [node name="Floor" type="MeshInstance3D" parent="."]
 mesh = SubResource("PlaneMesh_1")
-surface_material_override/0 = SubResource("StandardMaterial3D_1")
+surface_material_override/0 = SubResource("StandardMaterial3D_floor")
 
-[node name="Sphere" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.5, -0.5)
-mesh = SubResource("SphereMesh_1")
-surface_material_override/0 = SubResource("StandardMaterial3D_2")
+[node name="PeachBall" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.55, -2.6)
+mesh = SubResource("SphereMesh_peach")
+surface_material_override/0 = SubResource("StandardMaterial3D_peach")
 
-[node name="CanvasLayer" type="CanvasLayer" parent="."]
+[node name="LavenderBall" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.75, 0.4, -3.2)
+mesh = SubResource("SphereMesh_lavender")
+surface_material_override/0 = SubResource("StandardMaterial3D_lavender")
 
-[node name="SafeArea" type="Control" parent="CanvasLayer"]
+[node name="PinkBall" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.55, 0.29, -1.5)
+mesh = SubResource("SphereMesh_pink")
+surface_material_override/0 = SubResource("StandardMaterial3D_pink")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="SafeArea" type="Control" parent="UI"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -56,40 +95,153 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("2")
 
-[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/SafeArea"]
+[node name="TitlePanel" type="Panel" parent="UI/SafeArea"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -380.0
+offset_top = 70.0
+offset_right = 380.0
+offset_bottom = 246.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = ExtResource("5")
+
+[node name="TitleLabel" type="Label" parent="UI/SafeArea/TitlePanel"]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-
-[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/SafeArea/CenterContainer"]
-layout_mode = 2
-theme_override_constants/separation = 40
-alignment = 1
-
-[node name="TitleLabel" type="Label" parent="CanvasLayer/SafeArea/CenterContainer/VBoxContainer"]
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 96
-theme_override_colors/font_color = Color(0.29, 0.36, 0.4, 1)
-horizontal_alignment = 1
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_font_sizes/font_size = 92
 text = "Little Buddy"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="PlayButton" type="Button" parent="CanvasLayer/SafeArea/CenterContainer/VBoxContainer"]
+[node name="PlayButton" type="Button" parent="UI/SafeArea"]
 unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 4
-custom_minimum_size = Vector2(360, 160)
-theme_override_font_sizes/font_size = 56
-text = "Play"
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -360.0
+offset_top = -100.0
+offset_right = -60.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+theme_override_styles/normal = ExtResource("6")
+theme_override_styles/hover = ExtResource("6")
+theme_override_styles/pressed = ExtResource("7")
+theme_override_styles/disabled = ExtResource("6")
+theme_override_styles/focus = ExtResource("6")
 
-[node name="ComingSoonLabel" type="Label" parent="CanvasLayer/SafeArea/CenterContainer/VBoxContainer"]
+[node name="PlayIcon" type="TextureRect" parent="UI/SafeArea/PlayButton"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -82.0
+offset_top = 44.0
+offset_right = 82.0
+offset_bottom = 208.0
+grow_horizontal = 2
+mouse_filter = 2
+script = ExtResource("3")
+glyph = 3
+tint = Color(0.137, 0.365, 0.294, 1)
+
+[node name="PlayCaption" type="Label" parent="UI/SafeArea/PlayButton"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 208.0
+offset_bottom = 262.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.137, 0.365, 0.294, 1)
+theme_override_font_sizes/font_size = 40
+text = "Play"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="FreePlayButton" type="Button" parent="UI/SafeArea"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 60.0
+offset_top = -100.0
+offset_right = 360.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/disabled = ExtResource("8")
+theme_override_styles/focus = ExtResource("8")
+
+[node name="HouseIcon" type="Control" parent="UI/SafeArea/FreePlayButton"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -82.0
+offset_top = 44.0
+offset_right = 82.0
+offset_bottom = 208.0
+grow_horizontal = 2
+mouse_filter = 2
+script = ExtResource("4")
+tint = Color(0.349, 0.259, 0.169, 1)
+face_color = Color(0.984, 0.82, 0.675, 1)
+
+[node name="FreePlayCaption" type="Label" parent="UI/SafeArea/FreePlayButton"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 208.0
+offset_bottom = 262.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_font_sizes/font_size = 40
+text = "Free Play"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ComingSoonLabel" type="Label" parent="UI/SafeArea"]
 unique_name_in_owner = true
 visible = false
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 40
-theme_override_colors/font_color = Color(0.29, 0.36, 0.4, 1)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = 236.0
+offset_right = 420.0
+offset_bottom = 310.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_colors/font_outline_color = Color(1, 0.965, 0.898, 1)
+theme_override_constants/outline_size = 12
+theme_override_font_sizes/font_size = 48
+text = "Back in a moment!"
 horizontal_alignment = 1
-text = "Coming soon!"
+vertical_alignment = 1

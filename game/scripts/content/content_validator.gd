@@ -85,6 +85,43 @@ const LEGACY_ACCEPTED_COMMANDS: Array[String] = [
 	"baby wants milk",
 ]
 
+## ---------------------------------------------------------------------------
+## Semantic activity targets (contract §2)
+## ---------------------------------------------------------------------------
+##
+## Content addresses the world as `"<roomId>.<targetId>"` -- `"kitchen.fridge"`,
+## `"bedroom.doorToBathroom"` -- and never as a node name, a path or a
+## coordinate. A reference to a target that does not exist is silent: the level
+## loads, the child taps, and nothing happens. So it is checked here, against the
+## ids the REAL world reports, and a miss is a loud problem.
+##
+## The id list is injected as plain Strings. This file must never import
+## `scripts/house/**` (or navigation, character or camera) and must never hold a
+## 3D type -- `test_architecture_guard.gd` fails the build if it does -- so the
+## caller resolves `HouseWorld.get_semantic_target_ids()` and hands over the
+## Array. The validator stays pure data, exactly like the rest of the domain
+## layer.
+##
+## Which JSON keys carry a target reference is DECLARED by the content index
+## (`semanticTargetKeys`) rather than hard-coded, so content can add a third key
+## without a code change and still be validated.
+
+const CONTENT_INDEX_PATH: String = "res://content/index.json"
+const SEMANTIC_TARGET_KEYS_FIELD: String = "semanticTargetKeys"
+
+## Used only when the index declares none -- a missing declaration is itself
+## reported, so this is a safety net rather than a default worth relying on.
+const DEFAULT_SEMANTIC_TARGET_KEYS: Array[String] = ["targetId", "requiresWalkTo"]
+
+## Anti-vacuity floor. A scanner that finds nothing to check reports "no
+## problems" forever; if the declared keys stop matching the authored data, that
+## silence is the failure, not the result.
+const MIN_SEMANTIC_TARGET_REFERENCES: int = 1
+
+## How many known ids to name in a failure message before trailing off. Enough
+## to spot a typo, short enough to read.
+const MAX_REPORTED_KNOWN_IDS: int = 12
+
 
 ## Runs every structural check. `library` must be a loaded `ContentLibrary`.
 static func validate(library: Variant) -> Array:
@@ -106,10 +143,18 @@ static func validate(library: Variant) -> Array:
 
 
 ## Structural checks plus the "is this actually a 2-3 hour game" size targets.
-static func validate_all(library: Variant) -> Array:
+##
+## `world_target_ids` is the list of semantic target ids the world actually
+## contains, as plain Strings. `null` means "the caller has no world to check
+## against" and skips that section -- a build step or a content-only test can
+## still run everything else. Anything else, including an empty Array, is taken
+## as a request to validate and is checked (an empty Array is itself reported,
+## because silently passing on no data is how this class of guard rots).
+static func validate_all(library: Variant, world_target_ids: Variant = null) -> Array:
 	var problems: Array = validate(library)
 	problems.append_array(validate_counts(library))
 	problems.append_array(validate_legacy_activity())
+	problems.append_array(validate_semantic_targets(library, world_target_ids))
 	return problems
 
 
@@ -449,8 +494,191 @@ static func validate_legacy_activity(path: String = LEGACY_ACTIVITY_PATH) -> Arr
 
 
 # ---------------------------------------------------------------------------
+# Semantic activity targets
+# ---------------------------------------------------------------------------
+
+## The JSON keys that carry a semantic target reference, as declared by the
+## content index. Falls back to the two the contract names when the index cannot
+## be read; `validate_semantic_targets()` reports that separately rather than
+## letting it pass unnoticed.
+static func semantic_target_keys(index_path: String = CONTENT_INDEX_PATH) -> Array:
+	var index: Dictionary = _read_json_object(index_path)
+	var declared: Variant = index.get(SEMANTIC_TARGET_KEYS_FIELD, null)
+	var keys: Array = []
+	if typeof(declared) == TYPE_ARRAY:
+		for entry: Variant in (declared as Array):
+			var key: String = str(entry).strip_edges()
+			if not key.is_empty() and not keys.has(key):
+				keys.append(key)
+	return keys
+
+
+## Every semantic target reference in the content set, as
+## `{"id", "key", "where"}` dictionaries.
+##
+## Deliberately generic: it walks the loaded records depth-first and reports any
+## value stored under one of the declared keys, wherever it is nested. Content
+## can therefore move `targetId` from the top of a task into a step list without
+## the validator going quietly blind.
+static func collect_semantic_target_references(
+	library: Variant, keys: Variant = null, index_path: String = CONTENT_INDEX_PATH
+) -> Array:
+	var found_keys: Array = keys if typeof(keys) == TYPE_ARRAY else semantic_target_keys(index_path)
+	if found_keys.is_empty():
+		found_keys = []
+		found_keys.assign(DEFAULT_SEMANTIC_TARGET_KEYS)
+
+	var references: Array = []
+	if library == null:
+		return references
+
+	for section: Array in [
+		["tasks", "taskId", library.get_tasks()],
+		["missions", "missionId", library.get_missions()],
+		["objects", "objectId", library.get_objects()],
+		["stickers", "stickerId", library.get_stickers()],
+		["vocabulary", "wordId", library.get_words()],
+	]:
+		var section_name: String = str(section[0])
+		var id_key: String = str(section[1])
+		for record: Variant in (section[2] as Array):
+			if typeof(record) != TYPE_DICTIONARY:
+				continue
+			var record_id: String = str((record as Dictionary).get(id_key, ""))
+			var label: String = "%s '%s'" % [section_name.trim_suffix("s"), record_id]
+			_collect_target_references_into(record, found_keys, label, references)
+
+	return references
+
+
+static func _collect_target_references_into(
+	value: Variant, keys: Array, label: String, out: Array
+) -> void:
+	match typeof(value):
+		TYPE_DICTIONARY:
+			for key: Variant in (value as Dictionary).keys():
+				var key_text: String = str(key)
+				var child: Variant = (value as Dictionary)[key]
+				if keys.has(key_text) and _is_text(child):
+					out.append({"id": str(child), "key": key_text, "where": label})
+					continue
+				_collect_target_references_into(child, keys, label, out)
+		TYPE_ARRAY:
+			for entry: Variant in (value as Array):
+				_collect_target_references_into(entry, keys, label, out)
+		_:
+			pass
+
+
+## Checks every semantic target reference in the content set against the ids the
+## world really has.
+##
+## `world_target_ids` is an Array of Strings -- typically
+## `HouseWorld.get_semantic_target_ids()`. `null` skips the section entirely, so
+## a content-only caller is unaffected; an empty Array is a problem, not a pass.
+static func validate_semantic_targets(
+	library: Variant, world_target_ids: Variant = null, index_path: String = CONTENT_INDEX_PATH
+) -> Array:
+	var problems: Array = []
+	if world_target_ids == null:
+		return problems
+
+	if typeof(world_target_ids) != TYPE_ARRAY:
+		problems.append(
+			"semanticTargets: the world target id list must be an array of strings, got %s"
+			% type_string(typeof(world_target_ids))
+		)
+		return problems
+
+	var known: Dictionary = {}
+	for entry: Variant in (world_target_ids as Array):
+		var known_id: String = str(entry).strip_edges()
+		if not known_id.is_empty():
+			known[known_id] = true
+	if known.is_empty():
+		problems.append(
+			"semanticTargets: no world target ids were supplied, so no reference could be "
+			+ "checked. Pass the ids the world reports; an empty list is not a pass."
+		)
+		return problems
+
+	var keys: Array = semantic_target_keys(index_path)
+	if keys.is_empty():
+		problems.append(
+			"semanticTargets: %s declares no '%s', so the scan cannot know which keys carry a "
+			% [index_path, SEMANTIC_TARGET_KEYS_FIELD]
+			+ "target reference"
+		)
+		return problems
+
+	if library == null:
+		problems.append("semanticTargets: no library supplied")
+		return problems
+
+	var references: Array = collect_semantic_target_references(library, keys, index_path)
+	var known_sample: String = _describe_known_ids(known)
+
+	for reference: Variant in references:
+		var entry_map: Dictionary = reference
+		var referenced: String = str(entry_map["id"]).strip_edges()
+		var key_text: String = str(entry_map["key"])
+		var where: String = str(entry_map["where"])
+		if referenced.is_empty():
+			problems.append("%s: '%s' is empty; a target reference must be a semantic id"
+					% [where, key_text])
+			continue
+		if known.has(referenced):
+			continue
+		problems.append(
+			("%s: '%s' references target '%s', which does not exist in the world. Content "
+			+ "addresses targets as '<roomId>.<targetId>' and every one must be real -- a "
+			+ "reference that misses is silent at runtime: the child taps and nothing happens. "
+			+ "Known ids: %s") % [where, key_text, referenced, known_sample]
+		)
+
+	if references.size() < MIN_SEMANTIC_TARGET_REFERENCES:
+		problems.append(
+			("semanticTargets: the scan found %d reference(s) under the declared keys %s, fewer "
+			+ "than the %d required. Either the content stopped addressing the world by semantic "
+			+ "id, or '%s' no longer names the keys it is actually authored under -- and a "
+			+ "validator that finds nothing to check reports no problems forever.")
+			% [references.size(), str(keys), MIN_SEMANTIC_TARGET_REFERENCES,
+					SEMANTIC_TARGET_KEYS_FIELD]
+		)
+
+	return problems
+
+
+static func _describe_known_ids(known: Dictionary) -> String:
+	var ids: Array = known.keys()
+	ids.sort()
+	if ids.size() <= MAX_REPORTED_KNOWN_IDS:
+		return ", ".join(PackedStringArray(ids))
+	var head: Array = ids.slice(0, MAX_REPORTED_KNOWN_IDS)
+	return "%s, ... (%d in total)" % [", ".join(PackedStringArray(head)), ids.size()]
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+static func _is_text(value: Variant) -> bool:
+	return typeof(value) == TYPE_STRING or typeof(value) == TYPE_STRING_NAME
+
+
+static func _read_json_object(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return {}
+	var text: String = file.get_as_text()
+	file.close()
+	var parsed: Variant = JSON.parse_string(text)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return {}
+	return parsed
+
 
 ## camelCase: starts with a lowercase letter, then letters/digits only.
 ## Rejects snake_case, kebab-case, PascalCase and keys containing spaces.

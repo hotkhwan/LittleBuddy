@@ -48,10 +48,28 @@ const ROOM_CAMERA_SCRIPT_PATH: String = "res://scripts/camera/room_camera.gd"
 ## PARSE if that file were ever moved, taking every test down with it.
 const TARGET_REGISTRY_SCRIPT_PATH: String = "res://scripts/navigation/activity_target_registry.gd"
 
+## The domain layer, reached DOWN into for the content cross-check. `load()`ed
+## rather than `preload()`ed for the same reason as the registry above, and
+## because a house that cannot parse would take the whole suite down with it.
+const CONTENT_LIBRARY_SCRIPT_PATH: String = "res://scripts/content/content_library.gd"
+const CONTENT_VALIDATOR_SCRIPT_PATH: String = "res://scripts/content/content_validator.gd"
+
 const CAMERA_FOV: float = 55.0
 ## Only a fallback for callers with no viewport; anything real is fitted to the
 ## live aspect ratio.
 const REFERENCE_ASPECT: float = 4.0 / 3.0
+
+## How this session chooses what to do, using the SAME vocabulary as
+## `baby_room.gd::ProgressionMode` so the two worlds cannot drift into two names
+## for one idea. `main.gd` sets it before the world enters the tree.
+##
+##   * `STORY` -- the authored Chapter 3 journey.
+##   * `FREE_PLAY` -- the unlocked rooms, no objective, nothing to finish.
+enum ProgressionMode { STORY, FREE_PLAY }
+
+## Free Play has no goal, so the status line is an invitation rather than an
+## instruction. Kept short: the player cannot read.
+const FREE_PLAY_STATUS: String = "Off you go!"
 
 ## Emitted whenever the child ends up in a room, however they got there.
 signal room_entered(room_id: String, spawn_id: String)
@@ -61,7 +79,18 @@ signal status_changed(message: String)
 ## Set false to keep a plain `Camera3D` even when `room_camera.gd` exists.
 @export var auto_adopt_room_camera: bool = true
 
+## Cross-checks the bundled content's semantic target references against the ids
+## this world really has, once, on `_ready()`, in debug builds only. See
+## `validate_content()`.
+@export var auto_validate_content: bool = true
+
 var _built: bool = false
+var _progression_mode: int = ProgressionMode.STORY
+## Room ids Free Play may start in. Empty means "every room in the house", which
+## is what an unplayed profile (`unlockedRooms: []`) must mean -- a child locked
+## out of all four rooms would be a dead end, and the fallback room is always
+## re-added below.
+var _unlocked_room_ids: Array = []
 var _rooms: Array = []
 var _rooms_by_id: Dictionary = {}
 var _regions: Dictionary = {}
@@ -91,6 +120,8 @@ func _ready() -> void:
 		# Re-fit on rotation and on any resize, so a room never crops when the
 		# device turns. Contract §6.
 		viewport.size_changed.connect(_reframe_current_room)
+	if auto_validate_content and OS.is_debug_build():
+		_report_content_problems()
 
 
 ## The house owns its navigation map, so it must give the RID back; a leaked map
@@ -303,6 +334,74 @@ func _wire_character() -> void:
 		_character.connect("arrived", _on_arrived)
 
 
+## -- Session -------------------------------------------------------------------
+
+## Story or Free Play. Set BEFORE the world enters the tree (`main.gd` configures
+## the instantiated scene and only then adds it), because Free Play changes where
+## the child starts.
+func set_progression_mode(mode: int) -> void:
+	_progression_mode = ProgressionMode.FREE_PLAY if mode == ProgressionMode.FREE_PLAY \
+			else ProgressionMode.STORY
+	if _built:
+		# Already running: at least keep the status line honest.
+		_announce_current_room()
+
+
+func get_progression_mode() -> int:
+	return _progression_mode
+
+
+func is_free_play() -> bool:
+	return _progression_mode == ProgressionMode.FREE_PLAY
+
+
+## The rooms this session may start in, as semantic room ids.
+##
+## An empty list means "all of them". That is deliberate and is the single most
+## important line in this section: a fresh profile carries `unlockedRooms: []`,
+## and reading that as "no room is unlocked" would lock a child out of the whole
+## house on their first Free Play. The fallback room is force-added for the same
+## reason -- the resolver must always have somewhere real to land.
+func set_unlocked_room_ids(room_ids: Variant) -> void:
+	var ids: Array = []
+	if typeof(room_ids) == TYPE_ARRAY:
+		for entry: Variant in (room_ids as Array):
+			var room_id: String = String(entry).strip_edges()
+			if not room_id.is_empty() and not ids.has(room_id):
+				ids.append(room_id)
+	elif typeof(room_ids) == TYPE_PACKED_STRING_ARRAY:
+		for entry: String in (room_ids as PackedStringArray):
+			var room_id: String = entry.strip_edges()
+			if not room_id.is_empty() and not ids.has(room_id):
+				ids.append(room_id)
+	if not ids.is_empty() and not ids.has(HouseLayout.FALLBACK_ROOM):
+		ids.append(HouseLayout.FALLBACK_ROOM)
+	_unlocked_room_ids = ids
+
+
+## Every room this session may start in. Never empty: an unset or empty unlock
+## list opens the whole house.
+func get_unlocked_room_ids() -> Array:
+	build_world()
+	var all_ids: Array = get_room_ids()
+	var open: Array = []
+	for room_id: String in all_ids:
+		if _unlocked_room_ids.has(room_id):
+			open.append(room_id)
+	# ONE fallback, covering both ways the set can come up empty -- an unset list
+	# and a list naming only rooms this house does not have. Written as a single
+	# branch on purpose: an earlier version tested `_unlocked_room_ids.is_empty()`
+	# separately as well, and deleting either branch left the other quietly
+	# covering for it, so neither was actually under test.
+	if open.is_empty():
+		return all_ids
+	return open
+
+
+func is_room_unlocked(room_id: String) -> bool:
+	return get_unlocked_room_ids().has(room_id)
+
+
 ## -- Public API ----------------------------------------------------------------
 
 func get_room_ids() -> Array:
@@ -430,7 +529,7 @@ func place_in_room(room_id: String, spawn_id: String) -> bool:
 		_world_state.call("set_location", room_id, spawn_id)
 	_frame_room(room)
 	_play_transition_fade()
-	_set_status("You are in the %s!" % HouseLayout.display_name(room_id))
+	_announce_current_room()
 	room_entered.emit(room_id, get_current_spawn_id())
 	return true
 
@@ -448,22 +547,48 @@ func restore_from_profile(profile: Variant) -> bool:
 	)
 
 
-## Resolves an arbitrary (possibly rubbish) room/spawn pair against the layout
-## AND against the rooms this world actually contains, then enters it. Always
-## ends with the child somewhere real.
+## Resolves an arbitrary (possibly rubbish) room/spawn pair against the layout,
+## against the rooms this world actually contains, and against this session's
+## unlocked set, then enters it. Always ends with the child somewhere real.
+##
+## Four falls, in order, and every one of them is tested:
+##   1. an unknown SPAWN  -> that room's default spawn (`WorldState.resolve`);
+##   2. an unknown ROOM   -> the bedroom's default spawn (`WorldState.resolve`);
+##   3. a room the layout knows but this scene does not -> the bedroom;
+##   4. a room this session has not unlocked -> the first unlocked room.
+## There is no fifth case in which nothing happens, because `get_unlocked_room_ids()`
+## is never empty while the house has a single room in it.
 func enter_saved_location(room_id: String, spawn_id: String) -> bool:
 	build_world()
 	var resolved: Dictionary = WorldStateScript.resolve(room_id, spawn_id)
 	var target_room: String = String(resolved["roomId"])
-	if not has_room(target_room):
-		target_room = HouseLayout.FALLBACK_ROOM
-	if not has_room(target_room):
-		# Not even the bedroom is in this world. Nothing sane is left to do, and
-		# silence would look like a frozen game.
-		push_warning("HouseWorld contains no '%s'; the child was not placed."
-				% HouseLayout.FALLBACK_ROOM)
+	var target_spawn: String = String(resolved["spawnId"])
+	# ONE guard, deliberately, rather than a scene check and an unlock check that
+	# each happen to cover the other: two overlapping fallbacks both survived a
+	# mutation that deleted either one of them, which means neither was really
+	# being tested.
+	if not has_room(target_room) or not is_room_unlocked(target_room):
+		target_room = _first_open_room()
+		# The spawn came from a room the child is no longer going to, so it means
+		# nothing here; the destination's own default does.
+		target_spawn = HouseLayout.DEFAULT_SPAWN
+	if target_room.is_empty():
+		# Not one room in the whole house. Nothing sane is left to do, and silence
+		# would look like a frozen game.
+		push_warning("HouseWorld has no room to place the child in.")
 		return false
-	return place_in_room(target_room, String(resolved["spawnId"]))
+	return place_in_room(target_room, target_spawn)
+
+
+## The room a fallback lands in: the bedroom when it is open, otherwise whichever
+## room is. "" only when the house has no rooms at all.
+func _first_open_room() -> String:
+	var open: Array = get_unlocked_room_ids()
+	if open.has(HouseLayout.FALLBACK_ROOM):
+		return HouseLayout.FALLBACK_ROOM
+	if open.is_empty():
+		return ""
+	return String(open[0])
 
 
 ## Returns a copy of `profile` carrying the current room/spawn.
@@ -544,6 +669,64 @@ func _reframe_current_room() -> void:
 	_frame_room(get_current_room())
 
 
+## Pulls the camera in on one activity target, addressed the only way content is
+## allowed to address anything: by semantic id.
+##
+## The camera deliberately knows nothing about rooms or ids -- `focus_activity()`
+## on `room_camera.gd` takes a world position -- so the resolution happens here,
+## which is the layer that owns both the scene tree and the id map. An activity
+## calls this to move in, and `restore_room_frame()` to let go again.
+##
+## Returns false, and changes nothing, for an id this house does not have; a
+## missed close-up is a worse outcome than no close-up, but it is never a crash
+## and never leaves the camera stranded somewhere the child cannot see.
+##
+## `radius` is the half-width kept on screen around the target. Left at 0 the
+## camera uses its own default, which is sized to include the spot the child
+## stands on.
+func focus_activity(semantic_id: String, radius: float = 0.0) -> bool:
+	build_world()
+	var target: Node = get_target_by_semantic_id(semantic_id)
+	if target == null or not (target is Node3D):
+		push_warning("HouseWorld: cannot focus on unknown target '%s'." % semantic_id)
+		return false
+	_adopt_room_camera()
+	if _camera == null or not _camera.has_method("focus_activity"):
+		return false
+	# `global_position` silently reports the origin outside the tree, which in the
+	# headless runner is every node -- `spatial_util.gd` exists for exactly this.
+	var focus: Vector3 = SpatialUtil.world_position(target as Node3D)
+	if radius > 0.0:
+		_camera.call("focus_activity", focus, radius)
+	else:
+		_camera.call("focus_activity", focus)
+	return true
+
+
+## Back out to the whole-room shot. Safe to call when nothing was focused.
+func restore_room_frame() -> void:
+	build_world()
+	if _camera != null and _camera.has_method("restore_room_frame"):
+		_camera.call("restore_room_frame")
+		return
+	# No room camera: re-fit the room with the fallback path instead, so the shot
+	# still returns to the room rather than staying wherever it was left.
+	_frame_room(get_current_room())
+
+
+func is_focused_on_activity() -> bool:
+	build_world()
+	if _camera != null and _camera.has_method("is_focused_on_activity"):
+		return bool(_camera.call("is_focused_on_activity"))
+	return false
+
+
+func get_camera() -> Camera3D:
+	build_world()
+	_adopt_room_camera()
+	return _camera
+
+
 ## Attaches agentCAM's room camera if it has landed, and only if it really is a
 ## `Camera3D` script that answers `frame_room()`. Duck-typed on purpose: this file
 ## must build and run whether or not that agent's work exists.
@@ -606,7 +789,57 @@ func _on_arrived(target_id: String) -> void:
 	_set_status("At the %s!" % display)
 
 
+## Story names the room the child just walked into. Free Play has no objective,
+## so it says something warm and open instead of announcing a destination the
+## child did not choose.
+func _announce_current_room() -> void:
+	if is_free_play():
+		_set_status(FREE_PLAY_STATUS)
+		return
+	_set_status("You are in the %s!" % HouseLayout.display_name(get_current_room_id()))
+
+
 func _set_status(message: String) -> void:
 	if _status_label != null:
 		_status_label.text = message
 	status_changed.emit(message)
+
+
+## -- Content cross-check -------------------------------------------------------
+
+## Checks the bundled content's semantic target references against the ids this
+## house really has, and returns the problems.
+##
+## The direction of the dependency is the point. `content_validator.gd` is domain
+## code: it must hold no 3D type and must not import `scripts/house/`,
+## `scripts/navigation/`, `scripts/character/` or `scripts/camera/`, and
+## `test_architecture_guard.gd` fails the build if it ever does. So the world
+## reaches DOWN into the validator and hands it plain Strings; the validator never
+## reaches up.
+##
+## `library` is a loaded `ContentLibrary`; null loads one.
+func validate_content(library: Variant = null) -> Array:
+	build_world()
+	var loaded: Variant = library
+	if loaded == null:
+		var script: Resource = load(CONTENT_LIBRARY_SCRIPT_PATH)
+		if not (script is GDScript):
+			return ["house: could not load %s" % CONTENT_LIBRARY_SCRIPT_PATH]
+		loaded = (script as GDScript).call("create")
+	var validator: Resource = load(CONTENT_VALIDATOR_SCRIPT_PATH)
+	if not (validator is GDScript):
+		return ["house: could not load %s" % CONTENT_VALIDATOR_SCRIPT_PATH]
+	return (validator as GDScript).call(
+		"validate_semantic_targets", loaded, get_semantic_target_ids()
+	)
+
+
+## Fail loudly, once, on a debug run: a content reference to a target that does
+## not exist is otherwise completely silent -- the level loads, the child taps
+## and nothing happens.
+##
+## `push_error` rather than anything child-facing, and debug-only, so a shipped
+## build never pays for it and no player ever sees it.
+func _report_content_problems() -> void:
+	for problem: Variant in validate_content():
+		push_error("HouseWorld content check: %s" % String(problem))
