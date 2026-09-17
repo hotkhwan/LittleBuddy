@@ -34,6 +34,9 @@ func run() -> Array:
 	failures.append_array(_test_grab_area(spawner))
 	failures.append_array(_test_defensive_defaults(spawner))
 	failures.append_array(_test_real_node_construction(spawner))
+	failures.append_array(_test_model_visual(spawner))
+	failures.append_array(_test_model_fits_inside_grab_area(spawner))
+	failures.append_array(_test_missing_model_falls_back(spawner))
 	return failures
 
 
@@ -165,6 +168,156 @@ func _test_real_node_construction(spawner: GDScript) -> Array:
 	if absf(grab_side - float(spawner.GRAB_SIZE_M)) > 0.001:
 		failures.append("spawned collider side is %.3f m, expected %.3f m"
 				% [grab_side, float(spawner.GRAB_SIZE_M)])
+
+	node.free()
+	return failures
+
+
+## A record naming a model must actually spawn that model -- textured from the
+## shared atlas -- and not quietly keep the old primitive.
+func _test_model_visual(spawner: GDScript) -> Array:
+	var failures: Array = []
+	var node: Area3D = spawner.spawn({
+		"objectId": "milk", "word": "milk", "category": "feeding",
+		"primitive": "capsule", "model": "carton", "color": "#FFFFFF",
+		"defaultInteraction": "dragToMouth",
+	})
+	if node == null:
+		return ["spawn() returned null for a model-backed record"]
+
+	var visual: MeshInstance3D = null
+	for child: Node in node.get_children():
+		if child is MeshInstance3D:
+			visual = child as MeshInstance3D
+	if visual == null:
+		node.free()
+		return ["a model-backed record produced no MeshInstance3D"]
+
+	if visual.mesh == null:
+		failures.append("the model visual has no mesh")
+	elif visual.mesh == spawner.build_mesh("capsule"):
+		failures.append("the model visual fell back to the primitive capsule")
+	elif visual.mesh is PrimitiveMesh:
+		failures.append("the model visual is a built-in primitive, not the imported model")
+
+	var material: StandardMaterial3D = visual.material_override as StandardMaterial3D
+	if material == null:
+		failures.append("the model visual has no StandardMaterial3D override")
+	elif material.albedo_texture == null:
+		failures.append("the model visual is untextured -- the shared colormap did not load")
+
+	node.free()
+
+	# A model whose own colours carry the meaning must NOT be multiplied by the
+	# record's colour. Checked on the apple, whose record colour is strongly red,
+	# so an accidental tint would show up here rather than cancelling out.
+	var apple: Area3D = spawner.spawn({
+		"objectId": "apple", "word": "apple", "category": "feeding",
+		"primitive": "sphere", "model": "apple", "color": "#E8453C",
+		"defaultInteraction": "dragToMouth",
+	})
+	if apple == null:
+		return failures + ["spawn() returned null for the apple model record"]
+	for child: Node in apple.get_children():
+		if child is MeshInstance3D:
+			var apple_material: StandardMaterial3D = \
+					(child as MeshInstance3D).material_override as StandardMaterial3D
+			if apple_material != null and not apple_material.albedo_color.is_equal_approx(Color(1, 1, 1, 1)):
+				failures.append("a self-coloured model was tinted by its record colour: %s"
+						% str(apple_material.albedo_color))
+	apple.free()
+
+	# ...while a near-white tableware model IS tinted, so it does not read as a
+	# pale blob against the room's beige floor.
+	var bowl: Area3D = spawner.spawn({
+		"objectId": "bowl", "word": "bowl", "category": "feeding",
+		"primitive": "cylinder", "model": "bowl", "color": "#F2A65A",
+		"defaultInteraction": "dragToMouth",
+	})
+	if bowl == null:
+		return failures + ["spawn() returned null for the bowl model record"]
+	for child: Node in bowl.get_children():
+		if child is MeshInstance3D:
+			var bowl_material: StandardMaterial3D = \
+					(child as MeshInstance3D).material_override as StandardMaterial3D
+			if bowl_material != null and bowl_material.albedo_color.is_equal_approx(Color(1, 1, 1, 1)):
+				failures.append("the tinted tableware model kept a white albedo")
+	bowl.free()
+
+	return failures
+
+
+## The visible mesh must stay INSIDE the grab collider. A visual larger than its
+## touch target would invite a child to aim at something the picker cannot hit.
+func _test_model_fits_inside_grab_area(spawner: GDScript) -> Array:
+	var failures: Array = []
+	var grab: float = float(spawner.GRAB_SIZE_M)
+	var centre: Vector3 = Vector3(0.0, float(spawner.VISUAL_CENTRE_Y), 0.0)
+
+	for model_name: String in spawner.MODEL_PRESENTATION.keys():
+		var mesh: Mesh = spawner.load_model_mesh(model_name)
+		if mesh == null:
+			failures.append("model '%s' has a presentation entry but no mesh" % model_name)
+			continue
+		# The AUTHORED size, before `model_presentation()` clamps it -- otherwise
+		# this assertion would only ever re-test the clamp.
+		var authored: float = float(
+				Dictionary(spawner.MODEL_PRESENTATION[model_name]).get("size", spawner.MODEL_DEFAULT_SIZE_M))
+		if authored > float(spawner.MODEL_MAX_SIZE_M) + 0.0001:
+			failures.append("model '%s' is authored at %.3f m, over the %.3f m ceiling"
+					% [model_name, authored, float(spawner.MODEL_MAX_SIZE_M)])
+		var presentation: Dictionary = spawner.model_presentation(model_name)
+		var placed: AABB = spawner.model_transform(
+				mesh.get_aabb(), float(presentation["size"]), presentation["rotation"]) * mesh.get_aabb()
+
+		if not placed.get_center().is_equal_approx(centre):
+			failures.append("model '%s' is not centred in its grab collider (centre %s)"
+					% [model_name, str(placed.get_center())])
+		var biggest: float = maxf(placed.size.x, maxf(placed.size.y, placed.size.z))
+		if biggest > grab:
+			failures.append("model '%s' presents at %.3f m, larger than the %.3f m grab collider"
+					% [model_name, biggest, grab])
+	return failures
+
+
+## The whole point of making `model` optional: a missing or broken model must
+## degrade to the primitive the game already shipped, never to an invisible or
+## untouchable object.
+func _test_missing_model_falls_back(spawner: GDScript) -> Array:
+	var failures: Array = []
+	var record: Dictionary = {
+		"objectId": "apple", "word": "apple", "category": "feeding",
+		"primitive": "sphere", "model": "no-such-kenney-model", "color": "#E8453C",
+		"defaultInteraction": "dragToMouth",
+	}
+
+	var spec: Dictionary = spawner.build_spec(record)
+	if String(spec.get("model", "x")) != "":
+		failures.append("an unavailable model was not cleared from the spec")
+	if Array(spec.get("warnings", [])).is_empty():
+		failures.append("an unavailable model produced no warning")
+	if not bool(spec.get("valid", false)):
+		failures.append("an unavailable model invalidated an otherwise good record")
+
+	var node: Area3D = spawner.spawn(record)
+	if node == null:
+		return failures + ["spawn() returned null when the model was unavailable"]
+
+	var has_visible_mesh: bool = false
+	var grab_side: float = 0.0
+	for child: Node in node.get_children():
+		if child is MeshInstance3D and (child as MeshInstance3D).mesh != null:
+			has_visible_mesh = true
+			if (child as MeshInstance3D).material_override == null:
+				failures.append("the fallback visual has no material")
+		if child is CollisionShape3D and (child as CollisionShape3D).shape is BoxShape3D:
+			grab_side = ((child as CollisionShape3D).shape as BoxShape3D).size.x
+	if not has_visible_mesh:
+		failures.append("a missing model produced an INVISIBLE object")
+	if absf(grab_side - float(spawner.GRAB_SIZE_M)) > 0.001:
+		failures.append("a missing model shrank the grab collider to %.3f m" % grab_side)
+	if not node.has_signal("chosen") or not node.has_method("try_deliver_from_raycast"):
+		failures.append("a missing model broke the DraggableObject contract")
 
 	node.free()
 	return failures
