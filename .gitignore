@@ -24,3 +24,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Generated iOS speech plugin binaries
+game/ios/speech_plugin/bin/
