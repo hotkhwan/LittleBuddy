@@ -98,6 +98,60 @@ third-party licence surface at all.
 built from Godot primitives in code. See `game/scripts/gameplay/object_spawner.gd` (`proc`
 pseudo-pack) and `game/scripts/baby/baby_view_3d.gd`.
 
+### The four house rooms — added 2026-09-18 (Phase 3B / 3C)
+
+| source | assetName | localPath | license | attributionRequired | commercialUse | modifiedByUs |
+|---|---|---|---|---|---|---|
+| **Original — ours** | House geometry kit (bevelled box, extruded outline, cylinder, sphere, torus, rounded-rect / arch / circle outlines) | `game/scripts/house/prop_kit.gd` | n/a (we authored it) | no | yes | generated at runtime |
+| **Original — ours** | The twelve taught objects — `bed`, `wardrobe`, `toy`, `sink`, `bath`, `towel`, `fridge`, `counter`, `table`, `sofa`, `toyBox`, `book` — plus the shared potted plant | `game/scripts/house/room_props.gd` | n/a (we authored it) | no | yes | generated at runtime |
+| **Original — ours** | Room shell: plank floor, walls, skirting, wainscot, chair rail, architrave, arched doors, window + sky plane + sill, rug, framed picture, mirror | `game/scripts/house/room.gd` | n/a (we authored it) | no | yes | generated at runtime |
+
+**Zero bytes, zero licence surface, and no download.** ART_BIBLE §9 makes procedural a
+first-class answer rather than a fallback, and for a locked flat-shaded rounded low-poly
+style it is the better one: the bevel radius, the palette and the polygon density are all
+exact by construction rather than approximately matched after the fact.
+
+**Meshy was NOT used and nothing here is generated art.** No credentials for it exist in
+this environment, so no prompt is recorded — because none was run. Nothing below is claimed
+as generator output.
+
+**No third-party model was added.** The Kenney furniture kit above is still shipped and
+still used by the Baby Room; the four house rooms deliberately do not use it. Two reasons,
+both §6/§9: the pack's `bedSingle` and `bookcaseClosedWide` do not match the objects these
+rooms have to teach (a `toy` that is a stacking toy, a `wardrobe` with two opening doors, a
+`bath` with visible interior depth), and mixing a second polygon density and rounding radius
+into a room is exactly the coherence failure §9 warns about — "if your eye goes to it
+because it looks *different* rather than because it is the subject, it fails."
+
+**Budgets, measured** (`test_art_rooms.gd` asserts both; numbers from the built scene):
+
+| room | draw calls | triangles |
+|---|---|---|
+| bedroom | 6 | 7,872 |
+| bathroom | 6 | 7,628 |
+| kitchen | 6 | 7,136 |
+| livingRoom | 6 | 6,824 |
+
+Six because the whole room merges into one shell mesh plus three furniture meshes plus two
+doors, all sharing **one** `StandardMaterial3D` with vertex colours as albedo. §10 budgets
+~170 draw calls and caps at 220; the worst room is 44% of the ~18,000-triangle target.
+
+**Colour:** every value is one of §3's seven tokens or one of its two documented steps
+(`light` = 45% toward `cream`, `deep` = 22% toward `ink`), read from `scripts/ui/palette.gd`
+so the house and the UI cannot drift. The one additional value is the flat window sky
+`#B8DBED`, which §5 names by hex.
+
+> **Implementation trap, recorded because it cost most of a night and no test can see it.**
+> A `StandardMaterial3D`'s `albedo_color` is converted from sRGB by the engine; a **vertex**
+> colour is not. Writing `#D6C7F0` straight into a `SurfaceTool` renders it as though it were
+> already linear — every §3 token came back 15–20% pale and visibly desaturated, and a
+> lavender wardrobe rendered beige. `prop_kit.gd` calls `srgb_to_linear()` on every vertex
+> colour. Second trap, same file: Godot flips the shading normal of a back face on a
+> double-sided material, so a backwards-wound quad is not invisible — it is *lit from behind*,
+> and renders as a solid surface that simply never catches the sun. The whole room came back
+> flat and dusty with every assertion still green. `_triangle()` now re-winds every triangle
+> to agree with its normal, and culling is back on so the next mistake is a visible hole.
+
 ---
 
 ## Sources deliberately NOT used

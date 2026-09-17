@@ -526,10 +526,11 @@ func _make_stand() -> Animation:
 	return animation
 
 
-## A HELD posture: lying on his back, head to +X, face up, eyes closed, breathing.
+## A HELD posture: lying on his back, head to local +X, face up, eyes closed,
+## breathing -- ON the bed, not on the floor in front of it. See `SLEEP_BODY`.
 ##
 ## `rotation = (PI/2, PI/2, 0)` with Godot's default YXZ Euler order maps local
-## +Y (up the body) to world +X and local -Z (the face) to world +Y, so the child
+## +Y (up the body) to local +X and local -Z (the face) to local +Y, so the child
 ## lies across the frame face-up rather than face-down. Worked out rather than
 ## guessed, and then rendered and looked at.
 func _make_sleep() -> Animation:
@@ -597,7 +598,33 @@ func _make_celebrate() -> Animation:
 ## -- Animation helpers -----------------------------------------------------------
 
 const SIT_BODY: Vector3 = Vector3(0.0, -0.132, 0.0)
-const SLEEP_BODY: Vector3 = Vector3(0.0, 0.163, 0.0)
+
+## Lying flat lifts the body pivot by this much, so a child on the ground rests
+## ON the ground rather than half through it.
+const LYING_LIFT: float = 0.163
+
+## -- Sleeping happens ON something ---------------------------------------------
+##
+## `sleep` plays where the child is STANDING, and he stands at the bed's
+## interaction point -- which is beside the bed, not on it. Without an offset the
+## clip therefore laid Little Buddy flat on his back on the floor in front of the
+## bed, every single time, which is what it did until this constant existed.
+##
+## The three numbers below are the bed, seen from the character's side of the
+## contract. They mirror `BED_LIE_FORWARD`, `BED_LIE_ALONG` and `BED_LIE_HEIGHT`
+## in `house_layout.gd`, and `test_art_rooms.gd` asserts the two agree -- this
+## file deliberately does NOT import the house, because a character that knows
+## about furniture is a character that cannot be reused.
+##
+## Signs, derived rather than guessed (the same discipline as the smile):
+## the child faces the bed, so his local **-Z** points at it; a lying child's
+## head points along his local **+X** (see `SLEEP_ROTATION`), so moving him back
+## toward the foot of the bed is a move along local **-X**.
+const SLEEP_FORWARD: float = 0.90
+const SLEEP_ALONG: float = 0.25
+const SLEEP_LIFT: float = 0.40
+
+const SLEEP_BODY: Vector3 = Vector3(-SLEEP_ALONG, LYING_LIFT + SLEEP_LIFT, -SLEEP_FORWARD)
 const SLEEP_ROTATION: Vector3 = Vector3(PI * 0.5, PI * 0.5, 0.0)
 const EYE_CLOSED: Vector3 = Vector3(1.0, 0.10, 1.0)
 

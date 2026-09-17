@@ -92,9 +92,59 @@ const CAMERA_MAX_DISTANCE: float = 18.0
 ## the toddler's head rather than its feet sits in the centre of the frame.
 const CAMERA_FOCUS_HEIGHT: float = 0.55
 
-const FLOOR_COLOR: Color = Color(0.82, 0.76, 0.68)
-const WALL_COLOR: Color = Color(0.88, 0.86, 0.82)
-const DOOR_COLOR: Color = Color(0.72, 0.52, 0.34)
+## -- Colour (ART_BIBLE.md section 3, LOCKED) ------------------------------------
+##
+## Nothing here invents a colour. Every value is one of the seven tokens or one
+## of the two documented derivations of one (`light` = 45% toward `cream`,
+## `deep` = 22% toward `ink`), taken from `palette.gd` so the house and the UI
+## cannot drift apart. `Color` is a core type, not a 3D one, so this stays on the
+## right side of the `test_architecture_guard.gd` line.
+
+const Palette := preload("res://scripts/ui/palette.gd")
+
+## Warm wood, in two steps of one token. The FLOOR is `peach` itself -- a pale
+## sunlit board, because a dark floor is the fastest way to lose the "warm,
+## sunlit picture book" of section 2 -- and FURNITURE is `deep(peach)`, so a bed
+## or a table always reads against the boards it stands on. One is the floor, the
+## other is everything made of wood; they are never the same value.
+const WOOD_COLOR: Color = Color(0.857, 0.702, 0.594)       # deep(peach)
+const FLOOR_COLOR: Color = Palette.PEACH
+## Section 3: "Every room keeps `cream` as its base; only the accent shifts."
+const WALL_COLOR: Color = Palette.CREAM
+const DOOR_COLOR: Color = WOOD_COLOR
+
+
+## -- The bed, and the pose that has to land on it --------------------------------
+##
+## The bed is the one piece of furniture whose exact geometry another file has to
+## agree with, so its numbers are named rather than buried in the furniture
+## table.
+##
+## `sleep` is played AT THE STAND POSITION, because that is where the child
+## finishes walking -- which is why, before this, tapping the bed laid Little
+## Buddy flat on his back on the floor in front of it. The clip in
+## `toddler_view.gd` therefore carries an offset: forward by `BED_LIE_FORWARD`,
+## up by `BED_LIE_HEIGHT`. Those two numbers and these three are the same
+## contract seen from either end, and `test_art_rooms.gd` asserts they agree.
+##
+## The bed runs ALONG Z (headboard at the back wall) and is approached from its
+## +X side, for a reason that is easy to get wrong: a lying child's head points
+## along his own local +X, and a child facing -X has his local +X pointing at
+## world -Z. Head to the headboard only works with the bed turned this way.
+const BED_SIZE: Vector3 = Vector3(0.92, 0.45, 1.34)
+const BED_POSITION: Vector3 = Vector3(-1.30, 0.225, -1.25)
+## Where the child stands to use the bed: 0.9 m out along +X from its centre,
+## which leaves 0.44 m of clear floor beside it -- more than the 0.20 m agent
+## radius, so the navigation mesh really reaches it.
+const BED_STAND_X: float = -0.40
+## Stand point to the middle of the mattress, perpendicular to the bed.
+const BED_LIE_FORWARD: float = 0.90
+## And then along the bed, from its middle toward the FOOT, so a 0.85 m child
+## lying head-first ends up with his head on the pillow rather than 18 cm through
+## the headboard.
+const BED_LIE_ALONG: float = 0.25
+## Top of the blanket, above the floor. A child lying down rests here.
+const BED_LIE_HEIGHT: float = 0.40
 
 
 ## Every room id, in ring order.
@@ -202,39 +252,40 @@ static func furniture(room_id: String) -> Array:
 	match room_id:
 		BEDROOM:
 			return [
-				_prop("bed", "bed", Vector3(1.5, 0.45, 0.95), Vector3(-1.0, 0.225, -1.4),
-						Vector3(-1.0, FLOOR_Y, -0.55), ["sleep", "sit"], Color(0.62, 0.72, 0.9)),
+				_prop("bed", "bed", BED_SIZE, BED_POSITION,
+						Vector3(BED_STAND_X, FLOOR_Y, BED_POSITION.z), ["sleep", "sit"],
+						Palette.LAVENDER),
 				_prop("wardrobe", "wardrobe", Vector3(0.9, 1.8, 0.6), Vector3(1.35, 0.9, -1.6),
-						Vector3(1.35, FLOOR_Y, -0.95), ["open", "dress"], Color(0.78, 0.6, 0.42)),
+						Vector3(1.35, FLOOR_Y, -0.95), ["open", "dress"], WOOD_COLOR),
 				_prop("toy", "toy", Vector3(0.35, 0.35, 0.35), Vector3(0.9, 0.175, 0.9),
-						Vector3(0.9, FLOOR_Y, 1.45), ["pickUp", "play"], Color(0.96, 0.72, 0.4)),
+						Vector3(0.9, FLOOR_Y, 1.45), ["pickUp", "play"], Palette.DUSTY_BLUE),
 			]
 		BATHROOM:
 			return [
 				_prop("sink", "sink", Vector3(0.6, 0.7, 0.45), Vector3(-1.2, 0.35, -1.72),
-						Vector3(-1.2, FLOOR_Y, -1.15), ["wash", "brushTeeth"], Color(0.86, 0.92, 0.96)),
+						Vector3(-1.2, FLOOR_Y, -1.15), ["wash", "brushTeeth"], Palette.CREAM),
 				_prop("bath", "bath", Vector3(1.4, 0.5, 0.75), Vector3(0.95, 0.25, -1.5),
-						Vector3(0.95, FLOOR_Y, -0.85), ["wash", "play"], Color(0.7, 0.88, 0.94)),
-				_prop("towel", "towel", Vector3(0.3, 0.5, 0.1), Vector3(-1.9, 1.0, -0.5),
-						Vector3(-1.35, FLOOR_Y, -0.5), ["pickUp", "dry"], Color(0.96, 0.78, 0.82)),
+						Vector3(0.95, FLOOR_Y, -0.85), ["wash", "play"], Palette.DUSTY_BLUE),
+				_prop("towel", "towel", Vector3(0.14, 0.62, 0.52), Vector3(-1.93, 1.02, -0.5),
+						Vector3(-1.35, FLOOR_Y, -0.5), ["pickUp", "dry"], Palette.SOFT_PINK),
 			]
 		KITCHEN:
 			return [
 				_prop("fridge", "fridge", Vector3(0.7, 1.7, 0.65), Vector3(1.4, 0.85, -1.6),
-						Vector3(1.4, FLOOR_Y, -0.95), ["open", "give"], Color(0.9, 0.92, 0.94)),
+						Vector3(1.4, FLOOR_Y, -0.95), ["open", "give"], Palette.MINT),
 				_prop("counter", "counter", Vector3(1.8, 0.9, 0.6), Vector3(-0.8, 0.45, -1.65),
-						Vector3(-0.8, FLOOR_Y, -1.0), ["wash", "give"], Color(0.84, 0.74, 0.6)),
+						Vector3(-0.8, FLOOR_Y, -1.0), ["wash", "give"], WOOD_COLOR),
 				_prop("table", "table", Vector3(1.0, 0.7, 0.8), Vector3(0.5, 0.35, 0.55),
-						Vector3(0.5, FLOOR_Y, 1.4), ["eat", "sit"], Color(0.8, 0.62, 0.44)),
+						Vector3(0.5, FLOOR_Y, 1.4), ["eat", "sit"], WOOD_COLOR),
 			]
 		LIVING_ROOM:
 			return [
 				_prop("sofa", "sofa", Vector3(1.8, 0.75, 0.8), Vector3(-0.7, 0.375, -1.5),
-						Vector3(-0.7, FLOOR_Y, -0.85), ["sit", "hug"], Color(0.7, 0.66, 0.86)),
+						Vector3(-0.7, FLOOR_Y, -0.85), ["sit", "hug"], Palette.SOFT_PINK),
 				_prop("toyBox", "toy box", Vector3(0.7, 0.5, 0.5), Vector3(1.45, 0.25, -1.65),
-						Vector3(1.45, FLOOR_Y, -1.05), ["open", "play"], Color(0.95, 0.75, 0.82)),
-				_prop("book", "book", Vector3(0.3, 0.12, 0.22), Vector3(0.3, 0.06, 0.8),
-						Vector3(0.3, FLOOR_Y, 1.35), ["read", "pickUp"], Color(0.94, 0.55, 0.45)),
+						Vector3(1.45, FLOOR_Y, -1.05), ["open", "play"], Palette.MINT),
+				_prop("book", "book", Vector3(0.32, 0.12, 0.24), Vector3(0.3, 0.06, 0.8),
+						Vector3(0.3, FLOOR_Y, 1.35), ["read", "pickUp"], Palette.DUSTY_BLUE),
 			]
 		_:
 			return []
@@ -292,20 +343,44 @@ static func display_name(room_id: String) -> String:
 			return room_id
 
 
-## Temporary greybox floor tint, one per room, so a reviewer can tell at a glance
-## which room a screenshot is of. Replaced wholesale by the art pipeline.
-static func floor_color(room_id: String) -> Color:
+## The floor is the same warm wood in every room (section 5). A room is told
+## apart by its MOOD -- its wainscot, its rug, its furniture -- not by a tinted
+## floor, which is what the greybox used and which read as four different houses
+## rather than as four rooms of one.
+static func floor_color(_room_id: String) -> Color:
+	return FLOOR_COLOR
+
+
+## The room's dominant accent (section 3, "Room moods"). Wainscot, rug, the large
+## soft masses. Every room keeps `cream` as its base; only this shifts.
+static func dominant_color(room_id: String) -> Color:
 	match room_id:
 		BEDROOM:
-			return Color(0.84, 0.78, 0.7)
+			return Palette.LAVENDER
 		BATHROOM:
-			return Color(0.74, 0.84, 0.86)
+			return Palette.DUSTY_BLUE
 		KITCHEN:
-			return Color(0.86, 0.82, 0.68)
+			return Palette.PEACH
 		LIVING_ROOM:
-			return Color(0.8, 0.76, 0.84)
+			return Palette.PEACH
 		_:
-			return FLOOR_COLOR
+			return Palette.PEACH
+
+
+## The room's secondary accent (section 3). The one object per room that is
+## allowed to be the brightest thing in it.
+static func accent_color(room_id: String) -> Color:
+	match room_id:
+		BEDROOM:
+			return Palette.DUSTY_BLUE
+		BATHROOM:
+			return Palette.MINT
+		KITCHEN:
+			return Palette.MINT
+		LIVING_ROOM:
+			return Palette.SOFT_PINK
+		_:
+			return Palette.MINT
 
 
 ## World-space floor rectangle of a room, in the XZ plane.
