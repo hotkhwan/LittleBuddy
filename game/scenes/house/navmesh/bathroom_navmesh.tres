@@ -1,0 +1,11 @@
+[gd_resource type="NavigationMesh" format=3]
+
+[resource]
+vertices = PackedVector3Array(-1.7500001, 0.099999994, -0.7500001, -1.7500001, 0.099999994, -1.7500001, -1.7, 0.099999994, -1.4000001, -1.5500001, 0.099999994, -1.25, -1.5, 0.099999994, -0.6, -0.8000001, 0.099999994, -1.25, -1.7500001, 0.099999994, -0.20000005, -1.5, 0.099999994, -0.35000002, -1.8000001, 0.099999994, 0.25, -1.7500001, 0.099999994, 1.8, -0.6500001, 0.099999994, -1.7500001, 0, 0.099999994, -1.7500001, -0.6500001, 0.099999994, -1.4000001, 0, 0.099999994, -1.0500001, 1.8, 0.099999994, 1, 1.75, 0.099999994, 1.8, 1.75, 0.099999994, -0.9000001, 0.14999986, 0.099999994, -0.9000001)
+polygons = [PackedInt32Array(0, 1, 2), PackedInt32Array(0, 2, 3), PackedInt32Array(0, 3, 4), PackedInt32Array(4, 3, 5), PackedInt32Array(6, 7, 8), PackedInt32Array(8, 7, 9), PackedInt32Array(10, 11, 12), PackedInt32Array(12, 11, 13), PackedInt32Array(14, 15, 16), PackedInt32Array(16, 15, 17), PackedInt32Array(17, 15, 7), PackedInt32Array(7, 15, 9), PackedInt32Array(5, 12, 13), PackedInt32Array(13, 17, 5), PackedInt32Array(5, 17, 4), PackedInt32Array(4, 17, 7)]
+cell_size = 0.05
+cell_height = 0.05
+agent_height = 0.85
+agent_radius = 0.2
+agent_max_climb = 0.05
+agent_max_slope = 10.0

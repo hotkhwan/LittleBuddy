@@ -1,7 +1,31 @@
 # Architecture Migration Plan — Life Journey v2
 
 **Branch:** `design/life-journey-v2` · **Date:** 2026-09-17
-**Status:** proposal. No gameplay code has been changed.
+**Status:** ~~proposal. No gameplay code has been changed.~~ **Partly implemented** — see below.
+
+> ## Status update — 2026-09-18
+>
+> Phases 1, 2A and the approved follow-ups have landed on `feature/level-progression-v2`:
+> level semantics and per-level stars (`f422555`), save v3 separating `levelCompleted` from
+> `starsByLevel` plus Story Mode in authored order (`a7cd746`), and the navigation spike
+> (`178a06b`). The §0 headline finding held: the domain layer needed no changes at all, and an
+> architecture guard now pins it.
+>
+> **The life-stage interaction model is locked** (product decision, 2026-09-18):
+>
+> | Chapter | Interaction model | Locomotion |
+> |---|---|---|
+> | 1 — Prologue | story / cinematic / light interaction | **none** |
+> | 2 — Baby Days | caregiver: tap, drag, give, feed, bath, dress, sleep, toys | **none** |
+> | 3+ — Toddler and older | tap-to-walk, activity targets, room navigation | **core mechanic** |
+>
+> **The baby does not walk.** `baby_room` keeps its current gameplay and acquires no
+> navigation; the spike is the foundation of Chapter 3+, and HouseWorld is a new world rather
+> than a `baby_room` refactor. This retires the §9 open question about where movement lands.
+>
+> Current interfaces live in `docs/PHASE2B_CONTRACT.md`; the decision record and the
+> completion-vs-stars tradeoff are in `docs/PHASE2_DECISIONS.md`. Where this document and those
+> disagree, those win.
 
 Maps the current, working Little Buddy architecture onto the story-driven life-journey design
 in `LITTLE_BUDDY_GAME_BIBLE.md`.

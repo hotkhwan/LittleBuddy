@@ -81,9 +81,20 @@ the real vertical slice — this only changes what is built immediately before i
 ### Rooms — 4
 `bedroom` · `bathroom` · `kitchen` · `livingRoom`
 
-Connected in one continuous navigable space (a small flat/apartment floorplan), **not**
+> **⚠️ Superseded — see `docs/PHASE2B_CONTRACT.md`.** The product owner has since chosen
+> **discrete rooms with tappable doors**, explicitly prioritising reliability, camera framing,
+> child comprehension and predictable navigation over seamless streaming. The paragraph below
+> argued the opposite and is retained only to show what changed and why.
+>
+> The original worry — that door-to-door fades would hide the very thing being tested — was
+> answered by the Phase 2A spike instead: tap-to-walk, pathing around obstacles, arrival
+> latching and unreachable handling were all proven inside a single room, before any house
+> existed. Continuous walking across rooms was never the risk; the movement system was, and it
+> is now retired independently of how rooms are stitched together.
+
+~~Connected in one continuous navigable space (a small flat/apartment floorplan), **not**
 separate loaded scenes — the slice must prove continuous walking, and door-to-door fades would
-hide exactly the thing we are testing.
+hide exactly the thing we are testing.~~
 
 ### Objects — 18
 Reusing what already exists wherever possible.
