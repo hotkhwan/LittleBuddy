@@ -64,6 +64,7 @@ func test_name() -> String:
 
 func run():
 	var failures: Array = []
+	failures.append_array(_test_the_speak_button_is_mint())
 	failures.append_array(_test_palette_matches_the_locked_document())
 	failures.append_array(_test_no_pure_black_anywhere())
 	failures.append_array(_test_no_red_in_the_owned_ui())
@@ -314,3 +315,40 @@ static func _files_under(dir_path: String, suffixes: Array) -> PackedStringArray
 	for sub: String in dir.get_directories():
 		found.append_array(_files_under("%s/%s" % [dir_path, sub], suffixes))
 	return found
+
+
+## ART_BIBLE section 3 assigns `mint` to the speak button twice -- in the palette
+## row and again in the semantic-roles table. It is the colour this game uses to
+## mean "go", which is exactly what inviting a child to speak is.
+##
+## The in-house HUD shipped it as `softPink`: a legal palette token, so no
+## existing scan objected, but the wrong one and inconsistent with the Baby
+## Room's speak control. Colour-by-role is the kind of rule that only a test can
+## hold, because every candidate value is "in the palette".
+func _test_the_speak_button_is_mint():
+	var failures: Array = []
+
+	var path: String = "res://scripts/gameplay/house_hud.gd"
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return ["ui_palette: could not read %s" % path]
+	var source: String = file.get_as_text()
+	file.close()
+
+	var line: String = ""
+	for raw: String in source.split("\n"):
+		if raw.contains("\"SpeakButton\""):
+			line = raw.strip_edges()
+			break
+
+	if line.is_empty():
+		failures.append("ui_palette: no SpeakButton is created in %s; has it been renamed? "
+				% path + "This check would then be silently guarding nothing.")
+	elif not line.contains("MINT"):
+		failures.append(
+			("ui_palette: the speak button is tinted with something other than MINT (%s). "
+			+ "ART_BIBLE section 3 assigns mint to it in two places, and mint is this game's "
+			+ "\"go\" colour.") % line
+		)
+
+	return failures

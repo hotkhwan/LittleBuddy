@@ -34,8 +34,26 @@ that made `CharacterMovementController` testable in the spike.
 frame_room(framing: Dictionary) -> void
 focus_activity(focus: Vector3, radius := DEFAULT_ACTIVITY_RADIUS) -> void
 restore_room_frame() -> void
-refresh() -> void
+refresh(eased := false) -> void
+step(delta: float) -> void      # advances an eased move
+settle() -> void                # jump straight to the destination (tests)
+is_moving() -> bool
 ```
+
+Plus `scripts/camera/camera_focus.gd` — pure maths: given the points a beat needs on screen, it
+returns the look-at point and the radius of the smallest square containing them all.
+
+**Eased moves use a critically damped spring** (`EASE_SMOOTH_TIME = 0.55 s`): zero velocity at the
+start and no overshoot. A `Tween` was rejected because its fixed duration would have to restart
+every time the shot re-aims at a child who has taken a step, and a plain exponential lerp starts
+at full speed — which *is* the jolt. Room changes and resize re-fits stay **cuts**: a room change
+has a fade over it, and a rotated device must be correct on the very next frame.
+
+> **Trap, found by rendering:** `HouseWorld` adopts this script with `set_script()` on a
+> `Camera3D` that is already inside the tree, and a node only decides whether to call `_process()`
+> when it becomes ready — so it never got a frame and every pull-in froze part way with
+> `is_moving()` stuck true, while every headless test (which steps by hand) stayed green.
+> `_ensure_wired()` now calls `set_process(true)`.
 
 `focus_activity` takes a **world position**, not a `target_id`: the camera deliberately knows
 nothing about rooms or semantic ids, so the caller resolves `"kitchen.fridge"` first.

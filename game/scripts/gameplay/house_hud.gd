@@ -147,7 +147,14 @@ func build() -> void:
 	_next_button.pressed.connect(_on_next_pressed)
 	_next_button.visible = false
 
-	_speak_button = _add_button("SpeakButton", "Speak", SOFT_PINK)
+	# ART_BIBLE section 3 assigns mint to the speak button in two places: the
+	# palette row ("go, success, freshness -- speak button") and the semantic
+	# roles table ("Success / speak: mint"). It shipped soft pink, which is a
+	# legal token but the wrong one -- and semantically backwards, since mint is
+	# what this game uses to mean "go", which is exactly what inviting a child to
+	# speak is. The Baby Room's speak control has always been mint; this makes
+	# the two agree.
+	_speak_button = _add_button("SpeakButton", "Speak", MINT)
 	_speak_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	_speak_button.offset_left = -112.0
 	_speak_button.offset_top = -126.0
