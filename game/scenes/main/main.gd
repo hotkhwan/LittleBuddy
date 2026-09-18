@@ -197,8 +197,97 @@ func _ready() -> void:
 	_coming_soon_label.visible = false
 	_play_button.pressed.connect(_on_play_pressed)
 	_free_play_button.pressed.connect(_on_free_play_pressed)
+	_build_secondary_menu()
 
 	_arm_first_run()
+
+
+# ---------------------------------------------------------------------------
+# The secondary menu
+# ---------------------------------------------------------------------------
+
+## Dress Up and Grown-ups, as two small corner buttons.
+##
+## They are built HERE rather than in `main.tscn` because they must not compete
+## with Play and Free Play. Those two are the child's whole decision and they own
+## the bottom of the screen; a five-button row would make the important choice
+## harder to find, which is the opposite of what the brief asks for ("do not
+## overwhelm a child with text... large visual buttons and short labels").
+##
+## So the secondary pair sits in the top corners, smaller, out of the way of both
+## the characters and the primary buttons. Grown-ups is deliberately the plainest
+## thing on screen: it leads to a parental gate, and a child should not be drawn
+## to it.
+const CORNER_BUTTON_SIZE := Vector2(148.0, 96.0)
+const CORNER_MARGIN: float = 26.0
+const SECONDARY_FONT_SIZE: int = 26
+
+const DRESS_UP_SCENE: String = "res://scenes/activities/dressing.tscn"
+const PARENT_SCENE: String = "res://scenes/parent/parent_settings.tscn"
+
+var _dress_button: Button = null
+var _parent_button: Button = null
+
+
+func _build_secondary_menu() -> void:
+	var host: Node = _play_button.get_parent()
+	if host == null:
+		return
+
+	_dress_button = _corner_button("DressUpButton", "Dress Up", true)
+	if _dress_button != null:
+		host.add_child(_dress_button)
+		_dress_button.pressed.connect(_on_dress_up_pressed)
+
+	_parent_button = _corner_button("ParentButton", "Grown-ups", false)
+	if _parent_button != null:
+		host.add_child(_parent_button)
+		_parent_button.pressed.connect(_on_parent_pressed)
+
+
+func _corner_button(node_name: String, caption: String, left: bool) -> Button:
+	var button := Button.new()
+	button.name = node_name
+	# Styled from the same tres files the primary buttons use, so the menu keeps
+	# one visual language rather than gaining a third button look.
+	var normal: Resource = load("res://assets/ui/styles/btn_peach.tres" if left
+			else "res://assets/ui/styles/panel_cream.tres")
+	var pressed: Resource = load("res://assets/ui/styles/btn_peach_down.tres" if left
+			else "res://assets/ui/styles/panel_cream.tres")
+	if normal is StyleBox:
+		button.add_theme_stylebox_override("normal", normal)
+		button.add_theme_stylebox_override("hover", normal)
+		button.add_theme_stylebox_override("disabled", normal)
+	if pressed is StyleBox:
+		button.add_theme_stylebox_override("pressed", pressed)
+	button.text = caption
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", SECONDARY_FONT_SIZE)
+	button.add_theme_color_override("font_color", Color("#59422B"))
+	button.add_theme_color_override("font_pressed_color", Color("#59422B"))
+	button.add_theme_color_override("font_hover_color", Color("#59422B"))
+	button.set_anchors_preset(Control.PRESET_TOP_LEFT if left else Control.PRESET_TOP_RIGHT)
+	if left:
+		button.offset_left = CORNER_MARGIN
+		button.offset_right = CORNER_MARGIN + CORNER_BUTTON_SIZE.x
+	else:
+		button.offset_left = -(CORNER_MARGIN + CORNER_BUTTON_SIZE.x)
+		button.offset_right = -CORNER_MARGIN
+	button.offset_top = CORNER_MARGIN
+	button.offset_bottom = CORNER_MARGIN + CORNER_BUTTON_SIZE.y
+	return button
+
+
+func _on_dress_up_pressed() -> void:
+	# Free Play mode: dressing has no objective and no chapter, exactly like
+	# Free Play itself, so it must not be scored as story progress.
+	if not _enter_scene(DRESS_UP_SCENE, ProgressionMode.FREE_PLAY):
+		_show_unavailable()
+
+
+func _on_parent_pressed() -> void:
+	if not _enter_scene(PARENT_SCENE, ProgressionMode.FREE_PLAY):
+		_show_unavailable()
 
 
 # ---------------------------------------------------------------------------

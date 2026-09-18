@@ -301,7 +301,7 @@ func _build_stage(tool: SurfaceTool) -> void:
 		Kit.box(
 			tool,
 			Kit.at(Vector3(float(side) * outer, mid_y, bounds.get_center().y)),
-			Vector3(thickness, STAGE_WALL_HEIGHT, apron_extent * 0.55),
+			Vector3(thickness, STAGE_WALL_HEIGHT, apron_extent * 0.92),
 			wall_tone
 		)
 

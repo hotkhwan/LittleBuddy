@@ -12,6 +12,40 @@ Scheme: `MAJOR.MINOR.PATCH`, bumped on every change we make from now on.
 
 ---
 
+## 0.1.0 — 2026-09-19
+
+MINOR, not PATCH: two new player-visible systems (speech feedback, storage and
+tidy-up) and the caregiver appearing for the first time.
+
+### Added
+- **Speech feedback.** Nine states with a face each -- listening, processing,
+  "You said: ...", "Great!", "Try again!", microphone-off, unavailable, error.
+  Nothing reads as failure and every unhappy state names the touch fallback.
+- **Parent speech diagnostic**, behind the parental gate: 15 rows and a verdict
+  that names the ROOT cause, so "is the microphone working?" is answerable on
+  the device without a Mac and a UDID.
+- **Storage and tidy-up**, as pure domain. Containers declared as data; a toy box
+  whose lid visibly swings open; refusals that redirect rather than refuse.
+- **Door signs.** Every door now carries a glyph and the room name, colour-coded
+  per destination.
+- **PinkGirl Buddy on screen** for the first time, at 3,898 triangles and one
+  512-square atlas -- inside the art bible budget rather than over it.
+- **A new app icon**, rendered from the real characters.
+
+### Changed
+- Rooms fill the screen at every aspect ratio: the world got bigger rather than
+  the camera getting closer, so nothing is cropped.
+- Main menu gained Dress Up and Grown-ups without crowding Play and Free Play.
+
+### Fixed
+- A 100x unit error in both character wrappers: Meshy rigs export bones in
+  centimetres under a 0.01 armature, so the node chain applied it twice and
+  reported a 1.65 m character as 0.0165 m.
+- `exclude_filter` would have stripped PinkGirl out of the device build
+  entirely. The iOS pack also fell from 24.0 MB to 5.0 MB.
+- `meshy_rig.sh` silently overwrote another character's paid-for rigged assets;
+  it now requires an output stem and refuses to overwrite.
+
 ## 0.0.3 — 2026-09-18
 
 ### Added
