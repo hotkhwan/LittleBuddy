@@ -28,3 +28,26 @@ DerivedData/
 
 # Generated iOS speech plugin binaries
 game/ios/speech_plugin/bin/
+
+# --- Meshy raw character exports -------------------------------------------
+# Kept on disk at their authored paths, deliberately OUT of git history.
+#
+# Four raw exports are 63.6 MB, and Godot extracts their embedded textures
+# beside them for another ~20 MB -- ~84 MB added permanently to a 33 MB repo,
+# with no git-lfs configured. Every one of them is raw generator output that
+# MUST be retopologised before it can ship (155x-248x over the triangle budget)
+# and none has a rig, so none can be used as-is.
+#
+# The deciding argument is reversibility: adding them to git later is one
+# command, while taking 84 MB back out means rewriting published history, which
+# this project has forbidden outright. So the reversible choice wins.
+#
+# Provenance and restore steps: docs/MESHY_CHARACTER_AUDIT.md
+# To include them anyway, delete this block and `git add -f` the paths.
+game/assets/characters/**/*.glb
+game/assets/characters/**/*.jpg
+game/assets/characters/**/*.png
+# ...and their .import sidecars: a committed .import whose source is ignored
+# would make a fresh clone fail to load. Without them the wrapper simply
+# reports the model unavailable, which it already handles.
+game/assets/characters/**/*.import

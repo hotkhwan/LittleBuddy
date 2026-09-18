@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+; The addressable Big Buddy avatar. Deliberately a bare node with a script and
+; NO ext_resource for the GLB: the model is `load()`ed inside `build()`, so
+; merely referencing this scene does not pull 21 MB and three 2048-square
+; textures into memory, and the raw GLB hierarchy exists nowhere outside
+; `pink_girl_buddy.gd`. See that file's class doc -- the avatar is EXPERIMENTAL
+; and OFF by default.
+
+[ext_resource type="Script" path="res://scripts/characters/buddy/pink_girl_buddy.gd" id="1"]
+
+[node name="PinkGirlBuddy" type="Node3D"]
+script = ExtResource("1")

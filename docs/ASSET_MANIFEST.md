@@ -206,6 +206,46 @@ so the house and the UI cannot drift. The one additional value is the flat windo
 
 ---
 
+## Meshy-generated characters (2026-09-18) — LICENCE UNCONFIRMED
+
+**Status: experimental, disabled by default, raw files gitignored.** Full audit in
+`docs/MESHY_CHARACTER_AUDIT.md`.
+
+| source | original filename (`~/Downloads`) | repo path | generated | licence | attribution | commercial | notes |
+|---|---|---|---|---|---|---|---|
+| Meshy | `Meshy_AI_Use_only_the_pink_hai_0918081531_texture.glb` | `game/assets/characters/buddy/pinkGirl/pinkGirl_v01.glb` | 2026-09-18 | **as shown by Meshy at export — OWNER TO CONFIRM** | unknown | unknown | 619,890 tris · 3 × 2048² · no rig · no clips. Wrapper normalises scale/pivot/yaw and fixes the material; the GLB itself is unmodified. |
+| Meshy | `Meshy_AI_Create_one_original_s_0918083052_texture.glb` | `game/assets/characters/littleBuddy/baby/baby_standing_v01.glb` | 2026-09-18 | **OWNER TO CONFIRM** | unknown | unknown | 255,458 tris · 3 × 2048² · no rig · no clips. Baby, standing. |
+| Meshy | `Meshy_AI_Create_one_original_s_0918083143_texture.glb` | `game/assets/characters/littleBuddy/baby/baby_sitting_v01.glb` | 2026-09-18 | **OWNER TO CONFIRM** | unknown | unknown | 398,404 tris · 3 × 2048² · no rig · no clips. Baby, sitting. |
+| Meshy | `Meshy_AI_Create_one_original_s_0918083218_texture.glb` | `game/assets/characters/littleBuddy/baby/baby_sleeping_v01.glb` | 2026-09-18 | **OWNER TO CONFIRM** | unknown | unknown | 373,090 tris · 3 × 2048² · no rig · no clips. Baby, sleeping. |
+
+**No retopology or optimisation has been performed on any of them.** No Blender, `gltfpack` or
+`gltf-transform` exists in this environment, so none was possible. The only changes are made at
+runtime by the wrapper (material policy, normalisation) and the source files are byte-identical to
+what Meshy produced.
+
+### Why the licence column says "OWNER TO CONFIRM"
+
+A GLB carries no licence metadata — the `asset` block records only `pygltflib@v1.16.5` — and the
+Meshy export dialogue is not visible from this machine. The owner asked that CC BY 4.0 be recorded
+*exactly* if that is what Meshy showed; since that could not be verified here, **no licence was
+invented**.
+
+> **Standing policy conflict, flagged rather than resolved.** This manifest and `ART_BIBLE.md` §9
+> both state the project is **CC0-only and that CC-BY is explicitly excluded**, on the recorded
+> reasoning that a perpetual attribution obligation on a shipped children's app is not worth it
+> when a pure-CC0 path exists. If these exports are CC BY 4.0 they contradict that policy, and
+> either the assets or the policy has to give.
+>
+> A plausible resolution exists — Meshy's paid plans generally grant the *generating user*
+> commercial rights to their own generations, which is a different thing from a third-party CC-BY
+> asset — but it is **not verified here and is not asserted**.
+
+### Not supplied
+
+A **bunny mascot** was requested but no bunny GLB exists in `~/Downloads`; all three ambiguously
+named files are babies, confirmed by rendering each one. The only bunny present is a 2D PNG.
+`game/assets/characters/mascot/bunny/` exists and is empty.
+
 ## Sources deliberately NOT used
 
 | source | reason |

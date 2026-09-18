@@ -140,6 +140,40 @@ const FIRST_RUN_ROUTE: int = Route.HOUSE_WORLD
 const CAMERA_POSITION: Vector3 = Vector3(0.72, 0.80, 2.05)
 const CAMERA_TARGET: Vector3 = Vector3(0.0, 0.44, 0.0)
 
+## ## The Big Buddy avatar preview -- EXPERIMENTAL, OFF BY DEFAULT
+##
+## `scenes/characters/buddy/PinkGirlBuddy.tscn` wraps a generator-produced adult
+## caregiver the owner supplied. It is 155x over the art bible's triangle budget
+## and has no rig at all, so it does **not** ship: `PinkGirlBuddy.ENABLED` is
+## `false` and everything below is dead code in the shipped build. It is wired
+## here, and only here, because the title screen is the one place in the game
+## where a character is shown with no gameplay, no navigation and no interaction
+## attached to it -- so it is the one place a broken character cannot break
+## anything. See `pink_girl_buddy.gd` for the full measurement.
+##
+## Nothing about routing, saving, speech or the buttons is involved. With the
+## flag off this scene renders byte-for-byte as it always has, including the
+## camera, which is why the with-avatar framing is a separate pair of constants
+## rather than an adjustment to the ones above.
+const BUDDY_AVATAR_SCENE_PATH: String = "res://scenes/characters/buddy/PinkGirlBuddy.tscn"
+const BUDDY_AVATAR_SCRIPT_PATH: String = "res://scripts/characters/buddy/pink_girl_buddy.gd"
+
+## Behind Little Buddy and to his left, so the composition is "the child, with a
+## grown-up nearby" rather than "a grown-up, with a child". Art bible §4 is
+## explicit that adults must never dominate the frame, and a 1.65 m adult beside
+## a 0.85 m toddler will do exactly that unless it is set back.
+const BUDDY_AVATAR_POSITION: Vector3 = Vector3(-0.82, 0.0, -0.62)
+## Yaw 0 faces -Z for every character in this project, so 180 faces the camera.
+## 200 faces the camera and turns slightly toward Little Buddy at the origin --
+## §4: "warm, attentive, frequently looking *at* Little Buddy."
+const BUDDY_AVATAR_YAW_DEG: float = 200.0
+
+## The framing used ONLY when the avatar is on: further back and aimed higher, so
+## a 1.65 m figure and a 0.85 m one both sit clear of the title panel and the
+## buttons. Off, `CAMERA_POSITION`/`CAMERA_TARGET` are used unchanged.
+const CAMERA_POSITION_WITH_BUDDY: Vector3 = Vector3(0.94, 1.18, 3.05)
+const CAMERA_TARGET_WITH_BUDDY: Vector3 = Vector3(-0.22, 0.72, -0.30)
+
 @onready var _play_button: Button = %PlayButton
 @onready var _free_play_button: Button = %FreePlayButton
 @onready var _coming_soon_label: Label = %ComingSoonLabel
@@ -150,9 +184,14 @@ var _handed_off: bool = false
 
 
 func _ready() -> void:
+	var showing_buddy: bool = _add_buddy_avatar()
 	var camera: Camera3D = get_node_or_null("Camera3D") as Camera3D
 	if camera != null:
-		camera.look_at_from_position(CAMERA_POSITION, CAMERA_TARGET, Vector3.UP)
+		if showing_buddy:
+			camera.look_at_from_position(
+				CAMERA_POSITION_WITH_BUDDY, CAMERA_TARGET_WITH_BUDDY, Vector3.UP)
+		else:
+			camera.look_at_from_position(CAMERA_POSITION, CAMERA_TARGET, Vector3.UP)
 		camera.current = true
 
 	_coming_soon_label.visible = false
@@ -274,6 +313,52 @@ func _enter_first_run() -> bool:
 	if path.is_empty():
 		return false
 	return _enter_scene(path, ProgressionMode.FREE_PLAY)
+
+
+# ---------------------------------------------------------------------------
+# The Big Buddy avatar preview
+# ---------------------------------------------------------------------------
+
+## True when the avatar is switched on, present in this build and now in the
+## scene. False in every other case -- including a build with the flag on but the
+## asset stripped out, which must come up as an ordinary title screen rather than
+## as an error.
+##
+## Deliberately the LAST thing that can fail in `_ready()`'s critical path: it is
+## called before the camera is aimed but touches nothing else, so a missing or
+## unloadable avatar costs the menu nothing at all.
+func _add_buddy_avatar() -> bool:
+	if not buddy_avatar_enabled():
+		return false
+	if not ResourceLoader.exists(BUDDY_AVATAR_SCENE_PATH):
+		return false
+	var packed: Resource = load(BUDDY_AVATAR_SCENE_PATH)
+	if not (packed is PackedScene):
+		return false
+	var avatar: Node = (packed as PackedScene).instantiate()
+	if not (avatar is Node3D):
+		if avatar != null:
+			avatar.free()
+		return false
+	var placed := avatar as Node3D
+	placed.name = "BigBuddy"
+	placed.position = BUDDY_AVATAR_POSITION
+	placed.rotation = Vector3(0.0, deg_to_rad(BUDDY_AVATAR_YAW_DEG), 0.0)
+	add_child(placed)
+	return true
+
+
+## The switch, read from the wrapper so there is exactly ONE of it in the
+## project. `load()`ed rather than `preload()`ed for the same reason as every
+## other optional script in this file: a build without the avatar must still
+## bring the menu up.
+static func buddy_avatar_enabled() -> bool:
+	if not ResourceLoader.exists(BUDDY_AVATAR_SCRIPT_PATH):
+		return false
+	var script: Resource = load(BUDDY_AVATAR_SCRIPT_PATH)
+	if not (script is GDScript):
+		return false
+	return bool((script as GDScript).call("is_enabled"))
 
 
 static func _first_existing(paths: Array) -> String:
