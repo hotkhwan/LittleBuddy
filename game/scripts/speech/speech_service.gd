@@ -36,6 +36,9 @@ var _recognized_count: int = 0
 var _failed_count: int = 0
 var _last_failure_reason: String = ""
 var _launch_count: int = 1
+## The locale last requested. A capability flag, not content -- no word the child
+## said is ever held here. See `describe_diagnostics()`.
+var _last_locale: String = "en-US"
 
 
 func _ready() -> void:
@@ -127,6 +130,7 @@ func request_permission() -> void:
 
 
 func start_listening(locale: String = "en-US") -> void:
+	_last_locale = locale
 	if not is_available():
 		recognition_failed.emit("unavailable")
 		return
@@ -140,6 +144,42 @@ func stop_listening() -> void:
 
 func is_listening() -> bool:
 	return _backend != null and _backend.is_listening()
+
+
+## -- Parent diagnostics --------------------------------------------------------
+
+## A live snapshot for the on-screen parent diagnostic: capability flags and
+## counts only.
+##
+## It deliberately carries NO transcript. `test_speech_privacy_guard.gd` forbids
+## this file from holding recognised words in a member variable at all, and that
+## guard is right -- this is a long-lived autoload that writes a file to disk, so
+## anything it remembers is one bug away from being persisted. The parent panel
+## that wants to display the last transcript subscribes to `recognized` and holds
+## it in its own short-lived memory instead, which dies with the screen.
+##
+## This exists because a JSON file in the app container is not something a parent
+## can read on an iPhone at the kitchen table, and "is speech working?" is
+## exactly the question they need answered there.
+func describe_diagnostics() -> Dictionary:
+	return {
+		"platform": OS.get_name(),
+		"modelName": OS.get_model_name(),
+		"backend": get_backend_name(),
+		"nativeSingletonPresent": Engine.has_singleton(IOS_SINGLETON_NAME),
+		"isAvailable": is_available(),
+		"hasPermission": has_permission(),
+		"isListening": is_listening(),
+		"speechEnabledSetting": _speech_enabled(),
+		"ttsAvailable": _tts_available(),
+		"locale": _last_locale,
+		"lastFailureReason": _last_failure_reason,
+		"listenCount": _listen_count,
+		"recognizedCount": _recognized_count,
+		"failedCount": _failed_count,
+		"launchCount": _launch_count,
+		"fallbackActive": get_backend_name() != "ios",
+	}
 
 
 func get_backend_name() -> String:

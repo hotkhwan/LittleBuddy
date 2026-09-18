@@ -16,6 +16,7 @@ extends Control
 ## Preloaded rather than referenced by `class_name`, so this scene parses even
 ## before the editor has registered the new global classes.
 const ParentSettingsModelScript := preload("res://scripts/parent_settings/parent_settings_model.gd")
+const SpeechDiagnosticsScript := preload("res://scripts/ui/speech_diagnostics_panel.gd")
 const ParentalGateScript := preload("res://scripts/parent_settings/parental_gate.gd")
 
 ## Emitted when the grown-up taps Done (or the settings panel is closed).
@@ -47,6 +48,8 @@ var _syncing: bool = false
 @onready var _cancel_reset_button: Button = %CancelResetButton
 @onready var _status_label: Label = %StatusLabel
 @onready var _done_button: Button = %DoneButton
+var _speech_check: Control = null
+var _speech_check_button: Button = null
 
 
 func _ready() -> void:
@@ -64,10 +67,56 @@ func _ready() -> void:
 	_speed_slow.pressed.connect(_on_speed_chosen.bind(ParentSettingsModelScript.TTS_SPEED_SLOW))
 	_speed_normal.pressed.connect(_on_speed_chosen.bind(ParentSettingsModelScript.TTS_SPEED_NORMAL))
 
+	_build_speech_check()
+
 	if show_gate:
 		_show_locked()
 	else:
 		open_settings()
+
+
+## The on-device speech check, behind the parental gate.
+##
+## Added in code rather than in the .tscn so the panel stays one file to
+## maintain and cannot drift from `speech_diagnostics_panel.gd`'s row list.
+## Collapsed by default: a parent looking for Thai hints should not have to
+## scroll past a diagnostic, and a child who gets in here should find settings,
+## not a debug screen.
+func _build_speech_check() -> void:
+	if _status_label == null:
+		return
+	var parent: Node = _status_label.get_parent()
+	if parent == null:
+		return
+
+	_speech_check_button = Button.new()
+	_speech_check_button.name = "SpeechCheckButton"
+	_speech_check_button.text = "Check speech"
+	_speech_check_button.pressed.connect(_on_speech_check_toggled)
+	parent.add_child(_speech_check_button)
+	parent.move_child(_speech_check_button, _status_label.get_index())
+
+	_speech_check = SpeechDiagnosticsScript.new()
+	_speech_check.name = "SpeechCheck"
+	_speech_check.custom_minimum_size = Vector2(0.0, 420.0)
+	_speech_check.visible = false
+	parent.add_child(_speech_check)
+	parent.move_child(_speech_check, _speech_check_button.get_index() + 1)
+
+
+func _on_speech_check_toggled() -> void:
+	if _speech_check == null:
+		return
+	_speech_check.visible = not _speech_check.visible
+	if _speech_check.visible and _speech_check.has_method("refresh"):
+		_speech_check.call("refresh")
+	_speech_check_button.text = "Hide speech check" if _speech_check.visible else "Check speech"
+
+
+## True while the diagnostic is on screen. Used by the test to assert it is
+## hidden by default -- it is a tool, and a tool must not greet a child.
+func is_speech_check_visible() -> bool:
+	return _speech_check != null and _speech_check.visible
 
 
 ## Opens the panel directly, bypassing the gate (for callers with their own

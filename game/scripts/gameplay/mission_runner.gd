@@ -172,6 +172,19 @@ func request_listen() -> void:
 		_handler.call("request_listen")
 
 
+## Would `text` satisfy the task currently on screen?
+##
+## A pure QUERY -- it never advances anything, never awards and never speaks. It
+## exists so the speech feedback panel can show "Great!" the moment a child is
+## understood, instead of only echoing the words back and leaving them to guess
+## whether it counted. The mode still owns what actually happens next; this only
+## answers the question.
+func transcript_matches_current(text: String) -> bool:
+	if _handler == null or not _handler.has_method("matches_transcript"):
+		return false
+	return bool(_handler.call("matches_transcript", text))
+
+
 ## The guaranteed forward path: completes the current task with its full reward
 ## using touch alone. Wire this to any "I did it" affordance.
 func complete_current_by_touch() -> void:

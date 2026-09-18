@@ -65,6 +65,7 @@ const MissionRunnerScript := preload("res://scripts/gameplay/mission_runner.gd")
 ## The same runner, playing the day in the order it was authored. See the file.
 const HouseMissionRunnerScript := preload("res://scripts/gameplay/house_mission_runner.gd")
 const PromptSpeakerScript := preload("res://scripts/speech/prompt_speaker.gd")
+const SpeechBinderScript := preload("res://scripts/ui/speech_feedback_binder.gd")
 const VocabularyReviewScript := preload("res://scripts/content/vocabulary_review.gd")
 const ContentLibraryScript := preload("res://scripts/content/content_library.gd")
 const LevelSystemScript := preload("res://scripts/progression/level_system.gd")
@@ -135,6 +136,7 @@ var _level_id: String = ""
 var _last_mission_id: String = ""
 var _forced_next_mission_id: String = ""
 var _new_stickers: Array = []
+var _speech_binder: RefCounted = null
 
 var _plan: Dictionary = {}
 ## True once Little Buddy is standing where the task happens, which is what
@@ -220,6 +222,7 @@ func bind(world: Node) -> void:
 	_hud.call("build")
 	_hud.connect("skip_pressed", _on_skip_pressed)
 	_hud.connect("speak_pressed", _on_speak_pressed)
+	_bind_speech_feedback()
 
 	_rewards = RewardManagerScript.new()
 	_rewards.name = "RewardManager"
@@ -733,14 +736,38 @@ func _on_skip_pressed() -> void:
 		_runner.call("skip_current_task")
 
 
+## Connects the HUD's speech panel to the real service, once.
+##
+## Without this the child presses Speak and nothing on screen changes, which is
+## indistinguishable from the microphone being broken -- the exact report this
+## was built from.
+func _bind_speech_feedback() -> void:
+	if _speech_binder != null or _hud == null or not _hud.has_method("get_speech_feedback"):
+		return
+	var panel: Control = _hud.call("get_speech_feedback")
+	if panel == null:
+		return
+	_speech_binder = SpeechBinderScript.new()
+	_speech_binder.call("bind", panel, _autoload("SpeechService"),
+			Callable(self, "_transcript_matches"))
+
+
+## Did what the child said satisfy the task in front of them? Answered by the
+## runner, which owns the task; the panel only needs a yes or no so it can show
+## "Great!" instead of merely echoing the words back.
+func _transcript_matches(transcript: String) -> bool:
+	if _runner == null or not _runner.has_method("transcript_matches_current"):
+		return false
+	return bool(_runner.call("transcript_matches_current", transcript))
+
+
 func _on_speak_pressed() -> void:
 	if not _running or _runner == null:
 		return
-	var speech: Node = _autoload("SpeechService")
-	if speech != null and speech.has_method("has_permission") and not bool(speech.call("has_permission")):
-		if speech.has_method("request_permission"):
-			speech.call("request_permission")
-			return
+	# The panel explains an impossible attempt (no permission, no backend) rather
+	# than the press silently doing nothing.
+	if _speech_binder != null and not bool(_speech_binder.call("on_speak_pressed")):
+		return
 	_runner.call("request_listen")
 
 

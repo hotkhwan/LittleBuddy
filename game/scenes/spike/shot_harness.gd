@@ -37,6 +37,19 @@ func _run(job: String, extra: String) -> void:
 					_scene.call("go_to_room", extra)
 		"nursery":
 			_load("res://scenes/baby_room/baby_room.tscn")
+		"speech":
+			# The speech panel on its own, over a neutral field, so each state can
+			# be reviewed without driving a whole mission to reach it.
+			var bg := ColorRect.new()
+			bg.color = Color(0.604, 0.753, 0.851)
+			bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			add_child(bg)
+			var panel_script: GDScript = load("res://scripts/ui/speech_feedback.gd")
+			var panel: Control = panel_script.new()
+			add_child(panel)
+			panel.call("build")
+			panel.call("set_state", int(extra.to_int()), "milk")
+			_scene = panel
 		_:
 			_load(job)  # treat the job as a raw scene path
 	_settle = 18

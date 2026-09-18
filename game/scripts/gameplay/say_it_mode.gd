@@ -87,6 +87,12 @@ func on_transcript(text: String) -> void:
 
 ## Pure wrapper around `IntentMatcher`, loaded by path so this script never
 ## depends on Godot's global class cache.
+## Instance-side query for the task on screen. Pure: asks the same matcher the
+## real path uses, changes nothing. See `MissionRunner.transcript_matches_current`.
+func matches_transcript(text: String) -> bool:
+	return matches_task(text, _task)
+
+
 static func matches_task(transcript: String, task: Dictionary) -> bool:
 	var matcher: GDScript = load(INTENT_MATCHER_SCRIPT_PATH) as GDScript
 	if matcher == null:

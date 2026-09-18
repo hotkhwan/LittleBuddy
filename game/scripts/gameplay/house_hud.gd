@@ -19,6 +19,8 @@ extends Control
 ##     poking a dead button learns the wrong lesson.
 
 ## The locked palette (SLICE_CONTRACT §7 / ART_BIBLE).
+const SpeechFeedbackScript := preload("res://scripts/ui/speech_feedback.gd")
+
 const CREAM: Color = Color("#FFF6E5")
 const DUSTY_BLUE: Color = Color("#9AC0D9")
 const SOFT_PINK: Color = Color("#FFC1CC")
@@ -99,6 +101,7 @@ var _encouragement: Label = null
 var _dots: HBoxContainer = null
 var _next_button: Button = null
 var _speak_button: Button = null
+var _speech_feedback: Control = null
 var _word: Label = null
 var _word_thai: Label = null
 
@@ -201,6 +204,14 @@ func build() -> void:
 	_speak_button.offset_bottom = BUTTON_BOTTOM
 	_speak_button.pressed.connect(_on_speak_pressed)
 	_speak_button.visible = false
+
+	# The panel that tells the child what the microphone is doing. Added last so
+	# it draws over the buttons, and it ignores the mouse so it can never eat a
+	# tap meant for Speak underneath it.
+	_speech_feedback = SpeechFeedbackScript.new()
+	_speech_feedback.name = "SpeechFeedback"
+	add_child(_speech_feedback)
+	_speech_feedback.call("build")
 
 	# The Free Play word card. Low and centred, so it sits under the object the
 	# child just touched rather than over it, and above where thumbs rest on an
@@ -469,6 +480,14 @@ func _on_next_pressed() -> void:
 
 func _on_speak_pressed() -> void:
 	speak_pressed.emit()
+
+
+## The speech state panel, so the director can bind it to `SpeechService`. The
+## HUD owns the node; it deliberately does not own the wiring, because the HUD
+## must stay renderable in a test with no autoloads.
+func get_speech_feedback() -> Control:
+	build()
+	return _speech_feedback
 
 
 ## -- Construction helpers ------------------------------------------------------
