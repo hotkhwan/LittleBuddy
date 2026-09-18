@@ -45,6 +45,24 @@ extends RefCounted
 ## * **A near-miss is forgiven.** A tap that lands just off the navigation mesh
 ##   (a child's thumb on the skirting board) walks to the nearest standable point
 ##   instead of being refused.
+##
+## ## Two ways to drive, one state machine
+##
+## Tap-to-walk gives this object a DESTINATION. The virtual thumbstick
+## (`scripts/input/virtual_joystick.gd`, added after a physical-device request for
+## RoV-style control) gives it a DIRECTION instead, through `set_drive()`.
+##
+## Direct drive enters here rather than being applied to the body behind this
+## object's back, and that is the whole point: if the node wrote a velocity of its
+## own, the state machine would no longer know what the character was doing and
+## `Idle/Walking/Interacting/Carrying/Disabled` would stop being true. Driving is
+## WALKING, exactly like a pathed walk, with `get_target_id()` empty because there
+## is no destination -- and `set_disabled(true)` still refuses it, the arrival
+## latch still fires at most once per request, and a drive never fires one at all.
+##
+## Taking the stick REPLACES a path in progress, the same way a second tap
+## replaces the first: there is one `_path` and one `_drive_input`, and the two
+## can never both be steering.
 
 const NavMath := preload("res://scripts/navigation/nav_math.gd")
 const NavigationProviderScript := preload("res://scripts/navigation/navigation_provider.gd")
@@ -129,6 +147,32 @@ const SNAP_RADIUS: float = 0.9
 ## state" guarantee.
 const DEFAULT_ACTION_SEC: float = 1.2
 
+## -- Direct drive (the virtual thumbstick) ------------------------------------
+
+## How quickly the driven velocity catches up with the thumb, m/s^2. At 8.0 the
+## character reaches full walk in 0.13 s and stops in 0.13 s: immediate enough to
+## feel like direct control, gradual enough that letting go is a stop rather than
+## a freeze-frame. "Release = stop, smoothly" is this number.
+const DRIVE_ACCELERATION: float = 8.0
+
+## Below this the coast-down is over and the character rests. Small enough to be
+## invisible, large enough that `move_toward` cannot leave a millimetre-per-second
+## residue that keeps him in WALKING forever.
+const DRIVE_STOP_SPEED: float = 0.02
+
+## How far off the navigation mesh a driven step may stray before it is clamped.
+## Tap-to-walk cannot leave the mesh -- it follows a path that was built on it --
+## but direct drive points wherever a thumb points, so this is the only thing
+## standing between a four-year-old and the outside of the room. A child stranded
+## off the navmesh is a dead end, and this game does not have those.
+##
+## SMALLER THAN ONE FRAME OF TRAVEL, deliberately. At `WALK_SPEED` and 60 Hz a
+## frame covers 17.5 mm, so a tolerance of 20 mm let every other frame slip past
+## the mesh edge unclamped and get pulled back on the next one: rendered against
+## a wall, the character sat in a 2 cm buzz with the walk velocity never settling.
+## At 5 mm the edge holds still.
+const DRIVE_NAV_TOLERANCE: float = 0.005
+
 var _provider: RefCounted = null
 
 var _state: int = State.IDLE
@@ -149,6 +193,14 @@ var _interaction_ready_emitted: bool = false
 ## Increments once per *accepted, path-replacing* request. Lets a caller (and a
 ## test) prove that a second tap replaced the first rather than queueing behind it.
 var _move_serial: int = 0
+
+## The thumbstick's direction, magnitude 0..1. Zero while nobody is driving.
+var _drive_input: Vector3 = Vector3.ZERO
+## True while a thumb is actually on the stick. Stays false through the coast to
+## a stop after release, which is why both are needed.
+var _drive_active: bool = false
+## The smoothed velocity direct drive is currently applying, m/s.
+var _drive_velocity: Vector3 = Vector3.ZERO
 
 var _action_name: String = ""
 var _action_remaining: float = 0.0
@@ -220,11 +272,86 @@ func request_move(destination: Vector3, options: Dictionary = {}) -> int:
 	# Anti-jitter: a second tap essentially on top of the current destination is
 	# honoured by doing nothing at all, rather than by rebuilding the path and
 	# restarting the walk animation. Ten taps in the same spot = one smooth walk.
-	if _state == State.WALKING and NavMath.is_within(effective, _destination, ARRIVAL_RADIUS):
+	if not _drive_active and _state == State.WALKING \
+			and NavMath.is_within(effective, _destination, ARRIVAL_RADIUS):
 		return result
 
+	# A destination replaces a direction, exactly as a second tap replaces the
+	# first. The stick re-asserts itself on the next frame if a thumb is still on
+	# it, so whichever the child touched last is what steers -- and the two are
+	# never both steering, which is the thing that would make the destination
+	# fight the thumb.
+	_drive_active = false
+	_drive_input = Vector3.ZERO
+	# The coast-down is dropped as well, or `advance()` would keep taking the
+	# driven branch and quietly ignore the path it had just been handed.
+	_drive_velocity = Vector3.ZERO
 	_adopt_path(path, effective, options)
 	return result
+
+
+## -- Direct drive --------------------------------------------------------------
+
+## Steers by DIRECTION rather than by destination: `(x, z)` is a horizontal
+## vector with magnitude 0..1, which is scaled to `WALK_SPEED`.
+##
+## Re-asserted every frame while a thumb is on the stick, so it is deliberately
+## cheap and idempotent: only the FIRST call of a gesture tears down whatever the
+## character was doing. That teardown is the "grabbing the stick cancels any
+## in-progress tap-to-walk path cleanly" guarantee -- the path is dropped, no
+## arrival is emitted (a cancelled walk did not arrive), the arrival latches are
+## closed so a stale one can never fire later, and a held posture is released
+## because you cannot walk while asleep.
+##
+## Refused while DISABLED, like every other request. Returns true when the
+## character is now under direct drive.
+func set_drive(x: float, z: float) -> bool:
+	if _disabled:
+		return false
+	var input: Vector3 = Vector3(x, 0.0, z)
+	var magnitude: float = input.length()
+	if magnitude <= 0.0:
+		clear_drive()
+		return false
+	if magnitude > 1.0:
+		# A ceiling, not a suggestion. `WALK_SPEED` is the top of the walk range
+		# for a 0.22 m leg (Froude ~ 0.51); anything past it reads as a run and no
+		# walk cycle can be authored to cover it.
+		input /= magnitude
+
+	if not _drive_active:
+		_clear_path()
+		_action_name = ""
+		_action_remaining = 0.0
+		_action_holds = false
+		_held_action = ""
+		_arrived_emitted = true
+		_interaction_ready_emitted = true
+
+	_drive_active = true
+	_drive_input = input
+	_state = State.WALKING
+	return true
+
+
+## The thumb left. The character keeps its momentum for a fraction of a second
+## and then rests -- see `DRIVE_ACCELERATION`.
+func clear_drive() -> void:
+	_drive_active = false
+	_drive_input = Vector3.ZERO
+
+
+## True while a thumb is on the stick. False during the coast to a stop, which is
+## why `is_moving()` is the question to ask about motion and this is the question
+## to ask about input.
+func is_driving() -> bool:
+	return _drive_active
+
+
+## The velocity direct drive is applying right now, m/s. Never longer than
+## `WALK_SPEED`.
+func get_drive_velocity() -> Vector3:
+	return _drive_velocity
 
 
 ## Plays a semantic action ("drink", "brushTeeth", "celebrate"...).
@@ -247,6 +374,8 @@ func request_action(action_name: String, duration: float = -1.0, hold: bool = fa
 	if action_name.strip_edges().is_empty():
 		return false
 	_clear_path()
+	clear_drive()
+	_drive_velocity = Vector3.ZERO
 	_held_action = ""
 	_action_name = action_name
 	_action_holds = hold
@@ -277,6 +406,8 @@ func is_holding() -> bool:
 ## walk did not arrive.
 func cancel() -> void:
 	_clear_path()
+	clear_drive()
+	_drive_velocity = Vector3.ZERO
 	_action_name = ""
 	_action_remaining = 0.0
 	_action_holds = false
@@ -304,6 +435,10 @@ func set_disabled(disabled: bool) -> void:
 	_disabled = disabled
 	if disabled:
 		_clear_path()
+		# The stick, too. A thumb still resting on a live joystick behind a summary
+		# screen must not keep walking Little Buddy into a wall nobody can see.
+		clear_drive()
+		_drive_velocity = Vector3.ZERO
 		_action_name = ""
 		_action_remaining = 0.0
 		_action_holds = false
@@ -351,13 +486,19 @@ func advance(position: Vector3, yaw: float, delta: float) -> Dictionary:
 	if _disabled:
 		return step
 
-	match _state:
-		State.WALKING:
-			_advance_walking(position, yaw, delta, step)
-		State.INTERACTING:
-			_advance_interacting(delta, step)
-		_:
-			pass
+	if _drive_active or not _drive_velocity.is_zero_approx():
+		# Direct drive takes precedence over the match below rather than living
+		# inside it, because the coast-down after the thumb leaves still has to be
+		# integrated on frames when `_state` has already fallen back to resting.
+		_advance_driven(position, yaw, delta, step)
+	else:
+		match _state:
+			State.WALKING:
+				_advance_walking(position, yaw, delta, step)
+			State.INTERACTING:
+				_advance_interacting(delta, step)
+			_:
+				pass
 
 	step["state"] = _state
 	step["stateName"] = state_name(_state)
@@ -406,6 +547,68 @@ func _advance_walking(position: Vector3, yaw: float, delta: float, step: Diction
 			_interaction_ready_emitted = true
 			step["interactionReady"] = true
 		_finish_walk(step)
+
+
+## One frame of thumbstick control.
+##
+## Three things happen here and all three are load-bearing:
+##
+##   1. the wanted velocity is approached rather than snapped to, so a grab
+##      accelerates and a release decelerates (`DRIVE_ACCELERATION`);
+##   2. the result is hard-clamped to `WALK_SPEED`, because the stick may never
+##      make Little Buddy faster than the walk cycle he is animated with;
+##   3. the resulting STEP is clamped to the navigation mesh, so a thumb pointed
+##      at a wall slides along it and a thumb pointed out of the room does
+##      nothing at all.
+func _advance_driven(position: Vector3, yaw: float, delta: float, step: Dictionary) -> void:
+	var wanted: Vector3 = _drive_input * WALK_SPEED if _drive_active else Vector3.ZERO
+	_drive_velocity = _drive_velocity.move_toward(wanted, DRIVE_ACCELERATION * maxf(delta, 0.0))
+	if _drive_velocity.length() > WALK_SPEED:
+		_drive_velocity = _drive_velocity.normalized() * WALK_SPEED
+	if not _drive_active and _drive_velocity.length() <= DRIVE_STOP_SPEED:
+		_drive_velocity = Vector3.ZERO
+
+	var velocity: Vector3 = _clamp_to_navigable(position, _drive_velocity, delta)
+	step["velocity"] = velocity
+	if velocity.length_squared() > 0.0:
+		# Turns WHILE moving, exactly as a pathed walk does -- stopping to turn
+		# would put latency back into the gesture the stick exists to make
+		# immediate.
+		var heading: float = NavMath.yaw_towards(position, position + velocity, yaw)
+		step["yaw"] = NavMath.step_yaw(yaw, heading, TURN_SPEED * delta)
+
+	_state = State.WALKING if not _drive_velocity.is_zero_approx() else _resting_state()
+
+
+## Keeps a driven step on the navigation mesh.
+##
+## `map_get_closest_point()` is the whole trick: propose where this frame would
+## land, ask the mesh for the nearest point that is actually standable, and if
+## the two differ meaningfully, go THERE instead. Pushed straight at a wall the
+## nearest point is directly behind the wall face and the character stops; pushed
+## diagonally it is further along the wall and the character slides. Both fall
+## out of the same two lines, and neither can put him outside the room.
+##
+## A provider with no live map (the straight-line fallback, and every headless
+## test that does not ask for one) returns the point unchanged, so this is a
+## no-op there rather than a refusal to move.
+func _clamp_to_navigable(position: Vector3, velocity: Vector3, delta: float) -> Vector3:
+	if velocity.length_squared() <= 0.0 or delta <= 0.0:
+		return velocity
+	if _provider == null or not _provider.has_method("snap_to_navigable"):
+		return velocity
+
+	var proposed: Vector3 = position + velocity * delta
+	var snapped: Vector3 = _provider.call("snap_to_navigable", proposed)
+	snapped.y = proposed.y
+	if NavMath.flat_distance(snapped, proposed) <= DRIVE_NAV_TOLERANCE:
+		return velocity
+
+	var corrected: Vector3 = (snapped - position) / delta
+	corrected.y = 0.0
+	if corrected.length() > WALK_SPEED:
+		corrected = corrected.normalized() * WALK_SPEED
+	return corrected
 
 
 func _advance_interacting(delta: float, step: Dictionary) -> void:

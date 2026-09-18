@@ -1,3 +1,6 @@
+.env
+.env.*
+
 # Godot editor cache
 game/.godot/
 game/android/

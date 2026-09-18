@@ -47,10 +47,49 @@ const WORD_SECONDS: float = 3.2
 const DOT_SIZE: float = 26.0
 const DOT_GAP: float = 12.0
 
+## -- Where the two child-facing buttons live --------------------------------
+##
+## Named rather than typed inline, because a second input layer now has to stay
+## out of their way: the virtual thumbstick (`scripts/input/virtual_joystick.gd`)
+## owns the bottom-left of the screen, and a stick that overlapped Next or Speak
+## would swallow a press a child meant for a button. `test_joystick.gd` computes
+## both rects from these numbers and asserts the stick clears them at every
+## aspect ratio the game ships at, so the layout cannot drift into a collision
+## without something going red.
+
+## Both buttons sit on the same line, measured up from the bottom edge.
+const BUTTON_TOP: float = -126.0
+const BUTTON_BOTTOM: float = -34.0
+## Next is anchored bottom-RIGHT; these are offsets from the right edge.
+const NEXT_LEFT: float = -260.0
+const NEXT_RIGHT: float = -36.0
+## Speak is anchored centre-bottom and is this wide either side of the middle.
+const SPEAK_HALF_WIDTH: float = 112.0
+
 const ENCOURAGEMENT_SEC: float = 1.8
 
 signal skip_pressed()
 signal speak_pressed()
+
+
+## Where Next and Speak land in a viewport of `viewport_size`, as
+## `{"next": Rect2, "speak": Rect2}`.
+##
+## Static and pure: it is the same arithmetic `build()` hands to the anchor
+## presets, expressed so another layer can ask the question without a viewport,
+## a tree or a rendered frame. The thumbstick's layout test is the only caller
+## today, and it is the reason this exists.
+static func button_rects(viewport_size: Vector2) -> Dictionary:
+	var top: float = viewport_size.y + BUTTON_TOP
+	var height: float = BUTTON_BOTTOM - BUTTON_TOP
+	return {
+		"next": Rect2(
+			viewport_size.x + NEXT_LEFT, top, NEXT_RIGHT - NEXT_LEFT, height
+		),
+		"speak": Rect2(
+			viewport_size.x * 0.5 - SPEAK_HALF_WIDTH, top, SPEAK_HALF_WIDTH * 2.0, height
+		),
+	}
 
 var _prompt: Label = null
 var _hint: Label = null
@@ -140,10 +179,10 @@ func build() -> void:
 
 	_next_button = _add_button("NextButton", "Next", DUSTY_BLUE)
 	_next_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_next_button.offset_left = -260.0
-	_next_button.offset_top = -126.0
-	_next_button.offset_right = -36.0
-	_next_button.offset_bottom = -34.0
+	_next_button.offset_left = NEXT_LEFT
+	_next_button.offset_top = BUTTON_TOP
+	_next_button.offset_right = NEXT_RIGHT
+	_next_button.offset_bottom = BUTTON_BOTTOM
 	_next_button.pressed.connect(_on_next_pressed)
 	_next_button.visible = false
 
@@ -156,10 +195,10 @@ func build() -> void:
 	# the two agree.
 	_speak_button = _add_button("SpeakButton", "Speak", MINT)
 	_speak_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_speak_button.offset_left = -112.0
-	_speak_button.offset_top = -126.0
-	_speak_button.offset_right = 112.0
-	_speak_button.offset_bottom = -34.0
+	_speak_button.offset_left = -SPEAK_HALF_WIDTH
+	_speak_button.offset_top = BUTTON_TOP
+	_speak_button.offset_right = SPEAK_HALF_WIDTH
+	_speak_button.offset_bottom = BUTTON_BOTTOM
 	_speak_button.pressed.connect(_on_speak_pressed)
 	_speak_button.visible = false
 

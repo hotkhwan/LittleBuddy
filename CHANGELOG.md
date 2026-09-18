@@ -12,6 +12,72 @@ Scheme: `MAJOR.MINOR.PATCH`, bumped on every change we make from now on.
 
 ---
 
+## 0.0.3 — 2026-09-18
+
+### Added
+- **Experimental Little Buddy baby avatar** — the three Meshy baby exports, wrapped as **one
+  character in three poses** at `scenes/characters/little_buddy/BabyLittleBuddy.tscn` and
+  `scripts/characters/little_buddy/baby_little_buddy.gd`. That script is the **only** file in the
+  project that names those GLBs or knows their node layout, and a test enforces it.
+- **A semantic pose API.** `set_pose("sleeping" | "sitting" | "standing")` loads that pose's GLB
+  the first time it is asked for and hides the others; selecting one pose never pays for the other
+  two (together 1,026,952 triangles and ~42 MB). `sitting` is the default because feeding is
+  Chapter 2's core loop. This is a design, not a workaround: Chapter 2's baby **deliberately does
+  not walk**, so a pose-locked mesh costs this character far less than it costs one that must.
+- **A Chapter 2 view-state adapter.** `set_view_state(idle|hungry|drinking|happy|hugging)` and
+  `get_view_state_name()` answer exactly as `BabyView3D` does, including its fall back to `idle`
+  for an unknown state, so existing callers keep their vocabulary. All five feeding-loop states
+  map to `sitting` on purpose — with no rig a pose change is an instantaneous mesh cut, and a baby
+  that teleported from seated to standing between `hungry` and `happy` would read as a glitch, not
+  as a reaction. `sleeping` and `standing` are addressed by scene context instead.
+- **One character size across three poses**, which is the specific trap in this asset set: Meshy
+  normalised all three files to the same 1.903-unit box, so scaling each to the same rendered
+  height would have left a sitting baby a quarter larger than the standing one. Each pose carries a
+  measured `heightFraction` (1.000 / 0.796 / 1.000), cross-checked by two independent methods —
+  mesh surface area and head width — and `describe_budget()` reports `characterHeight` derived back
+  through the real transform chain so the test asserts it rather than trusting the table.
+- Normalisation in the wrapper, derived from the measured AABB: scaled to **0.78 m**
+  (`CHARACTER_AGE_STAGES.md` §2, Infant, locked and load-bearing for the nursery camera), lowest
+  point at the wrapper's origin, horizontally centred, **yaw 0 faces −Z** like every other
+  character. The `sleeping` export is a **supine figure Meshy authored upright** — it is reclined
+  onto its back in the wrapper, head toward −X so it lies across the frame the way a baby lies
+  along a crib. Found by rendering it; no assertion could have caught it.
+- Art-bible §7 material policy applied per pose to a *duplicate* of the imported material:
+  `metallic` 1.0 → 0.0, normal map removed, ORM map dropped, `cull_mode` DISABLED → BACK, roughness
+  0.9. Three 2048² textures reduce to one at runtime. The GLBs on disk stay byte-identical.
+- `get_socket()`, `get_height()`, `get_family()` from `CHARACTER_AGE_STAGES.md` §9.1, honouring
+  guarantee 2 (never returns null; a missing socket returns the root).
+- `test_baby_avatar.gd` — 13 assertion groups covering the gate, the refusal to fake animation, the
+  completing no-op, the pose API and its laziness, the one-character-size rule, normalisation,
+  material policy, and that no Meshy filename leaks outside the wrapper. Green **with and without**
+  the gitignored exports present.
+- `docs/shots/baby_*.png` — all three poses beside the procedural `BabyView3D` at 1334×616 and
+  1024×768, a face-to-face comparison, and each pose rendered in the live nursery.
+
+### Notes
+- The avatar is **disabled by default** (`BabyLittleBuddy.ENABLED = false`) and `BabyView3D`
+  remains the Chapter 2 baby that ships, because validation demonstrably does not pass: **255,458 /
+  398,404 / 373,090 triangles** against the §10 budget of 4,000 (64× / 100× / 93×; the Infant is
+  capped tighter still at 3,000), three 2048² textures per pose, and **no skin, no skeleton and no
+  animation clips** on any of them. The gate is enforced by the test, not by a comment.
+- **Nothing fakes animation.** `can_play_action()` asks the model and answers `false` for every
+  action; `play_action()` is a timed, completing no-op that still emits `action_started` and
+  `action_finished` so no caller can hang. A pose swap is deliberately *not* routed through the
+  action vocabulary.
+- **Two facing conventions exist in this project and they are opposites.** `toddler_view.gd` and
+  `pink_girl_buddy.gd` face −Z at yaw 0; `baby_view_3d.gd` faces **+Z**, and the nursery camera
+  looks straight at it. This wrapper follows the character convention (−Z), so dropping it onto
+  `baby_room.tscn`'s `BabyView` node at identity would show a child the back of the baby's head
+  with nothing to warn them. The yaw a Chapter 2 scene needs is named in the wrapper as
+  `CHAPTER_2_YAW_DEG`.
+- `get_mouth_position()` / `get_hug_position()` are **deliberately absent**. §9.1 forbids
+  hardcoding a socket position and §9.3 maps both onto `get_socket()`; a socket is a node in a
+  skeleton, and there is no skeleton. Approximating them from a bounding box would put INTERACT's
+  drop zones wherever the next re-export happens to put the head. **This, and not the triangle
+  count, is what stops the wrapper being a drop-in.**
+
+---
+
 ## 0.0.2 — 2026-09-18
 
 ### Added

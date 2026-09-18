@@ -19,6 +19,8 @@ extends CharacterBody3D
 ##
 ##     character.move_to("milkBottle")        # walk to a named thing
 ##     character.move_to_ground(1.2, -0.4)    # walk to a floor position
+##     character.drive(0.0, -0.8)             # thumbstick: a direction, not a place
+##     character.stop_driving()               # ...and let go
 ##     character.play_action("drink")         # show a semantic action
 ##     character.play_action("sit")           # ...or take up a posture
 ##     character.release_action()             # ...and leave it again
@@ -136,6 +138,43 @@ func move_to_ground(x: float, z: float) -> bool:
 		move_failed.emit("", "disabled")
 		return false
 	return _submit_move(Vector3(x, _world_position().y, z), {"targetId": ""}, "")
+
+
+## Walks in a DIRECTION rather than to a place: the virtual thumbstick.
+##
+## `(x, z)` is a horizontal vector in WORLD space with magnitude 0..1, scaled to
+## `CharacterMovementController.WALK_SPEED`. Plain floats, like everything else
+## here, so the input layer never needs a 3D type either.
+##
+## Called every physics frame while a thumb is on the stick. The first call of a
+## gesture cancels any tap-to-walk path in progress (no arrival is emitted; a
+## cancelled walk did not arrive) and releases a held posture; the rest are
+## cheap. Refused while disabled, exactly like `move_to()`.
+##
+## Added after a physical-device request for MOBA/RoV-style control. See
+## `scripts/input/virtual_joystick.gd` for why that overrides the game bible's
+## "no virtual joystick in early versions" -- it was decided, not overlooked.
+func drive(x: float, z: float) -> bool:
+	_ensure_wired()
+	if not bool(_controller.call("set_drive", x, z)):
+		return false
+	_sync_state_signal()
+	return true
+
+
+## The thumb left the stick. Little Buddy coasts to a stop over a fraction of a
+## second and returns to idle. Safe to call when he was never driving.
+func stop_driving() -> void:
+	_ensure_wired()
+	_controller.call("clear_drive")
+	_sync_state_signal()
+
+
+## True while a thumb is on the stick. Not the same question as `is_busy()`:
+## `is_busy()` stays true through the coast to a stop, this does not.
+func is_driving() -> bool:
+	_ensure_wired()
+	return bool(_controller.call("is_driving"))
 
 
 ## Shows a semantic action: "drink", "eat", "sit", "brushTeeth", "celebrate"...
@@ -344,6 +383,10 @@ func step_movement(delta: float) -> void:
 	# flashing one frame of empty-handed idle.
 	if bool(step.get("actionFinished", false)):
 		_apply_carry_effect(String(step.get("actionName", "")))
+	# The walk cycle is authored for exactly WALK_SPEED. The thumbstick made
+	# every speed between zero and that reachable, so the clip is played at the
+	# rate the body is actually moving and the feet stop skating.
+	_sync_locomotion_rate(horizontal.length())
 	_sync_animation(step)
 
 	if bool(step.get("arrived", false)):
@@ -422,6 +465,15 @@ func _apply_carry_effect(action_name: String) -> void:
 	if effect == null:
 		return
 	_controller.call("set_carrying", bool(effect))
+
+
+## Tells the animation driver how fast the body is really going, as a fraction
+## of `WALK_SPEED`. Duck-typed: a driver without the method simply has no clips
+## to scale.
+func _sync_locomotion_rate(speed: float) -> void:
+	if _driver == null or not _driver.has_method("set_locomotion_scale"):
+		return
+	_driver.call("set_locomotion_scale", speed / MovementControllerScript.WALK_SPEED)
 
 
 ## `rest()`, unless a posture is being held -- in which case resting IS the pose.

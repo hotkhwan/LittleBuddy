@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+; The addressable Little Buddy (baby) avatar. Deliberately a bare node with a
+; script and NO ext_resource for any of the three GLBs: a pose is `load()`ed
+; inside `set_pose()`, so merely referencing this scene pulls nothing, and
+; selecting ONE pose never pays for the other two. The raw GLB hierarchy and
+; filenames exist nowhere outside `baby_little_buddy.gd`.
+;
+; This does NOT replace `scripts/baby/baby_view_3d.gd`, which remains the
+; Chapter 2 baby that ships. See the script's class doc -- the avatar is
+; EXPERIMENTAL and OFF by default, and `test_baby_avatar.gd` enforces that.
+
+[ext_resource type="Script" path="res://scripts/characters/little_buddy/baby_little_buddy.gd" id="1"]
+
+[node name="BabyLittleBuddy" type="Node3D"]
+script = ExtResource("1")

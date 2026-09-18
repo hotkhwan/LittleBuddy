@@ -53,8 +53,20 @@ const ACTION_BLEND_SEC: float = 0.18
 ## so the semantic default is used instead.
 const MIN_MEANINGFUL_CLIP_SEC: float = 0.05
 
+## The locomotion clip whose playback rate follows the body's real speed. Only
+## this one: every other action has a length of its own and must never be
+## stretched by how fast the character happened to be walking beforehand.
+const LOCOMOTION_ACTION: String = "walk"
+
+## Bounds on that rate. A floor because a walk cycle crawling at 5% reads as a
+## freeze rather than as a slow walk, and a ceiling because nothing should ever
+## be sped up past the pace the cycle was authored at.
+const MIN_LOCOMOTION_SCALE: float = 0.35
+const MAX_LOCOMOTION_SCALE: float = 1.0
+
 var _player: AnimationPlayer = null
 var _current_action: String = ""
+var _locomotion_scale: float = 1.0
 
 
 static func create(player: AnimationPlayer = null) -> RefCounted:
@@ -103,6 +115,7 @@ func play(action_name: String) -> bool:
 	_current_action = action_name
 	if _player.current_animation != clip:
 		_player.play(clip, ACTION_BLEND_SEC)
+	_apply_locomotion_scale()
 	return true
 
 
@@ -115,12 +128,37 @@ func rest(carrying: bool = false) -> void:
 				_current_action = REST_ACTION
 				if _player.current_animation != candidate:
 					_player.play(candidate, ACTION_BLEND_SEC)
+				_apply_locomotion_scale()
 				return
 	play(REST_ACTION)
 
 
 func get_current_action() -> String:
 	return _current_action
+
+
+## Plays the walk cycle at the speed the body is really travelling, so a
+## thumbstick held halfway over does not produce skating feet. See the base
+## class for why this exists; anything that is not the walk runs at 1.0.
+func set_locomotion_scale(scale: float) -> void:
+	var wanted: float = clampf(scale, MIN_LOCOMOTION_SCALE, MAX_LOCOMOTION_SCALE)
+	if is_equal_approx(wanted, _locomotion_scale):
+		return
+	_locomotion_scale = wanted
+	_apply_locomotion_scale()
+
+
+func get_locomotion_scale() -> float:
+	return _locomotion_scale
+
+
+func _apply_locomotion_scale() -> void:
+	if _player == null or not is_instance_valid(_player):
+		return
+	# `speed_scale` is a property of the whole player, so it is set back to 1.0
+	# for everything that is not locomotion -- otherwise a slow walk would leave
+	# the next `drink` running at 45% for no reason anybody could trace.
+	_player.speed_scale = _locomotion_scale if _current_action == LOCOMOTION_ACTION else 1.0
 
 
 func _clip_for(action_name: String) -> String:

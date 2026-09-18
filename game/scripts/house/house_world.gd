@@ -14,8 +14,20 @@ extends Node3D
 ## ├── LittleBuddy             CharacterBody3D + little_buddy_character.gd
 ## ├── NavigationController    tap -> destination
 ## ├── RoomTransitionController
-## └── UI                      status text + transition fade
+## └── UI                      status text + transition fade + VirtualJoystick
 ## ```
+##
+## ## Two ways to drive, both live at once
+##
+## Tap a place and Little Buddy walks there. Push the thumbstick in the
+## bottom-left and he walks that way. Both are wired here, in `_build_joystick()`,
+## because this is the layer that owns the camera (which turns a screen direction
+## into a world one), the character and the tap router all at once.
+##
+## The stick was added on a physical-device request for RoV-style control and
+## deliberately overrides `LITTLE_BUDDY_GAME_BIBLE.md` §6's "no complicated
+## virtual joystick in early versions"; see `scripts/input/virtual_joystick.gd`.
+## Tap-to-walk was not removed and is not degraded.
 ##
 ## **No new autoload singletons.** Everything above is composed here and passed
 ## in by reference, exactly as `CLAUDE.md` requires.
@@ -40,6 +52,7 @@ const WorldStateScript := preload("res://scripts/house/world_state.gd")
 const NavMath := preload("res://scripts/navigation/nav_math.gd")
 const NavMapProviderScript := preload("res://scripts/navigation/nav_map_provider.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+const VirtualJoystickScript := preload("res://scripts/input/virtual_joystick.gd")
 
 ## Owned by agentCAM. Adopted if it exists, ignored if it does not.
 const ROOM_CAMERA_SCRIPT_PATH: String = "res://scripts/camera/room_camera.gd"
@@ -110,6 +123,9 @@ var _rooms: Array = []
 var _rooms_by_id: Dictionary = {}
 var _regions: Dictionary = {}
 var _registered_target_ids: Array = []
+## The RoV-style thumbstick, built into the world's own `UI` layer so it exists
+## in Story, in Free Play and during first run alike.
+var _joystick: Control = null
 var _world_state: RefCounted = null
 ## Story Mode's level loop, built on the first frame. Null in Free Play and in
 ## every headless test that never asks for it.
@@ -239,6 +255,7 @@ func build_world() -> void:
 	_build_target_registry()
 	_build_navigation()
 	_wire_character()
+	_build_joystick()
 
 	_world_state = WorldStateScript.create()
 	var start: Dictionary = WorldStateScript.resolve(
@@ -415,11 +432,154 @@ func _wire_character() -> void:
 	if _transition != null and _transition.has_method("bind"):
 		_transition.call("bind", self, _character)
 
+	# House geometry is solid.
+	#
+	# The body shipped with `collision_mask = 0`, which was harmless while every
+	# metre of travel came from a path baked onto the navigation mesh. Direct
+	# drive points wherever a thumb points, so the walls have to mean something.
+	# The navigation clamp in `CharacterMovementController._clamp_to_navigable()`
+	# is the primary guarantee -- it is strictly stronger, because the mesh is
+	# inset by the agent radius and cut around the furniture -- and this is the
+	# second line of defence behind it.
+	_character.collision_mask = HouseLayout.HOUSE_GEOMETRY_LAYER
+
 	# Warm feedback on arrival. Connected AFTER the transition controller and to
 	# `arrived` rather than `interaction_ready`, so for a door the "at the door"
 	# line lands first and the room change gets the last word.
 	if not _character.is_connected("arrived", _on_arrived):
 		_character.connect("arrived", _on_arrived)
+	# The stick is switched off whenever the character is -- a summary screen, a
+	# room transition, a cutscene. `state_changed` fires from `set_disabled()`,
+	# so this needs nothing from the directors that call it.
+	if not _character.is_connected("state_changed", _on_character_state_changed):
+		_character.connect("state_changed", _on_character_state_changed)
+
+
+## -- The thumbstick --------------------------------------------------------------
+
+## Builds the virtual thumbstick and joins it to the character, the camera and
+## the tap router.
+##
+## It lives in the world's own `UI` `CanvasLayer` rather than in a director's
+## HUD, and that placement is the decision: Story, Free Play and first run all
+## get exactly the same control, and none of them has to remember to build it.
+##
+## It is moved to the FRONT of that layer so `house_hud.gd` -- added later, by
+## whichever director is running -- draws over it and, more importantly, gets its
+## Next and Speak presses first. The stick is also geometrically clear of both
+## (`VirtualJoystick.activation_rect()` clamps itself against the screen centre),
+## so this is belt and braces rather than the guarantee.
+func _build_joystick() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null or _character == null:
+		return
+	var stick: Control = VirtualJoystickScript.new()
+	ui.add_child(stick)
+	ui.move_child(stick, 0)
+	stick.call("build")
+	_joystick = stick
+
+	stick.connect("moved", _on_joystick_moved)
+	stick.connect("released", _on_joystick_released)
+	stick.connect("grabbed", _on_joystick_grabbed)
+	stick.connect("tapped", _on_joystick_tapped)
+
+	if _nav_controller != null and _nav_controller.has_method("set_press_claimant"):
+		_nav_controller.call("set_press_claimant", stick)
+
+
+func get_joystick() -> Control:
+	build_world()
+	return _joystick
+
+
+## Re-asserts the stick every physics frame while a thumb is on it.
+##
+## Polled rather than purely event-driven because a thumb held perfectly still
+## past the dead zone emits no further events, and "held still" must keep meaning
+## "keep walking". It is also what makes the stick win a tie: a stray tap
+## elsewhere on the floor sets a destination, and the very next frame the thumb
+## that is still down replaces it.
+func _physics_process(_delta: float) -> void:
+	if _joystick == null or _character == null or not is_instance_valid(_joystick):
+		return
+	if not bool(_joystick.call("is_active")):
+		return
+	var vector: Vector2 = _joystick.call("get_vector")
+	_drive_character(vector)
+
+
+func _on_joystick_moved(x: float, y: float) -> void:
+	_drive_character(Vector2(x, y))
+
+
+func _on_joystick_released() -> void:
+	if _character != null and _character.has_method("stop_driving"):
+		_character.call("stop_driving")
+
+
+## The child has changed their mind about how they are driving. Retire the
+## tap-to-walk marker so the floor is not still promising a destination that is
+## no longer going to be walked to.
+func _on_joystick_grabbed() -> void:
+	if _nav_controller != null and _nav_controller.has_method("cancel_tap_feedback"):
+		_nav_controller.call("cancel_tap_feedback")
+
+
+## A press inside the stick's zone that never became a stick gesture. Handed
+## straight back to tap-to-walk, ripple and all, so the bottom-left of the floor
+## is exactly as tappable as the rest of it.
+func _on_joystick_tapped(x: float, y: float) -> void:
+	if _nav_controller != null and _nav_controller.has_method("handle_tap"):
+		_nav_controller.call("handle_tap", Vector2(x, y))
+
+
+func _drive_character(stick: Vector2) -> void:
+	if _character == null or not _character.has_method("drive"):
+		return
+	var direction: Vector3 = drive_direction(_camera_basis(), stick)
+	_character.call("drive", direction.x, direction.z)
+
+
+## Turns a screen-space stick vector into a world-space direction.
+##
+## Camera-relative, which is what every MOBA does and what a child expects:
+## "up" is away from the camera and "left" is left of the picture, whatever the
+## room's own axes happen to be. The camera's pitch is projected out, so a
+## downward-looking camera does not shorten the forward vector.
+##
+## Static and `Basis`-in / `Vector3`-out so the whole conversion is assertable
+## without a camera, a viewport or a room.
+static func drive_direction(camera_basis: Basis, stick: Vector2) -> Vector3:
+	var forward: Vector3 = -camera_basis.z
+	forward.y = 0.0
+	var right: Vector3 = camera_basis.x
+	right.y = 0.0
+	if forward.length_squared() < 0.000001 or right.length_squared() < 0.000001:
+		# A camera looking straight down or straight up has no usable heading.
+		# Fall back to world axes rather than to a direction of zero, which would
+		# read to a child as a control that had stopped working.
+		forward = Vector3(0.0, 0.0, -1.0)
+		right = Vector3(1.0, 0.0, 0.0)
+	forward = forward.normalized()
+	right = right.normalized()
+	# Screen `+y` is DOWN the screen, which is towards the camera.
+	var direction: Vector3 = right * stick.x - forward * stick.y
+	if direction.length() > 1.0:
+		direction = direction.normalized()
+	return direction
+
+
+func _camera_basis() -> Basis:
+	if _camera == null or not is_instance_valid(_camera):
+		return Basis.IDENTITY
+	return SpatialUtil.world_transform(_camera).basis
+
+
+func _on_character_state_changed(state_name: String) -> void:
+	if _joystick == null or not is_instance_valid(_joystick):
+		return
+	_joystick.call("set_enabled", state_name != "disabled")
 
 
 ## -- Session -------------------------------------------------------------------
@@ -702,6 +862,12 @@ func place_in_room(room_id: String, spawn_id: String) -> bool:
 		_character.rotation.y = NavMath.yaw_towards(spawn, face_point, _character.rotation.y)
 		if _character.has_method("stop"):
 			_character.call("stop")
+
+	# A thumb still on the stick must not drive the child straight back through
+	# the door they just came out of. The gesture is dropped; lifting and
+	# pressing again starts a new one.
+	if _joystick != null and is_instance_valid(_joystick):
+		_joystick.call("cancel")
 
 	_register_room_targets(room)
 	if _world_state != null:

@@ -10,7 +10,11 @@ extends Node3D
 ##
 ## ## Designed for a landscape iPhone held by a four-year-old
 ##
-## * **No joystick, no camera control, no precision.** One tap, one destination.
+## * **One tap, one destination.** No camera control, no precision required.
+##   (This used to read "no joystick" as well. A second round of physical-device
+##   feedback asked for RoV-style analog control and got it --
+##   `scripts/input/virtual_joystick.gd`. Tap-to-walk was NOT replaced: both ship,
+##   and `set_press_claimant()` below is the entire boundary between them.)
 ## * **The floor needs no collision geometry.** A tap that hits no activity target
 ##   is intersected with the horizontal plane `y = floor_height` analytically, so
 ##   the entire lower part of the screen is walkable surface. There is no thin
@@ -99,6 +103,9 @@ var _wired: bool = false
 var _character: Node = null
 var _camera: Camera3D = null
 var _ripple: Node3D = null
+## Optional. Anything answering `claims_press(Vector2) -> bool` that owns part of
+## the screen. Today that is the virtual thumbstick; see `set_press_claimant()`.
+var _press_claimant: Object = null
 
 
 func _ready() -> void:
@@ -141,6 +148,45 @@ func _ensure_ripple() -> void:
 func get_tap_ripple() -> Node3D:
 	_ensure_wired()
 	return _ripple
+
+
+## Hands part of the screen to another input owner.
+##
+## `claimant` is anything answering `claims_press(screen_position) -> bool`.
+## Duck-typed on purpose: this file must keep working with no claimant at all,
+## and must not import the input layer.
+##
+## The virtual thumbstick is the claimant in Chapter 3. Its activation zone is
+## bottom-left, and a press inside it belongs to the stick, not to tap-to-walk:
+## without this, one thumb would both grab the stick AND set a destination, and
+## the two would spend the rest of the gesture fighting over where Little Buddy
+## was going. Outside the zone -- which is most of the screen -- nothing about
+## tap-to-walk changes.
+func set_press_claimant(claimant: Object) -> void:
+	_ensure_wired()
+	_press_claimant = claimant
+
+
+## True when `screen_position` belongs to someone else.
+func is_press_claimed(screen_position: Vector2) -> bool:
+	_ensure_wired()
+	if _press_claimant == null or not is_instance_valid(_press_claimant):
+		return false
+	if not _press_claimant.has_method("claims_press"):
+		return false
+	return bool(_press_claimant.call("claims_press", screen_position))
+
+
+## Retires the destination marker without an arrival.
+##
+## Called when the child switches to the thumbstick mid-walk: the tap they made a
+## moment ago is no longer what is happening, and a mint disc still sitting on
+## the floor promising a destination nobody is walking to is a lie -- the same
+## reason a refused tap releases it in `apply_tap()`.
+func cancel_tap_feedback() -> void:
+	_ensure_wired()
+	if _ripple != null:
+		_ripple.call("release")
 
 
 ## Binds the character this controller drives and hands it every `ActivityTarget`
@@ -257,6 +303,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var screen_position: Variant = _press_position(event)
 	if screen_position == null:
+		return
+	if is_press_claimed(screen_position as Vector2):
 		return
 	handle_tap(screen_position as Vector2)
 

@@ -177,3 +177,18 @@ func rest(_carrying: bool = false) -> void:
 ## What is on screen right now, or "" if nothing.
 func get_current_action() -> String:
 	return ""
+
+
+## How fast the character is actually travelling, as a fraction of
+## `CharacterMovementController.WALK_SPEED`.
+##
+## The walk clip and the walk speed are ONE decision: the cycle was authored so
+## that at 1.05 m/s the stride exactly matches the ground covered and the feet do
+## not skate. The virtual thumbstick broke that pairing by introducing speeds
+## BETWEEN zero and the walk speed -- at half deflection the clip would play at
+## full rate while the body moved half as far, and the feet would slide.
+##
+## So the locomotion clip is played at the speed the body is really going. A
+## driver with no clips has nothing to scale and ignores this.
+func set_locomotion_scale(_scale: float) -> void:
+	pass
