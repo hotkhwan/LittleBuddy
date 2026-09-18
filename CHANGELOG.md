@@ -33,7 +33,25 @@ Scheme: `MAJOR.MINOR.PATCH`, bumped on every change we make from now on.
 - `test_buddy_avatar.gd` — 12 assertions covering the wrapper's normalisation, its material
   policy, and the validation gate on the flag.
 
+- **Three baby GLBs** copied in as pose variants (`baby_standing_v01`, `baby_sitting_v01`,
+  `baby_sleeping_v01`). Named by pose because an unrigged mesh is frozen in the pose it was
+  generated in. No wrapper yet — which baby becomes the Chapter 2 child is an open design choice.
+- `docs/MESHY_CHARACTER_AUDIT.md`, and provenance rows in `docs/ASSET_MANIFEST.md`.
+
+### Fixed
+- **The export was shipping 68 MB of disabled assets.** Gitignoring a file does not stop Godot
+  exporting it: the `.pck` had gone from ~2 MB to **82 MB** and the app to 183 MB, against a 40 MB
+  budget. `exclude_filter="assets/characters/*"` brings the pck back to **2 MB**.
+
 ### Notes
+- **No bunny mascot exists.** All three ambiguously-named files are babies, confirmed by rendering
+  each one; the only bunny in `~/Downloads` is a 2D PNG. The mascot directory is empty and no
+  wrapper was created, rather than mislabel a baby.
+- **Raw exports are gitignored**, kept on disk at their authored paths. ~84 MB into a 33 MB repo
+  with no git-lfs, for assets that cannot ship without retopology. Adding them later is one
+  command; removing them later means rewriting published history, which this project forbids.
+  The suite is green and the project loads clean with or without them present.
+- **Licence unconfirmed and not invented** — see the audit. It collides with the CC0-only policy.
 - The avatar is **disabled by default** (`PinkGirlBuddy.ENABLED = false`) and the procedural
   placeholder remains the Buddy that ships. Requirement 6 of the owner's request — "keep the
   current placeholder Buddy as fallback until validation passes" — is in force because validation
