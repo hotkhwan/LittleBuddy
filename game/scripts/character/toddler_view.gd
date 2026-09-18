@@ -390,26 +390,58 @@ func _make_idle() -> Animation:
 
 ## A toddler stride: short, bouncy, slightly unsteady, with legs that swing and
 ## arms that counter-swing. It must read as walking rather than sliding.
+##
+## ## The clip and the walk speed are ONE decision
+##
+## Feet skate whenever the body covers more ground per step than the legs reach.
+## The reach is `2 * LEG_HEIGHT * sin(WALK_SWING)`; the ground covered is
+## `WALK_SPEED * WALK_CYCLE / 2`. These constants are chosen so those are equal,
+## and `test_movement_controller.gd` asserts it -- because this has already been
+## broken once by changing the speed alone, which took the skate from 1.14x to
+## 1.67x while intending to fix it.
+##
+## If the walk speed changes, `WALK_CYCLE` changes with it. The swing is the part
+## that cannot go much further: 45 degrees on a 0.22 m leg is already a long pace
+## for a toddler, and past it the legs read as scissoring.
+const WALK_SWING_DEG: float = 45.0
+const WALK_CYCLE: float = 0.59
+
 func _make_walk() -> Animation:
-	var animation: Animation = _looping(0.64)
+	var animation: Animation = _looping(WALK_CYCLE)
+	var half: float = WALK_CYCLE * 0.5
+	# The hips must DROP at full stride, or the feet leave the floor.
+	#
+	# These legs have no knee, so a leg swung to `WALK_SWING_DEG` reaches only
+	# `LEG_HEIGHT * cos(swing)` below the hip instead of the full `LEG_HEIGHT`.
+	# At 45 degrees that is 64 mm short, and the child visibly floats at both
+	# ends of every step. Seen side-on in a render; invisible from the front, and
+	# invisible from the game's own three-quarter camera, which is why it is
+	# worth writing down.
+	#
+	# The first version of this track had the bob at its PEAK during the stride
+	# extremes, which doubled the error. Now the body sits lowest exactly when
+	# the legs are widest and returns to zero as the leg passes vertical and the
+	# foot is genuinely planted -- which is what a real walk cycle does anyway.
+	var drop: float = -LEG_HEIGHT * (1.0 - cos(deg_to_rad(WALK_SWING_DEG)))
+	var low := Vector3(0.0, drop, 0.0)
+	var lift := Vector3(0.0, 0.008, 0.0)
 	_track(animation, "Body:position", [
-		[0.0, Vector3.ZERO], [0.16, Vector3(0.0, 0.034, 0.0)], [0.32, Vector3.ZERO],
-		[0.48, Vector3(0.0, 0.034, 0.0)], [0.64, Vector3.ZERO]])
+		[0.0, low], [half * 0.5, lift], [half, low], [half * 1.5, lift], [WALK_CYCLE, low]])
 	_track(animation, "Body:rotation", [
 		[0.0, Vector3(0.0, 0.0, deg_to_rad(-5.0))],
-		[0.32, Vector3(0.0, 0.0, deg_to_rad(5.0))],
-		[0.64, Vector3(0.0, 0.0, deg_to_rad(-5.0))]])
-	var swing: float = deg_to_rad(33.0)
+		[half, Vector3(0.0, 0.0, deg_to_rad(5.0))],
+		[WALK_CYCLE, Vector3(0.0, 0.0, deg_to_rad(-5.0))]])
+	var swing: float = deg_to_rad(WALK_SWING_DEG)
 	for side: float in SIDES:
 		var lead: float = -side  # the left leg leads while the right arm does
 		_track(animation, "%s:rotation" % _leg(side), [
 			[0.0, Vector3(swing * lead, 0.0, 0.0)],
-			[0.32, Vector3(-swing * lead, 0.0, 0.0)],
-			[0.64, Vector3(swing * lead, 0.0, 0.0)]])
+			[half, Vector3(-swing * lead, 0.0, 0.0)],
+			[WALK_CYCLE, Vector3(swing * lead, 0.0, 0.0)]])
 		_track(animation, "%s:rotation" % _arm(side), [
 			[0.0, Vector3(-swing * 0.62 * lead, 0.0, side * 0.14)],
-			[0.32, Vector3(swing * 0.62 * lead, 0.0, side * 0.14)],
-			[0.64, Vector3(-swing * 0.62 * lead, 0.0, side * 0.14)]])
+			[half, Vector3(swing * 0.62 * lead, 0.0, side * 0.14)],
+			[WALK_CYCLE, Vector3(-swing * 0.62 * lead, 0.0, side * 0.14)]])
 	return animation
 
 

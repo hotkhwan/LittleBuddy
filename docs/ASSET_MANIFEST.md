@@ -102,8 +102,9 @@ pseudo-pack) and `game/scripts/baby/baby_view_3d.gd`.
 
 | source | assetName | localPath | license | attributionRequired | commercialUse | modifiedByUs |
 |---|---|---|---|---|---|---|
-| **Original — ours** | House geometry kit (bevelled box, extruded outline, cylinder, sphere, torus, rounded-rect / arch / circle outlines) | `game/scripts/house/prop_kit.gd` | n/a (we authored it) | no | yes | generated at runtime |
+| **Original — ours** | House geometry kit (bevelled box, extruded outline, **open vessel**, cylinder, sphere, torus, rounded-rect / arch / circle outlines) | `game/scripts/house/prop_kit.gd` | n/a (we authored it) | no | yes | generated at runtime |
 | **Original — ours** | The twelve taught objects — `bed`, `wardrobe`, `toy`, `sink`, `bath`, `towel`, `fridge`, `counter`, `table`, `sofa`, `toyBox`, `book` — plus the shared potted plant | `game/scripts/house/room_props.gd` | n/a (we authored it) | no | yes | generated at runtime |
+| **Original — ours** | Floor dressing, added 2026-09-18 — floor plant, woven basket, step stool, round stool, footstool. None is a word the game teaches; see the §6 note below. | `game/scripts/house/room_props.gd` | n/a (we authored it) | no | yes | generated at runtime |
 | **Original — ours** | Room shell: plank floor, walls, skirting, wainscot, chair rail, architrave, arched doors, window + sky plane + sill, rug, framed picture, mirror | `game/scripts/house/room.gd` | n/a (we authored it) | no | yes | generated at runtime |
 
 **Zero bytes, zero licence surface, and no download.** ART_BIBLE §9 makes procedural a
@@ -114,6 +115,21 @@ exact by construction rather than approximately matched after the fact.
 **Meshy was NOT used and nothing here is generated art.** No credentials for it exist in
 this environment, so no prompt is recorded — because none was run. Nothing below is claimed
 as generator output.
+
+**Floor dressing and §6.** The five dressing props exist because every piece of furniture in
+this house is against the back wall by layout, so the front third of all four rooms was bare
+boards. None of them may be a word the game teaches — §6, "one object teaches one word, two
+nouns must never share a shape" — and the vocabulary already owns `ball`, `bowl`, `cup`,
+`lamp`, `pillow`, `teddy`, `blocks`, `toyBox` and `soap`. A floor cushion would collide with
+`pillow`, a floor lamp with `lamp`, a toy basket with `toyBox`. What is left is a plant, a
+woven basket, a stool and a footstool, and that is exactly the set that shipped.
+
+They also all share one 0.34 m footprint, which is a navigation constraint rather than a
+style choice: `tools/bake_navmesh.gd` probes a corner-to-corner crossing between the two front
+corners after every bake, and the first placement put a plant on a probe endpoint and broke all
+four rooms. `test_art_rooms._test_floor_dressing_cannot_block_the_level()` now asserts one
+agent radius of clearance from every stand point, every spawn and both probe corners, so that
+is a test failure rather than a bake failure.
 
 **No third-party model was added.** The Kenney furniture kit above is still shipped and
 still used by the Baby Room; the four house rooms deliberately do not use it. Two reasons,
@@ -127,14 +143,24 @@ because it looks *different* rather than because it is the subject, it fails."
 
 | room | draw calls | triangles |
 |---|---|---|
-| bedroom | 6 | 7,872 |
-| bathroom | 6 | 7,628 |
-| kitchen | 6 | 7,136 |
-| livingRoom | 6 | 6,824 |
+| bedroom | 7 | 9,648 |
+| bathroom | 7 | 8,660 |
+| kitchen | 7 | 8,596 |
+| livingRoom | 7 | 9,400 |
 
-Six because the whole room merges into one shell mesh plus three furniture meshes plus two
-doors, all sharing **one** `StandardMaterial3D` with vertex colours as albedo. §10 budgets
-~170 draw calls and caps at 220; the worst room is 44% of the ~18,000-triangle target.
+Seven because the whole room merges into one shell mesh, plus **one floor-dressing mesh**,
+three furniture meshes and two doors, all sharing **one** `StandardMaterial3D` with vertex
+colours as albedo. §10 budgets ~170 draw calls and caps at 220; the worst room is 54% of the
+~18,000-triangle target and 32% of the 30,000 hard ceiling.
+
+The floor dressing is a separate mesh from the shell for one reason: the shell deliberately
+does not cast shadows (three 2.2 m walls under one mid-morning sun throw the whole interior
+into shade), and anything standing ON the floor must cast, or it floats — §7, "shadows are
+what ground objects on the floor."
+
+Per-object triangle counts, all inside §10's 200–1,000 hero-prop / 300–2,000 furniture bands:
+`bed` 1,132 · `wardrobe` 1,104 · `toy` 1,144 · `sink` 832 · `bath` 1,268 · `towel` 744 ·
+`fridge` 828 · `counter` 900 · `table` 512 · `sofa` 1,296 · `toyBox` 600 · `book` 1,392.
 
 **Colour:** every value is one of §3's seven tokens or one of its two documented steps
 (`light` = 45% toward `cream`, `deep` = 22% toward `ink`), read from `scripts/ui/palette.gd`
@@ -151,6 +177,32 @@ so the house and the UI cannot drift. The one additional value is the flat windo
 > and renders as a solid surface that simply never catches the sun. The whole room came back
 > flat and dusty with every assertion still green. `_triangle()` now re-winds every triangle
 > to agree with its normal, and culling is back on so the next mistake is a visible hole.
+
+> **Third trap, same class, found 2026-09-18 while re-rendering the bath.**
+> `Geometry2D.triangulate_polygon()` returns an **empty** `PackedInt32Array`, with no error
+> and no warning, when its ear-clipping fails — and it fails reliably on a **stadium**: a
+> rounded rectangle whose corner radius equals half its short side. Measured: the bath's plan
+> outline triangulates fine at 66 indices on its own, and returns **0** after the one
+> `_inset()` that every bevel in the kit performs. The shape then loses its top and bottom
+> faces and renders as a ring of side walls. On screen the bath's water surface simply was not
+> there and the tub looked empty, while the triangle count, the winding, the palette and every
+> other assertion stayed green. `prop_kit._triangulate()` now falls back to a fan from vertex 0
+> — exact, not approximate, for the convex outlines this kit generates — and
+> `test_art_rooms._test_a_cap_is_never_silently_empty()` measures the capped **area** against
+> the outline's own area rather than merely checking that something was emitted.
+
+> **Fourth trap, for anyone rendering this project to look at it.**
+> Do **not** review the house by `load()`-ing `house_world.tscn` and `add_child()`-ing it from
+> a `SceneTree._initialize()`. A scene instantiated before the first frame has its
+> `Environment` sub-resource deserialised while the rendering server is not yet taking scene
+> commands, so none of the authored tonemap, ambient or background values reach it and every
+> room renders through Godot's own default filmic environment: a dark, desaturated, sepia
+> image in which `cream` #FFF6E5 measures (186, 176, 147) and a `peach` floorboard measures
+> (157, 123, 94). It looks exactly like a real art defect and it is not one — the same scene
+> loaded with `change_scene_to_file()` renders the authored values correctly. An hour was spent
+> "fixing" lighting that was never broken. Related: on a backgrounded window the renderer stops
+> advancing, so a capture loop must call `RenderingServer.force_draw()` before
+> `get_viewport().get_texture().get_image()` or every shot is the same stale frame.
 
 ---
 

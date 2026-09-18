@@ -9,26 +9,31 @@ extends Node
 ## A cream pointing hand then falls onto a mint ring on an empty patch of floor
 ## and a ripple runs out from it -- "Tap the floor. I will walk!" -- and he walks
 ## there. The hand moves onto a real piece of furniture and names it: "Now tap
-## the bed!" The child taps, he walks over and uses it. The hand then drags a
-## peach token across the screen leaving a dotted trail: "You can move things."
-## "Now let's play!" -- and everything fades.
+## the bed!" The child taps, he walks over and uses it. The hand then picks up a
+## real toy off the floor and carries it to him, leaving a dotted trail: "Drag
+## the teddy to me!" "Now let's play!" -- and everything fades.
 ##
-## Thirty-two seconds if the child touches nothing at all; less if they don't.
+## Thirty-five seconds if the child touches nothing at all; less if they don't.
 ##
 ## There is no Skip button, because Skip is a word. `onboarding_plan.gd` explains
 ## the escape hatches: every step times out, an early success advances
 ## immediately, and world input is **never** switched off, so a child who ignores
 ## the whole thing is simply playing already.
 ##
-## ## Where it runs, and why not at launch
+## ## Where it runs, and how a brand new child actually gets here
 ##
-## On the first entry to the **house**, in either Story or Free Play -- not on the
-## title screen and not in the Baby Room. Two of the three things being taught
-## (tap-to-walk, tap-an-object) only exist where there is a character who walks,
-## and that is Chapter 3. A brand new profile (`currentChapter: "ch1"`) routes to
-## the Baby Room first, so in practice first-run plays the first time a child
-## presses **Free Play**, or the first time Story reaches Chapter 3. Teaching
-## tap-to-walk over a scene that has no walking would be a lie about the game.
+## In the **house**, because that is the only world with a character who walks,
+## and three of the four things taught here (walk there, use that, carry this)
+## do not exist anywhere else. Teaching tap-to-walk over a scene with no walking
+## would be a lie about the game.
+##
+## That used to mean a brand new profile never saw it: `currentChapter` starts as
+## `"ch1"`, `main.gd` routes ch1 and ch2 to the Baby Room, and first run lives
+## here. **`main.gd` now sends a profile that has never been shown the game to the
+## house first**, before the menu is ever pressed -- see
+## `main.gd::is_first_launch()`. Chapter routing itself is untouched: ch2 is still
+## the Baby Room, and the second launch, with `settings.onboardingDone` written,
+## behaves exactly as it always did.
 ##
 ## ## Composition, not an autoload
 ##
@@ -109,6 +114,11 @@ var _demonstrated: bool = false
 var _floor_point: Vector3 = Vector3.ZERO
 var _thing_id: String = ""
 var _thing_name: String = ""
+
+## The real drag the drag step demonstrates: which pickup, which landing pad, in
+## world space. Empty where nothing has been laid out to carry, in which case the
+## hand falls back to a gesture drawn in screen space.
+var _drag_demo: Dictionary = {}
 
 var _spoken: Array[String] = []
 
@@ -229,6 +239,7 @@ func start() -> bool:
 		_tts = _autoload("TtsService")
 
 	_resolve_hint_points()
+	_resolve_drag_demo()
 	# One voice on screen: the world's own status line would otherwise sit above
 	# the caption saying something else entirely.
 	if _world.has_method("set_status_visible"):
@@ -355,8 +366,13 @@ func _advance() -> void:
 ## that is really in the room the child is really standing in, so the instruction
 ## can never point at something that is not there.
 func _speech_for(plan: Dictionary) -> String:
-	if String(plan.get("stepId", "")) == Plan.STEP_TAP_THING:
+	var step_id: String = String(plan.get("stepId", ""))
+	if step_id == Plan.STEP_TAP_THING:
 		return Plan.tap_thing_speech(_thing_name)
+	if step_id == Plan.STEP_DRAG and not _drag_demo.is_empty():
+		return Plan.drag_speech(
+			String(_drag_demo.get("objectWord", "")), String(_drag_demo.get("targetWord", ""))
+		)
 	return String(plan.get("speech", ""))
 
 
@@ -400,6 +416,13 @@ func _on_interaction_ready(target_id: String) -> void:
 		return
 	_satisfied = true
 	_react_to_arrival(target_id)
+
+
+## The child moved something to where it belongs. Any object counts, and it
+## counts however it got there -- a real drag or the tap fallback -- because the
+## lesson is "things can be moved", not "hold your finger down correctly".
+func _on_object_dropped(_object_id: String, _word: String) -> void:
+	_satisfy(Plan.REQUIRES_DRAG)
 
 
 func _satisfy(requirement: String) -> void:
@@ -479,6 +502,77 @@ func _resolve_hint_points() -> void:
 		return
 
 
+## Finds a real pickup for the drag step, and the pad it belongs in.
+##
+## Free Play stages those pickups, and the loop that owns them has not started
+## yet -- first run runs BEFORE `begin_session()`. So it is asked for them by
+## name, which is idempotent and does not start anything.
+##
+## **Free Play only.** In Story Mode the level director owns the floor: building
+## Free Play's loop there would put a second HUD over the first and lay a row of
+## toys across an authored task. There the drag step falls back to the gesture
+## drawn in screen space, which is what it has always been.
+func _resolve_drag_demo() -> void:
+	_drag_demo = {}
+	if _world == null or not _world.has_method("is_free_play") or not bool(_world.call("is_free_play")):
+		return
+	if not _world.has_method("ensure_free_play_director"):
+		return
+	var free_play: Node = _world.call("ensure_free_play_director")
+	if free_play == null or not free_play.has_method("ensure_draggables"):
+		return
+	# One piece of chrome at a time: Free Play's star counter would otherwise sit
+	# on screen through a tutorial that has nothing to do with stars. `start()`
+	# puts it back the moment first run ends.
+	if free_play.has_method("get_hud"):
+		var hud: Control = free_play.call("get_hud") as Control
+		if hud != null:
+			hud.call("set_play_chrome_visible", false)
+	free_play.call("ensure_draggables")
+	# Doing the thing early ends the step, exactly like walking and arriving do.
+	if free_play.has_signal("object_dropped") \
+			and not free_play.is_connected("object_dropped", _on_object_dropped):
+		free_play.connect("object_dropped", _on_object_dropped)
+	if free_play.has_method("get_drag_demo"):
+		var demo: Variant = free_play.call("get_drag_demo")
+		if typeof(demo) == TYPE_DICTIONARY:
+			_drag_demo = demo as Dictionary
+
+
+## The two ends of the demonstrated drag in screen space, or null when there is
+## no real object to point at (and in every headless test, which has no camera).
+func _drag_demo_screen_points() -> Variant:
+	if _drag_demo.is_empty():
+		return null
+	# LIVE, every frame. The `hug`/`mouth` pads ride on Little Buddy, and by the
+	# time the drag step comes round he has walked twice; a hint drawn from the
+	# positions captured at `start()` points the child at the empty patch of
+	# floor he set off from. Rendering caught this; no test would have.
+	var from: Variant = _live_position(_drag_demo.get("objectNode", null), _drag_demo.get("from", null))
+	var to: Variant = _live_position(_drag_demo.get("zoneNode", null), _drag_demo.get("to", null))
+	if not (from is Vector3) or not (to is Vector3):
+		return null
+	var from_screen: Variant = _to_screen(from as Vector3)
+	var to_screen: Variant = _to_screen(to as Vector3)
+	if from_screen == null or to_screen == null:
+		return null
+	return [from_screen as Vector2, to_screen as Vector2]
+
+
+## Where a node is right now, or the snapshot taken when first run started if the
+## node has gone away.
+static func _live_position(node: Variant, fallback: Variant) -> Variant:
+	if node is Node3D and is_instance_valid(node as Node):
+		return SpatialUtil.world_position(node as Node3D)
+	return fallback
+
+
+## What the drag step is pointing at, as an object id. "" when it is showing the
+## screen-space gesture instead.
+func get_drag_object_id() -> String:
+	return String(_drag_demo.get("objectId", ""))
+
+
 ## Keeps the hand on the thing it is pointing at, every frame, because the
 ## character moves and the camera re-frames.
 func _follow_hint() -> void:
@@ -493,6 +587,13 @@ func _follow_hint() -> void:
 		Plan.GESTURE_TAP_TARGET:
 			_point_at(_thing_world_position())
 		Plan.GESTURE_DRAG:
+			# The real thing, when there is one: from the pickup that is actually
+			# on the floor to the pad it actually belongs in, so a child who
+			# copies the hand does the thing the hand is miming.
+			var live: Variant = _drag_demo_screen_points()
+			if live is Array:
+				_hint.call("show_drag", (live as Array)[0], (live as Array)[1])
+				return
 			var size: Vector2 = _screen_size()
 			# Measured off the screen HEIGHT, not its width: on an ultra-wide
 			# landscape phone a width-based span puts the two ends so far apart

@@ -25,12 +25,25 @@
       "levelNumber": 12,
       "storyBeat": "Buddy walks back to the bedroom and chooses what to wear.",
       "template": "placeIt",
-      "roomPath": ["bathroom", "bedroom"],
+      "roomPath": [
+        "bathroom",
+        "bedroom"
+      ],
       "estimatedMinutes": 5,
       "starRules": {
-        "coreTaskIds": ["walkToBedroom", "wearPants", "wearRedShirt", "wearShoes"],
-        "listeningTaskIds": ["findShoes", "sayShoes"],
-        "optionalTaskIds": ["wearHat"]
+        "coreTaskIds": [
+          "walkToBedroom",
+          "wearPants",
+          "wearRedShirt",
+          "wearShoes"
+        ],
+        "listeningTaskIds": [
+          "findShoes",
+          "sayShoes"
+        ],
+        "optionalTaskIds": [
+          "wearHat"
+        ]
       }
     },
     {
@@ -57,9 +70,18 @@
       "storyBeat": "Buddy is hungry for the first time and the player answers.",
       "template": "fetchAndGive",
       "starRules": {
-        "coreTaskIds": ["feedMilk", "feedWater", "feedApple"],
-        "listeningTaskIds": ["findBowl", "sayMilk"],
-        "optionalTaskIds": ["feedBanana"]
+        "coreTaskIds": [
+          "feedMilk",
+          "feedWater",
+          "feedApple"
+        ],
+        "listeningTaskIds": [
+          "findBowl",
+          "sayMilk"
+        ],
+        "optionalTaskIds": [
+          "feedBanana"
+        ]
       }
     },
     {
@@ -87,9 +109,19 @@
       "storyBeat": "Care becomes play; Buddy laughs for the first time.",
       "template": "fetchAndGive",
       "starRules": {
-        "coreTaskIds": ["giveBall", "giveTeddy", "blockInToyBox"],
-        "listeningTaskIds": ["findBall", "findStar", "sayBall"],
-        "optionalTaskIds": ["tidyToyBox"]
+        "coreTaskIds": [
+          "giveBall",
+          "giveTeddy",
+          "blockInToyBox"
+        ],
+        "listeningTaskIds": [
+          "findBall",
+          "findStar",
+          "sayBall"
+        ],
+        "optionalTaskIds": [
+          "tidyToyBox"
+        ]
       }
     },
     {
@@ -117,9 +149,19 @@
       "storyBeat": "Buddy gets messy and the player makes it fun, not a chore.",
       "template": "sequenceRoutine",
       "starRules": {
-        "coreTaskIds": ["giveSoap", "giveCup", "brushTeeth", "dryWithTowel"],
-        "listeningTaskIds": ["findTowel", "sayToothbrush"],
-        "optionalTaskIds": ["giveBathToy"]
+        "coreTaskIds": [
+          "giveSoap",
+          "giveCup",
+          "brushTeeth",
+          "dryWithTowel"
+        ],
+        "listeningTaskIds": [
+          "findTowel",
+          "sayToothbrush"
+        ],
+        "optionalTaskIds": [
+          "giveBathToy"
+        ]
       }
     },
     {
@@ -146,9 +188,18 @@
       "storyBeat": "The day ends softly; the first repeatable comfort ritual.",
       "template": "sequenceRoutine",
       "starRules": {
-        "coreTaskIds": ["bedtimePajamas", "bedtimeTeddy", "bedtimePillow", "bedtimeBlanket"],
-        "listeningTaskIds": ["sayGoodNight"],
-        "optionalTaskIds": ["turnOffLamp"]
+        "coreTaskIds": [
+          "bedtimePajamas",
+          "bedtimeTeddy",
+          "bedtimePillow",
+          "bedtimeBlanket"
+        ],
+        "listeningTaskIds": [
+          "sayGoodNight"
+        ],
+        "optionalTaskIds": [
+          "turnOffLamp"
+        ]
       }
     },
     {
@@ -177,9 +228,20 @@
       "storyBeat": "Buddy says a word back - the chapter's emotional payoff.",
       "template": "chooseCorrectObject",
       "starRules": {
-        "coreTaskIds": ["wearRedShirt", "wearBlueShirt", "wearYellowShirt"],
-        "listeningTaskIds": ["findCircle", "findSquare", "findStar", "sayBlue"],
-        "optionalTaskIds": ["sayCircle"]
+        "coreTaskIds": [
+          "wearRedShirt",
+          "wearBlueShirt",
+          "wearYellowShirt"
+        ],
+        "listeningTaskIds": [
+          "findCircle",
+          "findSquare",
+          "findStar",
+          "sayBlue"
+        ],
+        "optionalTaskIds": [
+          "sayCircle"
+        ]
       }
     },
     {
@@ -208,9 +270,20 @@
       "storyBeat": "A bonus word round. Every prompt is passable by tapping the word.",
       "template": "chooseCorrectObject",
       "starRules": {
-        "coreTaskIds": ["sayMilk", "sayBanana", "sayBlue", "sayTowel"],
-        "listeningTaskIds": ["sayToothbrush", "sayCircle", "sayPillow"],
-        "optionalTaskIds": ["sayGoodNight"]
+        "coreTaskIds": [
+          "sayMilk",
+          "sayBanana",
+          "sayBlue",
+          "sayTowel"
+        ],
+        "listeningTaskIds": [
+          "sayToothbrush",
+          "sayCircle",
+          "sayPillow"
+        ],
+        "optionalTaskIds": [
+          "sayGoodNight"
+        ]
       }
     },
     {
@@ -223,11 +296,11 @@
       "unlockAtStars": 0,
       "taskIds": [
         "wakeUpBuddy",
+        "sayGoodMorning",
         "walkToBathroom",
         "findToothbrush",
         "brushTeethMorning",
         "dryFaceWithTowel",
-        "sayGoodMorning",
         "rinseWithCup"
       ],
       "chapterId": "ch3",
@@ -237,12 +310,25 @@
       "levelNumber": 11,
       "storyBeat": "Buddy's first morning as a toddler: wake up, walk to the bathroom, brush your teeth.",
       "template": "sequenceRoutine",
-      "roomPath": ["bedroom", "bathroom"],
+      "roomPath": [
+        "bedroom",
+        "bathroom"
+      ],
       "estimatedMinutes": 5,
       "starRules": {
-        "coreTaskIds": ["wakeUpBuddy", "walkToBathroom", "brushTeethMorning", "dryFaceWithTowel"],
-        "listeningTaskIds": ["findToothbrush", "sayGoodMorning"],
-        "optionalTaskIds": ["rinseWithCup"]
+        "coreTaskIds": [
+          "wakeUpBuddy",
+          "walkToBathroom",
+          "brushTeethMorning",
+          "dryFaceWithTowel"
+        ],
+        "listeningTaskIds": [
+          "findToothbrush",
+          "sayGoodMorning"
+        ],
+        "optionalTaskIds": [
+          "rinseWithCup"
+        ]
       }
     },
     {
@@ -270,12 +356,26 @@
       "levelNumber": 13,
       "storyBeat": "Buddy walks to the kitchen, sits down at the table and eats breakfast alone for the first time.",
       "template": "fetchAndGive",
-      "roomPath": ["bedroom", "kitchen"],
+      "roomPath": [
+        "bedroom",
+        "kitchen"
+      ],
       "estimatedMinutes": 6,
       "starRules": {
-        "coreTaskIds": ["walkToKitchen", "sitAtTable", "drinkMilkAtTable", "eatAppleAtTable"],
-        "listeningTaskIds": ["findMilk", "findBowl", "sayMilk"],
-        "optionalTaskIds": ["eatBananaSnack"]
+        "coreTaskIds": [
+          "walkToKitchen",
+          "sitAtTable",
+          "drinkMilkAtTable",
+          "eatAppleAtTable"
+        ],
+        "listeningTaskIds": [
+          "findMilk",
+          "findBowl",
+          "sayMilk"
+        ],
+        "optionalTaskIds": [
+          "eatBananaSnack"
+        ]
       }
     },
     {
@@ -303,12 +403,26 @@
       "levelNumber": 14,
       "storyBeat": "Buddy walks to the living room and plays with the teddy, the ball and the blocks.",
       "template": "fetchAndGive",
-      "roomPath": ["kitchen", "livingRoom"],
+      "roomPath": [
+        "kitchen",
+        "livingRoom"
+      ],
       "estimatedMinutes": 6,
       "starRules": {
-        "coreTaskIds": ["walkToLivingRoom", "hugTeddyOnSofa", "playWithBall", "stackBlocks"],
-        "listeningTaskIds": ["findTeddy", "findBall", "sayBall"],
-        "optionalTaskIds": ["sitOnSofa"]
+        "coreTaskIds": [
+          "walkToLivingRoom",
+          "hugTeddyOnSofa",
+          "playWithBall",
+          "stackBlocks"
+        ],
+        "listeningTaskIds": [
+          "findTeddy",
+          "findBall",
+          "sayBall"
+        ],
+        "optionalTaskIds": [
+          "sitOnSofa"
+        ]
       }
     },
     {
@@ -336,7 +450,11 @@
       "levelNumber": 15,
       "storyBeat": "The day closes: Buddy tidies the toys away, walks home through the kitchen and goes to bed.",
       "template": "sequenceRoutine",
-      "roomPath": ["livingRoom", "kitchen", "bedroom"],
+      "roomPath": [
+        "livingRoom",
+        "kitchen",
+        "bedroom"
+      ],
       "estimatedMinutes": 7,
       "starRules": {
         "coreTaskIds": [
@@ -346,8 +464,13 @@
           "wearPajamas",
           "sleepInBed"
         ],
-        "listeningTaskIds": ["findToyBox", "sayGoodNight"],
-        "optionalTaskIds": ["hugTeddyGoodNight"]
+        "listeningTaskIds": [
+          "findToyBox",
+          "sayGoodNight"
+        ],
+        "optionalTaskIds": [
+          "hugTeddyGoodNight"
+        ]
       }
     }
   ]

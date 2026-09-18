@@ -27,6 +27,23 @@ extends Node3D
 ## * **Targets sit on their own collision layer (2)**, so target-tap raycasting
 ##   cannot interfere with the layer-1 pickups.
 ##
+## ## A tap has to answer back
+##
+## Routing a tap correctly is not the same as making a child feel in control, and
+## the difference showed up the first time a four-year-old's parent played this on
+## a phone: *"controlling the character isn't smooth -- you have to tap the bed or
+## the wardrobe for him to walk."* The mechanism was fine (16 of 16 synthetic
+## floor taps across a live room were classified FLOOR and accepted); what was
+## missing was any acknowledgement at all. A tap on bare floor drew nothing, and
+## the only evidence it had landed arrived a fraction of a second later, somewhere
+## else on the screen, as a small character starting to move.
+##
+## So a floor tap now marks the floor -- `TapRipple`, in the same mint "go here"
+## language `HouseStage` uses for a directed beat -- and ticks, on the frame of
+## the press and before anything has moved. It is drawn HERE rather than in a
+## director because this is the one place every floor tap passes through, which is
+## what makes it work identically in Story mode, in Free Play and in onboarding.
+##
 ## ## Lazy wiring
 ##
 ## `_ensure_wired()` runs from every public method rather than only `_ready()`,
@@ -34,6 +51,13 @@ extends Node3D
 
 const NavMath := preload("res://scripts/navigation/nav_math.gd")
 const ActivityTargetScript := preload("res://scripts/navigation/activity_target.gd")
+const TapRippleScript := preload("res://scripts/navigation/tap_ripple.gd")
+
+## Soft click under a floor tap. Named rather than imported: `class_name SfxPlayer`
+## is unavailable in the headless `--script` runner, and the autoload itself is
+## optional everywhere (see `draggable_object.gd`, which does the same).
+const SFX_GENTLE_TAP: String = "gentle_tap"
+const SFX_AUTOLOAD_PATH: String = "/root/Sfx"
 
 ## What a tap turned out to mean.
 enum TapKind { NONE, TARGET, FLOOR }
@@ -50,8 +74,18 @@ const RAY_LENGTH: float = 40.0
 @export var floor_height: float = 0.0
 
 ## Set false while an overlay is up, exactly as `baby_room.gd` switches off
-## physics picking. A stray tap behind a summary screen must not move anybody.
-@export var taps_enabled: bool = true
+## physics picking. A stray tap behind a summary screen must not move anybody --
+## and any marker left on the floor is taken with it, so a summary never opens
+## over a mint disc promising a walk that is no longer going to happen.
+@export var taps_enabled: bool = true:
+	set(value):
+		taps_enabled = value
+		if not value and _ripple != null:
+			_ripple.call("dismiss")
+
+## Draws the acknowledgement for a floor tap. Off only for a deliberate opt-out
+## (the Phase 2A navigation spike, which has its own debug drawing).
+@export var tap_feedback_enabled: bool = true
 
 ## Emitted whenever a tap produced no usable destination, so a room can give
 ## gentle feedback if it wants to. Reasons: "aboveHorizon", "disabled".
@@ -64,11 +98,21 @@ signal floor_tapped(x: float, z: float)
 var _wired: bool = false
 var _character: Node = null
 var _camera: Camera3D = null
+var _ripple: Node3D = null
 
 
 func _ready() -> void:
 	_ensure_wired()
 	set_process_unhandled_input(true)
+	set_process(true)
+
+
+## Nothing but the tap marker's animation clock. Kept as one forwarding call so
+## the marker behaves identically in a live scene and in the headless runner,
+## which has no frames and steps `advance()` by hand.
+func _process(delta: float) -> void:
+	if _ripple != null:
+		_ripple.call("advance", delta)
 
 
 func _ensure_wired() -> void:
@@ -79,6 +123,24 @@ func _ensure_wired() -> void:
 		_character = get_node_or_null(character_path)
 	if not camera_path.is_empty():
 		_camera = get_node_or_null(camera_path) as Camera3D
+	_ensure_ripple()
+
+
+## Built lazily and kept: two unshaded discs, re-used for every tap for the whole
+## session. Never rebuilt, never freed between taps.
+func _ensure_ripple() -> void:
+	if _ripple != null or not tap_feedback_enabled:
+		return
+	var node: Node3D = TapRippleScript.new()
+	node.name = "TapRipple"
+	_ripple = node
+	add_child(node)
+
+
+## The tap marker, for a room that wants to read it (and for the tests).
+func get_tap_ripple() -> Node3D:
+	_ensure_wired()
+	return _ripple
 
 
 ## Binds the character this controller drives and hands it every `ActivityTarget`
@@ -87,10 +149,23 @@ func _ensure_wired() -> void:
 func bind_character(character: Node, search_root: Node = null) -> int:
 	_ensure_wired()
 	_character = character
+	# The destination disc is retired the moment the walk it marks is over. The
+	# character is the only thing that knows when that is, and `arrived` fires
+	# exactly once per request (see `CharacterMovementController`'s latch), so one
+	# guarded connection is the whole of it. Duck-typed and idempotent: a test
+	# double with no such signal, or a second `bind_character()`, is a no-op.
+	if character != null and character.has_signal("arrived") \
+			and not character.is_connected("arrived", _on_character_arrived):
+		character.connect("arrived", _on_character_arrived)
 	var root: Node = search_root
 	if root == null:
 		root = get_parent() if get_parent() != null else self
 	return register_targets_under(root)
+
+
+func _on_character_arrived(_target_id: String) -> void:
+	if _ripple != null:
+		_ripple.call("release")
 
 
 func set_camera(camera: Camera3D) -> void:
@@ -216,11 +291,44 @@ func apply_tap(tap: Dictionary) -> bool:
 		TapKind.FLOOR:
 			var x: float = float(tap.get("x", 0.0))
 			var z: float = float(tap.get("z", 0.0))
+			# FIRST, before anything is asked of anybody: the child pressed the
+			# floor and the floor answers. A walk that is refused a line later
+			# still gets its acknowledgement -- what must never happen is a press
+			# that the screen ignores.
+			acknowledge_floor_tap(x, z)
 			floor_tapped.emit(x, z)
-			return bool(_character.call("move_to_ground", x, z))
+			var accepted: bool = bool(_character.call("move_to_ground", x, z))
+			if not accepted and _ripple != null:
+				# Nobody is going anywhere, so the destination disc fades straight
+				# back out. Gently, and with no failure language: there is no red X
+				# in this game, and a child who taps a wall has done nothing wrong.
+				_ripple.call("release")
+			return accepted
 		_:
 			tap_ignored.emit(String(tap.get("reason", "")))
 			return false
+
+
+## Marks the floor at `(x, z)` and ticks. Public so a room with its own input
+## handling can acknowledge a tap it routed itself, and so a test can assert the
+## feedback without a camera or a physics world.
+func acknowledge_floor_tap(x: float, z: float) -> void:
+	_ensure_wired()
+	if _ripple == null:
+		return
+	_ripple.call("show_at", x, z, floor_height)
+	_play_tap_sound()
+
+
+## Optional everywhere. The `Sfx` autoload is absent in a scene preview and is
+## detached for the duration of the headless test run, so this must degrade to
+## silence rather than to an error.
+func _play_tap_sound() -> void:
+	if not is_inside_tree():
+		return
+	var sfx: Node = get_node_or_null(NodePath(SFX_AUTOLOAD_PATH))
+	if sfx != null and sfx.has_method("play"):
+		sfx.call("play", SFX_GENTLE_TAP)
 
 
 ## The only part of this file that needs a live physics world. Queries the

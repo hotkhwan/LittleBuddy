@@ -264,9 +264,22 @@ static func furniture(room_id: String) -> Array:
 			return [
 				_prop("sink", "sink", Vector3(0.6, 0.7, 0.45), Vector3(-1.2, 0.35, -1.72),
 						Vector3(-1.2, FLOOR_Y, -1.15), ["wash", "brushTeeth"], Palette.CREAM),
-				_prop("bath", "bath", Vector3(1.4, 0.5, 0.75), Vector3(0.95, 0.25, -1.5),
-						Vector3(0.95, FLOOR_Y, -0.85), ["wash", "play"], Palette.DUSTY_BLUE),
-				_prop("towel", "towel", Vector3(0.14, 0.62, 0.52), Vector3(-1.93, 1.02, -0.5),
+				# 0.68 m tall over 1.26 m long, NOT 0.5 over 1.4. Those two numbers
+				# are the whole difference between "bath" and "bench": 0.5 m is
+				# exactly coffee-table height, and a low cream box with a flat blue
+				# top is furniture to put things on, which is what the first three
+				# passes of this room actually rendered. 0.68 m clears a 0.85 m
+				# toddler's waist, which is the proportion a bath really has to a
+				# child, and it stands on feet, so it is the one object in the house
+				# with daylight under it.
+				_prop("bath", "bath", Vector3(1.26, 0.68, 0.72), Vector3(0.95, 0.34, -1.48),
+						Vector3(0.95, FLOOR_Y, -0.78), ["wash", "play"], Palette.DUSTY_BLUE),
+				# Half again as large as it was, because it hangs on the -X wall --
+				# which the three-quarter camera sees at a steep angle and the one
+				# directional light never reaches at all (its inner face points +X and
+				# the sun's X component is negative). A 0.52 m towel there measured
+				# 25 px across on a landscape iPhone.
+				_prop("towel", "towel", Vector3(0.17, 0.88, 0.74), Vector3(-1.93, 1.06, -0.52),
 						Vector3(-1.35, FLOOR_Y, -0.5), ["pickUp", "dry"], Palette.SOFT_PINK),
 			]
 		KITCHEN:
@@ -284,8 +297,13 @@ static func furniture(room_id: String) -> Array:
 						Vector3(-0.7, FLOOR_Y, -0.85), ["sit", "hug"], Palette.SOFT_PINK),
 				_prop("toyBox", "toy box", Vector3(0.7, 0.5, 0.5), Vector3(1.45, 0.25, -1.65),
 						Vector3(1.45, FLOOR_Y, -1.05), ["open", "play"], Palette.MINT),
-				_prop("book", "book", Vector3(0.32, 0.12, 0.24), Vector3(0.3, 0.06, 0.8),
-						Vector3(0.3, FLOOR_Y, 1.35), ["read", "pickUp"], Palette.DUSTY_BLUE),
+				# OPEN, and therefore wider than it is deep. A closed book on a floor
+				# is a rectangular slab seen from above, and a rectangular slab seen
+				# from above is a tray -- which is exactly what the owner named this
+				# object as, cold, on a phone. Two cream pages either side of a spine
+				# is a silhouette nothing else in this house has (ART_BIBLE.md §6).
+				_prop("book", "book", Vector3(0.46, 0.16, 0.36), Vector3(0.3, 0.08, 0.8),
+						Vector3(0.3, FLOOR_Y, 1.4), ["read", "pickUp"], Palette.DUSTY_BLUE),
 			]
 		_:
 			return []

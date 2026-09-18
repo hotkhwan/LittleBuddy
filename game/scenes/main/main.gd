@@ -51,8 +51,40 @@ extends Node3D
 ## and only then added. No autoload, no singleton, no global session object --
 ## `CLAUDE.md` asks for composition, and this is the one hand-off that needs it.
 
+## ## First launch (added after a real child could not find the tutorial)
+##
+## Onboarding lives in the house, because three of the four things it teaches
+## (walk there, use that, carry this) only exist where there is a character who
+## walks. But `ProfileStore.default_profile()` writes `currentChapter: "ch1"`, and
+## ch1 and ch2 both route to the Baby Room -- so a brand new player was routed
+## past the tutorial and never saw it once.
+##
+## So a profile that has never been shown the game (`settings.onboardingDone` is
+## not an explicit `true`) is sent to the **house** on launch, automatically,
+## before either button is pressed and before it is expected to play anything.
+## First run plays, records itself, and the session continues as Free Play --
+## which is the objective-free house the tutorial has just finished describing.
+##
+## **Chapter routing is untouched.** `CHAPTER_ROUTES` still maps ch1 and ch2 to
+## the Baby Room; Chapter 2's caregiver gameplay is not involved in any of this
+## and the Baby Room acquires no navigation. The second launch, with the flag
+## written, behaves exactly as this file always has.
+
 const BABY_ROOM_PATH: String = "res://scenes/baby_room/baby_room.tscn"
 const HOUSE_WORLD_PATH: String = "res://scenes/house/house_world.tscn"
+
+## Where first run is decided. `load()`ed rather than `preload()`ed, like the
+## content scripts below: a build with no onboarding simply has no first launch.
+const ONBOARDING_PLAN_SCRIPT_PATH: String = "res://scripts/onboarding/onboarding_plan.gd"
+## Mirrors `onboarding_plan.gd::SETTING_KEY`. Duplicated rather than loaded so the
+## title screen never depends on that script parsing; `test_routing_first_run.gd`
+## pins the two together.
+const ONBOARDING_SETTING_KEY: String = "onboardingDone"
+
+## A beat on the title screen before first launch takes over, so the app has a
+## name and a face for the adult who just installed it. Short enough that a child
+## handed the iPad does not have time to wonder what to press.
+const FIRST_RUN_DELAY_SEC: float = 1.4
 
 ## `load()`ed rather than `preload()`ed: the title screen is the first thing the
 ## engine parses, and a missing or broken content script must not stop the game
@@ -89,6 +121,10 @@ const FALLBACK_ROUTE: int = Route.BABY_ROOM
 ## Free Play is the house: four rooms to wander with nothing to finish.
 const FREE_PLAY_ROUTE: int = Route.HOUSE_WORLD
 
+## First launch is the house too, and for the same reason Chapter 3 is: it is the
+## only world where the gestures being taught exist.
+const FIRST_RUN_ROUTE: int = Route.HOUSE_WORLD
+
 ## Aimed in code rather than relying on a hand-written Transform3D in the .tscn,
 ## which previously had an inverted pitch and framed the backdrop off-screen.
 ##
@@ -108,6 +144,10 @@ const CAMERA_TARGET: Vector3 = Vector3(0.0, 0.44, 0.0)
 @onready var _free_play_button: Button = %FreePlayButton
 @onready var _coming_soon_label: Label = %ComingSoonLabel
 
+## Set once the menu has handed off, so the first-launch timer can never fire
+## into a scene the child has already left.
+var _handed_off: bool = false
+
 
 func _ready() -> void:
 	var camera: Camera3D = get_node_or_null("Camera3D") as Camera3D
@@ -118,6 +158,8 @@ func _ready() -> void:
 	_coming_soon_label.visible = false
 	_play_button.pressed.connect(_on_play_pressed)
 	_free_play_button.pressed.connect(_on_free_play_pressed)
+
+	_arm_first_run()
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +204,78 @@ static func free_play_scene_path() -> String:
 	])
 
 
+## The scene first launch opens, or `""` when this build has no house.
+##
+## **Deliberately no Baby Room fallback.** Every other route in this file falls
+## back to the Baby Room because a child must never press a button and get
+## nothing; this one is not a button. A house-less build simply has no first run
+## and comes up on the menu exactly as before -- whereas falling back to the Baby
+## Room would mean teaching tap-to-walk in a scene where nobody walks, which is
+## worse than teaching nothing.
+static func first_run_scene_path() -> String:
+	return _first_existing([scene_path_for_route(FIRST_RUN_ROUTE)])
+
+
+## Has this profile ever been shown the game?
+##
+## Pure, so the whole decision can be asserted without a save file or a tree.
+## `setting_value` is whatever `settings.onboardingDone` held, and **only an
+## explicit `true` counts as done** -- `onboarding_plan.gd` owns that rule and
+## this defers to it rather than restating it.
+static func wants_first_run(setting_value: Variant, scene_path: String) -> bool:
+	if scene_path.strip_edges().is_empty():
+		return false
+	var plan: Resource = load(ONBOARDING_PLAN_SCRIPT_PATH)
+	if not (plan is GDScript):
+		return false
+	return bool((plan as GDScript).call("should_run", setting_value))
+
+
+## The same question, against the real profile.
+##
+## False when there is no save service -- which is the headless runner, and any
+## build where completion could not be recorded. A tutorial that cannot be
+## remembered would play on every single launch, and that is worse than none.
+func is_first_launch() -> bool:
+	var save_service: Node = _autoload("SaveService")
+	if save_service == null or not save_service.has_method("get_setting"):
+		return false
+	return wants_first_run(
+		save_service.call("get_setting", ONBOARDING_SETTING_KEY, null), first_run_scene_path()
+	)
+
+
+## Starts the countdown to first launch, if this is one.
+##
+## A `SceneTreeTimer` rather than an `await` in `_ready()`: the buttons stay live
+## throughout, so a child (or an adult) who presses one during the beat is never
+## fighting the timer -- `_handed_off` makes the loser of that race a no-op.
+func _arm_first_run() -> void:
+	if not is_first_launch():
+		return
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	tree.create_timer(FIRST_RUN_DELAY_SEC).timeout.connect(_on_first_run_due)
+
+
+func _on_first_run_due() -> void:
+	if _handed_off or not is_inside_tree():
+		return
+	_enter_first_run()
+
+
+## Opens the house for first run. Free Play, because first run has no objective
+## either and because what it teaches -- walk, touch, carry -- is exactly what
+## Free Play is made of. `HouseWorld` plays the tutorial on its first frame and
+## begins the session itself when it ends.
+func _enter_first_run() -> bool:
+	var path: String = first_run_scene_path()
+	if path.is_empty():
+		return false
+	return _enter_scene(path, ProgressionMode.FREE_PLAY)
+
+
 static func _first_existing(paths: Array) -> String:
 	for path: Variant in paths:
 		var candidate: String = String(path)
@@ -175,6 +289,12 @@ static func _first_existing(paths: Array) -> String:
 # ---------------------------------------------------------------------------
 
 func _on_play_pressed() -> void:
+	# A child who beats the first-launch timer to the button still gets taught.
+	# Pressing Play the very first time therefore opens the house rather than
+	# Chapter 2 -- once, for one launch, and only for a profile that has never
+	# been shown the game.
+	if is_first_launch() and _enter_first_run():
+		return
 	_enter_scene(story_scene_path(resolve_story_chapter_id()), ProgressionMode.STORY)
 
 
@@ -293,6 +413,7 @@ func _enter_scene(path: String, mode: int) -> bool:
 		instance.free()
 		return false
 
+	_handed_off = true
 	var previous: Node = tree.current_scene
 	tree.root.add_child(instance)
 	tree.current_scene = instance

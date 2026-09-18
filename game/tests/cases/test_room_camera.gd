@@ -191,6 +191,9 @@ func _test_focus_and_restore():
 
 	var target := Vector3(1.4, 0.4, -1.1)
 	camera.call("focus_activity", target, 1.2)
+	# Moving in glides; this case is about the destination. The glide itself is
+	# `test_camera_activity_focus.gd`.
+	camera.call("settle")
 	if not bool(camera.call("is_focused_on_activity")):
 		failures.append("the camera does not report that it is focused on an activity")
 	var focus_distance: float = float(camera.call("get_last_solution")["distance"])
@@ -204,6 +207,7 @@ func _test_focus_and_restore():
 			break
 
 	camera.call("restore_room_frame")
+	camera.call("settle")
 	if bool(camera.call("is_focused_on_activity")):
 		failures.append("restore_room_frame() left the camera focused")
 	if camera.transform.origin.distance_to(room_transform.origin) > 0.001:

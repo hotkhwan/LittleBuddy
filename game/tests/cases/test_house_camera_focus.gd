@@ -67,6 +67,14 @@ func _test_focus_moves_in_on_a_semantic_id():
 	if not camera.has_method("focus_activity"):
 		_release(world)
 		return ["the room camera was never adopted; the close-up has nothing to drive"]
+	# The house adopts the camera script with `set_script()` on a node that is
+	# already in the tree, and a node decides whether to call `_process()` when it
+	# becomes ready -- so a script attached afterwards gets no frames unless it
+	# asks for them. Every eased move froze part way on a device while every
+	# headless test, which steps the camera by hand, stayed green.
+	if not camera.is_processing():
+		failures.append("the adopted room camera is not processing; its eased moves would start "
+				+ "and never finish on a real device")
 
 	var target: Node = world.call("get_target_by_semantic_id", "kitchen.fridge")
 	if target == null:
@@ -85,6 +93,10 @@ func _test_focus_moves_in_on_a_semantic_id():
 	if not bool(world.call("is_focused_on_activity")):
 		failures.append("the camera does not report itself as focused")
 
+	# Moving in is EASED (`room_camera.gd`), so the camera is still leaving the
+	# room shot at this point. What is being asserted here is where the shot ends
+	# up, not how it gets there -- `test_camera_activity_focus.gd` owns the glide.
+	_settle(camera)
 	var focused_position: Vector3 = SpatialUtil.world_position(camera)
 	var focused_distance: float = focused_position.distance_to(fridge)
 	if focused_distance >= room_distance:
@@ -118,10 +130,12 @@ func _test_restore_returns_the_room_shot():
 
 	var room_transform: Transform3D = SpatialUtil.world_transform(camera)
 	world.call("focus_activity", "livingRoom.sofa")
+	_settle(camera)
 	if SpatialUtil.world_transform(camera).is_equal_approx(room_transform):
 		failures.append("focusing changed nothing, so restoring proves nothing")
 
 	world.call("restore_room_frame")
+	_settle(camera)
 	if bool(world.call("is_focused_on_activity")):
 		failures.append("the camera still reports itself as focused after restoring")
 	if not SpatialUtil.world_transform(camera).is_equal_approx(room_transform):
@@ -134,6 +148,7 @@ func _test_restore_returns_the_room_shot():
 	# Restoring when nothing was focused is a no-op, not a jump.
 	var settled: Transform3D = SpatialUtil.world_transform(camera)
 	world.call("restore_room_frame")
+	_settle(camera)
 	if not SpatialUtil.world_transform(camera).is_equal_approx(settled):
 		failures.append("a second restore moved the camera")
 
@@ -228,6 +243,13 @@ func _build_house() -> Node:
 		tree.root.add_child(world)
 	world.call("build_world")
 	return world
+
+
+## Finishes an eased move. Moving in and letting go both glide now; this case is
+## about WHERE the shot ends up, which is the camera's contract either way.
+func _settle(camera: Camera3D) -> void:
+	if camera != null and camera.has_method("settle"):
+		camera.call("settle")
 
 
 func _release(world: Node) -> void:

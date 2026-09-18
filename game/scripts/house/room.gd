@@ -232,6 +232,14 @@ func build() -> void:
 	_build_dressing(shell)
 	_add_mesh("Shell", Kit.commit(shell), false)
 
+	# Floor dressing is its own mesh for one reason: the shell does not cast
+	# shadows (see `_add_mesh`), and anything standing ON the floor must, or it
+	# floats (§7: "Shadows are what ground objects on the floor"). One extra
+	# mesh, one extra draw call, still one material.
+	var dressing: SurfaceTool = Kit.begin()
+	_build_floor_dressing(dressing)
+	_add_mesh("FloorDressing", Kit.commit(dressing))
+
 	_build_doors()
 	_build_furniture()
 
@@ -449,16 +457,23 @@ func _build_rug(tool: SurfaceTool) -> void:
 	)
 
 
+## Pulled FORWARD, toward the open fourth wall, and grown.
+##
+## A rug is the only thing that can dress the near half of a room for free: it is
+## a flat plate at floor level with no collider, so it costs the navigation bake
+## nothing at all, and it is the cheapest possible answer to "the front third is
+## bare boards". Each one now reaches the `default` spawn at z = 1.5, so the
+## child arrives standing ON something rather than on empty timber.
 func _rug_placement() -> Dictionary:
 	match room_id:
 		HouseLayout.BEDROOM:
-			return {"size": Vector2(1.95, 1.45), "at": Vector2(0.62, 0.85)}
+			return {"size": Vector2(2.15, 1.75), "at": Vector2(0.40, 0.95)}
 		HouseLayout.BATHROOM:
-			return {"size": Vector2(1.30, 0.95), "at": Vector2(0.30, 0.30)}
+			return {"size": Vector2(1.85, 1.35), "at": Vector2(0.10, 0.85)}
 		HouseLayout.KITCHEN:
-			return {"size": Vector2(1.70, 1.50), "at": Vector2(0.50, 0.60)}
+			return {"size": Vector2(2.00, 1.80), "at": Vector2(0.45, 0.80)}
 		HouseLayout.LIVING_ROOM:
-			return {"size": Vector2(2.40, 1.70), "at": Vector2(-0.15, 0.35)}
+			return {"size": Vector2(2.55, 1.95), "at": Vector2(-0.10, 0.75)}
 		_:
 			return {}
 
@@ -499,6 +514,104 @@ func _wall_picture(tool: SurfaceTool, x: float, y: float, accent: Color) -> void
 			accent, 0.01)
 	Kit.plate(tool, Kit.at_rotated(Vector3(x, y - 0.01, INNER_Z + 0.075), facing),
 			Kit.circle(0.085, 16), 0.02, accent, 0.006)
+
+
+## Where floor dressing stands: hard against the two side walls, in the front
+## third, and nowhere else.
+##
+## ## Why the foreground needed dressing at all
+##
+## Every piece of furniture in this house is against the back wall by layout, so
+## the near half of all four rooms was bare boards: no foreground, no depth, and
+## a child who walks forward into an empty half-room.
+##
+## ## Why it is NOT in the front corners, which is where it wants to be
+##
+## Floor dressing is the one kind of clutter that can break the game. It has a
+## collider, it takes floor away from the navigation bake, and a level that
+## cannot reach a stand point is a dead end. `tools/bake_navmesh.gd` probes a
+## corner-to-corner crossing from (-1.6, 1.6) to (1.6, 1.6) after every bake --
+## the two front corners, exactly where foreground dressing belongs. A plant
+## there put an obstacle ON a probe endpoint and all four rooms came back
+## "the child cannot walk from ... to ...". That probe is right and the placement
+## was wrong.
+##
+## So the numbers below are derived, not chosen. Along the side wall the free
+## window in z runs from the door stand at z = 0.6 to the corner probe at
+## z = 1.6; one 0.20 m agent radius off each end leaves 0.6 m, and a 0.34 m
+## footprint centred at z = 1.15 sits inside it with 0.20 m of margin at the door
+## and 0.10 m at the corner. That is why every dressing item here is 0.34 m
+## across and no wider, and why they are tall rather than fat.
+##
+## Deliberately sparse: another system places the child's choice objects on the
+## floor beside the furniture they belong with, and it needs that floor free.
+const DRESSING_FOOTPRINT: float = 0.34
+const DRESSING_LEFT: Vector2 = Vector2(-1.76, 1.15)
+const DRESSING_RIGHT: Vector2 = Vector2(1.76, 1.15)
+
+
+## `{kind, at, size}` per item. `size` is the collider, not the mesh.
+func _floor_dressing() -> Array:
+	var accent: Color = HouseLayout.accent_color(room_id)
+	# The pot takes the room's DOMINANT colour, never its accent. Two of the four
+	# rooms accent on `mint`, and a deep-mint pot under mint foliage is one green
+	# lump: the pot has to be the thing the leaves sit against.
+	var plant: Dictionary = {
+		"kind": "plant", "at": DRESSING_LEFT, "height": 0.80,
+		"color": Palette.deep(HouseLayout.dominant_color(room_id)),
+	}
+	match room_id:
+		HouseLayout.BEDROOM:
+			return [plant, {
+				"kind": "basket", "at": DRESSING_RIGHT, "height": 0.40,
+				"color": Palette.deep(HouseLayout.dominant_color(room_id)),
+			}]
+		HouseLayout.BATHROOM:
+			return [plant, {
+				"kind": "stepStool", "at": DRESSING_RIGHT, "height": 0.30,
+				"color": Palette.light(accent),
+			}]
+		HouseLayout.KITCHEN:
+			return [plant, {
+				"kind": "stool", "at": DRESSING_RIGHT, "height": 0.38,
+				"color": Palette.light(accent),
+			}]
+		HouseLayout.LIVING_ROOM:
+			return [plant, {
+				"kind": "footstool", "at": DRESSING_RIGHT, "height": 0.30,
+				"color": Palette.deep(accent),
+			}]
+		_:
+			return []
+
+
+func _build_floor_dressing(tool: SurfaceTool) -> void:
+	for item: Dictionary in _floor_dressing():
+		var at: Vector2 = item["at"]
+		# One footprint for everything here, and it is a constraint, not a
+		# convenience: see `DRESSING_FOOTPRINT`.
+		var size := Vector3(DRESSING_FOOTPRINT, float(item["height"]), DRESSING_FOOTPRINT)
+		var color: Color = item["color"]
+		# Pivot at base centre (§6), so `at` is literally where it stands.
+		var stands: Transform3D = Kit.at(Vector3(at.x, HouseLayout.FLOOR_Y, at.y))
+		match String(item["kind"]):
+			"plant":
+				RoomProps.floor_plant(tool, stands, color)
+			"basket":
+				RoomProps.basket(tool, stands, color)
+			"stepStool":
+				RoomProps.step_stool(tool, stands, color)
+			"stool":
+				RoomProps.stool(tool, stands, color)
+			"footstool":
+				RoomProps.footstool(tool, stands, color)
+			_:
+				continue
+		_add_collider(
+			"Dressing_%s_%dBody" % [String(item["kind"]), int(at.x * 100.0)],
+			size,
+			Vector3(at.x, HouseLayout.FLOOR_Y + size.y * 0.5, at.y)
+		)
 
 
 func _mirror(tool: SurfaceTool, x: float, y: float) -> void:

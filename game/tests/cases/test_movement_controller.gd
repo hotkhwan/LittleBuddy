@@ -14,6 +14,7 @@ extends RefCounted
 const MovementController := preload("res://scripts/character/character_movement_controller.gd")
 const NavigationProvider := preload("res://scripts/navigation/navigation_provider.gd")
 const NavMath := preload("res://scripts/navigation/nav_math.gd")
+const ToddlerView := preload("res://scripts/character/toddler_view.gd")
 
 const DT: float = 1.0 / 60.0
 ## 20 s at 60 fps. Far longer than any walk in a 6 x 5 m room, so a run that hits
@@ -100,8 +101,17 @@ func _test_tap_to_walk():
 	return failures
 
 
-## Child-friendly pacing: calm, never an action game. A 4 m walk must take at
-## least a few seconds, and the character must never exceed its walk speed.
+## Child-friendly pacing: calm, never an action game -- and never a skate.
+##
+## This used to assert a bare `WALK_SPEED <= 1.2`, which is a magic number that
+## says nothing about why. It did not survive the first person who had a reason
+## to raise the speed: it went to 1.25, this test went red, and the number it was
+## really in tension with -- the walk ANIMATION's stride -- was nowhere in the
+## assertion. So the check is now the thing that actually matters.
+##
+## **The walk speed and the walk clip are one decision.** Feet skate whenever the
+## body covers more ground per step than the legs reach. Both numbers are here,
+## so neither can be changed alone.
 func _test_calm_speed():
 	var failures: Array = []
 	var controller: RefCounted = _make()
@@ -112,11 +122,30 @@ func _test_calm_speed():
 	if float(run["maxSpeed"]) > MovementController.WALK_SPEED + 0.001:
 		failures.append("the character exceeded its walk speed (%f)" % float(run["maxSpeed"]))
 	var seconds: float = float(int(run["frames"])) * DT
-	if seconds < 3.5:
+	if seconds < 3.0:
 		failures.append("a 4 m walk took only %.2f s -- too fast for a small child" % seconds)
-	if MovementController.WALK_SPEED > 1.2:
-		failures.append("WALK_SPEED %f is action-game fast for a toddler"
-				% MovementController.WALK_SPEED)
+
+	# The gait check. `reach` is how far the legs actually carry him in one step;
+	# `covered` is how far the body travels in that time.
+	var reach: float = 2.0 * ToddlerView.LEG_HEIGHT * sin(deg_to_rad(ToddlerView.WALK_SWING_DEG))
+	var covered: float = MovementController.WALK_SPEED * ToddlerView.WALK_CYCLE * 0.5
+	var skate: float = covered / reach
+	if skate > 1.15 or skate < 0.85:
+		failures.append(("the walk clip and WALK_SPEED disagree by %.2fx: the legs reach %.3f m "
+				+ "per step but the body covers %.3f m. Change one and you must change the "
+				+ "other -- WALK_CYCLE in toddler_view.gd is the knob. A mismatch here is "
+				+ "sliding feet, which is the single most obvious way a character reads as fake.")
+				% [skate, reach, covered])
+
+	# The hard ceiling is biomechanical, not taste. Gait breaks into a run at a
+	# Froude number of about 0.5, and no walk cycle can be authored around that.
+	var froude: float = pow(MovementController.WALK_SPEED, 2.0) / (9.81 * ToddlerView.LEG_HEIGHT)
+	if froude > 0.55:
+		failures.append(("WALK_SPEED %.2f m/s is Froude %.2f for a %.2f m leg. Above ~0.5 a gait "
+				+ "is a RUN, and a walk cycle cannot be made to fit it -- he would skate across "
+				+ "the room however the clip is retimed. Cap is about %.2f m/s.")
+				% [MovementController.WALK_SPEED, froude, ToddlerView.LEG_HEIGHT,
+					sqrt(0.5 * 9.81 * ToddlerView.LEG_HEIGHT)])
 	return failures
 
 

@@ -167,6 +167,113 @@ static func has_word(semantic_id: Variant) -> bool:
 	return not word_for(semantic_id).is_empty()
 
 
+## -- What a child can pick up and move ------------------------------------------
+##
+## Free Play used to have no draggable object in it at all, which made the drag
+## gesture first run teaches a demonstration over an empty floor. These are the
+## real ones.
+##
+## Each entry is `objectId` (a record in `content/objects.json`), the content
+## `interaction` that decides WHICH landing pad it belongs in (`drop_zone.gd`
+## owns that mapping -- this table never names a zone id directly), and the
+## semantic action Little Buddy plays when it arrives.
+##
+## Two flavours on purpose, because they teach different things:
+##
+##   * **to Little Buddy** -- `dragToMouth` / `dragToHug` / `tap`. The pad rides
+##     on him, so the target is a face rather than a spot on the floor.
+##   * **to the furniture** -- `dragToBath` / `dragToToyBox`. The pad sits on a
+##     real prop, named in `DRAG_FOCUS` below.
+##
+## Three per room: enough that the row is worth looking at twice, few enough
+## that four 0.61 m grab colliders never crowd each other in a 4 m room.
+const DRAGGABLES: Dictionary = {
+	"bedroom": [
+		{"objectId": "teddy", "interaction": "dragToHug", "action": "hug"},
+		{"objectId": "pillow", "interaction": "dragToHug", "action": "hug"},
+		{"objectId": "blanket", "interaction": "dragToHug", "action": "hug"},
+	],
+	"bathroom": [
+		{"objectId": "bathToy", "interaction": "dragToBath", "action": "wave"},
+		{"objectId": "soap", "interaction": "dragToBath", "action": "clap"},
+		{"objectId": "toothbrush", "interaction": "tap", "action": "brushTeeth"},
+	],
+	"kitchen": [
+		{"objectId": "apple", "interaction": "dragToMouth", "action": "eat"},
+		{"objectId": "banana", "interaction": "dragToMouth", "action": "eat"},
+		{"objectId": "milk", "interaction": "dragToMouth", "action": "drink"},
+	],
+	"livingRoom": [
+		{"objectId": "ball", "interaction": "dragToToyBox", "action": "pickUp"},
+		{"objectId": "blocks", "interaction": "dragToToyBox", "action": "pickUp"},
+		{"objectId": "starToy", "interaction": "dragToToyBox", "action": "pickUp"},
+	],
+}
+
+## The prop a room's furniture-mounted landing pad sits on, as a LOCAL target id.
+##
+## One per room, deliberately: `house_stage.gd` tracks every prop pad to a single
+## focus point, so a room with two furniture targets would put both pads in the
+## same place. Rooms whose objects all go to Little Buddy have no entry, and
+## their pads simply follow him.
+const DRAG_FOCUS: Dictionary = {
+	"bathroom": "bath",
+	"livingRoom": "toyBox",
+}
+
+## Warm, short, and about the OBJECT rather than about the child. Spoken after
+## the word, never a score (CLAUDE.md child UX).
+const DROP_REACTIONS: Array[String] = ["Thank you!", "Yay!", "Nice one!", "Lovely!"]
+
+
+## The draggable set for a room, `[]` for a room with none. A fresh Array of
+## fresh Dictionaries every call, so a caller may mutate the result freely.
+static func draggables_for(room_id: Variant) -> Array:
+	var entries: Variant = DRAGGABLES.get(String(room_id).strip_edges(), null)
+	if typeof(entries) != TYPE_ARRAY:
+		return []
+	var copy: Array = []
+	for entry: Variant in entries as Array:
+		if typeof(entry) == TYPE_DICTIONARY:
+			copy.append((entry as Dictionary).duplicate())
+	return copy
+
+
+## The entry for one object id in one room, or an empty Dictionary. Shaped like a
+## real entry either way, so a caller never has to test for null.
+static func draggable_entry(room_id: Variant, object_id: Variant) -> Dictionary:
+	var wanted: String = String(object_id).strip_edges()
+	for entry: Variant in draggables_for(room_id):
+		if String((entry as Dictionary).get("objectId", "")) == wanted:
+			return entry as Dictionary
+	return {"objectId": "", "interaction": "", "action": ""}
+
+
+## The LOCAL id of the prop this room's furniture pad rides on, or "".
+static func drag_focus_for(room_id: Variant) -> String:
+	return String(DRAG_FOCUS.get(String(room_id).strip_edges(), ""))
+
+
+## Every object id any room can put in a child's hand. Used by the tests to prove
+## each one is a real `objects.json` record.
+static func all_draggable_object_ids() -> Array:
+	var ids: Array = []
+	for room_id: Variant in DRAGGABLES.keys():
+		for entry: Variant in draggables_for(room_id):
+			var id: String = String((entry as Dictionary).get("objectId", ""))
+			if not id.is_empty() and not ids.has(id):
+				ids.append(id)
+	return ids
+
+
+## A short, warm line for putting something where it belongs. Deterministic given
+## `seed_value` so a test can assert it without a random.
+static func drop_reaction_for(seed_value: int) -> String:
+	if DROP_REACTIONS.is_empty():
+		return ""
+	return DROP_REACTIONS[absi(seed_value) % DROP_REACTIONS.size()]
+
+
 ## A short, warm line for arriving somewhere. Deterministic given `seed_value`
 ## so a test can assert it without a random.
 static func reaction_for(seed_value: int) -> String:

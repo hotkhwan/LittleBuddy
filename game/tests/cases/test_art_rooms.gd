@@ -61,6 +61,9 @@ func run():
 	failures += _test_architecture_is_bevelled()
 	failures += _test_room_colours_are_palette_tokens()
 	failures += _test_every_taught_object_has_its_own_shape()
+	failures += _test_a_cap_is_never_silently_empty()
+	failures += _test_a_vessel_is_actually_hollow()
+	failures += _test_floor_dressing_cannot_block_the_level()
 	failures += _test_the_sleep_pose_lands_on_the_bed()
 	failures += _test_one_light_no_forbidden_effects()
 	return failures
@@ -269,6 +272,153 @@ func _test_every_taught_object_has_its_own_shape():
 						+ "must never share a shape")
 			signatures[signature] = target_id
 	return failures
+
+
+## -- Caps that exist (section 6, containers) ---------------------------------------
+
+## `Geometry2D.triangulate_polygon()` returns an EMPTY `PackedInt32Array`, with
+## no error and no warning, when its ear-clipping fails -- and it fails on an
+## outline with near-collinear or near-coincident vertices, which a STADIUM
+## (a rounded rectangle whose corner radius is half its short side) has by
+## construction, and which one `_inset()` then makes worse.
+##
+## When that happens the shape loses its top and bottom faces and becomes a ring
+## of side walls. It is completely invisible to every other assertion in this
+## file -- the triangle count barely moves, the winding is still right, the
+## colours are still §3 tokens -- and on screen the bath's water surface vanishes
+## and the tub renders empty. It shipped exactly that way.
+##
+## So: fill a stadium and check the AREA that comes back, not merely that
+## something did.
+func _test_a_cap_is_never_silently_empty():
+	var failures: Array = []
+	# The bath's own plan, which is the shape that actually broke.
+	var outline: PackedVector2Array = Kit.rounded_rect(Vector2(1.26, 0.72), 0.36, 5)
+	var tool: SurfaceTool = Kit.begin()
+	Kit.plate(tool, Transform3D.IDENTITY, outline, 0.28, Palette.CREAM, 0.012)
+	var mesh: ArrayMesh = Kit.commit(tool)
+	if mesh == null:
+		return ["a stadium plate produced no mesh at all"]
+	var expected: float = _polygon_area(outline)
+	var covered: float = _up_facing_area(mesh, 0.14, 0.02)
+	if covered < expected * 0.85:
+		failures.append(("a stadium-outlined plate caps only %.3f m2 of its %.3f m2 "
+				+ "footprint; its top face is missing, which renders as a hollow shell")
+				% [covered, expected])
+	return failures
+
+
+## An open container must be OPEN: §6 requires "visible interior depth", and a
+## `vessel()` that quietly became a solid block is the `sink`-is-a-cupboard
+## failure the props file was written to end.
+func _test_a_vessel_is_actually_hollow():
+	var failures: Array = []
+	var tool: SurfaceTool = Kit.begin()
+	Kit.vessel(tool, Transform3D.IDENTITY, Kit.rounded_rect(Vector2(1.2, 0.7), 0.34, 5),
+			0.6, 0.075, 0.1, Palette.CREAM, Palette.DUSTY_BLUE)
+	var mesh: ArrayMesh = Kit.commit(tool)
+	if mesh == null:
+		return ["the kit's vessel produced no mesh"]
+
+	# The rim: an annulus, so it must cover far LESS than the whole footprint.
+	var rim: float = _up_facing_area(mesh, 0.3, 0.02)
+	var footprint: float = _polygon_area(Kit.rounded_rect(Vector2(1.2, 0.7), 0.34, 5))
+	if rim <= 0.0:
+		failures.append("a vessel has no rim; its top face was never emitted")
+	if rim > footprint * 0.7:
+		failures.append(("a vessel's rim covers %.3f m2 of a %.3f m2 footprint, so it is "
+				+ "capped over rather than open -- section 6 needs visible interior depth")
+				% [rim, footprint])
+	# And there must be a floor DOWN INSIDE it, well below the rim.
+	if _up_facing_area(mesh, -0.2, 0.03) <= 0.0:
+		failures.append("a vessel has no inner floor, so it is a bottomless ring")
+	return failures
+
+
+## -- Floor dressing, which is the one kind of clutter that can break the game ------
+
+## Everything in `room.gd`'s dressing table has a collider, so every one of them
+## takes floor away from the navigation bake. `tools/bake_navmesh.gd` probes a
+## corner-to-corner crossing between the two FRONT CORNERS after every bake, and
+## the first placement of this dressing put a plant on one of those endpoints:
+## all four rooms came back "the child cannot walk from ... to ...".
+##
+## That is a whole bake cycle to discover, so the geometry is checked here
+## instead. Every dressing footprint must clear every authored stand point, every
+## spawn, and both probe corners by at least one agent radius.
+func _test_floor_dressing_cannot_block_the_level():
+	var failures: Array = []
+	var clearance: float = HouseLayout.NAV_AGENT_RADIUS
+	for room_id: String in HouseLayout.room_ids():
+		var room: Node3D = _room(room_id)
+		var items: Array = room.call("_floor_dressing")
+		var half: float = float(room.get("DRESSING_FOOTPRINT")) * 0.5
+		var must_stay_walkable: Dictionary = {
+			"the bake's front-left crossing probe": Vector2(-1.6, 1.6),
+			"the bake's front-right crossing probe": Vector2(1.6, 1.6),
+		}
+		for entry: Dictionary in HouseLayout.furniture(room_id) + HouseLayout.doors(room_id):
+			var stand: Vector3 = entry["stand"]
+			must_stay_walkable["the stand point for '%s'" % String(entry["targetId"])] = (
+					Vector2(stand.x, stand.z))
+		for spawn_id: String in HouseLayout.spawn_points(room_id).keys():
+			var spawn: Vector3 = HouseLayout.spawn_points(room_id)[spawn_id]
+			must_stay_walkable["the '%s' spawn" % spawn_id] = Vector2(spawn.x, spawn.z)
+
+		for item: Dictionary in items:
+			var at: Vector2 = item["at"]
+			# Inside the room, and inside the part of it the bake keeps.
+			if absf(at.x) + half > 2.0 or absf(at.y) + half > 2.0:
+				failures.append("%s's %s dressing hangs off the floor"
+						% [room_id, String(item["kind"])])
+			for label: String in must_stay_walkable.keys():
+				var point: Vector2 = must_stay_walkable[label]
+				var gap: float = _box_distance(at, half, point)
+				if gap < clearance:
+					failures.append(("%s's %s dressing leaves %.2f m between itself and %s; "
+							+ "the navigation agent is %.2f m wide and would be shut out")
+							% [room_id, String(item["kind"]), gap, label, clearance])
+		room.free()
+	return failures
+
+
+## Shortest distance from `point` to an axis-aligned square of half-extent `half`
+## centred on `centre`, in the XZ plane. Zero when the point is inside it.
+func _box_distance(centre: Vector2, half: float, point: Vector2) -> float:
+	var offset := Vector2(
+		maxf(absf(point.x - centre.x) - half, 0.0),
+		maxf(absf(point.y - centre.y) - half, 0.0)
+	)
+	return offset.length()
+
+
+## Total horizontal area of the mesh's triangles that face UP and sit at height
+## `y`. This is how a missing cap is detected: a cap has area, a rim does not.
+func _up_facing_area(mesh: ArrayMesh, y: float, tolerance: float) -> float:
+	var vertices: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_NORMAL]
+	var total: float = 0.0
+	for index: int in range(0, vertices.size(), 3):
+		if normals[index].y < 0.9:
+			continue
+		var a: Vector3 = vertices[index]
+		var b: Vector3 = vertices[index + 1]
+		var c: Vector3 = vertices[index + 2]
+		if absf(a.y - y) > tolerance or absf(b.y - y) > tolerance or absf(c.y - y) > tolerance:
+			continue
+		total += absf(
+			(b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z)
+		) * 0.5
+	return total
+
+
+func _polygon_area(outline: PackedVector2Array) -> float:
+	var total: float = 0.0
+	for index: int in range(outline.size()):
+		var current: Vector2 = outline[index]
+		var next: Vector2 = outline[(index + 1) % outline.size()]
+		total += current.x * next.y - next.x * current.y
+	return absf(total) * 0.5
 
 
 ## -- The bed, from both ends -----------------------------------------------------

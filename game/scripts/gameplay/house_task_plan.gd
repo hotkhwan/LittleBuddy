@@ -135,6 +135,28 @@ static func is_choose(plan: Variant) -> bool:
 	return _kind_of(plan) == KIND_CHOOSE
 
 
+## Whether this beat is worth moving the camera in on.
+##
+## The rule, and it is a rule about children rather than about cameras:
+##
+##   * `travel` -- **no**. The task IS the journey. A child walking to a door
+##     needs the room, both doors and the marked spot on the floor all on screen
+##     at once; tightening the shot on the destination is the one thing that
+##     could make "where do I go?" unanswerable.
+##   * `goAndDo`, `deliver`, `choose` -- **yes**. The child is standing at the
+##     beat, and what matters is the sink, the bowl, the row of clothes and Little
+##     Buddy's face, not the far wall.
+##
+## Pure and here rather than in the level director because it is a property of the
+## task, and because it is the kind of rule that is easy to get backwards and
+## impossible to notice from a test that only checks the camera moved.
+static func wants_close_up(plan: Variant) -> bool:
+	var kind: String = _kind_of(plan)
+	if kind.is_empty() or kind == KIND_TRAVEL:
+		return false
+	return true
+
+
 ## "" when the plan is playable as it stands; otherwise a human-readable reason.
 ##
 ## Deliberately narrow: `MissionRunner.describe_unplayable()` already owns

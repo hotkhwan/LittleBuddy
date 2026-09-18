@@ -67,12 +67,47 @@ const STATE_NAMES: Dictionary = {
 	State.DISABLED: "disabled",
 }
 
-## Calm toddler pace, not an action game. ~0.85 m/s crosses a 4 m room in five
-## seconds, which reads as purposeful walking rather than sliding.
-const WALK_SPEED: float = 0.85
+## Calm toddler pace, not an action game -- but not a slideshow either.
+##
+## This was 0.85 m/s, and a 4 m room took 4.7 s to cross. Played on a physical
+## phone that is most of a five-second wait after every single tap, and it was
+## half of why tap-to-walk was reported as "not smooth": the other half was that
+## nothing acknowledged the tap at all (see `TapRipple`).
+##
+## The device finding stands and the speed went up. The number did not survive
+## contact with the character's legs, though, and now reads 1.05 m/s.
+##
+## The 1.25 m/s version justified itself on the walk clip's stride, quoting
+## "0.35-0.44 m" between foot plants. `toddler_view.gd`'s legs are 0.22 m long
+## (the hip sits at 0.22 m on a 0.85 m child), so a +/-33 degree swing separates
+## the feet by `2 * 0.22 * sin(33) = 0.24 m` -- not 0.35-0.44 m. At 1.25 m/s the
+## body covered 0.40 m per step against a 0.24 m stride, so the feet skated 1.67x:
+## WORSE than the 1.14x at 0.85 m/s, which is the opposite of the intent.
+##
+## There is also a hard biomechanical ceiling. Gait transitions from walking to
+## running at a Froude number of roughly 0.5, and `Fr = v^2 / (g * legLength)`.
+## For a 0.22 m leg: 0.85 m/s is Fr 0.33, 1.05 m/s is Fr 0.51, and 1.25 m/s is
+## Fr 0.72 -- decisively a RUN. No walk cycle can be authored to make 1.25 m/s
+## read as walking; it would look like a toddler skating across the room.
+##
+## 1.05 m/s is the top of the walk range: a 4 m room in 3.8 s rather than 4.7 s,
+## which keeps most of the responsiveness win. The walk clip has been re-authored
+## to match it exactly (45 degree swing, 0.59 s cycle, 0.311 m stride, zero
+## skate), and `test_movement_controller.gd` now checks that the speed and the
+## clip still agree, so neither can be changed alone again.
+const WALK_SPEED: float = 1.05
 ## Radians/second. Fast enough that a child sees an immediate response to a tap,
 ## slow enough that the turn is visible rather than a snap.
-const TURN_SPEED: float = 4.5
+##
+## Raised from 4.5 with the same device feedback in mind. Little Buddy TURNS
+## WHILE WALKING rather than stopping to turn first -- stopping to turn would add
+## latency to the very gesture that was reported as unresponsive -- so the turn
+## rate is what decides how quickly he visibly commits to a new direction. At 7.0
+## a typical 90-degree change of mind resolves in 0.22 s and the worst case, a
+## full reversal, in 0.45 s. That is FASTER than the old rate even though he now
+## moves quicker: a reversal used to drift 0.59 m sideways before he was facing
+## the right way, and now drifts 0.56 m.
+const TURN_SPEED: float = 7.0
 ## How close counts as arrived. Generous on purpose -- a child taps a region, not
 ## a pixel, and the last centimetre of travel is invisible and worth nothing.
 const ARRIVAL_RADIUS: float = 0.18

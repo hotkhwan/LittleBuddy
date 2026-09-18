@@ -76,6 +76,9 @@ const HouseStageScript := preload("res://scripts/gameplay/house_stage.gd")
 const HouseHudScript := preload("res://scripts/gameplay/house_hud.gd")
 const HouseRoute := preload("res://scripts/house/house_route.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+## Pure maths. Decides WHICH box the close-up frames; `room_camera.gd` decides
+## where the camera has to stand to frame it.
+const CameraFocus := preload("res://scripts/camera/camera_focus.gd")
 
 const SESSION_SUMMARY_SCENE: String = "res://scenes/progression/session_summary.tscn"
 
@@ -90,6 +93,18 @@ const ASSIST_AFTER_SEC: float = 9.0
 
 ## The one semantic action the director never replays; see `_play_task_action()`.
 const ACTION_WALK: String = "walk"
+
+## Air kept around everything a close-up has to hold. See `camera_focus.gd`.
+const FOCUS_MARGIN: float = 0.3
+
+## How far the composed shot has to drift before the camera is re-aimed. Below
+## this the move would be invisible and the solve would be wasted, and the
+## close-up would re-fit on every single frame while Little Buddy breathes.
+const FOCUS_EPSILON: float = 0.08
+
+## Fallback look-at height when the room did not say. Matches the rooms' own
+## `floorY + 0.55`.
+const FOCUS_HEIGHT: float = 0.55
 
 const PHRASE_LETS_GO: String = "Let's go!"
 const PHRASE_THIS_WAY: String = "This way!"
@@ -135,6 +150,16 @@ var _pending_complete: bool = false
 var _route: Array = []
 var _assist_generation: int = 0
 var _summary_open: bool = false
+
+## -- The close-up ----------------------------------------------------------------
+## True while this task owns the camera. `_focus_anchor` is the world position of
+## the thing the beat is about, resolved ONCE when the beat starts (furniture does
+## not move); the child's position is re-read every frame, which is what keeps him
+## in shot when he wanders off mid-task.
+var _focus_on: bool = false
+var _focus_anchor: Variant = null
+var _focus_point: Vector3 = Vector3.ZERO
+var _focus_radius: float = 0.0
 
 
 ## Stands in for `SaveService` where there is no tree to find it in -- a scene
@@ -249,6 +274,7 @@ func step(_delta: float = 0.0) -> void:
 		_stage.call("update_zones")
 	_flush_pending_complete()
 	_reconcile_objects()
+	_track_focus()
 
 
 ## -- Session -------------------------------------------------------------------
@@ -322,6 +348,7 @@ func _start_level(mission_id: String) -> bool:
 			_hud.call("set_skip_visible", false)
 		return false
 
+	_release_focus()
 	_mission_id = mission_id
 	_last_mission_id = mission_id
 	_level_id = _level_id_for_mission(mission_id)
@@ -397,6 +424,10 @@ func _on_mission_progress(index: int, _total: int) -> void:
 ## Runs BEFORE the mode handler starts, which is exactly what the stage needs:
 ## the choice row has to be in the right room before anything spawns into it.
 func _on_task_started(task_id: String, _mode: String) -> void:
+	# The previous beat's close-up belongs to the previous beat. Released before
+	# the plan is replaced, so the shot can never outlive the task that asked
+	# for it.
+	_release_focus()
 	var task: Dictionary = _runner.call("get_current_task")
 	_plan = TaskPlan.describe(task, String(_world.call("get_current_room_id")))
 	_task_done = false
@@ -412,6 +443,11 @@ func _on_task_started(task_id: String, _mode: String) -> void:
 
 	task_plan_changed.emit(task_id, String(_plan.get("kind", "")))
 	_arm_task()
+	# A task with no walk is already AT its beat -- the dressing and say-it rows
+	# are laid out at the toddler's own feet -- so the camera moves in now rather
+	# than waiting for an arrival that will never come.
+	if _beat_reached:
+		_begin_focus()
 
 
 ## Decides what the child has to do next, and is safe to call again at any time
@@ -482,6 +518,10 @@ func _reach_beat() -> void:
 	_stage.call("show_beat_marker", null)
 	var focus_id: String = String(_plan.get("focusTargetId", ""))
 	_stage.call("begin_task", _plan, _world_position_of(focus_id), _beat_stand_position())
+	# He is at the sink / the table / the toy box. This is the moment the shot is
+	# worth tightening -- and it is AFTER `begin_task`, so the object row is
+	# already staged and can be composed into the frame.
+	_begin_focus()
 
 	if TaskPlan.is_go_and_do(_plan):
 		# Nothing to choose: being here and doing it IS the task.
@@ -596,6 +636,9 @@ func _on_transition_completed(room_id: String, _spawn_id: String) -> void:
 func _on_transition_refused(_room_id: String, _reason: String) -> void:
 	if not _running:
 		return
+	# A refused door leaves the child standing where they were, which may be
+	# nowhere near the beat the shot was composed on.
+	_release_focus()
 	_route.clear()
 	if _character != null:
 		_character.call("set_disabled", false)
@@ -621,6 +664,12 @@ func _on_speak_button_enabled(enabled: bool) -> void:
 ## `RewardManager` routes this through the one process-wide `RewardLedger`, which
 ## refuses an id it has already paid for. There is no second reward path in the
 ## house -- a star can only arrive here.
+##
+## The close-up is deliberately NOT released here. The reaction -- the drinking,
+## the hugging, the sleeping -- is the payoff for what the child just did, and it
+## is the one moment in the beat most worth seeing up close. It is let go by the
+## next task starting, by the summary, or by the child walking away, all of which
+## are covered.
 func _on_task_completed(task_id: String, stars: int) -> void:
 	_task_done = true
 	_cancel_assist()
@@ -642,6 +691,9 @@ func _on_task_completed(task_id: String, stars: int) -> void:
 ## with Little Buddy sliding across the room on his own.
 func _on_task_skipped(_task_id: String) -> void:
 	_task_done = true
+	# Next is the one thing on screen for the whole of every task, so this is the
+	# most likely way a close-up is ever abandoned half way through.
+	_release_focus()
 	_stage.call("show_beat_marker", null)
 	_awaiting_action = false
 	_pending_complete = false
@@ -759,6 +811,131 @@ func _flush_pending_complete() -> void:
 	_runner.call("complete_current_by_touch")
 
 
+## -- The close-up ------------------------------------------------------------------------
+##
+## The room camera has had `focus_activity()` / `restore_room_frame()` since Phase
+## 2B and nothing ever called them: the whole-room shot was kept everywhere so the
+## child could never lose sight of Little Buddy. That reason is sound and is NOT
+## traded away here -- every shot below is composed to contain him, by
+## construction rather than by a tuned number (see `camera_focus.gd`).
+##
+## ## When it moves in, by task kind
+##
+##   `travel`   never. The task IS the journey; a child walking to a door needs to
+##              see the door, the room and where they are going.
+##   `goAndDo`  on arrival. Sitting at the table, sleeping in the bed -- there is
+##              no object row, so these are the tightest shots in the game and the
+##              most worth having.
+##   `deliver`  on arrival, framing the furniture, the toddler AND the row of
+##              objects that has just been staged in front of him.
+##   `choose`   the instant the task starts, because there is no walk: the row is
+##              laid out at the toddler's own feet. Composed on the row and the
+##              child, NOT on the task's `targetId` -- "find the milk" names the
+##              fridge, but the milk to be found is in the child's hands.
+##
+## ## When it lets go
+##
+## Every exit a task has: the next task starting, Next, a refused door, the
+## summary opening and the level starting. Plus `place_in_room()`, which
+## re-frames the room and therefore releases the camera itself -- `_track_focus()`
+## notices and drops this side of the latch, which is what covers the child
+## wandering through a door in the middle of a beat, however they got there.
+##
+## A camera stuck zoomed in is a worse bug than no zoom at all, so the release is
+## idempotent and the tracking re-checks it every single frame.
+
+## Composes and applies the close-up for the beat that has just started.
+func _begin_focus() -> void:
+	_focus_on = false
+	_focus_anchor = null
+	if not _running or _task_done or _summary_open:
+		return
+	if not TaskPlan.wants_close_up(_plan):
+		return
+	# `goAndDo` and `deliver` happen AT the named target; `choose` happens wherever
+	# the child is standing, so its target id is scene-setting rather than a place.
+	if not TaskPlan.is_choose(_plan):
+		_focus_anchor = _world_position_of(String(_plan.get("focusTargetId", "")))
+	_focus_on = true
+	_focus_point = Vector3.ZERO
+	_focus_radius = 0.0
+	_update_focus()
+
+
+## Re-aims the live close-up, and is the guarantee rather than a refinement.
+##
+## The child can walk away from a beat at any moment -- the floor is tappable
+## throughout -- so the box is recomposed from his CURRENT position every frame.
+## Walking away therefore widens the shot instead of leaving him behind it, and a
+## child who strolls to the far side of the room simply gets the room back.
+func _track_focus() -> void:
+	if not _focus_on:
+		return
+	# `place_in_room()` re-frames the room, which releases the camera's own focus.
+	# Anything that changes room -- a tapped door, an auto-route, a save restore --
+	# goes through it, so this single check covers every one of them.
+	if _world != null and _world.has_method("is_focused_on_activity") \
+			and not bool(_world.call("is_focused_on_activity")):
+		_focus_on = false
+		_focus_anchor = null
+		return
+	# Deliberately NOT "and release it if the summary is open" as well.
+	#
+	# `_show_summary()` already owns that exit, and a second guard here would
+	# cover for it: deleting either one would leave the other quietly doing the
+	# job, so neither would really be under test. `house_world.gd` learned the
+	# same lesson about its two overlapping room fallbacks. One exit, one place
+	# to break.
+	_update_focus()
+
+
+func _update_focus() -> void:
+	var camera: Object = _room_camera()
+	if camera == null:
+		_focus_on = false
+		return
+	# The room's own floor goes in as well: the close-up may be slid back inside it
+	# so the shot never composes on the empty space past the room's open front.
+	var shot: Dictionary = CameraFocus.frame_points(
+		_focus_points(), _focus_height(camera), FOCUS_MARGIN,
+		CameraFocus.MIN_RADIUS, CameraFocus.MAX_RADIUS, _room_floor()
+	)
+	if not bool(shot.get("valid", false)):
+		return
+	var point: Vector3 = shot["focus"]
+	var radius: float = float(shot["radius"])
+	if point.distance_to(_focus_point) < FOCUS_EPSILON \
+			and absf(radius - _focus_radius) < FOCUS_EPSILON:
+		return
+	_focus_point = point
+	_focus_radius = radius
+	camera.call("focus_activity", point, radius)
+
+
+## Back to the whole-room shot. Idempotent, and safe at any time.
+func _release_focus() -> void:
+	_focus_anchor = null
+	if not _focus_on:
+		return
+	_focus_on = false
+	_focus_point = Vector3.ZERO
+	_focus_radius = 0.0
+	if _world != null and _world.has_method("restore_room_frame"):
+		_world.call("restore_room_frame")
+
+
+## True while this task owns the camera.
+func is_camera_focused() -> bool:
+	return _focus_on
+
+
+## The world position of the current close-up's look-at point, and its radius.
+## Read-only, for tests and for anything that wants to check the composition
+## without recomputing it.
+func get_camera_focus() -> Dictionary:
+	return {"focused": _focus_on, "focus": _focus_point, "radius": _focus_radius}
+
+
 ## -- Assist ----------------------------------------------------------------------------
 
 ## Arms the "nothing has happened for a while" walk.
@@ -846,6 +1023,11 @@ func _rate_and_record_level(mission_id: String) -> Dictionary:
 
 
 func _show_summary(stars_earned: int, total_stars: int, new_stickers: Array, level_result: Dictionary) -> void:
+	# FIRST, and before the early return below. The stars and the stickers are
+	# read against the room, and a summary that opens over a close-up of a sink is
+	# the one stuck-camera case a child cannot escape by walking away, because the
+	# overlay has already taken their taps.
+	_release_focus()
 	var summary: Control = _ensure_summary()
 	if summary == null:
 		# Never dead-end on a missing overlay: go straight into the next level.
@@ -1269,6 +1451,112 @@ func _stand_position_of(semantic_id: String) -> Variant:
 	var info: Dictionary = target.call("describe", here)
 	var stand: Variant = info.get("standPosition", null)
 	return stand if stand is Vector3 else null
+
+
+## Every world point the current beat needs on screen.
+##
+## Little Buddy is ALWAYS in this list, which is the single line that makes
+## "the child never disappears" a property of the geometry.
+##
+## The object row is read off the stage rather than recomputed: the stage owns
+## where a row goes and how big it is (`OBJECT_SCALE` multiplies both the spacing
+## and the colliders), and a second copy of that arithmetic here would drift the
+## first time the row was re-tuned and would quietly start cropping pickups.
+func _focus_points() -> Array:
+	var points: Array = []
+	# Little Buddy goes in FIRST and unconditionally. Everything else is filtered
+	# below; he never is.
+	var here: Variant = _character_position()
+	if here is Vector3:
+		points.append(here)
+
+	var candidates: Array = []
+	if _focus_anchor is Vector3:
+		candidates.append(_focus_anchor)
+	if bool(_plan.get("needsChoices", false)) and _stage != null:
+		candidates.append_array(_object_row_points())
+
+	# A close-up is a shot of ONE room. The rooms sit 10 m apart on the same map,
+	# so a point that has ended up in the room next door -- a target named in
+	# another room, a row staged against furniture the child has walked away from
+	# -- would stretch the box across the gap between them and push the child out
+	# of the far side of it. Found by rendering, not by review.
+	var room: Rect2 = _room_bounds()
+	for point: Vector3 in candidates:
+		if room.size == Vector2.ZERO or room.has_point(Vector2(point.x, point.z)):
+			points.append(point)
+	return points
+
+
+## This room's floor rectangle in world XZ, straight from the framing the room
+## authored. Empty when there is none, which every caller reads as "no idea".
+func _room_floor() -> Rect2:
+	var camera: Object = _room_camera()
+	if camera == null or not camera.has_method("get_room_framing"):
+		return Rect2()
+	var bounds: Variant = (camera.call("get_room_framing") as Dictionary).get("bounds", null)
+	if not (bounds is Rect2):
+		return Rect2()
+	return bounds as Rect2
+
+
+## The same floor with a little slack, for deciding what belongs to this room: a
+## target or a child standing in a doorway still counts.
+func _room_bounds() -> Rect2:
+	var floor_rect: Rect2 = _room_floor()
+	if floor_rect.size == Vector2.ZERO:
+		return floor_rect
+	return floor_rect.grow(0.6)
+
+
+## The two ends of the staged choice row, in world space.
+func _object_row_points() -> Array:
+	if not _stage.has_method("get_object_anchor") or not _stage.has_method("get_spawn_points"):
+		return []
+	var anchor: Node = _stage.call("get_object_anchor")
+	if not (anchor is Node3D):
+		return []
+	var transform: Transform3D = SpatialUtil.world_transform(anchor as Node3D)
+	var points: Array = []
+	for slot: Variant in _stage.call("get_spawn_points"):
+		if slot is Vector3:
+			points.append(transform * (slot as Vector3))
+	return points
+
+
+func _character_position() -> Variant:
+	if not (_character is Node3D):
+		return null
+	return SpatialUtil.world_position(_character as Node3D)
+
+
+## The height a close-up looks at: the room's own, so the horizon does not jump
+## when the camera moves in.
+func _focus_height(camera: Object) -> float:
+	if camera != null and camera.has_method("get_room_framing"):
+		var framing: Dictionary = camera.call("get_room_framing")
+		var focus: Variant = framing.get("focus", null)
+		if focus is Vector3 and is_finite((focus as Vector3).y):
+			return (focus as Vector3).y
+	return FOCUS_HEIGHT
+
+
+## The room camera, or null when this build has a plain `Camera3D`.
+##
+## The close-up is addressed with a world POSITION rather than through
+## `HouseWorld.focus_activity(semantic_id)`, and that is a deliberate deviation:
+## the semantic-id wrapper centres the shot on the target, which would put the
+## toddler and the object row out at the edge of the frame and would have nothing
+## at all to aim at for a dressing beat, whose `targetId` is empty. The world
+## still does the id resolution -- `_world_position_of()` above -- so nothing here
+## knows a node path either.
+func _room_camera() -> Object:
+	if _world == null or not _world.has_method("get_camera"):
+		return null
+	var camera: Object = _world.call("get_camera")
+	if camera == null or not camera.has_method("focus_activity"):
+		return null
+	return camera
 
 
 func _target_node(semantic_id: String) -> Node:

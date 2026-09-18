@@ -19,15 +19,20 @@ extends RefCounted
 ##   meet      Little Buddy waves.  "Hi! I am Little Buddy."
 ##   tapFloor  a hand taps a pulsing ripple on the floor.  He walks there.
 ##   tapThing  the hand moves to a real object.  He walks to it and uses it.
-##   drag      the hand DEMONSTRATES a drag, left to right, with a trail.
+##   drag      the hand drags a REAL pickup to where it goes, with a trail.
 ##   go        "Let's play!"  Everything fades and the child is playing.
 ## ```
 ##
-## `tapThing` is the one the child actually completes -- the brief's "one easy
-## action". `drag` is shown rather than demanded on purpose: requiring a
+## `tapThing` and `drag` are the two the child can actually complete -- the
+## brief's "one easy action", twice. Neither is ever DEMANDED: both are shown,
+## both can be copied, and both end by themselves, because requiring a
 ## four-year-old's first drag before they are allowed to play is exactly the dead
-## end `SLICE_CONTRACT` section 6 forbids, and the gesture reads perfectly well as
-## a demonstration.
+## end `SLICE_CONTRACT` section 6 forbids.
+##
+## The drag step used to be a hand sliding over an empty floor, because Free Play
+## staged nothing a child could pick up. It now points at a real object
+## (`house_freeplay_words.gd::DRAGGABLES`) and at the landing pad that object
+## belongs in, so copying the gesture does the thing the gesture is miming.
 ##
 ## ## Skipping
 ##
@@ -65,6 +70,10 @@ const GESTURE_DRAG: String = "drag"
 const REQUIRES_NOTHING: String = ""
 const REQUIRES_WALK: String = "walked"
 const REQUIRES_ARRIVAL: String = "arrivedAtTarget"
+## The child moved a real object to where it belongs. Free Play stages pickups in
+## every room (`house_freeplay_words.gd::DRAGGABLES`), so this is a thing that can
+## actually be done rather than only watched.
+const REQUIRES_DRAG: String = "dragged"
 
 ## No step may ever be longer than this, however it is edited later. A tutorial a
 ## child cannot get out of is a dead end with a friendly voice.
@@ -75,6 +84,17 @@ const MAX_STEP_SECONDS: float = 14.0
 const TAP_THING_TEMPLATE: String = "Now tap the %s!"
 ## Used when the room somehow has nothing tappable in it.
 const TAP_THING_FALLBACK: String = "Now tap something!"
+
+## The drag line names a REAL pickup that is really on the floor, and where it
+## goes. `"to me"` rather than a piece of furniture for a pad that rides on
+## Little Buddy: he is the one speaking, and a four-year-old understands "to me"
+## long before they understand "to the drop zone".
+const DRAG_TO_BUDDY_TEMPLATE: String = "Drag the %s to me!"
+const DRAG_TO_THING_TEMPLATE: String = "Drag the %s to the %s!"
+## Used where nothing has been laid out to carry -- Story Mode's own rooms, or a
+## build with no content set. The gesture is then a demonstration, which is what
+## it used to be everywhere.
+const DRAG_FALLBACK: String = "You can move things. Drag them with your finger."
 
 
 ## The whole first-run sequence, in order. A fresh Array every call, so a caller
@@ -107,10 +127,14 @@ static func steps() -> Array:
 		},
 		{
 			"stepId": STEP_DRAG,
-			"speech": "You can move things. Drag them with your finger.",
+			"speech": DRAG_FALLBACK,
 			"gesture": GESTURE_DRAG,
-			"requires": REQUIRES_NOTHING,
-			"timeoutSec": 5.0,
+			"requires": REQUIRES_DRAG,
+			# Longer than the other "watch this" beats, because this one is a
+			# four-year-old's first drag: the hand demonstrates it at 60% of the
+			# clock and there has to be time left afterwards to copy it. Still
+			# ends by itself, like every step.
+			"timeoutSec": 8.0,
 			"characterAction": "",
 		},
 		{
@@ -184,3 +208,16 @@ static func tap_thing_speech(display_name: String) -> String:
 	if name.is_empty():
 		return TAP_THING_FALLBACK
 	return TAP_THING_TEMPLATE % name
+
+
+## The line for the drag step, given the English word for the pickup that is
+## really on the floor and, for a pad that sits on furniture, the word for the
+## furniture. An empty `target_word` means the pad is on Little Buddy himself.
+static func drag_speech(object_word: String, target_word: String) -> String:
+	var thing: String = object_word.strip_edges()
+	if thing.is_empty():
+		return DRAG_FALLBACK
+	var destination: String = target_word.strip_edges()
+	if destination.is_empty():
+		return DRAG_TO_BUDDY_TEMPLATE % thing
+	return DRAG_TO_THING_TEMPLATE % [thing, destination]

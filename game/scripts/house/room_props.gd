@@ -198,72 +198,136 @@ static func _tap(tool: SurfaceTool, at: Vector3, yaw_degrees: float) -> void:
 	Kit.sphere(tool, frame * Kit.at(Vector3(0.0, 0.165, -0.005)), 0.030, Palette.CREAM, 10, 5)
 
 
-## A bath is the hardest object in this house to make read, because a cream tub
-## against a cream wall is a crate: the first pass of this room rendered it as
-## exactly that. Three things fix it and all three are necessary -- a ROUNDED
-## outer silhouette (four corner columns, not four square corners), a coloured
-## RIM running right round the top, and a saturated interior so the hollow is
-## visible from a three-quarter camera rather than inferred.
+## A bath is the hardest object in this house to make read, and the first three
+## passes all failed the same way: a cream box, 0.5 m tall, with its water filling
+## the whole top face right out to a blue rim of the same colour. That is a
+## lunchbox. Cold, on a phone, it read as a chest, a bench or a bed.
+##
+## Four things fix it, and every one of them is necessary:
+##
+##   1. **Feet.** A tub raised 11 cm on four ball feet is the only object in the
+##      house with daylight under it, and "you can see the floor underneath" is
+##      what stops a thing being built-in furniture. It is also the single most
+##      illustrated bath silhouette there is.
+##   2. **Height, not length.** 0.68 m over 1.26 m, not 0.5 m over 1.4 m. At 0.5 m
+##      a tub is coffee-table height and reads as a surface to put things on.
+##   3. **A rounded PLAN.** `Kit.vessel()` takes a stadium outline -- the corner
+##      radius is half the depth -- so the tub is an oval seen from above, which
+##      no box in this house is. Four rim boxes could never do this.
+##   4. **Water recessed 18 cm below the rim**, not flush with it. The cream inner
+##      wall left visible along the near side IS the depth cue (§6: a container
+##      must have visible interior depth). Flush water is a painted lid.
 static func _bath(tool: SurfaceTool, size: Vector3, dominant: Color) -> void:
-	var bottom: float = -size.y * 0.5
-	var top: float = size.y * 0.5
-	var corner: float = 0.17
-	var wall: float = 0.09
-	var height: float = size.y - 0.14
-	var inset_x: float = size.x * 0.5 - corner
-	var inset_z: float = size.z * 0.5 - corner
+	var base: float = -size.y * 0.5
+	var foot: float = 0.11
+	var body: float = size.y - foot
+	var body_centre: float = base + foot + body * 0.5
+	var foot_colour: Color = Palette.deep(Palette.CREAM)
 
-	Kit.plate(tool, Kit.at(Vector3(0.0, bottom + 0.07, 0.0)),
-			Kit.rounded_rect(Vector2(size.x - 0.02, size.z - 0.02), corner + 0.03, 4), 0.14,
-			Palette.CREAM, 0.03)
-	for x: float in [-inset_x, inset_x]:
-		for z: float in [-inset_z, inset_z]:
-			Kit.cylinder(tool, Kit.at(Vector3(x, top - height * 0.5, z)),
-					corner, height, Palette.CREAM, 14, 0.02)
-			Kit.cylinder(tool, Kit.at(Vector3(x, top - 0.03, z)),
-					corner + 0.012, 0.07, dominant, 14, 0.018)
-	for z: float in [-(size.z * 0.5 - wall * 0.5), size.z * 0.5 - wall * 0.5]:
-		Kit.box(tool, Kit.at(Vector3(0.0, top - height * 0.5, z)),
-				Vector3(inset_x * 2.0, height, wall), Palette.CREAM, 0.026)
-		Kit.box(tool, Kit.at(Vector3(0.0, top - 0.03, z)),
-				Vector3(inset_x * 2.0, 0.07, wall + 0.024), dominant, 0.022)
-	for x: float in [-(size.x * 0.5 - wall * 0.5), size.x * 0.5 - wall * 0.5]:
-		Kit.box(tool, Kit.at(Vector3(x, top - height * 0.5, 0.0)),
-				Vector3(wall, height, inset_z * 2.0), Palette.CREAM, 0.026)
-		Kit.box(tool, Kit.at(Vector3(x, top - 0.03, 0.0)),
-				Vector3(wall + 0.024, 0.07, inset_z * 2.0), dominant, 0.022)
-	# The inside, in the room's own dominant colour: clean water-blue, filled to
-	# just below the rim. An EMPTY tub shows the far inner wall and nothing else
-	# from a three-quarter camera, which renders as a cream crate; a filled one
-	# puts a blue plane where the eye expects the hollow to be.
-	Kit.plate(tool, Kit.at(Vector3(0.0, 0.005, 0.0)),
-			Kit.rounded_rect(Vector2(size.x - 0.24, size.z - 0.24), 0.13, 4), 0.37,
-			dominant, 0.018)
-	_tap(tool, Vector3(-(size.x * 0.5 - 0.12), top - 0.04, 0.0), -90.0)
+	for x: float in [-(size.x * 0.5 - 0.20), size.x * 0.5 - 0.20]:
+		for z: float in [-(size.z * 0.5 - 0.15), size.z * 0.5 - 0.15]:
+			Kit.sphere(tool, Kit.at(Vector3(x, base + foot * 0.5, z)), 0.058,
+					foot_colour, 8, 4)
+
+	# A stadium in plan: corner radius is half the depth, so the ends are true
+	# half-circles and the tub is an oval from above.
+	Kit.vessel(
+		tool,
+		Kit.at(Vector3(0.0, body_centre, 0.0)),
+		Kit.rounded_rect(Vector2(size.x, size.z), size.z * 0.5, 5),
+		body,
+		0.075,
+		0.11,
+		Palette.CREAM,
+		Palette.CREAM
+	)
+	# Clean water, in the room's own dominant colour, 18 cm down. It is a big
+	# saturated oval sitting inside a pale hollow -- the one thing in the object
+	# that says "this is full of water" rather than "this has a blue lid".
+	var water_top: float = base + size.y - 0.095
+	Kit.plate(tool, Kit.at(Vector3(0.0, water_top - 0.14, 0.0)),
+			Kit.rounded_rect(Vector2(size.x - 0.19, size.z - 0.19), (size.z - 0.19) * 0.5, 4),
+			0.28, dominant, 0.012)
+	# Suds, clustered at the FAR end -- never dirt, and never a second taught noun
+	# (§6): soap is a word this game teaches and it is a BAR, not a cloud of foam.
+	# Far end, because the near rim hides the first ~25 cm of the water from a
+	# camera that is both above and in front of the tub.
+	for blob: Array in [
+		[Vector3(0.30, 0.02, -0.11), 0.090], [Vector3(0.41, 0.00, 0.02), 0.068],
+		[Vector3(0.19, 0.01, -0.15), 0.062], [Vector3(0.33, 0.05, -0.02), 0.058],
+		[Vector3(0.14, 0.00, -0.04), 0.050],
+	]:
+		Kit.sphere(tool, Kit.at((blob[0] as Vector3) + Vector3(0.0, water_top, 0.0)),
+				float(blob[1]), Palette.CREAM, 8, 4)
+	_tap(tool, Vector3(-(size.x * 0.5 - 0.09), base + size.y - 0.03, 0.0), -90.0)
 
 
+## Hangs on the -X wall, so everything is built projecting along +X.
+##
+## The failure this replaces was a 0.52 m soft-pink rectangle: on a wall the
+## camera sees at a steep angle, lit by nothing but ambient, it measured 25 px
+## across on a landscape iPhone and read as a poster. Cloth needs three things to
+## read as cloth at that size -- a FAT fold rolled over the rail, a bottom edge
+## that is wider than the top, and a second, different-coloured towel beside it,
+## because two of a thing is what tells a child the thing is not a panel.
 static func _towel(tool: SurfaceTool, size: Vector3) -> void:
 	var top: float = size.y * 0.5
-	# The rail, and the two brackets that hold it off the wall.
-	Kit.cylinder(tool, Kit.at_rotated(Vector3(0.015, top - 0.02, 0.0), Vector3(90.0, 0.0, 0.0)),
-			0.018, size.z + 0.06, Palette.CREAM, 10, 0.008)
-	for z: float in [-(size.z * 0.5 + 0.02), size.z * 0.5 + 0.02]:
-		Kit.box(tool, Kit.at(Vector3(-0.03, top - 0.02, z)),
-				Vector3(0.08, 0.04, 0.04), Palette.CREAM, 0.012)
-	# Cloth, hanging. Folded over the rail at the top -- that fold is the single
-	# cue that separates "towel" from "a pink rectangle on a wall".
+	var rail_y: float = top - 0.05
 	var facing: Vector3 = Vector3(0.0, 90.0, 0.0)
-	Kit.extrude(tool, Kit.at_rotated(Vector3(0.025, -0.02, 0.0), facing),
-			Kit.rounded_rect(Vector2(size.z - 0.06, size.y - 0.10), 0.05, 3), 0.05,
-			Palette.SOFT_PINK, 0.018)
-	Kit.extrude(tool, Kit.at_rotated(Vector3(0.015, top - 0.035, 0.0), facing),
-			Kit.rounded_rect(Vector2(size.z - 0.06, 0.15), 0.05, 3), 0.075,
-			Palette.light(Palette.SOFT_PINK), 0.022)
+	var rail: Color = Palette.deep(Palette.CREAM)
+
+	Kit.cylinder(tool, Kit.at_rotated(Vector3(0.05, rail_y, 0.0), Vector3(90.0, 0.0, 0.0)),
+			0.020, size.z + 0.06, rail, 10, 0.008)
+	for z: float in [-(size.z * 0.5 + 0.015), size.z * 0.5 + 0.015]:
+		Kit.box(tool, Kit.at(Vector3(0.012, rail_y, z)),
+				Vector3(0.09, 0.045, 0.045), rail, 0.014)
+		Kit.sphere(tool, Kit.at(Vector3(0.062, rail_y, z)), 0.026, rail, 10, 5)
+
+	_hanging_cloth(tool, Vector3(0.062, rail_y, -size.z * 0.18), facing,
+			size.z * 0.58, size.y * 0.82, Palette.SOFT_PINK, true)
+	# Saturated, not `light()`. A pale blue towel on a cream wall, on the one wall
+	# the sun never reaches, disappears -- the first pass of this pair proved it.
+	_hanging_cloth(tool, Vector3(0.072, rail_y, size.z * 0.31),
+			facing, size.z * 0.34, size.y * 0.56, Palette.DUSTY_BLUE, false)
+
+
+## One towel over a rail: a rolled fold, a panel that flares toward its hem, and
+## a woven band. `banded` is false for the small hand towel, which is too narrow
+## to carry a stripe without it turning into a pattern (§4).
+static func _hanging_cloth(
+	tool: SurfaceTool,
+	at: Vector3,
+	facing: Vector3,
+	width: float,
+	drop: float,
+	color: Color,
+	banded: bool
+) -> void:
+	# The fold: a fat roll OVER the rail, proud of the cloth on both sides. This
+	# is the whole cue. Without it a towel is a rectangle stuck to a wall.
+	Kit.cylinder(tool, Kit.at_rotated(at - Vector3(0.022, 0.0, 0.0), Vector3(90.0, 0.0, 0.0)),
+			0.055, width, Palette.light(color), 12, 0.014)
+	# Hem wider than shoulder, so the silhouette tapers outward the way cloth does
+	# and never reads as a rigid panel.
+	var hem: float = width + 0.06
+	Kit.extrude(tool, Kit.at_rotated(at + Vector3(0.0, -drop * 0.5 - 0.02, 0.0), facing),
+			PackedVector2Array([
+				Vector2(-width * 0.5, drop * 0.5), Vector2(width * 0.5, drop * 0.5),
+				Vector2(hem * 0.5 - 0.03, -drop * 0.5 + 0.03),
+				Vector2(hem * 0.5 - 0.06, -drop * 0.5),
+				Vector2(-hem * 0.5 + 0.06, -drop * 0.5),
+				Vector2(-hem * 0.5 + 0.03, -drop * 0.5 + 0.03),
+			]), 0.055, color, 0.018)
+	if not banded:
+		return
 	# One woven band. §4's "no stripes under ~4 px" is about pattern; this is a
-	# single 6 cm band and reads at phone size.
-	Kit.extrude(tool, Kit.at_rotated(Vector3(0.033, -0.10, 0.0), facing),
-			Kit.rounded_rect(Vector2(size.z - 0.08, 0.07), 0.03, 2), 0.05,
-			Palette.CREAM, 0.016)
+	# single 7 cm band and reads at phone size.
+	# +0.032 in x, and that is not arbitrary: the panel is 0.055 thick and centred
+	# on `at`, so anything less than half of that is BURIED inside it. The first
+	# pass offset it by 0.011 and the band simply never appeared.
+	Kit.extrude(tool, Kit.at_rotated(at + Vector3(0.032, -drop * 0.72, 0.0), facing),
+			Kit.rounded_rect(Vector2(hem - 0.09, 0.075), 0.03, 2), 0.030,
+			Palette.CREAM, 0.012)
 
 
 ## -- Kitchen -------------------------------------------------------------------
@@ -364,20 +428,79 @@ static func _toy_box(tool: SurfaceTool, size: Vector3, accent: Color) -> void:
 			Vector3(62.0, 0.0, 18.0)), 0.095, 0.030, Palette.LAVENDER, 12, 6)
 
 
+## An OPEN book, lying on the floor -- "a book left out" is literally the example
+## §5 gives of tidy-but-lived-in clutter.
+##
+## This object took three passes as a CLOSED book and failed every time, for a
+## reason worth writing down: a closed book is a rectangular slab, the camera is
+## a three-quarter view looking DOWN, and a rectangular slab seen from above is a
+## tray. Everything that makes a closed book a book -- the spine, the page block,
+## the cover boards -- lives on its EDGES, which is the one part of it that view
+## cannot see. The owner named it, cold, as a tray face-up on the floor.
+##
+## Open, the recognisable form moves onto the face the camera actually sees: two
+## pale pages, a dark cover border round the outside, and a centre gutter. That
+## silhouette belongs to nothing else in this house, which is what §6 asks for.
 static func _book(tool: SurfaceTool, size: Vector3) -> void:
 	var cover: Color = Palette.deep(Palette.DUSTY_BLUE)
-	var outline: PackedVector2Array = Kit.rounded_rect(Vector2(size.x, size.z), 0.025, 2)
-	for y: float in [-(size.y * 0.5 - 0.012), size.y * 0.5 - 0.012]:
-		Kit.plate(tool, Kit.at(Vector3(0.0, y, 0.0)), outline, 0.024, cover, 0.008)
-	# The page block, pushed out past the covers on the open side so a cream stripe
-	# of paper is visible from any angle. Tucked inside them it reads as a tile.
-	Kit.plate(tool, Kit.at(Vector3(0.035, 0.0, 0.0)),
-			Kit.rounded_rect(Vector2(size.x - 0.01, size.z - 0.014), 0.018, 2),
-			size.y - 0.052, Palette.CREAM, 0.008)
-	Kit.box(tool, Kit.at(Vector3(-(size.x * 0.5 - 0.016), 0.0, 0.0)),
-			Vector3(0.032, size.y - 0.006, size.z), Palette.deep(cover), 0.012)
-	Kit.plate(tool, Kit.at(Vector3(0.04, size.y * 0.5 - 0.004, 0.0)),
-			Kit.circle(0.052, 14), 0.018, Palette.light(Palette.SOFT_PINK), 0.006)
+	var base: float = -size.y * 0.5
+	# Each half tips UP toward its outer edge, the way a page stack does when the
+	# spine is flat on the floor. It is only 7 degrees, but it is what gives the
+	# object a ridge down its middle and two lit planes instead of one flat top.
+	var tilt: float = 7.0
+	var half_width: float = size.x * 0.5
+
+	for side: float in [-1.0, 1.0]:
+		var lean: Vector3 = Vector3(0.0, 0.0, side * tilt)
+		var middle: Vector3 = Vector3(side * half_width * 0.5, base + 0.035, 0.0)
+		# The cover board: dark, and bigger than the pages on all three outer
+		# sides, so a coloured border frames the cream. That border is what reads
+		# at 60 px.
+		Kit.plate(tool, Kit.at_rotated(middle, lean),
+				Kit.rounded_rect(Vector2(half_width - 0.012, size.z), 0.035, 3), 0.028,
+				cover, 0.010)
+		# The page stack, inset, and thick enough to show a stepped cream edge.
+		Kit.plate(tool, Kit.at_rotated(middle + Vector3(side * 0.012, 0.050, 0.0), lean),
+				Kit.rounded_rect(Vector2(half_width - 0.070, size.z - 0.055), 0.022, 3), 0.062,
+				Palette.CREAM, 0.010)
+		# The top page, a whisker proud of the stack so the stack reads as MANY
+		# sheets rather than one slab.
+		Kit.plate(tool, Kit.at_rotated(middle + Vector3(side * 0.012, 0.086, 0.0), lean),
+				Kit.rounded_rect(Vector2(half_width - 0.092, size.z - 0.080), 0.018, 3), 0.014,
+				Palette.CREAM, 0.005)
+		# What is ON the page. A picture book has a picture, and a single bold
+		# shape survives being 40 px wide; ruled "text" lines do not, and §4 bans
+		# text on art in any case.
+		#
+		# Both marks are `deep()`/base tokens rather than the pastel itself: a
+		# `softPink` blob on a cream page at 40 px is invisible, and the first
+		# pass proved it twice -- once by being too pale, and once by sitting at
+		# an absolute height that buried it INSIDE the page stack. Placing it
+		# relative to the page it belongs to is what stops that happening again.
+		var on_page: Vector3 = middle + Vector3(side * 0.012, 0.099, 0.0)
+		if side > 0.0:
+			Kit.plate(tool, Kit.at_rotated(on_page + Vector3(0.0, 0.0, -0.02), lean),
+					Kit.rounded_rect(Vector2(0.125, 0.115), 0.045, 3), 0.016,
+					Palette.deep(Palette.SOFT_PINK), 0.005)
+		else:
+			for row: float in [0.055, -0.005, -0.065]:
+				Kit.plate(tool, Kit.at_rotated(on_page + Vector3(0.0, 0.0, row), lean),
+						Kit.rounded_rect(Vector2(0.135, 0.030), 0.014, 2), 0.016,
+						Palette.DUSTY_BLUE, 0.004)
+
+	# The spine, standing proud along the gutter. A raised ridge down the centre
+	# is the difference between "an open book" and "two mats side by side".
+	Kit.extrude(tool, Kit.at_rotated(Vector3(0.0, base + 0.052, 0.0), Vector3(90.0, 0.0, 0.0)),
+			Kit.rounded_rect(Vector2(size.z + 0.01, 0.075), 0.034, 4), 0.062,
+			Palette.DUSTY_BLUE, 0.016)
+
+	# A ribbon bookmark, lying across the right-hand page and trailing over the
+	# near edge. In the COVER's colour, not a fresh one: a `mint` ribbon in a
+	# peach-and-pink room read as a green object that had landed on the book
+	# rather than as part of it.
+	Kit.plate(tool, Kit.at(Vector3(half_width * 0.30, base + 0.112, size.z * 0.30)),
+			Kit.rounded_rect(Vector2(0.038, size.z * 0.58), 0.016, 2), 0.014,
+			cover, 0.004)
 
 
 ## -- Shared dressing -----------------------------------------------------------
@@ -403,3 +526,111 @@ static func plant(tool: SurfaceTool, at: Transform3D, scale: float, pot: Color) 
 	for leaf: Array in leaves:
 		Kit.sphere(tool, at * Kit.at((leaf[0] as Vector3) * s), float(leaf[1]) * s,
 				leaf[2] as Color, 10, 5)
+
+
+## -- Floor dressing ------------------------------------------------------------
+##
+## Everything below stands on the FLOOR, in the front third of a room, and
+## exists for one reason: by layout every piece of furniture in this house is
+## against the back wall, so the near half of every room was bare boards and the
+## composition had nothing in the foreground at all.
+##
+## Two hard rules govern this whole section:
+##
+##   * **Nothing here may be a word the game teaches.** §6 -- "one object teaches
+##     one word, two nouns must never share a shape" -- and the vocabulary
+##     already owns `ball`, `bowl`, `cup`, `lamp`, `pillow`, `teddy`, `blocks`,
+##     `toyBox` and `soap`. A floor cushion would collide with `pillow`, a floor
+##     lamp with `lamp`, a toy basket with `toyBox`. What is left, and what is
+##     used here, is a plant, a woven basket, a stool and a footstool.
+##   * **Everything here gets a collider and everything here is in a CORNER.**
+##     Floor dressing that blocks a path the level needs is a dead end, which is
+##     the one thing this game may never have. The corners are the only part of
+##     the floor no authored stand point and no spawn uses.
+
+
+## A floor-standing plant: the same species as the one on every windowsill, grown
+## up. The repetition is the point -- one plant on a sill and one on the floor of
+## all four rooms is what makes four rooms read as one home.
+static func floor_plant(tool: SurfaceTool, at: Transform3D, pot: Color) -> void:
+	# A pot that is WIDER than it is tall. The first pass made it 0.34 m tall and
+	# straight-sided to use the footprint up, and a tall straight cylinder with
+	# something green on top is a wastebasket with a plant in it.
+	Kit.vessel(tool, at * Kit.at(Vector3(0.0, 0.125, 0.0)),
+			Kit.circle(0.150, 14), 0.25, 0.024, 0.20, pot, Palette.deep(WOOD))
+	Kit.cylinder(tool, at * Kit.at(Vector3(0.0, 0.245, 0.0)),
+			0.166, 0.048, Palette.light(pot), 14, 0.014)
+	Kit.cylinder(tool, at * Kit.at(Vector3(0.0, 0.33, 0.0)), 0.020, 0.16, WOOD, 8, 0.008)
+	# A broad, low bush rather than a column of spheres: the silhouette has to
+	# spread sideways or it reads as a lollipop.
+	for leaf: Array in [
+		[Vector3(0.0, 0.50, 0.0), 0.150, Palette.MINT],
+		[Vector3(-0.140, 0.44, 0.035), 0.108, Palette.deep(Palette.MINT)],
+		[Vector3(0.132, 0.45, -0.045), 0.104, Palette.MINT],
+		[Vector3(0.045, 0.63, 0.055), 0.098, Palette.light(Palette.MINT)],
+		[Vector3(-0.060, 0.61, -0.070), 0.088, Palette.deep(Palette.MINT)],
+		[Vector3(0.095, 0.56, 0.110), 0.074, Palette.MINT],
+		[Vector3(-0.100, 0.54, 0.105), 0.070, Palette.MINT],
+	]:
+		Kit.sphere(tool, at * Kit.at(leaf[0] as Vector3), float(leaf[1]),
+				leaf[2] as Color, 10, 5)
+
+
+## A round woven basket. Deliberately ROUND and rim-rolled, because the living
+## room's `toyBox` is square, open and spilling toys, and two containers in one
+## house must not be the same shape.
+static func basket(tool: SurfaceTool, at: Transform3D, color: Color) -> void:
+	Kit.vessel(tool, at * Kit.at(Vector3(0.0, 0.19, 0.0)),
+			Kit.circle(0.155, 16), 0.38, 0.030, 0.30, color, Palette.light(color))
+	# A rolled rim, which is most of what says "woven" without a texture (§7 has
+	# no textures to say it with).
+	Kit.torus(tool, at * Kit.at(Vector3(0.0, 0.376, 0.0)), 0.148, 0.024,
+			Palette.deep(color), 16, 6)
+	# ONE band course, proud by 2 mm. Two of them, standing 8 mm out, turned the
+	# whole thing into a stack of hoops.
+	Kit.cylinder(tool, at * Kit.at(Vector3(0.0, 0.155, 0.0)), 0.158, 0.050,
+			Palette.light(color), 16, 0.014)
+	# Two hoop handles at the rim. Without them a round open container of this
+	# size is a waste bin, and a bedroom does not want one of those in it.
+	for side: float in [-1.0, 1.0]:
+		Kit.torus(tool, at * Kit.at_rotated(Vector3(side * 0.150, 0.295, 0.0),
+				Vector3(0.0, 0.0, 90.0)), 0.062, 0.018, Palette.deep(color), 10, 6)
+
+
+## A child's step stool: two treads, and that stepped profile is the whole read.
+static func step_stool(tool: SurfaceTool, at: Transform3D, color: Color) -> void:
+	for step: Array in [[0.100, 0.20, -0.06], [0.235, 0.16, 0.07]]:
+		Kit.plate(tool, at * Kit.at(Vector3(0.0, float(step[0]), float(step[2]))),
+				Kit.rounded_rect(Vector2(0.33, float(step[1])), 0.050, 3), 0.048,
+				color, 0.016)
+	for x: float in [-0.135, 0.135]:
+		Kit.box(tool, at * Kit.at(Vector3(x, 0.120, 0.005)),
+				Vector3(0.044, 0.24, 0.30), Palette.deep(color), 0.018)
+
+
+## A little round stool: a soft disc on three splayed legs.
+static func stool(tool: SurfaceTool, at: Transform3D, color: Color) -> void:
+	Kit.plate(tool, at * Kit.at(Vector3(0.0, 0.345, 0.0)), Kit.circle(0.165, 16), 0.058,
+			color, 0.020)
+	Kit.plate(tool, at * Kit.at(Vector3(0.0, 0.306, 0.0)), Kit.circle(0.138, 16), 0.030,
+			Palette.deep(WOOD), 0.010)
+	for index: int in range(3):
+		var angle: float = TAU * float(index) / 3.0 + 0.5
+		var offset := Vector3(cos(angle) * 0.105, 0.150, sin(angle) * 0.105)
+		Kit.cylinder(tool, at * Kit.at(offset), 0.026, 0.30, WOOD, 8, 0.008)
+
+
+## A soft round footstool. Not a cushion and not a pillow -- both of those are
+## flat rectangles and `pillow` is a word this game teaches on the bed.
+static func footstool(tool: SurfaceTool, at: Transform3D, color: Color) -> void:
+	Kit.plate(tool, at * Kit.at(Vector3(0.0, 0.220, 0.0)), Kit.circle(0.168, 16), 0.145,
+			color, 0.058)
+	Kit.plate(tool, at * Kit.at(Vector3(0.0, 0.132, 0.0)), Kit.circle(0.152, 16), 0.052,
+			Palette.light(color), 0.020)
+	# A button in the middle of the seat, so the top is not a bare disc.
+	Kit.sphere(tool, at * Kit.at(Vector3(0.0, 0.284, 0.0)), 0.032,
+			Palette.deep(color), 10, 5)
+	for index: int in range(4):
+		var angle: float = TAU * float(index) / 4.0 + 0.7
+		Kit.cylinder(tool, at * Kit.at(Vector3(cos(angle) * 0.108, 0.052, sin(angle) * 0.108)),
+				0.024, 0.105, Palette.deep(WOOD), 8, 0.008)

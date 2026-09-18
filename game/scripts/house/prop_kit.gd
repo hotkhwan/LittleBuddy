@@ -330,7 +330,7 @@ static func _cap(
 	z: float,
 	normal: Vector3
 ) -> void:
-	var indices: PackedInt32Array = Geometry2D.triangulate_polygon(outline)
+	var indices: PackedInt32Array = _triangulate(outline)
 	for i: int in range(0, indices.size(), 3):
 		var a: Vector2 = outline[indices[i]]
 		var b: Vector2 = outline[indices[i + 1]]
@@ -481,6 +481,137 @@ static func plate(
 ## Turns "extruded along local Z" into "extruded along local Y".
 static func _upright() -> Transform3D:
 	return Transform3D(Basis.from_euler(Vector3(PI * 0.5, 0.0, 0.0)), Vector3.ZERO)
+
+
+## -- Open containers ---------------------------------------------------------
+
+## An open vessel: a bath, a basket, a plant pot, a basin. `outline` is its PLAN
+## (local XZ, centred); it is walled by `wall` metres, floored `floor_thickness`
+## above its base, and both lips of the rim are chamfered.
+##
+## ## Why this is a kit primitive and not four hand-built props
+##
+## `docs/ART_BIBLE.md` §6 requires a container to have **visible interior
+## depth** -- "a cup has visible interior depth", and a solid-topped sink teaches
+## "cupboard". Before this existed every container in the house was faked from
+## four rim boxes and a floor plate, which is why the bath could only ever be a
+## RECTANGLE: four boxes cannot make a rounded plan. The bath shipped as a cream
+## box with a flat blue top and read, cold, as a lunchbox. A real plan outline
+## plus a real hollow is the fix, and it is the same fix for every other
+## container the house will ever need.
+##
+## The interior takes its own colour, because the single strongest depth cue in a
+## flat-shaded scene is a pale inner wall against a saturated contents plate --
+## not shading, of which there is deliberately almost none (§7).
+static func vessel(
+	tool: SurfaceTool,
+	transform: Transform3D,
+	outline: PackedVector2Array,
+	height: float,
+	wall: float,
+	floor_thickness: float,
+	color: Color,
+	inner_color: Color,
+	bevel: float = PROP_BEVEL
+) -> void:
+	var outer: PackedVector2Array = _counter_clockwise(outline)
+	if outer.size() < 3 or wall <= 0.0 or height <= 0.0:
+		return
+	# Never more than 40% of the wall, so the two chamfers can never eat the flat
+	# rim between them and turn it inside out.
+	var rim: float = clampf(bevel, 0.0, minf(wall * 0.4, height * 0.2))
+	var inner: PackedVector2Array = _inset(outer, wall)
+	var outer_top: PackedVector2Array = _inset(outer, rim)
+	var inner_top: PackedVector2Array = _inset(inner, -rim)
+	var normals: PackedVector2Array = _edge_normals(outer)
+	var inner_normals: PackedVector2Array = _edge_normals(inner)
+
+	var top: float = height * 0.5
+	var base: float = -height * 0.5
+	var inside: float = base + clampf(floor_thickness, 0.005, height - rim * 2.0 - 0.005)
+
+	var count: int = outer.size()
+	for index: int in range(count):
+		var next: int = (index + 1) % count
+		var na := Vector3(normals[index].x, 0.0, normals[index].y)
+		var nb := Vector3(normals[next].x, 0.0, normals[next].y)
+		_quad(tool, transform, color,
+				_lift(outer[index], base), _lift(outer[next], base),
+				_lift(outer[next], top - rim), _lift(outer[index], top - rim),
+				na, nb, nb, na)
+		var ca: Vector3 = (na + Vector3.UP).normalized()
+		var cb: Vector3 = (nb + Vector3.UP).normalized()
+		_quad(tool, transform, color,
+				_lift(outer[index], top - rim), _lift(outer[next], top - rim),
+				_lift(outer_top[next], top), _lift(outer_top[index], top),
+				ca, cb, cb, ca)
+		_quad(tool, transform, color,
+				_lift(outer_top[index], top), _lift(outer_top[next], top),
+				_lift(inner_top[next], top), _lift(inner_top[index], top),
+				Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP)
+		var ia := Vector3(-inner_normals[index].x, 0.0, -inner_normals[index].y)
+		var ib := Vector3(-inner_normals[next].x, 0.0, -inner_normals[next].y)
+		_quad(tool, transform, inner_color,
+				_lift(inner_top[index], top), _lift(inner_top[next], top),
+				_lift(inner[next], top - rim), _lift(inner[index], top - rim),
+				(ia + Vector3.UP).normalized(), (ib + Vector3.UP).normalized(),
+				ib, ia)
+		_quad(tool, transform, inner_color,
+				_lift(inner[index], top - rim), _lift(inner[next], top - rim),
+				_lift(inner[next], inside), _lift(inner[index], inside),
+				ia, ib, ib, ia)
+	_cap_flat(tool, transform, inner, inner_color, inside, Vector3.UP)
+	_cap_flat(tool, transform, outer, color, base, Vector3.DOWN)
+
+
+static func _lift(point: Vector2, y: float) -> Vector3:
+	return Vector3(point.x, y, point.y)
+
+
+## Triangulates a plan outline at height `y`, lying in the local XZ plane.
+static func _cap_flat(
+	tool: SurfaceTool,
+	transform: Transform3D,
+	outline: PackedVector2Array,
+	color: Color,
+	y: float,
+	normal: Vector3
+) -> void:
+	var indices: PackedInt32Array = _triangulate(outline)
+	for i: int in range(0, indices.size(), 3):
+		_triangle(tool, transform, color,
+				_lift(outline[indices[i]], y), _lift(outline[indices[i + 1]], y),
+				_lift(outline[indices[i + 2]], y), normal, normal, normal)
+
+
+## Fills a convex outline, and NEVER returns nothing.
+##
+## `Geometry2D.triangulate_polygon()` returns an EMPTY array, with no error and
+## no warning, whenever its ear-clipping fails -- which it does on an outline
+## with near-collinear or near-coincident vertices. Every outline this kit
+## generates is convex, and a stadium (`rounded_rect` with a corner radius equal
+## to half the short side) has exactly that shape: the two arcs on one end meet
+## with a straight segment a fraction of a millimetre long, and one `_inset()`
+## later they cross.
+##
+## The consequence is invisible in a test and catastrophic on screen: the caps of
+## the shape simply are not emitted, so a solid becomes a hollow shell of side
+## walls with nothing top or bottom. The bath's water surface shipped this way --
+## the plate was there, its colour was right, the plate's rim rendered as a
+## 1-pixel blue sliver at the edge of the tub, and the tub looked empty.
+##
+## Fanning from vertex 0 is exact for a convex outline, so the fallback is not an
+## approximation, it is just the answer.
+static func _triangulate(outline: PackedVector2Array) -> PackedInt32Array:
+	var indices: PackedInt32Array = Geometry2D.triangulate_polygon(outline)
+	if indices.size() >= 3:
+		return indices
+	var fan := PackedInt32Array()
+	for index: int in range(1, outline.size() - 1):
+		fan.append(0)
+		fan.append(index)
+		fan.append(index + 1)
+	return fan
 
 
 ## A UV sphere: door handles, cabinet knobs, plant foliage, soft toy shapes.
