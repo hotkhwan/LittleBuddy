@@ -20,6 +20,10 @@ cannot tell them apart. You said not to guess, so I rendered each one.
 | `Meshy_AI_Create_one_original_s_0918083143_texture.glb` | **Baby — sitting**, darker hair, bib |
 | `Meshy_AI_Create_one_original_s_0918083218_texture.glb` | **Baby — sleeping**, eyes closed, arms out, white onesie |
 
+> **Owner confirmed this mapping on 2026-09-18** (`0918083052 = ยืน`, `0918083143 = นั่ง`,
+> `0918083218 = ท่านอน`). Each repo copy was then checked against its original by SHA-256 and is
+> byte-identical, so the names on disk are verified rather than assumed.
+
 > ### There is no bunny mascot
 >
 > All three ambiguous files are **babies**, differing only in pose. The only "bunny" anywhere in
