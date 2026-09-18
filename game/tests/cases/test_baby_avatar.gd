@@ -166,14 +166,28 @@ func _test_the_flag_is_gated_on_validation(baby):
 	var reasons: Array = baby.call("validation_failures")
 	var passes: bool = bool(baby.call("passes_validation"))
 
-	if Baby.ENABLED and not passes:
+	# The gate is now "not by accident" rather than "not at all".
+	#
+	# Forbidding ENABLED outright was right as an accident guard and wrong as a
+	# wall: the owner paid for these models and had seen nothing of them running.
+	# So enabling an over-budget asset is allowed, but ONLY together with an
+	# explicit PREVIEW_OVER_BUDGET acknowledgement. You cannot switch it on by
+	# accident -- only on purpose, and the source says so where someone will read it.
+	if Baby.ENABLED and not passes and not Baby.PREVIEW_OVER_BUDGET:
 		failures.append(
 			("BabyLittleBuddy.ENABLED is true but the assets do not pass validation:\n"
-			+ "             - %s\n         BabyView3D stays the shipping Chapter 2 baby until "
-			+ "validation passes. Fix the assets (retopologise, bake a 512-square atlas, rig "
-			+ "them to LB_Rig_v1) or put the flag back.")
+			+ "             - %s\n         Either set PREVIEW_OVER_BUDGET to say this is a "
+			+ "deliberate look-at-it preview, or fix the assets (retopologise, bake a "
+			+ "512-square atlas, rig them to LB_Rig_v1).")
 			% "\n             - ".join(PackedStringArray(reasons))
 		)
+
+	# ...and the acknowledgement may not be left lying around once it is untrue.
+	# A stale "yes I know it is over budget" on an asset that is now fine would
+	# quietly disarm the gate for the NEXT asset that is not.
+	if passes and Baby.PREVIEW_OVER_BUDGET:
+		failures.append("PREVIEW_OVER_BUDGET is still set but the assets now pass validation; "
+				+ "clear it, or the next over-budget asset is enabled with no warning")
 
 	# The other direction: if the assets are ever genuinely fixed, this test must
 	# not be the thing standing in the way of turning them on.

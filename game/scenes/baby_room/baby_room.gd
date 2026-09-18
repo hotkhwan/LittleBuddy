@@ -40,6 +40,7 @@ const ContentLibraryScript := preload("res://scripts/content/content_library.gd"
 const StickerBookScript := preload("res://scripts/progression/sticker_book.gd")
 const CelebrationScript := preload("res://scripts/progression/celebration.gd")
 const PromptSpeakerScript := preload("res://scripts/speech/prompt_speaker.gd")
+const BabyAvatarScript := preload("res://scripts/characters/little_buddy/baby_little_buddy.gd")
 # Preloaded rather than referenced by `class_name`: global class names come from
 # the editor's script-class cache, which the headless `--script` test runner does
 # not build. A `class_name` reference here parse-errors the whole room there.
@@ -175,12 +176,47 @@ var _task_speak_enabled: bool = false
 var _happy_reaction_generation: int = 0
 
 
+## Shows the Meshy baby instead of the procedural one, when it is switched on.
+##
+## The procedural `BabyView3D` is NOT removed -- it is hidden and kept as an
+## invisible **socket proxy**. `get_mouth_position()` / `get_hug_position()` read
+## `Marker3D.global_position`, and visibility does not affect a transform, so
+## feeding and hugging still aim at exactly the right places while the child sees
+## the new model. That matters because the Meshy baby has no rig, so it has no
+## sockets of its own and could not otherwise be used for a caregiver activity at
+## all.
+##
+## Everything else -- baby state, view states, rewards, drop zones -- keeps
+## talking to `BabyView3D` exactly as before. This is a visual swap and nothing
+## more, which is what makes it safe to switch on for an over-budget preview.
+func _swap_in_baby_avatar() -> void:
+	if not BabyAvatarScript.ENABLED:
+		return
+	var avatar: Node3D = BabyAvatarScript.new()
+	if not bool(avatar.call("is_model_available")):
+		# Not in this build (the raw exports are gitignored and excluded from
+		# most iOS builds). Keep the procedural baby and say nothing to the child.
+		avatar.free()
+		return
+
+	add_child(avatar)
+	avatar.global_transform = _baby_view.global_transform
+	if avatar.has_method("set_pose"):
+		avatar.call("set_pose", "sitting")
+	# Chapter 2's baby faces +Z while every other character faces -Z; the wrapper
+	# names this as CHAPTER_2_YAW_DEG rather than leaving it to be rediscovered.
+	if "CHAPTER_2_YAW_DEG" in BabyAvatarScript:
+		avatar.rotate_y(deg_to_rad(BabyAvatarScript.CHAPTER_2_YAW_DEG))
+	_baby_view.visible = false
+
+
 func _ready() -> void:
 	# Enables Area3D.input_event picking for touch/mouse without requiring
 	# any project.godot edits (that file is owned by the foundation agent).
 	get_viewport().physics_object_picking = true
 
 	_setup_nursery_props()
+	_swap_in_baby_avatar()
 
 	# Guarantees the baby, bottle and teddy are actually framed, regardless of the
 	# Transform3D stored in the scene file.

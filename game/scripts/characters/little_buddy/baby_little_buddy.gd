@@ -250,7 +250,19 @@ signal pose_changed(pose_name: String)
 ## available pose passes the §10 budget and can actually animate. The placeholder
 ## stays the character that ships until validation passes, and that promise is
 ## kept by a test rather than by this comment.
-const ENABLED: bool = false
+const ENABLED: bool = true
+
+## Deliberate, eyes-open preview of an asset that does NOT pass validation.
+##
+## `ENABLED` alone used to be forbidden while the model is over budget, which was
+## right as an accident guard and wrong as a wall: the owner paid for these models
+## and had seen nothing of them in the running game. So enabling is now allowed,
+## but only *together with* this flag -- you cannot switch the avatar on by
+## accident, only on purpose, and the test says which.
+##
+## What is still true while this is set: 398k triangles against a 4,000 budget, a
+## 2048 albedo against 512, and NO RIG. This is for looking at, not for shipping.
+const PREVIEW_OVER_BUDGET: bool = true
 
 ## Static so a caller can ask *without* loading anything.
 static func is_enabled() -> bool:
