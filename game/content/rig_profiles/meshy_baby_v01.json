@@ -1,0 +1,63 @@
+{
+  "profileId": "meshyBabyV01",
+  "description": "TEMPORARY validation profile for the Meshy auto-rigged standing baby. Not production. See docs/MESHY_RIG_VALIDATION.md.",
+  "sourceRigTask": "01a0b58b-4ca4-7663-80e9-97a4001a6f71",
+  "skeletonNodeName": "Armature",
+  "skinnedMeshName": "char1",
+  "modelHeightUnits": 1.7,
+  "feetAtOrigin": true,
+  "facing": "+Z",
+  "boneMap": {
+    "head": "Head",
+    "chest": "Spine",
+    "leftHand": "LeftHand",
+    "rightHand": "RightHand"
+  },
+  "socketOffsetSpace": "boneLocalCentimetres",
+  "socketOffsets": {
+    "mouth": {
+      "bone": "head",
+      "offset": [
+        1.129,
+        23.398,
+        27.12
+      ]
+    },
+    "hugTarget": {
+      "bone": "chest",
+      "offset": [
+        0.039,
+        11.753,
+        33.078
+      ]
+    },
+    "itemHoldLeft": {
+      "bone": "leftHand",
+      "offset": [
+        0.0,
+        0.0,
+        2.0
+      ]
+    },
+    "itemHoldRight": {
+      "bone": "rightHand",
+      "offset": [
+        0.0,
+        0.0,
+        2.0
+      ]
+    }
+  },
+  "clips": {
+    "walk": "babyStanding_walk_v01.glb",
+    "run": "babyStanding_run_v01.glb"
+  },
+  "notes": [
+    "The spine chain is named counter-intuitively: Spine02 is LOWEST (32% height), then Spine01 (37%), then Spine (42%) which is the TOPMOST spine bone. 'chest' therefore maps to 'Spine', not 'Spine02'.",
+    "No finger bones exist. The hands are mitten forms; itemHold* sockets attach to the hand bone directly.",
+    "The mouth is PAINTED, not modelled: this character's face is a smooth surface, so every geometric heuristic finds the NOSE, the only thing that protrudes. Deriving the socket from the frontmost vertex put a feeding bottle on the baby's eyebrow. tools/find_face_sockets.py instead decodes the base-colour texture and profiles face colour by height: hair reads brown at 81-93%, skin is pale and near-neutral, and the lips are the one saturated red band at 61-63% (r-g peaks at 108 vs ~61 for skin). The socket is the centroid of those 36 lip vertices, pushed 0.03 off the surface so a prop does not z-fight the face.",
+    "The texture analysis alone put the mouth at 62% of height; rendering it there sat the bottle on the NOSE. The socket was lowered to 58% by measuring the gap in the render and converting with the eye-to-mouth distance as a ruler, then re-rendering to confirm. The texture method got it close and the eye settled it -- which is the order LB_RIG_V1.md prescribes ('positioned once by hand').",
+    "UNITS TRAP: socketOffsets are in BONE-LOCAL space, and this rig's bones are in CENTIMETRES under an Armature node carrying a 0.01 scale. An offset expressed in the mesh's metre-ish space is therefore ~100x too small and collapses the socket onto its parent bone -- which is exactly the bug the first version of this file shipped: 'mouth' resolved to within 1 mm of 'head'. Offsets are now computed as inverseBindMatrix[bone] * targetPointInMeshSpace, which lands in the right space and also accounts for the bone's rest rotation.",
+    "runtime_character_validation asserts the mouth sits near face height and is well clear of the head bone, so this class of mistake fails loudly rather than rendering a bottle inside the skull."
+  ]
+}

@@ -227,27 +227,49 @@ func _test_the_flag_is_gated_on_validation(baby):
 func _test_it_refuses_to_fake_animation(baby):
 	var failures: Array = []
 
-	if baby.call("get_animation_player") != null:
-		failures.append("the wrapper reports an AnimationPlayer. The assets have none, so either "
-				+ "one was built by hand -- which would be a faked rig -- or a rigged re-export "
-				+ "has landed and this case needs revisiting alongside the flag")
+	# REVISED 2026-09-19, when the rigged re-export landed -- which the previous
+	# version of this block named as the condition for revisiting it.
+	#
+	# The invariant was never "this character can never animate". It was that the
+	# wrapper must not CLAIM a capability the asset on disk does not have. So the
+	# assertions below are now conditional on what the visible pose actually
+	# carries: a pose with a skin and clips may report animation capability, and a
+	# pose-locked mesh still may not. The source-level scan further down -- no
+	# tween, no per-frame hook, no hand-built AnimationPlayer -- is untouched, and
+	# it is the half that actually catches a faked idle.
+	var shown_pose: String = String(baby.call("get_pose"))
+	var shown: Dictionary = baby.call("describe_budget") if _model_present else {}
+	var shown_rigged: bool = bool(shown.get("hasSkin", false)) \
+			and not (shown.get("animationClips", []) as Array).is_empty()
+
+	if baby.call("get_animation_player") != null and not shown_rigged:
+		failures.append("the wrapper reports an AnimationPlayer on pose '%s', which has no skin "
+				% shown_pose
+				+ "or no clips. Either one was built by hand -- a faked rig -- or the pose "
+				+ "resolution is reporting a different model than it is showing.")
 
 	for pose_name: String in Baby.known_poses():
 		if not Baby.is_pose_available(pose_name):
 			continue
-		var clips: Array = baby.call("describe_budget", pose_name).get("animationClips", [])
-		if not clips.is_empty():
-			failures.append("the '%s' pose now reports clips %s; see above" % [pose_name, str(clips)])
+		var report: Dictionary = baby.call("describe_budget", pose_name)
+		var clips: Array = report.get("animationClips", [])
+		if clips.is_empty():
+			continue
+		if not bool(report.get("hasSkin", false)):
+			failures.append(("the '%s' pose reports clips %s but has NO SKIN. Clips without a "
+					+ "skin cannot deform anything, so this is a claim the asset cannot honour.")
+					% [pose_name, str(clips)])
 
 	for action: String in ActionDriver.KNOWN_ACTIONS:
-		if bool(baby.call("can_play_action", action)):
+		var can: bool = bool(baby.call("can_play_action", action))
+		if can and not shown_rigged:
 			failures.append(
-				("can_play_action(\"%s\") is true on assets with no skin and no clips. This must "
+				("can_play_action(\"%s\") is true on a pose with no skin and no clips. This must "
 				+ "answer honestly: a caller that believes an action will be shown will compose "
 				+ "gameplay around a pose that never appears.") % action
 			)
 
-	if String(baby.call("get_current_action")) != "":
+	if String(baby.call("get_current_action")) != "" and not shown_rigged:
 		failures.append("get_current_action() must be \"\" while nothing can be shown; reporting "
 				+ "the requested action here would let a caller believe a pose is on screen")
 
@@ -261,16 +283,16 @@ func _test_it_refuses_to_fake_animation(baby):
 	if String(baby.call("get_requested_action")) != "sleep":
 		failures.append("get_requested_action() should name the last action asked for, found '%s'"
 				% String(baby.call("get_requested_action")))
-	if String(baby.call("get_current_action")) != "":
+	if String(baby.call("get_current_action")) != "" and not shown_rigged:
 		failures.append("get_current_action() changed after a request that cannot be shown")
-	if String(baby.call("get_held_action")) != "":
+	if String(baby.call("get_held_action")) != "" and not shown_rigged:
 		failures.append("get_held_action() claims a posture on a character that cannot be posed")
 
 	# And the `sleep` ACTION must not have quietly swapped the `sleeping` POSE in.
 	# They are different things: a pose is a mesh, an action is motion this asset
 	# cannot perform, and letting one stand in for the other is the same lie as a
 	# bob-and-sway.
-	if _model_present and String(baby.call("get_pose")) != Baby.DEFAULT_POSE:
+	if _model_present and String(baby.call("get_pose")) != Baby.default_pose():
 		failures.append(
 			("play_action(\"sleep\") changed the visible pose to '%s'. A pose swap is not an "
 			+ "animation and must not be triggered by the action vocabulary, or a caller will "
@@ -357,9 +379,15 @@ func _test_the_pose_vocabulary(baby):
 		if not poses.has(required):
 			failures.append("the '%s' pose is gone from POSES. sleeping/sitting/standing are the "
 					% required + "bedtime / feeding / first-words staging for Chapter 2.")
-	if poses.size() != 3:
-		failures.append("POSES holds %d entries; expected exactly the three pose variants"
+	# `rigged` joined them on 2026-09-19: one skinned model that supersedes all
+	# three for any scene that has it. The three stay pinned above because a build
+	# without the rigged export must still stage the chapter.
+	if poses.size() != 4:
+		failures.append("POSES holds %d entries; expected the three pose variants plus `rigged`"
 				% poses.size())
+	if not poses.has("rigged"):
+		failures.append("the 'rigged' pose is gone from POSES; it is the only entry with a skin, "
+				+ "clips and sockets, and the only one the game can animate")
 
 	# Feeding is Chapter 2's core loop, so the chapter's baby sits.
 	if Baby.DEFAULT_POSE != "sitting":
@@ -681,6 +709,13 @@ func _test_normalisation(baby):
 ## does not.
 func _test_material_policy(baby):
 	var failures: Array = []
+	# Anti-vacuity, scoped per SUITE rather than per pose. The wrapper's §7 fix
+	# must still be protecting something, or it should be deleted -- but a single
+	# pose arriving already clean is the goal, not a regression. `rigged` is built
+	# by tools/build_runtime_character.py, which strips the emissive, the specular
+	# extension and doubleSided at source, so it is legitimately clean; the three
+	# raw exports are not, and they are what keeps the fix honest.
+	var _any_source_broken: bool = false
 	for pose_name: String in Baby.known_poses():
 		if not Baby.is_pose_available(pose_name):
 			continue
@@ -691,10 +726,8 @@ func _test_material_policy(baby):
 			or bool(report.get("hasNormalMap", false))
 			or bool(report.get("doubleSided", false))
 		)
-		if not source_is_broken:
-			failures.append("the imported '%s' material no longer violates §7 at all, so the fix "
-					% pose_name + "is being asserted against nothing. If the asset was re-exported "
-					+ "clean, simplify the wrapper rather than leaving a fix that protects nothing.")
+		if source_is_broken:
+			_any_source_broken = true
 
 		if float(report.get("appliedMetallic", 1.0)) != 0.0:
 			failures.append(
@@ -720,6 +753,10 @@ func _test_material_policy(baby):
 					% [int(report.get("appliedTextures", 9)), pose_name]
 					+ "atlas, and dropping the normal and metallic/roughness maps should leave "
 					+ "only albedo")
+	if not _any_source_broken:
+		failures.append("no pose in this build has a source material that violates §7, so the "
+				+ "wrapper's material fix is protecting nothing. Delete the fix rather than "
+				+ "leaving dead code that looks like a safeguard.")
 	return failures
 
 

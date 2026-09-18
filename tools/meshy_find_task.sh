@@ -10,6 +10,19 @@
 # `input_task_id` (the alternative, `model_url`, must be publicly reachable, and
 # publishing a paid asset to a public URL is not something to do casually).
 #
+# !! SUPERSEDED 2026-09-18 — THE MATCH KEY BELOW IS UNSOUND. !!
+# The stamp is the DOWNLOAD time, not created_at, and the lag is variable
+# (132s / 155s / 56s / 421s for the four assets). Three of four fall outside the
+# +/-120s window, so this script cannot find the standing baby even when the
+# listings work. The listings also return empty for this key regardless.
+#
+# USE INSTEAD: the download-provenance xattr on the downloaded GLB, which carries
+# the task id and the pose-stamped filename in one URL:
+#   xattr -p com.apple.metadata:kMDItemWhereFroms -x <file.glb>
+#   -> https://assets.meshy.ai/uploads/converted/<TASK_ID>/<name>_<stamp>_texture.glb
+# Then verify with tools/meshy_validate_task.sh <id> and LOOK at the preview.
+# Verified ids are tabulated in docs/MESHY_CREDIT_LEDGER.md.
+#
 # THE MATCH KEY, and why it is provable rather than a guess
 # The filename stamp is MMDDHHMMSS in **UTC**. Verified against all four assets:
 # the local download time is exactly +7h (Asia/Bangkok) with minutes and seconds
@@ -52,17 +65,30 @@ API="https://api.meshy.ai/openapi/v1"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 # Listing tasks consumes no credits.
-for KIND in text-to-3d image-to-3d; do
-  echo "--- ${KIND} ---"
-  curl -sS -G "${API}/${KIND}" \
+#
+# NOTE ON PATHS: text-to-3d lives under v2, image-to-3d under v1. Using v1 for
+# text-to-3d returns 404 NoMatchingRoute, and because curl exits 0 on an HTTP
+# error the old version of this script swallowed that and printed a misleading
+# "0 task(s) listed". That is why the http status is now captured and checked.
+for SPEC in "text-to-3d:v2" "image-to-3d:v1"; do
+  KIND="${SPEC%%:*}"; VER="${SPEC##*:}"
+  echo "--- ${KIND} (${VER}) ---"
+  CODE="$(curl -sS -G "https://api.meshy.ai/openapi/${VER}/${KIND}" \
        -H "Authorization: Bearer ${MESHY_API_KEY}" \
+       --data-urlencode "page_num=1" \
        --data-urlencode "page_size=50" \
        --data-urlencode "sort_by=-created_at" \
-       -o "${TMP}/${KIND}.json" 2>"${TMP}/${KIND}.err" || {
+       -o "${TMP}/${KIND}.json" -w '%{http_code}' 2>"${TMP}/${KIND}.err")" || {
          echo "  request failed (see below); continuing"
          sed -e 's/Bearer [A-Za-z0-9._-]*/Bearer <redacted>/g' "${TMP}/${KIND}.err" >&2 || true
          continue
        }
+  if [[ "$CODE" != "200" ]]; then
+    echo "  HTTP ${CODE} — this is NOT an empty result, it is a failed request:"
+    sed -e 's/Bearer [A-Za-z0-9._-]*/Bearer <redacted>/g' "${TMP}/${KIND}.json" | head -c 400
+    echo; echo
+    continue
+  fi
   TARGET="$TARGET" python3 - "${TMP}/${KIND}.json" <<'PY'
 import json, sys, os, datetime
 target = os.environ["TARGET"]
@@ -86,7 +112,11 @@ for it in items:
         continue
     if abs((when - t).total_seconds()) <= 120:
         hits.append((abs((when - t).total_seconds()), it, when))
-if not hits:
+if not items:
+    print("  the API returned an EMPTY task list for this key — no history to match against.")
+    print("  (openapi listings only surface tasks CREATED VIA THE API; anything made in the")
+    print("   Meshy web studio, or under another account/workspace, will never appear here.)")
+elif not hits:
     print(f"  {len(items)} task(s) listed, none within 120s of the target")
 for d, it, when in sorted(hits):
     print(f"  MATCH  id={it.get('id')}  created={when:%Y-%m-%d %H:%M:%SZ}  "
@@ -104,4 +134,7 @@ NEXT
   More than one      -> AMBIGUOUS. Stop and report; do not pick one.
   None               -> the task may be older than the listing window, or these
                         were generated in a different account. Stop and report.
+  Empty list         -> the assets were not created through the API, so no
+                        input_task_id exists to be found here. The id has to come
+                        from the Meshy web studio task URL. Stop and ask the owner.
 NOTE

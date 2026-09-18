@@ -60,3 +60,6 @@ game/assets_source/**/*.glb
 game/assets_source/**/*.jpg
 game/assets_source/**/*.png
 game/assets_source/**/*.import
+
+# python bytecode from the local glb inspection tools
+tools/__pycache__/

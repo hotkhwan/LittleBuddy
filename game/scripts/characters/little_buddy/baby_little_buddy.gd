@@ -283,6 +283,17 @@ static func is_enabled() -> bool:
 ##   +Z facing into the project's -Z. `sleeping` is instead reclined onto its
 ##   back, which also leaves it facing the right way (upward).
 const POSES: Dictionary = {
+	# The rigged runtime derivative: one skinned, animatable model that supersedes
+	# the three pose-locked exports. Built locally by
+	# `tools/build_runtime_character.py` from the Meshy rig -- skin weights
+	# repaired, material de-emissived, texture halved. THE RIG SEAM below binds a
+	# real action driver the moment this pose is the one on screen, so `sockets`
+	# and `can_play_action()` start answering truthfully with no caller change.
+	"rigged": {
+		"path": "res://assets/characters/littleBuddy/baby/babyLittleBuddy_v01.glb",
+		"heightFraction": 1.0,
+		"rotationDeg": Vector3(0.0, 180.0, 0.0),
+	},
 	"standing": {
 		"path": "res://assets/characters/littleBuddy/baby/baby_standing_v01.glb",
 		"heightFraction": 1.0,
@@ -318,8 +329,36 @@ const POSES: Dictionary = {
 ## needs is named here rather than left to be rediscovered.
 const CHAPTER_2_YAW_DEG: float = 180.0
 
-## Feeding is Chapter 2's core loop, so the chapter's baby sits.
+## Feeding is Chapter 2's core loop, so the chapter's baby sits -- but only while
+## the unrigged pose set is all there is. `resolve_pose()` prefers `rigged` when
+## that model is in the build, because one animatable model beats three frozen
+## ones for every state including feeding.
 const DEFAULT_POSE: String = "sitting"
+
+## The rigged model, when present, is preferred over every pose-locked export.
+const PREFERRED_POSE: String = "rigged"
+
+## Where the bone-name adapter lives. The ONLY file that may name a Meshy bone;
+## everything above `get_socket()` speaks `LB_Rig_v1` and nothing else.
+const RIG_PROFILE_PATH: String = "res://content/rig_profiles/meshy_baby_v01.json"
+
+## Animation-only exports (armature, no mesh -- ~60 KB each) whose clips are
+## merged onto the rigged model's own `AnimationPlayer`. Kept separate rather
+## than using Meshy's full walk/run GLBs, which each carry a redundant 3.9 MB
+## copy of the mesh with the UNREPAIRED weights.
+const CLIP_SOURCES: Dictionary = {
+	"walk": "res://assets/characters/littleBuddy/baby/babyLittleBuddy_walk_v01.glb",
+	"run": "res://assets/characters/littleBuddy/baby/babyLittleBuddy_run_v01.glb",
+}
+
+## `LB_Rig_v1` socket names, plus the two aliases Chapter 2 already calls by
+## (`CHARACTER_AGE_STAGES.md` §9.3 maps `get_mouth_position()` /
+## `get_hug_position()` onto these). Callers use these names; no caller ever
+## names a bone.
+const SOCKET_ALIASES: Dictionary = {
+	"MouthMarker": "mouth",
+	"HugMarker": "hugTarget",
+}
 
 ## **The adapter.** Chapter 2's five view states, mapped onto the nearest pose.
 ##
@@ -351,7 +390,7 @@ const FALLBACK_VIEW_STATE: String = "idle"
 
 ## Preference order when the requested pose is not in this build. Sitting first
 ## for the same reason it is the default.
-const POSE_FALLBACK_ORDER: Array[String] = ["sitting", "standing", "sleeping"]
+const POSE_FALLBACK_ORDER: Array[String] = ["rigged", "sitting", "standing", "sleeping"]
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +420,7 @@ const POSE_NODE_PREFIX: String = "Pose_"
 var _loaded: Dictionary = {}
 var _measured: Dictionary = {}
 
-var _requested_pose: String = DEFAULT_POSE
+var _requested_pose: String = default_pose()
 var _view_state: String = FALLBACK_VIEW_STATE
 var _driver: RefCounted = null
 var _pending_action: String = ""
@@ -427,6 +466,12 @@ static func is_pose_available(pose_name: String) -> bool:
 ## its file is present, else the first pose in `POSE_FALLBACK_ORDER` that is,
 ## else "" when this build has none of them.
 static func resolve_pose(pose_name: String) -> String:
+	# An EXPLICIT request always wins, including a request for a pose-locked
+	# export. An earlier version of this let the rigged model override any
+	# request, which quietly broke `set_pose("standing")` -- the caller asked for
+	# one thing and got another, with no way to tell. The rigged model is
+	# preferred by being what the defaults POINT AT (`default_pose()`,
+	# `pose_for_view_state()`), not by overruling the caller.
 	if is_pose_available(pose_name):
 		return pose_name
 	for candidate: String in POSE_FALLBACK_ORDER:
@@ -498,7 +543,19 @@ func is_pose_loaded(pose_name: String) -> bool:
 static func pose_for_view_state(state_name: String) -> String:
 	if not VIEW_STATE_POSES.has(state_name):
 		return ""
+	# Chapter 2's states all mapped to `sitting` because a pose-locked mesh could
+	# not do better. When the rigged model is in the build every state points at
+	# it instead: one skinned model covers all five and can actually react, which
+	# is what the table was working around.
+	if is_pose_available(PREFERRED_POSE):
+		return PREFERRED_POSE
 	return String(VIEW_STATE_POSES[state_name])
+
+
+## The pose a fresh wrapper starts on: the rigged model when it is in the build,
+## else Chapter 2's seated export.
+static func default_pose() -> String:
+	return PREFERRED_POSE if is_pose_available(PREFERRED_POSE) else DEFAULT_POSE
 
 
 ## `BabyView3D`'s method, unchanged in name, arguments and tolerance for
@@ -538,11 +595,50 @@ func get_variant() -> String:
 func get_socket(socket_name: String) -> Node3D:
 	build()
 	var pose_name: String = get_pose()
-	if not pose_name.is_empty():
-		var found: Node = (_loaded[pose_name]["root"] as Node3D).find_child(socket_name, true, false)
-		if found is Node3D:
-			return found as Node3D
+	if pose_name.is_empty():
+		return self
+	var wanted: String = String(SOCKET_ALIASES.get(socket_name, socket_name))
+	var root: Node3D = _loaded[pose_name]["root"] as Node3D
+	# Sockets built by `_build_sockets()` are named `Socket_<semantic>`; an
+	# unrigged pose has none and falls through to the §9.2 degradation below.
+	var socket: Node = root.find_child("Socket_" + wanted, true, false)
+	if socket is Node3D:
+		return socket as Node3D
+	var found: Node = root.find_child(socket_name, true, false)
+	if found is Node3D:
+		return found as Node3D
 	return self
+
+
+## Every `LB_Rig_v1` socket that actually resolved on the pose currently shown.
+## Empty for a pose-locked mesh, which is the honest answer: a socket is a node
+## in a skeleton, and those exports have no skeleton.
+func available_sockets() -> Array:
+	build()
+	var pose_name: String = get_pose()
+	if pose_name.is_empty():
+		return []
+	return (_loaded[pose_name].get("sockets", []) as Array).duplicate()
+
+
+## True when `socket_name` resolves to a real skeleton-driven node rather than to
+## the whole-character fallback. Callers that need to know whether they are
+## aiming at a mouth or at an origin ask this.
+func has_socket(socket_name: String) -> bool:
+	var wanted: String = String(SOCKET_ALIASES.get(socket_name, socket_name))
+	return available_sockets().has(wanted)
+
+
+## `BabyView3D`'s accessors, now answerable because there is a skeleton to answer
+## from. They were deliberately absent while the assets were pose-locked -- see
+## the class doc -- and are implemented here rather than approximated from a
+## bounding box, which is what §9.1 forbids.
+func get_mouth_position() -> Vector3:
+	return get_socket("mouth").global_position
+
+
+func get_hug_position() -> Vector3:
+	return get_socket("hugTarget").global_position
 
 
 ## True when at least one pose is in this build and was instantiated. False is a
@@ -785,10 +881,121 @@ func _ensure_pose(pose_name: String) -> bool:
 	oriented.add_child(instance)
 
 	var mesh_instance: MeshInstance3D = _find_mesh(instance)
-	_loaded[pose_name] = {"root": holder, "mesh": mesh_instance}
+	_loaded[pose_name] = {"root": holder, "mesh": mesh_instance, "sockets": []}
 	_apply_art_bible_material(mesh_instance)
 	_normalise(pose_name, holder, oriented, instance as Node3D, mesh_instance)
+	_merge_clips(instance)
+	_loaded[pose_name]["sockets"] = _build_sockets(instance)
 	return true
+
+
+## Merges the walk/run clips onto the pose's own `AnimationPlayer`.
+##
+## The clips ship as armature-only exports so the mesh is not duplicated three
+## times. Their skeleton is bone-for-bone the one in the rigged model -- same
+## names, same hierarchy, same order -- so the imported track paths resolve
+## against this model unchanged. That identity is the whole reason animation
+## compatibility survives the weight repair: the repair touched `WEIGHTS_0`
+## only, never the skeleton.
+##
+## This is NOT a hand-built animation. Every clip here was authored by the rig
+## and is loaded from a file; nothing is synthesised, tweened or driven per
+## frame.
+func _merge_clips(instance: Node) -> void:
+	var player: AnimationPlayer = _find_animation_player(instance)
+	if player == null:
+		return
+	var library: AnimationLibrary = player.get_animation_library("")
+	if library == null:
+		return
+	for action: String in CLIP_SOURCES.keys():
+		var path: String = String(CLIP_SOURCES[action])
+		if not ResourceLoader.exists(path):
+			continue
+		var packed: Resource = load(path)
+		if not (packed is PackedScene):
+			continue
+		var clip_root: Node = (packed as PackedScene).instantiate()
+		var clip_player: AnimationPlayer = _find_animation_player(clip_root)
+		if clip_player != null:
+			for clip_name: String in clip_player.get_animation_list():
+				var anim: Animation = clip_player.get_animation(clip_name)
+				if anim != null and not library.has_animation(action):
+					var copy: Animation = anim.duplicate(true)
+					copy.loop_mode = Animation.LOOP_LINEAR
+					library.add_animation(action, copy)
+		clip_root.free()
+
+
+## Builds one `BoneAttachment3D` per `LB_Rig_v1` socket from the `RigProfile`.
+##
+## Two kinds, exactly as `LB_RIG_V1.md` §3 specifies:
+##   * `boneMap`        -- the socket IS that bone's transform.
+##   * `socketOffsets`  -- no skeleton has a mouth bone, so the socket is a
+##                         `Marker3D` parented to a mapped bone at a fixed local
+##                         offset, and therefore follows the animation for free.
+##
+## A socket whose bone is absent is skipped and reported by `available_sockets()`
+## as missing, never silently placed at the origin.
+func _build_sockets(instance: Node) -> Array:
+	var built: Array = []
+	var skeleton: Skeleton3D = _find_skeleton(instance)
+	if skeleton == null:
+		return built
+	var profile: Dictionary = _load_rig_profile()
+	if profile.is_empty():
+		return built
+	var bone_map: Dictionary = profile.get("boneMap", {})
+
+	for socket_name: String in bone_map.keys():
+		var bone: String = String(bone_map[socket_name])
+		if skeleton.find_bone(bone) == -1:
+			push_warning("BabyLittleBuddy: socket '%s' -> bone '%s' not on this skeleton"
+					% [socket_name, bone])
+			continue
+		var attachment := BoneAttachment3D.new()
+		attachment.name = "Socket_" + socket_name
+		attachment.bone_name = bone
+		skeleton.add_child(attachment)
+		built.append(socket_name)
+
+	for socket_name: String in (profile.get("socketOffsets", {}) as Dictionary).keys():
+		var spec: Dictionary = profile["socketOffsets"][socket_name]
+		var via: String = String(spec.get("bone", ""))
+		var bone: String = String(bone_map.get(via, ""))
+		if bone.is_empty() or skeleton.find_bone(bone) == -1:
+			continue
+		var attachment := BoneAttachment3D.new()
+		attachment.name = "Attach_" + socket_name
+		attachment.bone_name = bone
+		skeleton.add_child(attachment)
+		var marker := Marker3D.new()
+		marker.name = "Socket_" + socket_name
+		var offset: Array = spec.get("offset", [0.0, 0.0, 0.0])
+		marker.position = Vector3(float(offset[0]), float(offset[1]), float(offset[2]))
+		attachment.add_child(marker)
+		built.append(socket_name)
+	return built
+
+
+func _load_rig_profile() -> Dictionary:
+	if not FileAccess.file_exists(RIG_PROFILE_PATH):
+		return {}
+	var file: FileAccess = FileAccess.open(RIG_PROFILE_PATH, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	return parsed if parsed is Dictionary else {}
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node as Skeleton3D
+	for child: Node in node.get_children():
+		var found: Skeleton3D = _find_skeleton(child)
+		if found != null:
+			return found
+	return null
 
 
 ## Lowest point at the wrapper's origin, horizontally centred, turned to the
@@ -1016,6 +1223,18 @@ func _measure(pose_name: String) -> Dictionary:
 	var applied_scale: float = (_loaded[pose_name]["root"] as Node3D).get_child(0).scale.y
 	report["appliedScale"] = applied_scale
 	report["placedHeight"] = placed.size.y
+	# A SKINNED mesh is not placed by that chain. Meshy's rig exports bones in
+	# centimetres under an `Armature` node carrying a 0.01 unit conversion, and
+	# the mesh's own vertex data is already in the post-inverse-bind metre space
+	# the bones resolve to. Walking the node chain therefore applies that 0.01 a
+	# second time and reports a character 100x too small -- 0.0078 m rather than
+	# 0.78 m. What is actually rendered is the mesh extent times the scale this
+	# wrapper applies, which is what the bone and socket world positions agree
+	# with. Measured, not assumed: `runtime_character_validation` checks the
+	# resolved socket heights against this figure.
+	if mesh_instance.skin != null and aabb.size.y > 0.0001:
+		report["placedHeight"] = aabb.size.y * applied_scale
+		report["restingY"] = 0.0
 	report["restingY"] = placed.position.y
 	report["centreX"] = placed.position.x + placed.size.x * 0.5
 	report["centreZ"] = placed.position.z + placed.size.z * 0.5

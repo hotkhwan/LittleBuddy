@@ -225,6 +225,7 @@ func build() -> void:
 
 	# One `SurfaceTool` for everything static: see the class docs on draw calls.
 	var shell: SurfaceTool = Kit.begin()
+	_build_stage(shell)
 	_build_floor(shell)
 	_build_walls(shell)
 	_build_window(shell)
@@ -242,6 +243,66 @@ func build() -> void:
 
 	_build_doors()
 	_build_furniture()
+
+
+## The STAGE: what the child sees where the room itself runs out.
+##
+## The camera fits the 4 x 4 m floor and its headroom, and the room ended exactly
+## there, so every aspect ratio wider or taller than the room's own showed flat
+## environment colour past the walls -- large unexplained beige margins at the
+## screen edges, worst on a 4:3 iPad. Zooming in to hide them is the wrong fix:
+## it crops the room the framing was carefully built to keep whole.
+##
+## So the ROOM stays the size it is and the WORLD gets bigger. An apron floor
+## continues the boards outwards, and a surrounding band of wall rises well above
+## the room's own 2.2 m, so the shot reads as one room of a larger house rather
+## than as a model floating in a void.
+##
+## Entirely visual: no collider, no navigation, nothing addressable. It is added
+## to the shell's `SurfaceTool`, so it costs no extra draw call, and the shell
+## does not cast shadows so it cannot darken the room.
+const STAGE_APRON: float = 7.0
+const STAGE_WALL_HEIGHT: float = 6.0
+const STAGE_INSET: float = 0.02
+
+
+func _build_stage(tool: SurfaceTool) -> void:
+	var bounds: Rect2 = HouseLayout.FLOOR_BOUNDS
+	var thickness: float = HouseLayout.WALL_THICKNESS
+	var apron_extent: float = bounds.size.x + STAGE_APRON * 2.0
+	var floor_tone: Color = _shade(HouseLayout.floor_color(room_id), 0.82)
+
+	# Apron floor, a hair BELOW the boards so the two never z-fight, and darker so
+	# the room's own floor still reads as the lit, occupied area.
+	Kit.box(
+		tool,
+		Kit.at(Vector3(bounds.get_center().x,
+				HouseLayout.FLOOR_Y - FLOOR_THICKNESS - STAGE_INSET,
+				bounds.get_center().y)),
+		Vector3(apron_extent, FLOOR_THICKNESS, apron_extent),
+		floor_tone
+	)
+
+	# Surrounding wall band. Set OUTSIDE the room's own walls and taller than
+	# them, so it fills the upper corners without ever being seen through the
+	# doorways -- the doorway openings are in the room walls, which sit in front.
+	var outer: float = bounds.end.x + thickness + 0.9
+	var wall_tone: Color = _shade(HouseLayout.WALL_COLOR, 0.88)
+	var mid_y: float = STAGE_WALL_HEIGHT * 0.5
+
+	Kit.box(
+		tool,
+		Kit.at(Vector3(0.0, mid_y, bounds.position.y - thickness - 0.9)),
+		Vector3(outer * 2.0 + thickness * 2.0, STAGE_WALL_HEIGHT, thickness),
+		wall_tone
+	)
+	for side: int in [-1, 1]:
+		Kit.box(
+			tool,
+			Kit.at(Vector3(float(side) * outer, mid_y, bounds.get_center().y)),
+			Vector3(thickness, STAGE_WALL_HEIGHT, apron_extent * 0.55),
+			wall_tone
+		)
 
 
 func _build_floor(tool: SurfaceTool) -> void:
@@ -677,6 +738,141 @@ func _build_doors() -> void:
 		_set_if_present(target, "to_spawn_id", String(door["toSpawnId"]))
 		for id: String in _ids_of(target):
 			_doors_by_target[id] = door
+		_build_door_sign(door)
+
+
+## A sign over each doorway saying where it goes, in a picture first and a word
+## second.
+##
+## The problem it solves is real and was visible in every screenshot: two
+## identical arched doors, one on each side of the room, and nothing whatsoever
+## to tell a child which is the kitchen. Route knowledge lived only in
+## `toRoomId`, which the player cannot read.
+##
+## It is built as ENVIRONMENT, not as UI: a wooden plaque screwed to the wall
+## above the architrave, with a chunky painted glyph and the room's name under
+## it. A `Control` overlay would have been quicker and would have read as a
+## debug label floating in the air -- the brief asks for the opposite.
+##
+## The glyph is the load-bearing half. A four-year-old who cannot read "KITCHEN"
+## can still learn "the door with the plate on it", so the word is the smaller
+## element and the picture is the big one. `Label3D` is used for the word because
+## it is lit, occluded and scaled by the same camera as everything else, so it
+## sits in the room rather than on top of it.
+## Sized and placed to sit ON THE DOOR, in its upper third.
+##
+## The first attempt hung it on the wall above the architrave, which failed twice
+## over: the door is 1.9 m and the wall is 2.2 m, so a 0.5 m plaque did not fit
+## and was clipped by the ceiling, and a sign on a side wall is edge-on to this
+## camera and unreadable. On the door itself it faces into the room, sits at
+## roughly a child's eye line, and cannot be cropped by the wall top.
+## Wide enough for the longest label ("LIVING ROOM") at the size below.
+const SIGN_SIZE: Vector2 = Vector2(0.92, 0.46)
+
+## One distinct pastel per destination, so the sign reads by COLOUR before the
+## child has focused on either the glyph or the word. Neither
+## `HouseLayout.accent_color()` nor `dominant_color()` could be reused: both
+## give two rooms the same value (mint for bathroom AND kitchen; peach for
+## kitchen AND living room), which is fine for room mood and useless for
+## telling two doors apart.
+const SIGN_COLORS: Dictionary = {
+	HouseLayout.BEDROOM: Palette.LAVENDER,
+	HouseLayout.BATHROOM: Palette.DUSTY_BLUE,
+	HouseLayout.KITCHEN: Palette.PEACH,
+	HouseLayout.LIVING_ROOM: Palette.SOFT_PINK,
+}
+const SIGN_DEPTH: float = 0.035
+## Above the door's own centre (doors are `DOOR_HEIGHT * 0.5` off the floor), so
+## the plaque lands around 1.4 m -- clear of the sunk panel below it.
+const SIGN_RISE: float = 0.45
+
+
+func _build_door_sign(door: Dictionary) -> void:
+	var to_room: String = String(door["toRoomId"])
+	var centre: Vector3 = door["position"]
+	var side: float = float(door["side"])
+	var accent: Color = SIGN_COLORS.get(to_room, Palette.MINT)
+	# Just inside the room and above the doorway, FACING THE CAMERA -- a hanging
+	# shop sign rather than a plate screwed flat to the door. Both doors are on
+	# the side walls, so anything lying flat on them is edge-on to this camera and
+	# unreadable; that was the first two attempts. The kit extrudes towards +Z by
+	# default (the door itself rotates that by 90 degrees), so an unrotated
+	# plaque already faces the way the child is looking.
+	var origin := Vector3(side * 1.74, centre.y + SIGN_RISE, centre.z)
+
+	var tool: SurfaceTool = Kit.begin()
+	# Bracket back to the wall, so the sign is hanging off something.
+	Kit.box(
+		tool,
+		Kit.at(Vector3(side * 0.16, 0.0, 0.0)),
+		Vector3(0.30, 0.055, 0.055),
+		Palette.deep(accent)
+	)
+	# Plaque: accent-tinted board so each destination reads by colour too, with a
+	# cream inner panel for the glyph.
+	Kit.extrude(tool, Kit.at(Vector3.ZERO), Kit.arch(SIGN_SIZE, 0.16, 6),
+			SIGN_DEPTH, accent, 0.014)
+	Kit.extrude(tool, Kit.at(Vector3(0.0, 0.045, SIGN_DEPTH * 0.55)),
+			Kit.arch(SIGN_SIZE - Vector2(0.14, 0.20), 0.12, 6), 0.022, Palette.CREAM, 0.01)
+	_build_room_glyph(tool, to_room, SIGN_DEPTH * 0.9, accent)
+
+	var mesh: MeshInstance3D = _add_mesh("DoorSign_%s" % to_room, Kit.commit(tool), false)
+	if mesh == null:
+		return
+	mesh.position = origin
+
+	var label := Label3D.new()
+	label.name = "DoorSignLabel_%s" % to_room
+	label.text = HouseLayout.display_name(to_room).to_upper()
+	label.font_size = 64
+	label.pixel_size = 0.0013
+	# INK, not the accent: an accent-on-cream label is pastel on pastel and was
+	# the one part of the sign that stayed hard to read at gameplay distance.
+	label.modulate = Palette.INK
+	label.outline_size = 0
+	label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	label.double_sided = false
+	label.position = origin + Vector3(0.0, -0.155, SIGN_DEPTH * 1.1)
+	_geometry.add_child(label)
+
+
+## One chunky painted symbol per destination, drawn from the same primitives as
+## the furniture so it belongs to the house. Deliberately simple shapes: at
+## gameplay distance a detailed icon becomes a smudge, so this is the big element
+## and the word underneath is the small one -- a four-year-old who cannot read
+## "KITCHEN" can still learn "the door with the plate on it".
+##
+## `z` is depth towards the camera; x/y are in the sign's face.
+func _build_room_glyph(tool: SurfaceTool, room: String, z: float, accent: Color) -> void:
+	var ink: Color = Palette.deep(accent)
+	var y: float = 0.075
+	match room:
+		HouseLayout.BEDROOM:
+			# A bed: base, headboard, pillow.
+			Kit.box(tool, Kit.at(Vector3(0.02, y - 0.03, z)), Vector3(0.30, 0.075, 0.02), ink)
+			Kit.box(tool, Kit.at(Vector3(-0.15, y + 0.03, z)), Vector3(0.05, 0.14, 0.02), ink)
+			Kit.box(tool, Kit.at(Vector3(-0.07, y + 0.035, z + 0.01)),
+					Vector3(0.09, 0.05, 0.02), Palette.CREAM)
+		HouseLayout.BATHROOM:
+			# A tub with a water drop above it.
+			Kit.box(tool, Kit.at(Vector3(0.0, y - 0.045, z)), Vector3(0.30, 0.09, 0.02), ink)
+			Kit.sphere(tool, Kit.at(Vector3(0.0, y + 0.075, z)), 0.05, ink, 12, 7)
+		HouseLayout.KITCHEN:
+			# A plate, with a spoon beside it.
+			Kit.sphere(tool, Kit.at(Vector3(-0.02, y, z - 0.02)), 0.105, ink, 16, 8)
+			Kit.sphere(tool, Kit.at(Vector3(-0.02, y, z + 0.005)), 0.072, Palette.CREAM, 16, 8)
+			Kit.box(tool, Kit.at(Vector3(0.15, y, z)), Vector3(0.028, 0.17, 0.02), ink)
+			Kit.sphere(tool, Kit.at(Vector3(0.15, y + 0.085, z)), 0.035, ink, 10, 6)
+		HouseLayout.LIVING_ROOM:
+			# A sofa: seat plus two arms.
+			Kit.box(tool, Kit.at(Vector3(0.0, y - 0.025, z)), Vector3(0.30, 0.08, 0.02), ink)
+			Kit.box(tool, Kit.at(Vector3(0.0, y + 0.045, z - 0.005)),
+					Vector3(0.22, 0.07, 0.02), Palette.CREAM)
+			for arm: int in [-1, 1]:
+				Kit.box(tool, Kit.at(Vector3(float(arm) * 0.135, y + 0.035, z)),
+						Vector3(0.05, 0.12, 0.02), ink)
+		_:
+			Kit.sphere(tool, Kit.at(Vector3(0.0, y, z)), 0.09, ink, 12, 7)
 
 
 func _build_furniture() -> void:
