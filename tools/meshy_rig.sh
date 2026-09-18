@@ -22,16 +22,32 @@ set -euo pipefail
 set +x
 
 TASK_IN="${1:-}"
-OUTDIR="game/assets_source/meshy/littleBuddy"
-RIGGED="${OUTDIR}/babyStanding_rigged_v01.glb"
-WALK="${OUTDIR}/babyStanding_walk_v01.glb"
-RUN="${OUTDIR}/babyStanding_run_v01.glb"
-MAX_CREDITS=5
+# PREFIX is the full path stem for this character's outputs, e.g.
+#   game/assets_source/meshy/buddy/pinkGirl
+# It is REQUIRED. It used to be hardcoded to the baby, and running this for a
+# second character silently overwrote the first character's rigged GLB and both
+# of its clips with the new one -- three files, same names, no warning. The
+# originals were recoverable only because Meshy still had the task. Make the
+# caller name the output.
+PREFIX="${2:-}"
+RIGGED="${PREFIX}_rigged_v01.glb"
+WALK="${PREFIX}_walk_v01.glb"
+RUN="${PREFIX}_run_v01.glb"
+MAX_CREDITS="${3:-5}"
 
-if [[ -z "$TASK_IN" ]]; then
-  echo "usage: $0 <remesh_task_id>" >&2
+if [[ -z "$TASK_IN" || -z "$PREFIX" ]]; then
+  echo "usage: $0 <remesh_task_id> <output_path_stem> [max_credits]" >&2
+  echo "  e.g. $0 01a0b5e9-... game/assets_source/meshy/buddy/pinkGirl" >&2
   exit 2
 fi
+for existing in "${PREFIX}_rigged_v01.glb" "${PREFIX}_walk_v01.glb" "${PREFIX}_run_v01.glb"; do
+  if [[ -e "$existing" ]]; then
+    echo "Refusing to overwrite an existing output: $existing" >&2
+    echo "Move or delete it first. Rigging costs credits; a silent overwrite" >&2
+    echo "destroys an asset that was paid for." >&2
+    exit 9
+  fi
+done
 if [[ -z "${MESHY_API_KEY:-}" ]]; then
   echo "MESHY_API_KEY is not set in this environment." >&2
   exit 3
@@ -130,7 +146,7 @@ for k in sorted(res):
         print(f"  {k}: {'present' if res[k] else 'EMPTY'}")
 PY
 
-mkdir -p "$OUTDIR"
+mkdir -p "$(dirname "$PREFIX")"
 get() { # field, destination
   # The walk/run urls are NOT at result top level — they live under
   # result.basic_animations. Searching only the top level silently reports them

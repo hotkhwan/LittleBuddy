@@ -28,12 +28,12 @@ set -euo pipefail
 set +x
 
 TASK_IN="${1:-}"
-OUT="game/assets_source/meshy/littleBuddy/babyStanding_remesh_v01.glb"
-TARGET_POLYCOUNT=8000
-MAX_CREDITS=10
+OUT="${2:-}"
+TARGET_POLYCOUNT="${3:-8000}"
+MAX_CREDITS="${4:-10}"
 
-if [[ -z "$TASK_IN" ]]; then
-  echo "usage: $0 <verified_task_id>" >&2
+if [[ -z "$TASK_IN" || -z "$OUT" ]]; then
+  echo "usage: $0 <verified_task_id> <out.glb> [target_polycount] [max_credits]" >&2
   exit 2
 fi
 if [[ -z "${MESHY_API_KEY:-}" ]]; then

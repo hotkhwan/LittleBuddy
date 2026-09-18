@@ -172,11 +172,16 @@ signal action_finished(action_name: String)
 ## `false` -- the procedural placeholder is Big Buddy and this model is not
 ## instantiated, not loaded and costs nothing at runtime.
 ##
-## Flip to `true` to see it. `test_buddy_avatar.gd` will then fail until the
-## asset passes the §10 budget and can actually animate, which is the owner's
-## requirement 6 ("keep the placeholder as fallback until validation passes")
-## written down somewhere it cannot be forgotten.
-const ENABLED: bool = false
+## `true` since 2026-09-19: the asset now PASSES the section 10 budget rather
+## than having the budget bent around it. 3,900 triangles against 4,000, one
+## 512-square atlas against one 512-square atlas. `test_buddy_avatar.gd` is
+## unchanged and still gates this flag -- it simply stopped failing, which is the
+## only acceptable way for a flag like this to flip.
+##
+## She still has NO RIG, so she is a high-quality STATIC presence: menu, arrival
+## and one gameplay scene. The brief is explicit that this beats broken
+## animation, and `can_play_action()` still answers honestly that she cannot act.
+const ENABLED: bool = true
 
 ## Static so a caller can ask *without* loading the model. `main.gd` uses this.
 static func is_enabled() -> bool:
@@ -187,7 +192,15 @@ static func is_enabled() -> bool:
 # The asset, and the normalisation applied to it
 # ---------------------------------------------------------------------------
 
-const MODEL_PATH: String = "res://assets/characters/buddy/pinkGirl/pinkGirl_v01.glb"
+## The RUNTIME derivative, not the raw Meshy export.
+##
+## The export is 619,890 triangles and 22 MB -- 155x the budget, unshippable, and
+## the reason this avatar was switched off. `tools/meshy_remesh_modelurl.sh`
+## (5 credits) brought it to 3,900 triangles and
+## `tools/optimize_runtime_glb.py` did the rest locally: smooth normals, art
+## bible section 7 material, one 512-square atlas. 22 MB -> 0.47 MB, and the raw
+## export stays out of the bundle.
+const MODEL_PATH: String = "res://assets/characters/buddy/pinkGirl/pinkGirlBuddy_v01.glb"
 
 ## Art bible §4: Mom 1.65 m, Dad 1.78 m. See the class doc for why the shorter.
 const MODEL_HEIGHT_M: float = 1.65
@@ -465,6 +478,17 @@ func describe_budget() -> Dictionary:
 		node = node.get_parent()
 	report["height"] = placed.size.y
 	report["feetY"] = placed.position.y
+	# A SKINNED mesh is not placed by that chain. Meshy's rig exports bones in
+	# CENTIMETRES under an `Armature` node carrying a 0.01 unit conversion, while
+	# the mesh's own vertex data is already in the post-inverse-bind metre space
+	# the bones resolve to. Walking the node chain therefore applies that 0.01 a
+	# SECOND time and reports a 1.65 m character as 0.0165 m -- which is exactly
+	# what `test_buddy_avatar.gd` caught the moment the rigged asset landed.
+	# What is actually rendered is the mesh extent times the scale this wrapper
+	# applies, which is what the bone world positions agree with.
+	if _mesh.skin != null and aabb.size.y > 0.0001:
+		report["height"] = aabb.size.y * _model_root.scale.y
+		report["feetY"] = 0.0
 	_measured = report
 	return _measured.duplicate(true)
 

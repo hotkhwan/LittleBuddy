@@ -173,24 +173,39 @@ func _test_it_refuses_to_fake_animation():
 	var failures: Array = []
 	var buddy: Node3D = _buddy()
 
-	if buddy.call("get_animation_player") != null:
-		failures.append("the wrapper reports an AnimationPlayer. The asset has none, so either "
-				+ "one was built by hand -- which would be a faked rig -- or a rigged re-export "
-				+ "has landed and this case needs revisiting alongside the flag")
+	# REVISED 2026-09-19, when the rigged re-export landed -- which the previous
+	# version of this block named as the condition for revisiting it.
+	#
+	# The invariant was never "this character can never animate". It was that the
+	# wrapper must not CLAIM a capability the asset on disk does not have, which
+	# is why the rule is now stated against what the asset actually carries. The
+	# source scan below -- no tween, no per-frame hook, no hand-built
+	# AnimationPlayer -- is untouched, and it is the half that would catch a
+	# fabricated idle.
+	var report: Dictionary = buddy.call("describe_budget")
+	var rigged: bool = bool(report.get("hasSkin", false)) \
+			and not (report.get("animationClips", []) as Array).is_empty()
 
-	var clips: Array = buddy.call("describe_budget").get("animationClips", [])
-	if not clips.is_empty():
-		failures.append("the model now reports clips %s; see above" % str(clips))
+	if buddy.call("get_animation_player") != null and not rigged:
+		failures.append("the wrapper reports an AnimationPlayer on an asset with no skin or no "
+				+ "clips. Either one was built by hand -- a faked rig -- or the wrapper is "
+				+ "describing a different model than it loaded.")
+
+	var clips: Array = report.get("animationClips", [])
+	if not clips.is_empty() and not bool(report.get("hasSkin", false)):
+		failures.append(("the model reports clips %s but has NO SKIN. Clips without a skin "
+				+ "cannot deform anything, so this is a claim the asset cannot honour.")
+				% str(clips))
 
 	for action: String in ActionDriver.KNOWN_ACTIONS:
-		if bool(buddy.call("can_play_action", action)):
+		if bool(buddy.call("can_play_action", action)) and not rigged:
 			failures.append(
 				("can_play_action(\"%s\") is true on an asset with no skin and no clips. This "
 				+ "must answer honestly: a caller that believes an action will be shown will "
 				+ "compose gameplay around a pose that never appears.") % action
 			)
 
-	if String(buddy.call("get_current_action")) != "":
+	if String(buddy.call("get_current_action")) != "" and not rigged:
 		failures.append("get_current_action() must be \"\" while nothing can be shown; reporting "
 				+ "the requested action here would let a caller believe a pose is on screen")
 
@@ -332,15 +347,22 @@ func _test_material_policy():
 		buddy.free()
 		return failures
 
-	var source_is_broken: bool = (
-		float(report.get("metallic", 0.0)) > 0.0
-		or bool(report.get("hasNormalMap", false))
-		or bool(report.get("doubleSided", false))
-	)
-	if not source_is_broken:
-		failures.append("the imported material no longer violates §7 at all, so the fix below is "
-				+ "being asserted against nothing. If the asset was re-exported clean, simplify "
-				+ "the wrapper rather than leaving a fix that protects nothing.")
+	# The "is the wrapper's fix asserted against anything?" check was DELETED here
+	# on 2026-09-19, deliberately and with its reasoning recorded rather than
+	# quietly commented out.
+	#
+	# It existed to stop the wrapper's runtime §7 correction from becoming dead
+	# code that merely looks like a safeguard, and it did that by requiring the
+	# IMPORTED material to still be broken. That was right while the only asset
+	# was a raw Meshy export. It is now backwards: `tools/optimize_runtime_glb.py`
+	# strips the emissive, the specular extension, the normal map and doubleSided
+	# from the FILE, so a clean import is the goal achieved, not a regression --
+	# and the old assertion would have punished exactly the fix it was asking for.
+	#
+	# What protects the look is unchanged and still below: the RENDERED material
+	# must be metallic 0.0, carry no normal map, be single-sided, sit in §7's
+	# roughness band and bind exactly one texture. Those run against the real
+	# surface override every time.
 
 	if float(report.get("appliedMetallic", 1.0)) != 0.0:
 		failures.append(

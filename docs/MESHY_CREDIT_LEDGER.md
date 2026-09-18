@@ -3,7 +3,7 @@
 Every credit-consuming Meshy operation is recorded here **before** it is run, and updated after.
 No generation task may be created that does not appear in this table.
 
-**Running total spent by this session: 10 credits.** (Balance 3079 → **3069**, verified before and
+**Running total spent by this session: 10 credits.** (Overnight WOW pass: owner set a **30-credit total ceiling** on 2026-09-19 with autonomous authority inside it. Overnight spend so far: see rows 3+.) (Balance 3079 → **3069**, verified before and
 after every operation; each delta matches the task's `consumed_credits` exactly.)
 
 Standing rules (owner-set):
@@ -50,6 +50,12 @@ Two ways forward:
 
 Re-generating the baby to obtain an API-side task id is **not** an option under the current
 approval (it is a new generation, and it would not reproduce the approved asset).
+
+| 3 | 2026-09-19 | pinkGirl (`pinkGirl_v01`) | Remesh via `model_url`, `target_polycount 2000`, `topology quad`, `glb` | `POST /openapi/v1/remesh` | ~5 (overnight ceiling 30) | **5** | **SUCCEEDED — 4,341 tris, 341 OVER the 4,000 gate** | superseded by row 4 | Source task `01a0b38f-5233-7173-bcdb-5f97f4bb6109`, identity confirmed by preview. **Why the spend is justified under the owner's four tests:** she is 619,890 triangles and 22 MB, so she is not shippable at all and is currently switched OFF, leaving the caregiver invisible; the brief names her as required in the menu, the arrival and one gameplay scene; no local tool can decimate her (Blender absent); and she is the established character, so this is art direction rather than a new look. `target_polycount 2000` is chosen to land ~4,000 triangles, INSIDE art bible section 10's main-character budget rather than over it. |
+
+| 4 | 2026-09-19 | pinkGirl (`pinkGirl_v01`) | Remesh via `model_url`, `target_polycount 1750`, `topology quad`, `glb` | `POST /openapi/v1/remesh` | 5 | **5** | **SUCCEEDED — 3,900 tris, inside the 4,000 gate** | — | Row 3 asked for 2000 quads and Meshy returned 2,170 (4,341 triangles), 341 over `MAX_TRIANGLES = 4000`. The owner's brief says not to raise the geometry budget to accommodate an asset, and weakening `test_buddy_avatar.gd` to pass would be the same thing by another route, so the ASSET is fixed instead. 1750 quads targets ~3,800 triangles with headroom for the same ~8.5% overshoot. Overnight total after this: **10 of 30**. |
+
+| 5 | 2026-09-19 | pinkGirl (`pinkGirl_remesh_v02`) | Rigging via `input_task_id` `01a0b5e9-6dae-7430-ac20-493219f3bfce` | `POST /openapi/v1/rigging` | 5 | — | **PLANNED — about to run** | — | `test_buddy_avatar.gd` gates `ENABLED` on the asset being in budget AND able to animate. The budget half now passes; the rig half does not, because she has no skeleton. The alternative was to relax that guard to allow a static avatar -- but the owner's brief says not to weaken tests to turn them green, and rigging gives a genuinely better result (idle pose plus free walk/run) for the same 5 credits. Overnight total after this: **15 of 30**. |
 
 ## Attempt 1 of operation #1 — REJECTED by the API, 0 credits (2026-09-18)
 
