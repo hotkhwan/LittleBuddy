@@ -35,6 +35,20 @@ func _run(job: String, extra: String) -> void:
 					_scene.call("enter_room", extra)
 				elif _scene.has_method("go_to_room"):
 					_scene.call("go_to_room", extra)
+		"storage":
+			# The house with the bedroom's toy box forced open or shut, so the two
+			# states can be compared side by side.
+			_load("res://scenes/house/house_world.tscn")
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var room: Node = null
+			if _scene.has_method("get_room"):
+				room = _scene.call("get_room", "bedroom")
+			if room != null and room.has_method("set_storage_open"):
+				room.call("set_storage_open", "toyBox", extra == "open")
+				print("  toyBox open=%s" % str(room.call("is_storage_open", "toyBox")))
+			else:
+				print("  WARN: could not reach the bedroom storage")
 		"nursery":
 			_load("res://scenes/baby_room/baby_room.tscn")
 		"speech":

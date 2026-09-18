@@ -243,6 +243,7 @@ func build() -> void:
 
 	_build_doors()
 	_build_furniture()
+	_build_storages()
 
 
 ## The STAGE: what the child sees where the room itself runs out.
@@ -873,6 +874,148 @@ func _build_room_glyph(tool: SurfaceTool, room: String, z: float, accent: Color)
 						Vector3(0.05, 0.12, 0.02), ink)
 		_:
 			Kit.sphere(tool, Kit.at(Vector3(0.0, y, z)), 0.09, ink, 12, 7)
+
+
+## Containers the child can open and put things into.
+##
+## The LID is the whole reason this is not just another `_prop()`: "open" and
+## "closed" have to be visibly different states, and a colour change would not
+## read at gameplay distance. So the lid is its own node with its own pivot, and
+## opening it swings it back on the hinge -- an unmistakable silhouette change
+## that a three-year-old reads instantly and that needs no text.
+##
+## Built from `HouseLayout.storages()`, with no per-room branch here: a new
+## container is a row of data.
+const LID_THICKNESS: float = 0.055
+const LID_SWING_SECONDS: float = 0.28
+
+var _storage_lids: Dictionary = {}
+var _storage_models: Dictionary = {}
+
+
+func _build_storages() -> void:
+	var StorageModel := preload("res://scripts/gameplay/storage_model.gd")
+	for row: Dictionary in HouseLayout.storages(room_id):
+		var storage_id: String = String(row["storageId"])
+		var size: Vector3 = row["size"]
+		var centre: Vector3 = row["position"]
+		var color: Color = row["color"]
+
+		# Body: a box with its top open, so an item dropped in has somewhere to be.
+		var body_tool: SurfaceTool = Kit.begin()
+		var wall: float = 0.055
+		Kit.box(body_tool, Kit.at(Vector3(0.0, -size.y * 0.5 + wall * 0.5, 0.0)),
+				Vector3(size.x, wall, size.z), Palette.deep(color))
+		for sx: int in [-1, 1]:
+			Kit.box(body_tool, Kit.at(Vector3(float(sx) * (size.x - wall) * 0.5, 0.0, 0.0)),
+					Vector3(wall, size.y, size.z), color)
+		for sz: int in [-1, 1]:
+			Kit.box(body_tool, Kit.at(Vector3(0.0, 0.0, float(sz) * (size.z - wall) * 0.5)),
+					Vector3(size.x - wall * 2.0, size.y, wall), color)
+		var body: MeshInstance3D = _add_mesh("Storage_%s" % storage_id, Kit.commit(body_tool))
+		if body != null:
+			body.position = centre
+
+		# Lid, hinged along the BACK edge so it opens away from the camera and
+		# never covers the opening the child is aiming at.
+		var open_degrees: float = float(row.get("openDegrees", 0.0))
+		if open_degrees > 0.0:
+			var hinge := Node3D.new()
+			hinge.name = "StorageLid_%s" % storage_id
+			hinge.position = centre + Vector3(0.0, size.y * 0.5, -size.z * 0.5)
+			_geometry.add_child(hinge)
+
+			var lid_tool: SurfaceTool = Kit.begin()
+			Kit.box(lid_tool, Kit.at(Vector3(0.0, LID_THICKNESS * 0.5, size.z * 0.5)),
+					Vector3(size.x, LID_THICKNESS, size.z), Palette.light(color))
+			Kit.box(lid_tool, Kit.at(Vector3(0.0, LID_THICKNESS + 0.018, size.z * 0.5)),
+					Vector3(size.x * 0.30, 0.036, 0.09), Palette.deep(color))
+			var lid := MeshInstance3D.new()
+			lid.name = "Lid"
+			lid.mesh = Kit.commit(lid_tool)
+			lid.material_override = Kit.material()
+			hinge.add_child(lid)
+			_storage_lids[storage_id] = hinge
+
+		var model: RefCounted = StorageModel.from_dict({
+			"storageId": storage_id,
+			"acceptedItemTags": row.get("acceptedItemTags", []),
+			"capacity": row.get("capacity", 4),
+		})
+		_storage_models[storage_id] = model
+
+		_add_collider("Storage_%sBody" % storage_id, size, centre)
+		_add_target(
+			storage_id,
+			String(row.get("displayName", storage_id)),
+			size + Vector3(0.18, 0.10, 0.18),
+			centre,
+			row["stand"] as Vector3,
+			["open", "putAway"]
+		)
+
+
+## The storage domain objects this room owns, keyed by local id. The activity
+## asks the ROOM for its containers rather than reaching into the scene tree.
+func get_storages() -> Dictionary:
+	build()
+	return _storage_models.duplicate()
+
+
+func get_storage(storage_id: String) -> RefCounted:
+	build()
+	return _storage_models.get(storage_id, null)
+
+
+## Opens or closes a container and swings its lid to match. Returns the new open
+## state. The model and the mesh are moved together here so they cannot disagree
+## -- a lid that says open while the model refuses items is the worst outcome.
+func set_storage_open(storage_id: String, open_it: bool) -> bool:
+	build()
+	var model: RefCounted = _storage_models.get(storage_id, null)
+	if model == null:
+		return false
+	if open_it:
+		model.call("open")
+	else:
+		model.call("close")
+	_swing_lid(storage_id, open_it)
+	return open_it
+
+
+func toggle_storage(storage_id: String) -> bool:
+	build()
+	var model: RefCounted = _storage_models.get(storage_id, null)
+	if model == null:
+		return false
+	return set_storage_open(storage_id, not bool(model.get("is_open")))
+
+
+func is_storage_open(storage_id: String) -> bool:
+	build()
+	var model: RefCounted = _storage_models.get(storage_id, null)
+	return model != null and bool(model.get("is_open"))
+
+
+func _swing_lid(storage_id: String, open_it: bool) -> void:
+	var hinge: Node3D = _storage_lids.get(storage_id, null)
+	if hinge == null:
+		return
+	var degrees: float = 0.0
+	for row: Dictionary in HouseLayout.storages(room_id):
+		if String(row["storageId"]) == storage_id:
+			degrees = float(row.get("openDegrees", 0.0))
+			break
+	var target: float = -degrees if open_it else 0.0
+	var tree: SceneTree = get_tree() if is_inside_tree() else null
+	if tree == null:
+		# Headless: snap. A test asserts the END state, and there is no frame loop
+		# to tween on.
+		hinge.rotation_degrees.x = target
+		return
+	var tween: Tween = create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(hinge, "rotation_degrees:x", target, LID_SWING_SECONDS)
 
 
 func _build_furniture() -> void:

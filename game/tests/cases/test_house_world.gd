@@ -344,11 +344,18 @@ func _test_targets(world: Node):
 		for required: String in REQUIRED_TARGETS[room_id]:
 			if not local_ids.has(required):
 				failures.append("%s is missing its required '%s' target" % [room_id, required])
-		# 3 furniture + 2 doors. The contract asks for 2-4 activity targets plus
-		# a clear entrance and exit; this is both.
-		if local_ids.size() != 5:
-			failures.append("%s has %d targets, expected 3 furniture + 2 doors"
-					% [room_id, local_ids.size()])
+		# 3 furniture + 2 doors + however many CONTAINERS the room declares.
+		#
+		# The bare 5 was right while every room was furniture-plus-doors. The tidy
+		# activity added a third kind of target -- a toy box, a shelf -- and it is
+		# declared in `HouseLayout.storages()` per room, so the expected count is
+		# derived from the layout rather than restated here. Hardcoding 5 would
+		# have meant either no containers or a test that stopped describing the
+		# rooms.
+		var expected_targets: int = 5 + HouseLayout.storages(room_id).size()
+		if local_ids.size() != expected_targets:
+			failures.append("%s has %d targets, expected 3 furniture + 2 doors + %d container(s)"
+					% [room_id, local_ids.size(), HouseLayout.storages(room_id).size()])
 
 	var problems: Array = world.call("get_target_problems")
 	if not problems.is_empty():

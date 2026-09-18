@@ -417,6 +417,11 @@ func _on_interaction_ready(target_id: String) -> void:
 		# The room is about to change; an action and a reaction here would both
 		# land in the room the child has just left.
 		return
+	# A container is the one target whose whole point is that touching it CHANGES
+	# it. Walking to the toy box and having it merely say "toy box" would teach a
+	# child that the lid is scenery; opening it is the reaction.
+	_toggle_storage_if_container(target_id)
+
 	var described: Dictionary = Words.describe(target_id)
 	var action: String = String(described.get("action", ""))
 	if not action.is_empty() and _character != null and _character.has_method("play_action"):
@@ -429,6 +434,26 @@ func _on_interaction_ready(target_id: String) -> void:
 	# Queued, not interrupting: the word this reaction is about was spoken when
 	# the child tapped, and chopping it off would take the lesson away.
 	_speak(reaction, false)
+
+
+## Opens or shuts a container the child has just walked up to.
+##
+## Asks the ROOM, by semantic id, and does nothing at all when the target is not
+## a container -- so this stays one branch rather than a list of cabinet names,
+## and a new drawer added to `HouseLayout.storages()` works here with no edit.
+func _toggle_storage_if_container(target_id: String) -> void:
+	if _world == null or not _world.has_method("get_current_room"):
+		return
+	var room: Node = _world.call("get_current_room")
+	if room == null or not room.has_method("get_storage"):
+		return
+	var local_id: String = target_id.get_slice(".", target_id.get_slice_count(".") - 1)
+	if room.call("get_storage", local_id) == null:
+		return
+	var now_open: bool = bool(room.call("toggle_storage", local_id))
+	if _hud != null:
+		_hud.call("show_encouragement", "Open!" if now_open else "Closed!")
+	_speak("open" if now_open else "close", false)
 
 
 func _on_room_entered(room_id: String, _spawn_id: String) -> void:

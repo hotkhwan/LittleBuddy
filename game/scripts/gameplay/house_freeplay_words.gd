@@ -54,6 +54,7 @@ const WORDS: Dictionary = {
 	# living room
 	"sofa": {"word": "sofa", "thai": "โซฟา"},
 	"toyBox": {"word": "toy box", "thai": "กล่องของเล่น"},
+	"toyShelf": {"word": "shelf", "thai": "ชั้นวางของ"},
 	"book": {"word": "book", "thai": "หนังสือ"},
 }
 
@@ -105,6 +106,7 @@ const ACTIONS: Dictionary = {
 	"table": "eat",
 	"sofa": "sit",
 	"toyBox": "pickUp",
+	"toyShelf": "pickUp",
 	"book": "pickUp",
 }
 

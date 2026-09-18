@@ -248,6 +248,46 @@ static func spawn_points(room_id: String) -> Dictionary:
 ##   `stand`      room-local point to stand on to interact
 ##   `actions`    semantic action names only
 ##   `color`      temporary greybox material
+## -- Storage (the tidy-up activity) ---------------------------------------------
+
+## Which containers a room has, as DATA. `storage_model.gd` turns each row into a
+## cabinet, and `room.gd` builds the lid that opens -- neither of them has a
+## per-room branch, which is the point: a new drawer is a row here, never a new
+## script.
+##
+## Positions are room-local. `lidPivot` is where the hinge runs, and `openDegrees`
+## is how far the lid swings; a container with `openDegrees` 0 has no lid and is
+## always usable (a shelf).
+static func storages(room_id: String) -> Array:
+	match room_id:
+		BEDROOM:
+			return [{
+				"storageId": "toyBox",
+				"displayName": "toy box",
+				"acceptedItemTags": ["toy"],
+				"capacity": 4,
+				"size": Vector3(0.74, 0.44, 0.54),
+				"position": Vector3(-1.32, 0.22, 1.12),
+				"stand": Vector3(-0.78, FLOOR_Y, 1.12),
+				"openDegrees": 104.0,
+				"color": Palette.MINT,
+			}]
+		LIVING_ROOM:
+			return [{
+				"storageId": "toyShelf",
+				"displayName": "shelf",
+				"acceptedItemTags": ["toy", "book"],
+				"capacity": 5,
+				"size": Vector3(0.80, 0.46, 0.50),
+				"position": Vector3(-1.30, 0.23, 1.10),
+				"stand": Vector3(-0.76, FLOOR_Y, 1.10),
+				"openDegrees": 100.0,
+				"color": Palette.SOFT_PINK,
+			}]
+		_:
+			return []
+
+
 static func furniture(room_id: String) -> Array:
 	match room_id:
 		BEDROOM:
