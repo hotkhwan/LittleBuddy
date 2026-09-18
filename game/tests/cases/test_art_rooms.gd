@@ -497,9 +497,20 @@ func _test_one_light_no_forbidden_effects():
 	if text.count('type="DirectionalLight3D"') != 1:
 		failures.append("the house must have exactly one DirectionalLight3D (section 7, "
 				+ "non-negotiable)")
-	if not text.contains("shadow_enabled = true"):
-		failures.append("the house light casts no shadows; section 7: 'Shadows are what "
-				+ "ground objects on the floor'")
+	# Directional shadows are OFF by owner decision (2026-09-18), taken after
+	# seeing the build on a physical iPhone: at this camera pitch the props threw
+	# hard diagonal shapes across the pastel walls, which read as wrong rather
+	# than as grounding. ART_BIBLE section 7 was amended to match, so the spec and
+	# the scene agree instead of contradicting each other.
+	#
+	# The rule is asserted in the new direction rather than deleted, because the
+	# old shadow settings are still in the file and switching them back on is one
+	# character. The known cost is that free-standing objects can read as slightly
+	# floaty; contact-shadow decals are the mitigation if that becomes a problem.
+	if not text.contains("shadow_enabled = false"):
+		failures.append("the house light casts directional shadows again. They were turned off "
+				+ "deliberately after device review -- at this camera pitch they threw hard "
+				+ "diagonal shapes on the walls. See ART_BIBLE section 7.")
 
 	# Section 7's forbidden list, as scene properties.
 	for banned: String in [

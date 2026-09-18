@@ -222,9 +222,25 @@ and must match the `colorWord` in content JSON — `soap` once shipped rendering
 | Textures | One shared **512×512** atlas per family. Flat colour and gentle gradients only — **no baked AO, no baked shadow, no noise, no grunge, no wear, no dirt.** |
 | Materials per object | **1.** Two only where genuinely different (an unshaded eye catchlight). Never three. |
 | Lights | **Exactly one `DirectionalLight3D` per scene.** Non-negotiable. |
-| Shadows | On, soft, warm, half-strength. Shadows are what ground objects on the floor. |
+| Shadows | **OFF** — amended 2026-09-18, see below. |
 | Ambient | High warm fill — this is what stops the dark side of a form going muddy with one light. |
 | Time of day | **Permanently mid-morning.** A bedtime level may tint ambient toward `lavender` and reduce energy to ~0.45 — it must stay clearly readable, **never actually dark**. |
+
+> ### Amendment, 2026-09-18 — directional shadows are OFF
+>
+> This section previously read *"Shadows are what ground objects on the floor"* and shadows were
+> enabled at `opacity 0.72`. The owner reviewed the build **on a physical iPhone** and asked for
+> them to be removed: at this camera pitch the props threw hard diagonal shapes across the pastel
+> walls, and they read as an artefact rather than as grounding.
+>
+> Device review outranks this document, so the document changed. `test_art_rooms.gd` now asserts
+> shadows are off, in that direction rather than deleted — the shadow settings are still in the
+> scene and re-enabling is one character.
+>
+> **The known cost, stated so it is not rediscovered:** free-standing objects can read as slightly
+> floaty without contact darkening. If that becomes a problem the fix is **contact-shadow decals**
+> — a soft dark ellipse under each object and under the character — not turning the directional
+> light's shadows back on.
 
 **Why no baked AO:** one directional light plus warm ambient. Baked darkening fights it and
 produces the grubby look that separates an amateur mobile scene from a polished one.
