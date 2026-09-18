@@ -54,3 +54,9 @@ game/assets/characters/**/*.png
 # would make a fresh clone fail to load. Without them the wrapper simply
 # reports the model unavailable, which it already handles.
 game/assets/characters/**/*.import
+
+# Meshy source masters: high-res, never shipped. See game/assets_source/meshy/README.md
+game/assets_source/**/*.glb
+game/assets_source/**/*.jpg
+game/assets_source/**/*.png
+game/assets_source/**/*.import

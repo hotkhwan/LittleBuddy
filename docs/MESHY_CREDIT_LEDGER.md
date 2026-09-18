@@ -15,7 +15,7 @@ Standing rules (owner-set):
 
 | # | Date | Asset | Operation | Endpoint | Est. credits | Actual | Outcome | Accepted? | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 2026-09-18 | Baby standing (`baby_standing_v01`) | Remesh | `POST /openapi/v1/remesh` | unpublished | — | **AWAITING APPROVAL** | — | Proposed in chat. Not run. Blocked additionally on `input_task_id` and on `MESHY_API_KEY` not being visible to this session. |
+| 1 | 2026-09-18 | Baby standing (`baby_standing_v01`) | Remesh, `target_polycount 8000`, `topology quad`, `glb` | `POST /openapi/v1/remesh` | unpublished (ceiling **10**) | — | **APPROVED, NOT RUN — BLOCKED** | — | Owner approved 2026-09-18, max 10 credits, one operation. **Not executed:** `MESHY_API_KEY` is absent from this shell, `zsh -l` and `bash -l`, so no call can be made. `input_task_id` also still unresolved (needs the zero-credit list call, which needs the key). Ready to run: `tools/meshy_find_task.sh 0918083052` then `tools/meshy_remesh.sh <id>`. |
 
 ## Known costs, from the API docs
 
