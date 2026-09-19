@@ -187,3 +187,41 @@ restored by re-downloading from rig task `01a0b58b-…` (URLs live until
 2026-09-21). The tool now requires an output stem and refuses to overwrite an
 existing file. Had this been noticed a day later, those assets would have been
 gone.
+
+---
+
+## Sprint: Founder Preview (2026-09-19 → 21)
+
+| | |
+|---|---|
+| Authorised ceiling | **100 new credits** |
+| Spent | **0** |
+| Remaining | **100, unspent** |
+| Balance change | none — no API call was made |
+
+**Nothing was spent because nothing could be.** `MESHY_API_KEY` is not present in
+the build environment, so no request of any kind was issued. This is a fact about
+the shell, not a judgement about the work: the Aliz replacement was authorised
+and is wanted.
+
+What was done instead, at zero cost, so the spend is one command when the key
+arrives:
+
+* `docs/reference/aliz_reference_v1.png` — a clean standalone reference built
+  from the shipping model, with the modelled grin painted out and the torn
+  fringe closed.
+* `docs/reference/aliz_reference_apose.png` — the same figure with both arms
+  swung 38 degrees out about the shoulders. This exists because image-to-3D
+  **copies the pose in the picture**: no prompt text spreads the arms of an
+  arms-down reference, and arms-down is what made the auto-rigger guess wrong
+  the first time.
+* `tools/meshy_aliz_apose.sh` — balance before and after, a typed `YES` before
+  any paid call, no retry on failure, refusal to overwrite an existing file, and
+  refusal of the all-zeros sentinel UUID. Every one of those guards is a thing
+  that has already gone wrong on this project.
+
+To unblock: `export MESHY_API_KEY=...` then `tools/meshy_aliz_apose.sh preview`.
+
+Expected spend for the full experiment, to be confirmed against the live price
+list before committing: one image-to-3D preview, then rigging only if the
+preview passes a look-at-it review. Well inside 100.
