@@ -3,8 +3,8 @@
 **Care, Play & Grow** · featuring Aliz and Bunny
 Branch `feature/overnight-production-candidate`
 
-> **Integrated commit: _pending final integration_** — this line is filled in by
-> the Lead at the last green commit, and every claim below is tied to it.
+> **Integrated commit: `8f6562e`.** Every claim below is tied to it and was
+> executed on this machine, or is marked BLOCKED.
 
 > **Closed Founder Preview. Not a store release.** Nothing has been submitted to
 > Apple or Google. No billing exists. No public distribution without Khwan's
