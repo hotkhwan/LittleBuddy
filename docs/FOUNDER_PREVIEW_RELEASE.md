@@ -1,7 +1,7 @@
 # Little Days — Founder Preview v0.2
 
 **Care, Play & Grow** · featuring Aliz and Bunny
-Build date 2026-09-19 · branch `feature/overnight-production-candidate` · commit `c167fd6`
+Build date 2026-09-19 · branch `feature/overnight-production-candidate` · commit `2f0cea3`
 
 > **Closed Founder Preview. Not a store release.** Nothing here has been
 > submitted to Apple or Google, no subscription can be charged, and no public
@@ -13,7 +13,7 @@ Build date 2026-09-19 · branch `feature/overnight-production-candidate` · comm
 
 | Gate | Result |
 |---|---|
-| Full test suite | **113 / 113**, 0 failures |
+| Full test suite | **116 / 116**, 0 failures |
 | ContentValidator | clean (runs inside the suite) |
 | Clean Godot project load | no parse errors |
 | Mission 01 walkthrough, real game | **PASS**, exit 0 |
@@ -23,10 +23,12 @@ Build date 2026-09-19 · branch `feature/overnight-production-candidate` · comm
 | Touch fallback | `test_speech_never_required` drives every task to completion with no speech |
 | Bunny need transitions | hunger 55 → 0, happiness 70 → 78, on the real `ChildStats` |
 | Animation validation | real skeletal clips on the 24-bone rig — see §4 for what that does and does not mean |
-| Visual screenshot review | 30+ renders from the real scene, each viewed before being kept |
+| Visual screenshot review | 60+ renders from the real scene, each viewed before being kept |
+| HUD never covers a face | **fixed** — four presentation modes, verified both viewports (§12) |
+| Original music plays | **verified on the live AudioStreamPlayer**, silent by default pending rights (§5) |
 | iOS export | **OK** |
 | arm64 Xcode build | **BUILD SUCCEEDED** |
-| Android debug APK | ❌ **not produced** — no SDK on this machine (§7) |
+| Android debug APK | ✅ **built and signed** — `build/android/LittleDays-debug.apk`, 36.5 MB, never run on a device (§7) |
 
 No test was softened. One test was **broadened** — `test_speech_privacy_guard`,
 explained in §3.
@@ -85,10 +87,13 @@ requested. Fixed, and it now reports a miss instead of silently substituting.
 | # | Issue | Owner |
 |---|---|---|
 | 1 | **Aliz's face and hair.** Permanent open-mouth grin (modelled geometry) and real gaps in the hair. Reference and tooling ready; blocked on the Meshy key (§6). | Art |
-| 2 | **HUD text overlaps the character** during close-ups — the status/task/hint stack is ~35% of screen height and sits over Bunny's head. Cannot be fixed from the camera; needs `house_hud.gd`. | Not done |
-| 3 | **No audio at all.** System complete and silent-safe; awaiting Anny's tracks. | §5 |
-| 4 | Choice-row objects float ~0.9 m in mid-air during `choose` beats. | Not done |
+| 2 | ~~HUD text overlaps the character~~ — **FIXED** this sprint (§12). | Done |
+| 3 | ~~No audio at all~~ — **Anny's two tracks integrated** and proven playing (§5). Silent by default until rights are recorded. | Owner |
+| 4 | Choice-row objects float ~0.9 m in mid-air during `choose` beats. The *kitchen* floating was a real bug and is fixed; this one is the choice-row spawner and is not. | Not done |
 | 5 | Contact shadow reads as a grey smudge at close-up distance; wants a warm ink tint. | Not done |
+| 5b | **Lighting is still milky.** Ambient `#FFF6E5` @ 0.62 against 0.96-luminance cream walls; and the sun's X is negative so the −X wall is never lit. Both live in `house_world.tscn`, which no agent owned this sprint. ~0.50 / `#FFEBD8` and a ~20° azimuth swing would fix it, still §7-legal. | Not done |
+| 5c | **Bunny's "I'm hungry!" bubble** stepped sideways away from Aliz. Implemented and green, **not visually confirmed** — I could not get it into a frame before this build. | Unverified |
+| 5d | The `house` job in the shot harness now renders an empty room. Harness-only regression; every other capture path works. | Not done |
 | 6 | Bathroom towel and the bedroom plaque overlap in screen space. | Not done |
 | 7 | `bedtime` still cuts to an unrigged sleeping export — correct today (no `sleep` clip exists) but still a statue while on screen. | Not done |
 | 8 | Bunny's fuss is subtle in a still frame (±3.5° hip rock); reads better in motion. | By design, tunable |
@@ -105,26 +110,74 @@ texture.
 
 ### Not validated on any physical device
 Every number and picture in this document is a macOS render. No iPad, no iPhone,
-no Android device. The 3-minute acceptance walk has not been run on hardware.
+no Android device. The 3-minute acceptance walk has not been run on hardware, and
+`docs/DEVICE_QA_CHECKLIST.md` remains **BLOCKED** until you sign it.
+
+### Every "wide iPhone" screenshot before this sprint was the wrong aspect
+`--resolution 2340x1080` is a **request**, not an instruction — the window
+manager clamps it. Shots taken that way are really **1686×935: a 1.80 aspect
+filed as evidence for a 2.17 one**. Since the camera fits its distance from the
+aspect, that is a different composition, not a rounding error. Only captures made
+through an explicit `SubViewport` (the `world_*_iphone.png` set) are genuinely
+2340×1080. **The HUD and camera iPhone framing numbers should be re-taken that
+way** — the HUD fix itself is confirmed at both aspects, but its iPhone shot is
+1.80.
 
 ---
 
-## 5. Music readiness
+## 5. Music — integrated, and silent on purpose
 
-**Status: system ready, zero tracks.** No audio file was created, downloaded or
-synthesised — deliberately.
+**Anny's two tracks are in the build and proven playing.** Not "the ogg exists":
+verified by reading the live `AudioStreamPlayer` while the real `main.tscn` and
+`house_world.tscn` ran.
 
-- `docs/MUSIC_BRIEFS_FOR_ANNY.md` — two paste-into-Suno briefs (`littleDaysTheme`,
-  `hungryBunny`) with export settings, file naming and the licence evidence to save.
-- `docs/AUDIO_MANIFEST.md` — field reference and drop-in procedure.
-- The licence gate **fails closed**: only the exact string `"verified"` with real
-  evidence will play. `"pending"`, `"Verified"`, `true`, `1` are all refused.
-- Music is hard-capped at −6 dB so it can never bury the English.
-- Silent-safety is a *tested property*: with zero files every state succeeds, no
-  engine error, no broken resource path.
+| | master WAV | runtime OGG |
+|---|---|---|
+| Little Days | 17.8 MB, 48 kHz/2ch, 92.72 s | **1.35 MiB** |
+| I'm Hungry! | 12.4 MB, 48 kHz/2ch, 64.40 s | **0.95 MiB** |
+| total | 28.8 MiB | **2.30 MiB — 12.5× smaller** |
 
-⚠️ Suno commercial rights depend on the subscription tier **at the time of
-generation**. Save the receipt and the generation date with every track.
+Originals in `~/Downloads/` are byte-identical afterwards (SHA-256 checked);
+masters kept outside the repo. Neither `ffmpeg` nor `oggenc` existed, so
+`vorbis-tools` was installed on this machine only — nothing in the game links it.
+
+Measured in the real game: menu → `littleDaysTheme`, mission → `hungryBunny`,
+exactly **one** player holding music, **four room transitions with no restart**,
+crossfade, mute, and speech ducking at **−16 → −26 → −16 dB**.
+
+### Why you will hear nothing yet, and how to hear it
+
+`commercialUse: "pending"`, `licenseEvidence: "OWNER TO CONFIRM"`. **No Suno
+rights evidence was invented** — the brief forbade it and the producing tool is
+not even recorded. The licence gate fails closed, so the shipping build is silent.
+
+Two ways forward, your call:
+
+1. **To preview it now** — arm the owner-acknowledged override:
+   `-- --allow-unverified-music`, or create `user://OWNER_ACKNOWLEDGED_UNVERIFIED_MUSIC`.
+   Off in every build; nothing committed arms it, and that is asserted by a test.
+2. **To ship it** — record the rights in `docs/licences/music/<trackId>/`, set
+   `commercialUse: "verified"`, and delete the override file. It becomes dead code.
+
+### Honest limits
+- **Loops are not seamless.** Godot's Ogg stream has no loop-end, so `loopEnd`
+  applies to WAV only. Both tracks wrap as a decay into quiet rather than a
+  click — acceptable, not ideal. Worth asking Anny for loop edits.
+- **Every mission gets `hungryBunny`**, including Snack Time. There is one
+  mission track; per-mission music needs a new state.
+- **The house is silent between missions** — the theme is scoped to the menu. A
+  one-word manifest change if you want it in the house too.
+- **Not heard on an iPad.** Headless macOS proves the streams load, mix, duck and
+  crossfade; it cannot prove how they *sound*. Levels are a judgement from the
+  masters' measured RMS and should be checked by ear against a spoken prompt.
+
+### A real defect found on the way
+`SpeechService.listening_stopped` is **not guaranteed** —
+`ios_speech_backend.gd::_on_recognition_failed()` re-emits a failure without
+clearing the cached state or emitting a stop. A signal-driven duck would stick
+forever and leave the music permanently quiet. Ducking polls instead, so a stuck
+duck is structurally impossible — but the imbalance is still there for anything
+else keying off those signals.
 
 ---
 
