@@ -677,7 +677,7 @@ func _apply_kitchen_verb(plan: Dictionary) -> bool:
 				if child != null and child.has_method("satisfy"):
 					child.call("satisfy", "hungry", 70.0)
 					if child.has_method("set_activity"):
-						child.call("set_activity", "feeding")
+						child.call("set_activity", "feeding", "giveSnack")
 		_:
 			return true
 
@@ -703,7 +703,11 @@ func _open_care(plan: Dictionary) -> void:
 		# at all -- the pose belongs to the act being performed ON the child.
 		match kind:
 			"giveBottle":
-				child.call("set_activity", "feeding")
+				# The care kind is passed through so Bunny's presentation knows a
+				# BOTTLE is coming rather than inferring "some feeding" from the
+				# stats. Requested by the character layer; without it a bottle and
+				# a bowl of mashed banana look identical to him.
+				child.call("set_activity", "feeding", "giveBottle")
 			"prepareMilk":
 				pass
 			_:
