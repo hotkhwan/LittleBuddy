@@ -5,7 +5,8 @@ extends Node
 ##
 ## ## What the child actually gets
 ##
-## A mint ring pulses around Little Buddy and he waves: "Hi! I am Little Buddy."
+## A mint ring pulses around Buddy and she waves: "Hi! I am Buddy. Let's take
+## care of Little Buddy!" -- the player IS the caregiver.
 ## A cream pointing hand then falls onto a mint ring on an empty patch of floor
 ## and a ripple runs out from it -- "Tap the floor. I will walk!" -- and he walks
 ## there. The hand moves onto a real piece of furniture and names it: "Now tap

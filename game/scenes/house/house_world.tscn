@@ -4,6 +4,8 @@
 [ext_resource type="Script" path="res://scripts/house/room.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/character/little_buddy_character.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/character/toddler_view.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/characters/buddy/pink_girl_buddy.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/characters/little_buddy/baby_little_buddy.gd" id="8"]
 [ext_resource type="Script" path="res://scripts/navigation/navigation_controller.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/house/room_transition_controller.gd" id="6"]
 
@@ -24,8 +26,8 @@ ambient_light_color = Color(1, 0.965, 0.898, 1)
 ambient_light_energy = 0.62
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_buddy"]
-radius = 0.16
-height = 0.8
+radius = 0.22
+height = 1.5
 
 [node name="HouseWorld" type="Node3D"]
 script = ExtResource("1")
@@ -68,6 +70,10 @@ unique_name_in_owner = true
 script = ExtResource("2")
 room_id = "bedroom"
 
+[node name="LittleBuddyChild" type="Node3D" parent="Rooms/Bedroom"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.55, 0, 0.95)
+script = ExtResource("8")
+
 [node name="Bathroom" type="Node3D" parent="Rooms"]
 script = ExtResource("2")
 room_id = "bathroom"
@@ -88,7 +94,7 @@ collision_mask = 0
 script = ExtResource("3")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="LittleBuddy"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)
 shape = SubResource("CapsuleShape3D_buddy")
 
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="LittleBuddy"]
@@ -97,7 +103,11 @@ target_desired_distance = 0.18
 radius = 0.2
 avoidance_enabled = false
 
+[node name="BuddyView" type="Node3D" parent="LittleBuddy"]
+script = ExtResource("7")
+
 [node name="ToddlerView" type="Node3D" parent="LittleBuddy"]
+visible = false
 script = ExtResource("4")
 
 [node name="NavigationController" type="Node3D" parent="."]
