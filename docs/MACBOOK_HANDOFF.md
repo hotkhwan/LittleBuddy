@@ -6,7 +6,7 @@ and expected a 30-case suite; both are out of date).
 | | |
 |---|---|
 | **Branch** | `feature/overnight-production-candidate` |
-| **Commit** | `09d4784` — *fix: a fresh clone's test suite is green* |
+| **Commit** | branch tip — `git log -1` after pulling. This doc was written against `09d4784` (*fix: a fresh clone's test suite is green*) and is itself the commit after it. |
 | **Version** | `0.1.0` |
 | **Remote** | `https://github.com/hotkhwan/LittleBuddy.git` |
 | **Expected suite** | `PASS - 97 case(s), 0 failure(s)` |
