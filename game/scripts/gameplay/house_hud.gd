@@ -148,6 +148,8 @@ var _task_kind: String = ""
 ## the labels, because the mode now changes their visibility too and the two
 ## reasons for a hidden label must not be confused.
 var _chrome_on: bool = true
+## True while a full-screen close-up is narrating for itself.
+var _narration_covered: bool = false
 var _encouragement_on: bool = false
 var _reward_until_msec: int = -1
 ## The last radius the camera reported, kept only so a test can see what the HUD
@@ -462,14 +464,36 @@ func _place(control: Control, rect: Variant) -> void:
 ## time, so the order the calls arrive in cannot change the outcome.
 func _refresh_visibility() -> void:
 	var l: Dictionary = Presentation.layout(_mode)
-	var objective: bool = _chrome_on and not _free_play
+	# `_narration_covered` is the care close-up: a full-screen overlay that names
+	# the act, gives the hint and shows the progress itself. The HUD saying the
+	# same two things underneath it is not redundancy, it is a COLLISION -- at a
+	# true 2.17 iPhone aspect the overlay title and the HUD instruction land on
+	# the same pixels and overprint each other. Only the duplicated narration is
+	# suppressed: the stars, the dots and above all the Next button stay, because
+	# Next is the child's escape hatch and hiding it would be the dead end this
+	# project keeps banning.
+	var objective: bool = _chrome_on and not _free_play and not _narration_covered
 	_prompt.visible = objective and bool(l["promptVisible"])
 	_hint.visible = objective and bool(l["hintVisible"]) \
 			and not _hint.text.strip_edges().is_empty()
 	_caption.visible = objective and not _caption.text.strip_edges().is_empty()
-	_dots.visible = objective and _total > 0
+	_dots.visible = _chrome_on and not _free_play and _total > 0
 	_encouragement.visible = _chrome_on and _encouragement_on
 	_stars.visible = _chrome_on
+
+
+## Hides the HUD's own narration while a full-screen close-up is doing the
+## talking. Never hides the escape hatch -- see `_refresh_visibility()`.
+func set_narration_covered(value: bool) -> void:
+	build()
+	if _narration_covered == value:
+		return
+	_narration_covered = value
+	_refresh_visibility()
+
+
+func is_narration_covered() -> bool:
+	return _narration_covered
 
 
 ## -- Free Play -----------------------------------------------------------------

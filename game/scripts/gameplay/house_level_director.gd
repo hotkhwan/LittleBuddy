@@ -712,6 +712,9 @@ func _open_care(plan: Dictionary) -> void:
 				pass
 			_:
 				child.call("set_activity", "bath")
+	# The overlay narrates the act itself -- title, hint, child line, progress --
+	# so the HUD's copy of the same two lines is silenced underneath it.
+	_hud.call("set_narration_covered", true)
 	_care_overlay.visible = true
 	_care_overlay.call("begin", kind)
 
@@ -721,6 +724,7 @@ func _on_care_completed(care_kind: String) -> void:
 		return
 	if _care_overlay != null:
 		_care_overlay.visible = false
+	_hud.call("set_narration_covered", false)
 	# The child's REAL stats move, so the need the mission was about actually
 	# goes away rather than a message claiming it did.
 	var child: Node = _find_child_actor()
