@@ -23,6 +23,8 @@ extends SceneTree
 const MISSION: String = "imHungry"
 
 var _fail: Array = []
+var _awards: Dictionary = {}
+var _mission_done_count: int = 0
 var _world: Node = null
 var _director: Node = null
 
@@ -61,6 +63,14 @@ func _run() -> void:
 	if _director == null:
 		return _die("no level director")
 
+	# Every reward and completion signal the production code emits, recorded as
+	# it happens. Counting them is the only way to prove "exactly once" -- a final
+	# star total cannot tell a single award from two that cancelled out.
+	var runner_early: Node = _director.get("_runner")
+	if runner_early != null:
+		runner_early.connect("task_completed", _on_task_completed)
+		runner_early.connect("mission_completed", _on_mission_completed)
+
 	# 1. REACHABILITY -- what does the real picker choose?
 	_director.call("start")
 	await process_frame
@@ -75,7 +85,8 @@ func _run() -> void:
 	# Bunny's hunger BEFORE, read from the real actor.
 	var child: Node = _director.call("_find_child_actor")
 	var hunger_before: float = _hunger(child)
-	print("2. Bunny's hunger before: %.1f" % hunger_before)
+	var happy_before: float = _stat(child, "happiness")
+	print("2. Bunny before: hunger %.1f, happiness %.1f" % [hunger_before, happy_before])
 	_check(child != null, "no ChildActor in the world -- Bunny is not present")
 
 	# 2..4. WALK THE BEATS.
@@ -118,11 +129,36 @@ func _run() -> void:
 			# raised here. It is the input to the beat, not its completion: the
 			# director still decides whether arriving finishes the task, plays an
 			# action first, or waits for a drag.
-			var walk_id: String = String(plan.get("walkTargetId", plan.get("walkTarget", "")))
-			if _director.has_method("_on_interaction_ready") and not walk_id.is_empty():
-				_director.call("_on_interaction_ready", walk_id)
-			elif _director.has_method("_reach_beat"):
-				_director.call("_reach_beat")
+			var destination: String = String(plan.get("destinationRoomId", ""))
+			if not destination.is_empty():
+				# A TRAVEL beat. Walking through a door does not raise
+				# `interaction_ready` -- the transition controller intercepts it --
+				# so the faithful input here is the controller's own entry point,
+				# the same call the door itself makes. The director still decides
+				# whether arriving in that room finishes the task.
+				var transition: Node = _director.get("_transition")
+				if transition != null and transition.has_method("request_transition"):
+					var spawn: String = _arrival_spawn(String(plan.get("roomId", "")))
+					transition.call("request_transition", destination, spawn)
+				else:
+					_fail.append("no room transition controller; travel cannot be driven")
+			else:
+				var walk_id: String = String(plan.get("walkTargetId", plan.get("walkTarget", "")))
+				if _director.has_method("_on_interaction_ready") and not walk_id.is_empty():
+					_director.call("_on_interaction_ready", walk_id)
+				elif _director.has_method("_reach_beat"):
+					_director.call("_reach_beat")
+				# A DELIVER beat also needs the object put where it belongs.
+				# `on_object_chosen()` is the runner's documented entry point for
+				# "tap OR drag delivery" -- the same call the world makes when a
+				# dragged object lands in a drop zone. The mode still decides
+				# whether the RIGHT object arrived, so a wrong one is still wrong.
+				if String(plan.get("kind", "")) == "deliver":
+					await _settle(0.4)
+					var object_id: String = String(plan.get("objectId", ""))
+					if runner != null and runner.has_method("on_object_chosen") \
+							and not object_id.is_empty():
+						runner.call("on_object_chosen", object_id)
 		# Beats do not finish on the frame they are triggered: a `goAndDo` waits
 		# for the character's action to play out, and the director only flushes a
 		# pending completion from `_process`. So POLL, rather than assuming.
@@ -130,8 +166,14 @@ func _run() -> void:
 		# describing the task that just finished while its summary is on screen,
 		# so polling it reports "stuck" for a beat that actually completed -- which
 		# is how this file first mis-accused working content.
+		# Waited on REAL TIME, not on a frame count. `MissionRunner._delay()` uses
+		# `create_timer(1.6)`, and a headless main loop runs flat out -- 180 frames
+		# there is a fraction of a second, so a frame-counted wait expires long
+		# before the gap timer the production code actually uses. That is what made
+		# working content look like a stuck director.
 		var advanced: bool = false
-		for _f: int in range(180):
+		var deadline: int = Time.get_ticks_msec() + 6000
+		while Time.get_ticks_msec() < deadline:
 			await process_frame
 			if _runner_task_id(runner) != task_id:
 				advanced = true
@@ -163,8 +205,57 @@ func _run() -> void:
 	_check(hunger_after < hunger_before - 20.0,
 			"hunger went %.1f -> %.1f; feeding Bunny must move the real stat"
 					% [hunger_before, hunger_after])
+	# "Bunny becomes happy" is a beat of the mission, so it is asserted like one.
+	var happy_after: float = _stat(child, "happiness")
+	print("   Bunny's happiness: %.1f -> %.1f" % [happy_before, happy_after])
+	_check(happy_after > happy_before,
+			"happiness went %.1f -> %.1f; being cared for must make Bunny happier"
+					% [happy_before, happy_after])
+
+	# 6. THE MISSION ITSELF FINISHES, ONCE.
+	await _settle(4.0)
+	print("5. mission_completed fired %d time(s); tasks awarded: %d"
+			% [_mission_done_count, _awards.size()])
+	_check(_mission_done_count == 1,
+			"mission_completed fired %d times; it must fire exactly once" % _mission_done_count)
+	for task_id: String in _awards.keys():
+		if int(_awards[task_id]) > 1:
+			_fail.append("task '%s' was awarded %d times; a star may only be paid once"
+					% [task_id, int(_awards[task_id])])
+	_check(_awards.size() >= 6, "only %d of 7 beats paid out" % _awards.size())
+
+	# 7. IT IS WRITTEN DOWN, so the next launch does not replay it.
+	var completed: Dictionary = save.call("get_level_completed")
+	_check(bool(completed.get(MISSION, false)),
+			"'%s' is not recorded as completed, so a relaunch would replay it" % MISSION)
+	var rated: int = int(save.call("get_level_stars", MISSION))
+	print("6. saved: completed=%s stars=%d/3  lifetime stars=%d"
+			% [str(bool(completed.get(MISSION, false))), rated, int(save.call("get_stars"))])
+	_check(rated > 0, "the level saved %d/3 after a full clean play" % rated)
+
+	# 8. REPLAY must re-arm the mission WITHOUT paying twice or touching the rest.
+	var stars_before_replay: int = int(save.call("get_stars"))
+	var other_before: Variant = save.call("get_profile").get("settings", {})
+	save.call("replay_level", MISSION)
+	var after: Dictionary = save.call("get_profile")
+	_check(not bool((after.get("levelCompleted", {}) as Dictionary).get(MISSION, false)),
+			"Replay left '%s' marked completed, so it would not replay" % MISSION)
+	_check(int(after.get("stars", -1)) == stars_before_replay,
+			"Replay changed the lifetime star total (%d -> %d)"
+					% [stars_before_replay, int(after.get("stars", -1))])
+	_check(str(after.get("settings", {})) == str(other_before),
+			"Replay altered settings, which are none of its business")
+	print("7. replay re-armed '%s'; lifetime stars still %d" % [MISSION, int(after.get("stars", -1))])
 
 	_report()
+
+
+func _on_task_completed(task_id: String, _stars: int) -> void:
+	_awards[task_id] = int(_awards.get(task_id, 0)) + 1
+
+
+func _on_mission_completed(_mission_id: String, _stars: int) -> void:
+	_mission_done_count += 1
 
 
 ## Plays a care act the way a child would, and returns whether the GESTURE
@@ -199,6 +290,23 @@ func _play_gesture(overlay: Node, kind: String) -> bool:
 	return bool(overlay.call("is_finished"))
 
 
+## Lets real time pass, because the production code is full of real-time gaps.
+func _settle(seconds: float) -> void:
+	var deadline: int = Time.get_ticks_msec() + int(seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		await process_frame
+
+
+## The spawn a child arriving FROM `from_room_id` lands on, named by the layout
+## rather than guessed, so a renamed spawn breaks here instead of silently
+## dropping the child on the default one.
+func _arrival_spawn(from_room_id: String) -> String:
+	var layout: GDScript = load("res://scripts/house/house_layout.gd")
+	if layout == null or from_room_id.is_empty():
+		return "default"
+	return String(layout.arrival_spawn_id(from_room_id))
+
+
 ## The task the MISSION is on, which is the only honest "where are we".
 func _runner_task_id(runner: Node) -> String:
 	if runner == null or not runner.has_method("get_current_task_id"):
@@ -207,12 +315,17 @@ func _runner_task_id(runner: Node) -> String:
 
 
 func _hunger(child: Node) -> float:
+	return _stat(child, "hunger")
+
+
+## One axis of Bunny's real stats, read off the live actor.
+func _stat(child: Node, axis: String) -> float:
 	if child == null:
 		return -1.0
 	var stats: Object = child.get("_state")
 	if stats == null:
 		return -1.0
-	return float(stats.get("hunger"))
+	return float(stats.get(axis))
 
 
 ## Every beat must name a target the world it names actually provides.
