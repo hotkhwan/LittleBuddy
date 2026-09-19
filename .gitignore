@@ -55,6 +55,25 @@ game/assets/characters/**/*.png
 # reports the model unavailable, which it already handles.
 game/assets/characters/**/*.import
 
+# EXCEPT the optimised RUNTIME derivatives, which must survive a fresh clone.
+#
+# The rules above were written when the only things in this directory were the
+# raw Meshy exports -- 63.6 MB of them, which is why they are excluded. The
+# optimised runtime models are a different class of file and the policy in
+# `game/assets_source/meshy/README.md` is explicit about it: "runtime/
+# optimized, mobile-safe, what the game actually uses".
+#
+# Excluding them too was over-reach, and it had a concrete cost: a fresh clone
+# had NO characters at all -- no caregiver in the menu, no Little Buddy, and the
+# wrapper correctly but unhelpfully reporting the model unavailable on a
+# teammate's machine. All six together are 3.7 MB against a 33 MB repository.
+#
+# Raw exports (baby_standing_v01, baby_sitting_v01, baby_sleeping_v01,
+# pinkGirl_v01) stay excluded, and `export_presets.cfg` keeps them out of the
+# .pck as well.
+!game/assets/characters/littleBuddy/baby/babyLittleBuddy_*
+!game/assets/characters/buddy/pinkGirl/pinkGirlBuddy_*
+
 # Meshy source masters: high-res, never shipped. See game/assets_source/meshy/README.md
 game/assets_source/**/*.glb
 game/assets_source/**/*.jpg
