@@ -370,6 +370,13 @@ func step_movement(delta: float) -> void:
 	velocity = Vector3(horizontal.x, vertical, horizontal.z)
 	rotation.y = float(step.get("yaw", rotation.y))
 
+	# Drive the legs from the ACTUAL ground speed, every frame.
+	#
+	# The view owns the arithmetic (see `locomotion.gd`); this hands it the one
+	# number it cannot know. Duck-typed, so a view without locomotion -- the
+	# procedural toddler -- is simply not asked, and no caller has to check.
+	_sync_locomotion(Vector2(horizontal.x, horizontal.z).length())
+
 	if is_inside_tree():
 		move_and_slide()
 	else:
@@ -460,6 +467,27 @@ func _action_seconds(action_name: String, requested: float) -> float:
 ## `pickUp` fills the hands, `give` empties them, `hold` keeps them full, and
 ## every other action has no opinion at all -- which is why the table answers
 ## `null` rather than `false` for them.
+## Tells the view how fast the body is actually travelling.
+##
+## Kept separate from the action vocabulary on purpose: walking is not an ACTION
+## a caller requests, it is a consequence of moving, and routing it through
+## `play_action("walk")` would let a mission think it had asked for something.
+func _sync_locomotion(speed: float) -> void:
+	var view: Node = _find_locomotion_view(self)
+	if view != null:
+		view.call("set_locomotion", speed)
+
+
+func _find_locomotion_view(node: Node) -> Node:
+	for child: Node in node.get_children():
+		if child.has_method("set_locomotion"):
+			return child
+		var deeper: Node = _find_locomotion_view(child)
+		if deeper != null:
+			return deeper
+	return null
+
+
 func _apply_carry_effect(action_name: String) -> void:
 	var effect: Variant = ActionDriverScript.carry_effect(action_name)
 	if effect == null:

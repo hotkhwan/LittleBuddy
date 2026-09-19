@@ -49,6 +49,25 @@ func _run(job: String, extra: String) -> void:
 				print("  toyBox open=%s" % str(room.call("is_storage_open", "toyBox")))
 			else:
 				print("  WARN: could not reach the bedroom storage")
+		"walking":
+			# The REAL house scene, with the player driven forward so the walk
+			# clip is actually running -- not a posed model.
+			_load("res://scenes/house/house_world.tscn")
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var ch: Node = _scene.get_node_or_null("LittleBuddy")
+			var view: Node = ch.find_child("BuddyView", true, false) if ch != null else null
+			if view != null and view.has_method("get_animation_player"):
+				var pl: AnimationPlayer = view.call("get_animation_player")
+				if pl != null and pl.has_animation("walk"):
+					var loco := load("res://scripts/character/locomotion.gd")
+					pl.speed_scale = loco.scale_for_speed(0.45)
+					pl.play("walk")
+					pl.seek(pl.get_animation("walk").length * 0.28, true)
+					pl.pause()
+					print("  posed clip=%s scale=%.2f" % [pl.current_animation, pl.speed_scale])
+				else:
+					print("  WARN: no walk clip on the player's view")
 		"nursery":
 			_load("res://scenes/baby_room/baby_room.tscn")
 		"speech":
@@ -66,7 +85,7 @@ func _run(job: String, extra: String) -> void:
 			_scene = panel
 		_:
 			_load(job)  # treat the job as a raw scene path
-	_settle = 18
+	_settle = 40
 
 
 func _load(path: String) -> void:

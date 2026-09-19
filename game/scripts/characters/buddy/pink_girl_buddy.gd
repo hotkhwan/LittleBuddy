@@ -153,6 +153,7 @@ extends Node3D
 
 const ActionDriverScript := preload("res://scripts/character/character_action_driver.gd")
 const AnimationDriverScript := preload("res://scripts/character/animation_player_action_driver.gd")
+const LocomotionScript := preload("res://scripts/character/locomotion.gd")
 
 ## Emitted when a requested action begins. Emitted even though nothing is shown,
 ## so a caller's await is symmetric with `LittleBuddyCharacter`'s.
@@ -201,6 +202,18 @@ static func is_enabled() -> bool:
 ## bible section 7 material, one 512-square atlas. 22 MB -> 0.47 MB, and the raw
 ## export stays out of the bundle.
 const MODEL_PATH: String = "res://assets/characters/buddy/pinkGirl/pinkGirlBuddy_v01.glb"
+
+## The locomotion clips, as armature-only exports (~60 KB each) so the mesh is
+## not duplicated. Their skeleton is bone-for-bone the model's, so the imported
+## tracks resolve against it unchanged.
+##
+## Without this merge the model carries only its bind pose, `can_play_action`
+## answers false for every action, and the character travels with its legs
+## still -- which is exactly the floating that was reported from live play.
+const CLIP_SOURCES: Dictionary = {
+	"walk": "res://assets/characters/buddy/pinkGirl/pinkGirlBuddy_walk_v01.glb",
+	"run": "res://assets/characters/buddy/pinkGirl/pinkGirlBuddy_run_v01.glb",
+}
 
 ## Art bible §4: Mom 1.65 m, Dad 1.78 m. See the class doc for why the shorter.
 const MODEL_HEIGHT_M: float = 1.65
@@ -557,6 +570,62 @@ func _build_model() -> void:
 	_mesh = _find_mesh(instance)
 	_apply_art_bible_material()
 	_normalise(instance as Node3D)
+	_merge_clips(instance)
+
+
+## Merges the locomotion clips onto the model's own `AnimationPlayer`.
+##
+## Nothing here is hand-authored: every clip is loaded from a file the rig
+## produced. `can_play_action()` starts answering truthfully the moment this
+## succeeds, which is the seam the class doc already describes.
+func _merge_clips(instance: Node) -> void:
+	var player: AnimationPlayer = _find_animation_player(instance)
+	if player == null:
+		return
+	var library: AnimationLibrary = player.get_animation_library("")
+	if library == null:
+		return
+	for action: String in CLIP_SOURCES.keys():
+		var path: String = String(CLIP_SOURCES[action])
+		if library.has_animation(action) or not ResourceLoader.exists(path):
+			continue
+		var packed: Resource = load(path)
+		if not (packed is PackedScene):
+			continue
+		var clip_root: Node = (packed as PackedScene).instantiate()
+		var clip_player: AnimationPlayer = _find_animation_player(clip_root)
+		if clip_player != null:
+			for clip_name: String in clip_player.get_animation_list():
+				var anim: Animation = clip_player.get_animation(clip_name)
+				if anim != null:
+					var copy: Animation = anim.duplicate(true)
+					copy.loop_mode = Animation.LOOP_LINEAR
+					library.add_animation(action, copy)
+					break
+		clip_root.free()
+
+
+## Drives the legs from the actual ground speed.
+##
+## `locomotion.gd` holds the arithmetic and the measurements; this only applies
+## the answer. Both halves come from ONE call so a clip can never end up playing
+## at the previous clip's rate.
+func set_locomotion(speed: float) -> void:
+	build()
+	var player: AnimationPlayer = get_animation_player()
+	if player == null:
+		return
+	var described: Dictionary = LocomotionScript.describe(speed)
+	var clip: String = String(described["clip"])
+	if clip.is_empty():
+		if player.is_playing():
+			player.stop()
+		return
+	if not player.has_animation(clip):
+		return
+	player.speed_scale = float(described["scale"])
+	if player.current_animation != clip or not player.is_playing():
+		player.play(clip)
 
 
 ## Feet on the floor at the wrapper's origin, horizontally centred, scaled to
