@@ -138,6 +138,18 @@ static func describe(task: Variant, current_room_id: String = "") -> Dictionary:
 		# "brushTeeth" | "washFace" | "dryFace", else "". The overlay reads this.
 		"careKind": interaction if CARE_INTERACTIONS.has(interaction) else "",
 		"careTool": String(CARE_INTERACTIONS.get(interaction, "")),
+		# THE KITCHEN HOOK.
+		#
+		# A beat may name one of the kitchen's own verbs -- open, take, place,
+		# give -- and the item it acts on. The director applies it on arrival and
+		# the beat is finished by the kitchen agreeing, not by a tap.
+		#
+		# It is two plain strings rather than a new task KIND on purpose. Walking
+		# to the fridge and opening it is still `goAndDo`: the child does the same
+		# thing they always do, and the kitchen is what makes it mean something.
+		# A kind would have forced a second mission engine for the same beat.
+		"kitchenVerb": _text(data.get("kitchenVerb", "")),
+		"kitchenItem": _text(data.get("kitchenItem", "")),
 	}
 
 

@@ -151,6 +151,8 @@ var _awaiting_action: bool = false
 ## standing in the destination room already) cannot be completed inline -- the
 ## handler would not be listening yet. `step()` flushes it.
 var _pending_complete: bool = false
+## When the awaited action stops being worth waiting for. 0 = not waiting.
+var _action_deadline_msec: int = 0
 var _route: Array = []
 var _assist_generation: int = 0
 var _summary_open: bool = false
@@ -291,6 +293,7 @@ func step(_delta: float = 0.0) -> void:
 	if _stage != null:
 		_stage.call("update_zones")
 	_flush_pending_complete()
+	_watch_awaited_action()
 	_reconcile_objects()
 	_track_focus()
 
@@ -548,10 +551,25 @@ func _reach_beat() -> void:
 		_open_care(_plan)
 		return
 
+	# A beat that acts on the kitchen: open the fridge, take the banana, put it
+	# down, hand it over. The KITCHEN decides whether it happened -- if it refuses
+	# (a shut door, full hands) the beat stays open and the child is told why,
+	# which is the whole reason refusals carry a sentence.
+	if not String(_plan.get("kitchenVerb", "")).is_empty():
+		var done: bool = _apply_kitchen_verb(_plan)
+		if not done:
+			_beat_reached = false  # let them try again once they have fixed it
+			return
+		if not _play_task_action():
+			_pending_complete = true
+		else:
+			_await_action()
+		return
+
 	if TaskPlan.is_go_and_do(_plan):
 		# Nothing to choose: being here and doing it IS the task.
 		if _play_task_action():
-			_awaiting_action = true
+			_await_action()
 		else:
 			_pending_complete = true
 		return
@@ -577,6 +595,16 @@ func _refresh_beat_marker() -> void:
 		_stage.call("show_beat_marker", null)
 		return
 	_stage.call("show_beat_marker", _stand_position_of(walk_target))
+
+
+## Starts waiting for the current action, with a deadline.
+func _await_action() -> void:
+	_awaiting_action = true
+	var action_name: String = String(_plan.get("actionName", ""))
+	var driver: GDScript = load("res://scripts/character/character_action_driver.gd")
+	var natural: float = driver.default_duration(action_name) if driver != null else 1.2
+	var seconds: float = natural + ACTION_WATCHDOG_MARGIN_SEC
+	_action_deadline_msec = Time.get_ticks_msec() + int(seconds * 1000.0)
 
 
 func _play_task_action() -> bool:
@@ -607,6 +635,56 @@ func _on_interaction_ready(target_id: String) -> void:
 	if target_id != String(_plan.get("walkTargetId", "")):
 		return
 	_reach_beat()
+
+
+## Performs a beat's kitchen verb, and says out loud what happened either way.
+##
+## Returns whether the kitchen allowed it. A refusal is NOT a failure state: the
+## child hears "Let's open the fridge first!" and the beat stays open, so the
+## only way to get stuck is to stop playing.
+func _apply_kitchen_verb(plan: Dictionary) -> bool:
+	if _world == null or not _world.has_method("get_kitchen_state"):
+		# No interactive kitchen in this build. Let the beat pass rather than
+		# stranding a child in front of a fridge that does not exist.
+		return true
+	var kitchen: RefCounted = _world.call("get_kitchen_state")
+	if kitchen == null:
+		return true
+
+	var verb: String = String(plan.get("kitchenVerb", ""))
+	var item: String = String(plan.get("kitchenItem", ""))
+	# The station is the LOCAL half of "kitchen.fridge". Split here rather than
+	# preloading `semantic_id.gd` into this file for one call.
+	var focus: String = String(plan.get("focusTargetId", ""))
+	var station: String = focus.get_slice(".", 1) if focus.contains(".") else focus
+	var report: Dictionary = {}
+	match verb:
+		"open":
+			report = kitchen.call("set_open", station, true)
+		"close":
+			report = kitchen.call("set_open", station, false)
+		"take":
+			report = kitchen.call("take", station, item)
+		"place", "prepare", "serve", "putAway":
+			report = kitchen.call("place", station)
+		"give":
+			report = kitchen.call("give_to_bunny")
+			if bool(report.get("ok", false)):
+				# THE POINT OF COOKING. Without this the child makes a meal, hands
+				# it over, hears "Yum!" and Bunny is exactly as hungry as before --
+				# a mission about a need that the need never notices.
+				var child: Node = _find_child_actor()
+				if child != null and child.has_method("satisfy"):
+					child.call("satisfy", "hungry", 70.0)
+					if child.has_method("set_activity"):
+						child.call("set_activity", "feeding")
+		_:
+			return true
+
+	var say: String = String(report.get("say", ""))
+	if not say.is_empty():
+		_hud.call("show_encouragement", say)
+	return bool(report.get("ok", false))
 
 
 ## Shows the close-up for a care act, and tells the child what is happening to it.
@@ -666,9 +744,37 @@ func _find_child_actor() -> Node:
 	return null
 
 
+## A BEAT MUST NEVER WAIT FOREVER.
+##
+## `_awaiting_action` parks a beat until the character reports its action
+## finished. That report can fail to arrive -- the observed case is an action
+## requested while a HELD pose (`hold`, `sit`, `sleep`) is still in effect, which
+## left "pick up the snack" and "tidy up" hanging with the child standing at the
+## counter and no way forward. A stuck beat is the dead end this whole project is
+## built to avoid, and it cannot be fixed by asking content to avoid the pairing:
+## the next mission would step on it again.
+##
+## So the wait is bounded. The deadline is the action's OWN semantic duration
+## plus a margin, taken from `character_action_driver.gd` so it stays right when
+## an action is re-timed. A signal that arrives first still wins; this only
+## decides what happens when none does.
+const ACTION_WATCHDOG_MARGIN_SEC: float = 1.2
+
+func _watch_awaited_action() -> void:
+	if not _awaiting_action or not _running or _task_done:
+		return
+	if _action_deadline_msec <= 0 or Time.get_ticks_msec() < _action_deadline_msec:
+		return
+	_action_deadline_msec = 0
+	_awaiting_action = false
+	_pending_complete = true
+
+
 func _on_action_finished(action_name: String) -> void:
 	if not _running or not _awaiting_action:
 		return
+	_awaiting_action = false
+	_action_deadline_msec = 0
 	if action_name != String(_plan.get("actionName", "")):
 		return
 	_awaiting_action = false

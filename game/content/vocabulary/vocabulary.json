@@ -555,6 +555,42 @@
       "objectId": "cup",
       "thai": "ขวดนม",
       "exampleSentence": "Here is the bottle."
+    },
+    {
+      "wordId": "snack",
+      "word": "snack",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "milk",
+      "thai": "ขนม",
+      "exampleSentence": "I want a snack."
+    },
+    {
+      "wordId": "fridge",
+      "word": "fridge",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "milk",
+      "thai": "ตู้เย็น",
+      "exampleSentence": "Open the fridge."
+    },
+    {
+      "wordId": "counter",
+      "word": "counter",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "bowl",
+      "thai": "เคาน์เตอร์",
+      "exampleSentence": "Put it on the counter."
+    },
+    {
+      "wordId": "mash",
+      "word": "mash",
+      "category": "feeding",
+      "partOfSpeech": "verb",
+      "objectId": "spoon",
+      "thai": "บด",
+      "exampleSentence": "Let's mash the banana."
     }
   ]
 }

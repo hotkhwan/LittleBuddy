@@ -44,11 +44,12 @@ const CHAPTER_ID: String = "ch3"
 ## number and are otherwise untouched.
 const SLICE: Array = [
 	["imHungry", "imHungry", "I'm Hungry!", 11, 7],
-	["goodMorning", "goodMorningRoutine", "Good Morning", 12, 7],
-	["gettingDressed", "morningRoutine", "Getting Dressed", 13, 7],
-	["breakfast", "breakfastTime", "Breakfast", 14, 8],
-	["playTime", "toddlerPlayTime", "Play Time", 15, 8],
-	["tidyAndBed", "tidyAndBedtime", "Clean Up and Good Night", 16, 8],
+	["snackTime", "snackTime", "Snack Time!", 12, 8],
+	["goodMorning", "goodMorningRoutine", "Good Morning", 13, 7],
+	["gettingDressed", "morningRoutine", "Getting Dressed", 14, 7],
+	["breakfast", "breakfastTime", "Breakfast", 15, 8],
+	["playTime", "toddlerPlayTime", "Play Time", 16, 8],
+	["tidyAndBed", "tidyAndBedtime", "Clean Up and Good Night", 17, 8],
 ]
 
 ## Contract §2: every activity target the four greybox rooms provide. Furniture
@@ -143,7 +144,7 @@ const MIN_SLICE_MINUTES: int = 20
 ## 20-30 minute single sitting is the real requirement, the answer is to move a
 ## level out of the chain, not to under-estimate one -- so this number is a
 ## deliberate, recorded decision rather than a nudge to get green.
-const MAX_SLICE_MINUTES: int = 34
+const MAX_SLICE_MINUTES: int = 38
 
 ## Child UX (CLAUDE.md): no failure language anywhere a child can hear it.
 const BANNED_CHILD_FACING: Array[String] = [

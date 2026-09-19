@@ -445,6 +445,314 @@
       "stage": "toddler",
       "speechRequired": false,
       "assistAfterAttempts": 3
+    },
+    {
+      "taskId": "bunnySnackTime",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "teddy",
+      "prompt": "Bunny wants a snack!",
+      "instruction": "Go and see Bunny.",
+      "repeatPrompt": "Can you say snack?",
+      "thaiHint": "น้องบันนี่อยากกินขนม",
+      "targetWords": [
+        "snack"
+      ],
+      "acceptedCommands": [
+        "snack",
+        "bunny",
+        "hungry"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bedroom.littleBuddy",
+      "targetId": "bedroom.littleBuddy",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "wave"
+    },
+    {
+      "taskId": "walkToKitchenSnack",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "milk",
+      "prompt": "Let's go and cook!",
+      "instruction": "Walk to the kitchen.",
+      "repeatPrompt": "Can you say kitchen?",
+      "thaiHint": "ไปห้องครัวกันเถอะ",
+      "targetWords": [
+        "kitchen"
+      ],
+      "acceptedCommands": [
+        "kitchen",
+        "cook",
+        "let's go"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bedroom.doorToKitchen",
+      "targetId": "bedroom.doorToKitchen",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "walk"
+    },
+    {
+      "taskId": "openTheFridge",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "milk",
+      "prompt": "Open the fridge!",
+      "instruction": "Tap the fridge door.",
+      "repeatPrompt": "Can you say fridge?",
+      "thaiHint": "เปิดตู้เย็น",
+      "targetWords": [
+        "fridge"
+      ],
+      "acceptedCommands": [
+        "fridge",
+        "open",
+        "open the fridge"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.fridge",
+      "targetId": "kitchen.fridge",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "point",
+      "kitchenVerb": "open"
+    },
+    {
+      "taskId": "takeTheBanana",
+      "category": "care",
+      "mode": "findIt",
+      "objectId": "banana",
+      "prompt": "Take the banana.",
+      "instruction": "Pick up the banana.",
+      "repeatPrompt": "Can you say banana?",
+      "thaiHint": "หยิบกล้วย",
+      "targetWords": [
+        "banana"
+      ],
+      "acceptedCommands": [
+        "banana",
+        "the banana"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.fridge",
+      "targetId": "kitchen.fridge",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "pickUp",
+      "kitchenVerb": "take",
+      "kitchenItem": "banana"
+    },
+    {
+      "taskId": "bananaOnCounter",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "banana",
+      "prompt": "Put it on the counter.",
+      "instruction": "Place the banana down.",
+      "repeatPrompt": "Can you say counter?",
+      "thaiHint": "วางกล้วยบนเคาน์เตอร์",
+      "targetWords": [
+        "counter"
+      ],
+      "acceptedCommands": [
+        "counter",
+        "put it down",
+        "on the counter"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.counter",
+      "targetId": "kitchen.counter",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "hold",
+      "kitchenVerb": "place"
+    },
+    {
+      "taskId": "takeTheSpoon",
+      "category": "care",
+      "mode": "findIt",
+      "objectId": "spoon",
+      "prompt": "Take the spoon.",
+      "instruction": "Pick up the spoon.",
+      "repeatPrompt": "Can you say spoon?",
+      "thaiHint": "หยิบช้อน",
+      "targetWords": [
+        "spoon"
+      ],
+      "acceptedCommands": [
+        "spoon",
+        "the spoon"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.counter",
+      "targetId": "kitchen.counter",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "pickUp",
+      "kitchenVerb": "take",
+      "kitchenItem": "spoon"
+    },
+    {
+      "taskId": "mashTheBanana",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "spoon",
+      "prompt": "Mash the banana!",
+      "instruction": "Mix it all together.",
+      "repeatPrompt": "Can you say mash?",
+      "thaiHint": "บดกล้วยให้ละเอียด",
+      "targetWords": [
+        "mash"
+      ],
+      "acceptedCommands": [
+        "mash",
+        "mix",
+        "stir"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.counter",
+      "targetId": "kitchen.counter",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "hold",
+      "kitchenVerb": "place"
+    },
+    {
+      "taskId": "carrySnackToBunny",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "banana",
+      "prompt": "Take it to Bunny!",
+      "instruction": "Pick up the snack.",
+      "repeatPrompt": "Can you say banana?",
+      "thaiHint": "เอาไปให้น้องบันนี่",
+      "targetWords": [
+        "banana"
+      ],
+      "acceptedCommands": [
+        "banana",
+        "snack",
+        "bunny"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.counter",
+      "targetId": "kitchen.counter",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "pickUp",
+      "kitchenVerb": "take",
+      "kitchenItem": "mashedBanana"
+    },
+    {
+      "taskId": "feedBunnySnack",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "banana",
+      "prompt": "Snack time!",
+      "instruction": "Give Bunny the food.",
+      "repeatPrompt": "Can you say eat?",
+      "thaiHint": "ให้น้องกินขนม",
+      "targetWords": [
+        "eat"
+      ],
+      "acceptedCommands": [
+        "eat",
+        "food",
+        "here you are"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bedroom.littleBuddy",
+      "targetId": "bedroom.littleBuddy",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "give",
+      "kitchenVerb": "give"
+    },
+    {
+      "taskId": "tidyTheSpoon",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "spoon",
+      "prompt": "Let's tidy up!",
+      "instruction": "Put the bowl back on the counter.",
+      "repeatPrompt": "Can you say tidy?",
+      "thaiHint": "เก็บของให้เรียบร้อย",
+      "targetWords": [
+        "clean up"
+      ],
+      "acceptedCommands": [
+        "clean up",
+        "tidy",
+        "all done"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.counter",
+      "targetId": "kitchen.counter",
+      "characterAction": "clap",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3
     }
   ]
 }

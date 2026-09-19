@@ -21,6 +21,9 @@ extends SceneTree
 ##   5. the level completes once, and stars are awarded once.
 
 const MISSION: String = "imHungry"
+## Overridden from the command line, so the SAME harness proves both missions:
+##   Godot --headless --path game --script res://tests/smoke_mission01.gd -- snackTime
+var _mission: String = MISSION
 
 var _fail: Array = []
 var _awards: Dictionary = {}
@@ -42,12 +45,24 @@ func _run() -> void:
 	# and the run reads a developer's own saved progress instead. That is exactly
 	# how this file's first run "proved" the mission was unreachable when the
 	# content was fine.
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	if args.size() > 0 and not String(args[0]).strip_edges().is_empty():
+		_mission = String(args[0]).strip_edges()
+	print("=== proving mission '%s' ===" % _mission)
+
 	await process_frame
 	var save: Node = root.get_node_or_null("SaveService")
 	if save == null or not save.has_method("reset_profile"):
 		return _die("no SaveService -- a fresh-profile check is meaningless without one")
 	save.call("reset_profile")
-	print("0. profile reset; currentLevel='%s'" % String(save.call("get_current_level")))
+	# To prove a mission that is not the FIRST one, mark the levels before it in
+	# the chapter chain as completed -- exactly the state a child who has played
+	# that far would be in. Nothing is skipped inside the mission under test.
+	var earlier: Array = _levels_before(_mission)
+	for level_id: Variant in earlier:
+		save.call("mark_level_completed", String(level_id))
+	print("0. profile reset; %d earlier level(s) marked played; currentLevel='%s'"
+			% [earlier.size(), String(save.call("get_current_level"))])
 
 	var packed: PackedScene = load("res://scenes/house/house_world.tscn")
 	if packed == null:
@@ -78,8 +93,8 @@ func _run() -> void:
 			if _director.has_method("get_current_mission_id") else ""
 	if chosen.is_empty():
 		chosen = String(_director.get("_last_mission_id"))
-	_check(chosen == MISSION,
-			"a fresh profile opens '%s'; expected '%s'" % [chosen, MISSION])
+	_check(chosen == _mission,
+			"a fresh profile opens '%s'; expected '%s'" % [chosen, _mission])
 	print("1. fresh profile opened: %s" % chosen)
 
 	# Bunny's hunger BEFORE, read from the real actor.
@@ -94,6 +109,7 @@ func _run() -> void:
 	var overlay: Node = _director.get("_care_overlay")
 	var seen: Array = []
 	var gestured: int = 0
+	var _care_beats: int = 0
 	for step: int in range(24):
 		var plan: Dictionary = _director.call("get_current_plan")
 		var task_id: String = _runner_task_id(runner)
@@ -107,6 +123,8 @@ func _run() -> void:
 					% [seen.size(), task_id, String(plan.get("kind", "")),
 						String(plan.get("roomId", "")), String(plan.get("careKind", ""))])
 			_check_target(plan)
+			if not String(plan.get("careKind", "")).is_empty():
+				_care_beats += 1
 
 		var care_kind: String = String(plan.get("careKind", ""))
 		if not care_kind.is_empty():
@@ -197,7 +215,12 @@ func _run() -> void:
 
 	print("3. beats played: %d, care mini-games finished by gesture: %d" % [seen.size(), gestured])
 	_check(seen.size() >= 6, "only %d beats were reached; the mission has 7" % seen.size())
-	_check(gestured >= 2, "only %d of the 2 care mini-games completed by gesture" % gestured)
+	# Counted against what this mission actually contains, not against a fixed
+	# number: a kitchen mission has no close-ups and must not be failed for it.
+	if _care_beats > 0:
+		_check(gestured >= _care_beats,
+				"only %d of this mission's %d care mini-games completed by gesture"
+						% [gestured, _care_beats])
 
 	# 5. THE NEED ACTUALLY WENT AWAY.
 	var hunger_after: float = _hunger(child)
@@ -226,26 +249,26 @@ func _run() -> void:
 
 	# 7. IT IS WRITTEN DOWN, so the next launch does not replay it.
 	var completed: Dictionary = save.call("get_level_completed")
-	_check(bool(completed.get(MISSION, false)),
-			"'%s' is not recorded as completed, so a relaunch would replay it" % MISSION)
-	var rated: int = int(save.call("get_level_stars", MISSION))
+	_check(bool(completed.get(_mission, false)),
+			"'%s' is not recorded as completed, so a relaunch would replay it" % _mission)
+	var rated: int = int(save.call("get_level_stars", _mission))
 	print("6. saved: completed=%s stars=%d/3  lifetime stars=%d"
-			% [str(bool(completed.get(MISSION, false))), rated, int(save.call("get_stars"))])
+			% [str(bool(completed.get(_mission, false))), rated, int(save.call("get_stars"))])
 	_check(rated > 0, "the level saved %d/3 after a full clean play" % rated)
 
 	# 8. REPLAY must re-arm the mission WITHOUT paying twice or touching the rest.
 	var stars_before_replay: int = int(save.call("get_stars"))
 	var other_before: Variant = save.call("get_profile").get("settings", {})
-	save.call("replay_level", MISSION)
+	save.call("replay_level", _mission)
 	var after: Dictionary = save.call("get_profile")
-	_check(not bool((after.get("levelCompleted", {}) as Dictionary).get(MISSION, false)),
-			"Replay left '%s' marked completed, so it would not replay" % MISSION)
+	_check(not bool((after.get("levelCompleted", {}) as Dictionary).get(_mission, false)),
+			"Replay left '%s' marked completed, so it would not replay" % _mission)
 	_check(int(after.get("stars", -1)) == stars_before_replay,
 			"Replay changed the lifetime star total (%d -> %d)"
 					% [stars_before_replay, int(after.get("stars", -1))])
 	_check(str(after.get("settings", {})) == str(other_before),
 			"Replay altered settings, which are none of its business")
-	print("7. replay re-armed '%s'; lifetime stars still %d" % [MISSION, int(after.get("stars", -1))])
+	print("7. replay re-armed '%s'; lifetime stars still %d" % [_mission, int(after.get("stars", -1))])
 
 	_report()
 
@@ -288,6 +311,20 @@ func _play_gesture(overlay: Node, kind: String) -> bool:
 				overlay.call("apply_stroke", centre + Vector2(cos(a), sin(a)) * (40.0 + float(i)))
 	await process_frame
 	return bool(overlay.call("is_finished"))
+
+
+## The chain levels that come before `level_id`, from content.
+func _levels_before(level_id: String) -> Array:
+	var library: Object = load("res://scripts/content/content_library.gd").new()
+	library.call("load_all")
+	var system: Object = load("res://scripts/progression/level_system.gd").new()
+	system.call("load_all", library)
+	var before: Array = []
+	for chained: String in (system.call("get_chapter_chain", "ch3") as PackedStringArray):
+		if chained == level_id:
+			return before
+		before.append(chained)
+	return []
 
 
 ## Lets real time pass, because the production code is full of real-time gaps.
