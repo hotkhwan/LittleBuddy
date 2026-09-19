@@ -1,209 +1,211 @@
-# MacBook Handoff — 2026-09-17
+# MacBook Handoff — 2026-09-19
 
-Development is moving from the Mac mini to a MacBook. This is a **safe checkpoint**, not a
-finished milestone: the visual overhaul is deliberately incomplete.
+Supersedes the 2026-09-17 handoff (that one targeted `mac-mini-handoff-20260917`
+and expected a 30-case suite; both are out of date).
 
-**Handoff tag:** `mac-mini-handoff-20260917`
+| | |
+|---|---|
+| **Branch** | `feature/overnight-production-candidate` |
+| **Commit** | `09d4784` — *fix: a fresh clone's test suite is green* |
+| **Version** | `0.1.0` |
+| **Remote** | `https://github.com/hotkhwan/LittleBuddy.git` |
+| **Expected suite** | `PASS - 97 case(s), 0 failure(s)` |
+
+A fresh clone of this branch was made into a temp directory and run end to end
+before this was written — the suite is green there, and both characters load.
+The numbers below are measured on that clone, not assumed.
 
 ---
 
-## Clone and first run
+## 1. Copy-paste: get the code
 
 ```bash
 git clone https://github.com/hotkhwan/LittleBuddy.git
 cd LittleBuddy
+git checkout feature/overnight-production-candidate
+git pull
 
 # first command to run — proves the checkout is sound
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path game --script res://tests/run_tests.gd
 ```
 
-Expected: `PASS - 30 case(s), 0 failure(s)`.
+Expected: `PASS - 97 case(s), 0 failure(s)`.
+
+If that passes, the project is sound and you can open it in the editor. **You do
+not need to build the speech plugin to run, edit, test or export the game** — see
+§4 for what you lose without it.
 
 ---
 
-## Environment
+## 2. Environment
 
-| Requirement | Version / note |
-|---|---|
-| **Godot** | **4.7.2 stable** — `brew install --cask godot`. The project declares `config/features=PackedStringArray("4.7", "Mobile")`; do not open it in an older 4.x. |
-| Godot export templates | 4.7.2, incl. `ios.zip`. Godot → Editor → Manage Export Templates, or drop the `.tpz` into `~/Library/Application Support/Godot/export_templates/4.7.2.stable/`. |
-| **Xcode** | **26+ (built and verified on 27.0).** Full Xcode, not just Command Line Tools — the iOS SDK and device provisioning are required. |
-| Xcode licence | `sudo xcodebuild -license` **must be accepted**, or `xcodebuild`, `xcrun` *and* `git` all fail (macOS `git` is an Xcode wrapper). This bit us once already. |
-| `xcode-select` | must point at `/Applications/Xcode.app/Contents/Developer` |
-| scons (only to rebuild the speech plugin) | `python3 -m pip install --user scons`, then `export PATH="$HOME/Library/Python/3.9/bin:$PATH"` |
+| Tool | Version here | Notes |
+|---|---|---|
+| **Godot** | `4.7.2.stable.official` | Must match. The project is `config_version=5`, Mobile renderer. |
+| **Godot export templates** | `4.7.2.stable` | Required for any iOS export. Install via *Editor → Manage Export Templates*. |
+| **Xcode** | `27.0` (build `27A266a`) | Used for the arm64 device build. |
+| **macOS** | `26.6.2` | |
+| **Python** | 3 (system) | The asset tools are stdlib-only — no pip install needed. |
+| **sips** | built in | Used by the icon and texture tools. |
 
-### Apple Team ID
+Optional, only if you want to regenerate art:
 
-`game/export_presets.cfg` has `application/app_store_team_id="JZDAUN45CF"` **committed**.
-
-Godot refuses to generate the Xcode project at all without it — this cannot be deferred to
-Xcode. If the MacBook signs in with a different Apple ID, change that one value. Signing itself
-is automatic (`CODE_SIGN_STYLE = Automatic`, `DEVELOPMENT_TEAM = JZDAUN45CF`).
+* **Blender — NOT installed here.** Nothing in the current pipeline needs it. It
+  would only be needed to bake a normal map. `brew install --cask blender`.
 
 ---
 
-## Commands you will actually need
+## 3. iOS export and device build
 
 ```bash
-# Test suite (30 cases)
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path game --script res://tests/run_tests.gd
-
-# Project load / parse check — expect zero output beyond the version banner
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path game --quit
-
-# iOS export -> Xcode project.  USE THIS SCRIPT, not --export-debug directly.
+# from the repo root
 ./tools/export_ios.sh debug          # or: release
 
-# Build the generated project (unsigned, for CI-style verification)
 cd build/ios
-xcodebuild -project LittleBuddy.xcodeproj -scheme LittleBuddy -configuration Debug \
-  -destination 'generic/platform=iOS' -derivedDataPath /tmp/lb_dd \
-  CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project LittleBuddy.xcodeproj -scheme LittleBuddy \
+  -configuration Debug -destination 'generic/platform=iOS' build
 ```
 
-**Why `tools/export_ios.sh` and not raw Godot:** Godot's iOS template hardcodes
-`NSCameraUsageDescription` and `NSPhotoLibraryUsageDescription` into the Info.plist. The app
-uses neither, and filling them with dummy text would be a false privacy declaration, so the
-script deletes them after export. Call Godot directly and the keys come back, along with two
-Xcode warnings. The script also `rm -rf`s `build/ios` first — **never run it if `build/ios`
-holds a build you still need.**
+`export_ios.sh` wraps Godot's exporter and then strips two Info.plist keys Godot
+hardcodes (`NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`) that this
+app does not use — **run the script rather than `--export-debug` directly, or the
+keys come back**.
 
-### Rebuilding the ignored iOS speech-plugin binaries
-
-`game/ios/speech_plugin/bin/` is **gitignored** (see `.gitignore`), so a fresh clone has no
-compiled plugin and **an iOS export will silently ship without speech**. The GDScript side
-degrades safely to touch-only, so nothing crashes — but the mic will never work.
-
-To rebuild:
+To build without a signing identity (compile check only), add:
 
 ```bash
-export PATH="$HOME/Library/Python/3.9/bin:$PATH"
-cd ios/speech_plugin
-
-# godot-cpp is also gitignored; vendor it (branch 4.5 — no 4.6/4.7 branch exists upstream)
-git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp godot-cpp
-
-./build_xcframeworks.sh      # device arm64 + simulator arm64/x86_64, debug + release
-./build_macos_framework.sh   # macOS variant — REQUIRED, see below
-
-# copy the artifacts the export actually consumes
-cp -R bin/liblittle_buddy_speech.ios.*.xcframework        ../../game/ios/speech_plugin/bin/
-cp -R bin/liblittle_buddy_speech.macos.*.framework        ../../game/ios/speech_plugin/bin/
-rm -f ../../game/.godot/extension_list.cfg   # force Godot to rescan extensions
+CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 ```
 
-**The macOS variant is not optional.** Godot's iOS exporter only bundles a GDExtension that the
-running editor has successfully *loaded*. Without a macOS build the extension fails to load on
-the host, so its iOS artifacts are never packaged — the `.gdextension` just gets copied into
-the `.pck` as an inert text file. This cost a full debugging cycle to find.
+For a real device install you need your own signing identity selected in Xcode.
+`application/app_store_team_id` is already set in `game/export_presets.cfg`; the
+code-sign identity and provisioning-profile UUID fields are deliberately **empty**
+and are filled in by Xcode, not committed.
 
-Verify afterwards:
-```bash
-grep -oE '(Speech|AVFoundation)\.framework' build/ios/LittleBuddy.xcodeproj/project.pbxproj | sort -u
-nm /tmp/lb_dd/Build/Products/Debug-iphoneos/LittleBuddy.app/LittleBuddy | grep -c little_buddy_speech_library_init
-```
+Expected: `** BUILD SUCCEEDED **`, binary architecture `arm64`, `.pck` ≈ **5.0 MB**.
 
 ---
 
-## What is finished
+## 4. The speech plugin — the one real rebuild step
 
-- **Offline-first architecture**, Godot 4.7.2, Mobile renderer, Universal iPhone + iPad
-  (`UIDeviceFamily = 1,2`), iOS 15.0 min, both landscape rotations, safe-area aware.
-- **Content/mission system**: 5 categories, 43 tasks, 46 vocabulary words, 270 phrase variants,
-  7 missions, 16 stickers, 28 objects — all data-driven and validated (0 validator problems).
-- **Interaction**: reusable drag system, multi-touch safe, tap fallback everywhere,
-  `RewardLedger` guaranteeing no double-award, no dead-end states.
-- **Save/progression**: stars, stickers, missions persist; corrupt-save recovery.
-- **Parent settings** behind a 3-second press-and-hold gate.
-- **Audio**: 8 original procedurally-generated SFX (zero third-party audio licence surface).
-- **App icon**: originally authored baby bottle, 1024×1024 opaque, regenerable via
-  `tools/generate_icon.gd`, verified compiling into `Assets.car`.
-- **Assets**: all third-party assets are **CC0**; attribution required for nothing. See
-  `docs/ASSET_MANIFEST.md`.
-- **Build pipeline**: export + arm64 Xcode build both green.
+**Source is tracked. Compiled binaries are not.**
 
-## What is partially finished
+| Path | In git? | Size |
+|---|---|---|
+| `ios/speech_plugin/src/`, `SConstruct`, `build_*.sh` | **yes** | small |
+| `ios/speech_plugin/godot-cpp/` | no | 609 MB |
+| `ios/speech_plugin/bin/` | no | 776 MB |
+| `game/ios/speech_plugin/bin/` | no | 233 MB |
 
-- **Visual overhaul — the reason this is a checkpoint.** Props, nursery, baby and UI were all
-  upgraded, but see "known issues" below.
-- **Nursery** is Kenney Furniture Kit retinted to pastel. Silhouettes are still harder-edged
-  than the rounded props and baby. Intended upgrade is **Tiny Treats "Playful Bedroom"**
-  ($7.95, CC0) — **needs a human purchase**. Swap procedure and an enforcing test are in
-  `docs/NURSERY_SWAP_CONTRACT.md`.
-- **Baby** is procedural and deliberately temporary. Commission spec ready at
-  `docs/CUSTOM_BABY_SPEC.md`. Kenney Mini Characters was tried and rejected — its arms import
-  broken in Godot 4.7.2 before any modification.
+Without rebuilding, the game **still runs, exports and builds**. `SpeechService`
+selects a fallback backend and the new speech UI reports *"Voice is not ready —
+you can tap it instead!"*. Touch play is unaffected. What you lose is real
+on-device speech recognition.
 
-## Known issues / bugs
+To rebuild (from `ios/speech_plugin/README.md`, verified there):
 
-| Severity | Issue |
-|---|---|
-| ~~Blocking~~ **RESOLVED 2026-09-17** | **Speech is now proven working on a physical iPhone 14 Pro Max (iOS 26.6.2).** Device telemetry: a listen session recognised twice and added zero new failures; stars went 46 -> 64 with sayPillow/sayBanana/sayTowel completed. Two device-only bugs were fixed to get there - see the speech section below. |
-| ~~Medium~~ **RESOLVED** | The 5 remaining polygon stickers (banana, soap, towel, toothbrush, pillow) now use authored glyphs in the same visual language; all 16 read as one set. Polygon fallbacks kept as a safety net. |
-| Medium | **`shoes` is the weakest 3D object** — "two brown pebbles" cold. Best candidate for a commissioned asset. |
-| Low | Sticker-button icon is a treasure chest — a compromise; no real sticker-sheet glyph exists in the pack. |
-| Low | `"1 / 16"` on the sticker book is a fraction on a pre-reader's screen. Deliberate (collection progress, not a score) but worth a decision. |
-| Low | Speak button's `round_mint` frame is a single stretched texture, not a nine-patch; will distort if made non-square. |
-| Low | Nursery: floor lamp nearly disappears at phone aspect; bookcase shelves empty; wall art low-contrast; bed reads as a daybed, not a cot. |
-| Low | Bowl rim is visibly hexagonal; `water` reads as "blue cup" in isolation. |
-| **Unverified** | Nothing has been run on physical hardware. Both landscape rotations and notch-side safe-area flip are **untested on a real device**. |
+```bash
+git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp \
+  ios/speech_plugin/godot-cpp
 
-## Next recommended task
+export PATH="$HOME/Library/Python/3.9/bin:$PATH"   # wherever your scons lives
 
-~~Run the app on a physical iPhone and validate speech end-to-end.~~ **Done 2026-09-17 —
-speech is proven working on device.**
+cd ios/speech_plugin
+./build_xcframeworks.sh      # iOS device arm64 + simulator -> bin/*.ios.*.xcframework
+./build_macos_framework.sh   # macOS arm64 .framework (editor-load only)
+```
 
-Next: the remaining visual polish in `docs/ART_UPGRADE_REPORT.md` — the `shoes` model is the
-weakest object, and the nursery would benefit from the Tiny Treats swap (needs a purchase).
+Then copy the outputs to `game/ios/speech_plugin/bin/`. The macOS framework is
+**not cosmetic**: without a library matching the editor's own OS/arch, Godot never
+opens the extension, and therefore never bundles the iOS library into the exported
+Xcode project. That is root-caused in the plugin README under *"Why a macOS
+build"*.
 
-1. Rebuild the speech plugin (above) — **a fresh clone has no binaries**.
-2. `./tools/export_ios.sh debug`
-3. Open `build/ios/LittleBuddy.xcodeproj`, confirm the team resolves.
-4. iPhone → Settings → Privacy & Security → Developer Mode → On, reboot, unlock.
-5. Run; Trust the developer cert; Run again.
-6. Work the checklist in `docs/OVERNIGHT_BUILD_REPORT.md` §9, speech items first.
+---
 
-## Assets still needing download / purchase
+## 5. What will NOT come from Git
 
-| Asset | Status |
-|---|---|
-| **Tiny Treats "Playful Bedroom"** ($7.95, CC0) | **Needs human purchase.** Best style match for the nursery. Once bought, itch.io's download API *is* scriptable — see `docs/ASSET_MANIFEST.md`. |
-| `godot-cpp` (branch 4.5) | gitignored; re-clone when rebuilding the speech plugin. |
-| Godot export templates 4.7.2 | not in the repo; install via the editor. |
-| Tiny Treats "Bubbly Bathroom" (free, CC0) | evaluated and **deliberately not used** — covers only towel/toothbrush/duck, has no bar of soap, and those already read well procedurally. |
+All of this is intentional and none of it blocks development.
 
-## Active art-direction decisions
+| Path | Size | Do you need it? |
+|---|---|---|
+| `build/` | 558 MB | No — regenerated by `export_ios.sh`. |
+| `game/.godot/` | 195 MB | No — Godot rebuilds the import cache on first open (slow once). |
+| `ios/speech_plugin/godot-cpp/`, `bin/` | 1.4 GB | Only to rebuild the speech plugin (§4). |
+| `game/assets_source/meshy/**` | 92 MB | **No.** High-res Meshy masters. Never loaded by a shipping scene. |
+| `game/assets/characters/**/baby_standing_v01*`, `baby_sitting_v01*`, `baby_sleeping_v01*`, `pinkGirl_v01*` | 63.6 MB | **No.** Raw exports; superseded by the runtime models, and excluded from the `.pck` too. |
 
-1. **One coherent family: Kenney** (CC0, shared 512×512 colormap atlas). Do not mix in another
-   3D style without a deliberate decision.
-2. **Quaternius is excluded** even though it looks like a natural fit. Their licence page
-   changed to QAL v1.0 on 2026-08-28; §3(a) forbids redistributing assets *"regardless of how
-   much the Assets have been modified"*, which makes committing them here risky. Search engines
-   and their own FAQ still say CC0 — **the site contradicts itself**. Do not re-add on the
-   strength of a web search.
-3. **CC0 only, zero CC-BY.** Every CC-BY asset adds a perpetual attribution obligation.
-4. **Blocks are procedural on purpose** — Kenney Brick Kit's studded variants are visually LEGO
-   and LEGO has litigated brick trade dress. Owner decision.
-5. **Objects must read as the word they teach.** Never substitute a "similar" model: a chick is
-   not a duck, a soap dish is not soap, a ketchup bottle is not soap. An honest procedural shape
-   beats a wrong-but-similar sourced model.
-6. **Procedural is a first-class answer**, not a fallback — it needs no licence, no download and
-   no repo bytes.
-7. **Palette:** warm cream `#FFF4E0`, dusty blue, soft pink `#F8BFD1`, mint `#9EDCC3`, peach,
-   lavender.
-8. **Audio stays original.** Kenney's CC0 packs measured worse for a small child (peaks to
-   −1.4 dBFS, first sample at 0.86 full scale = an audible snap).
+**The runtime character models ARE tracked** and come with the clone (3.7 MB):
 
-## Repo conventions worth knowing
+```
+game/assets/characters/littleBuddy/baby/babyLittleBuddy_{v01,walk_v01,run_v01}.glb
+game/assets/characters/buddy/pinkGirl/pinkGirlBuddy_{v01,walk_v01,run_v01}.glb
+```
 
-- `game/` is the Godot project root (`res://` == `game/`).
-- Tests: one file per case in `game/tests/cases/test_*.gd`, `extends RefCounted`, `test_name()`
-  and `run() -> Array` (failure strings; empty == pass). **No autoload dependencies** — the
-  runner uses `--script`, which does not load them.
-- The runner fails loudly on a case that won't parse *or* whose `run()` aborts. Both holes were
-  real and previously made red builds look green.
-- **Kenney GLBs are not self-contained** — they reference `Textures/colormap.png` relatively.
-  Copy the texture folder alongside, and if you import before it exists, delete `.godot/` and
-  the `.import` files (Godot caches the failure).
-- Prefer rendering a PNG and *looking at it* over trusting tests for anything visual. A camera
-  bug once put every object off-screen with the whole suite green.
+This was **broken until 2026-09-19** — `game/assets/characters/**/*.glb` caught the
+runtime derivatives as well as the raw masters, so a clone had no characters at
+all. Fixed in `587d4bd`; the raw masters stay excluded.
+
+### If you ever need a raw master back
+
+They are regenerable from Meshy, not lost. Task IDs, the credit ledger and the
+exact commands are in `docs/MESHY_CREDIT_LEDGER.md` and
+`docs/MESHY_CHARACTER_AUDIT.md`. Regenerating a runtime model from a master:
+
+```bash
+python3 tools/build_runtime_character.py     # the baby: weights, normals, material, texture
+python3 tools/optimize_runtime_glb.py <in.glb> <out.glb> --texture 512
+```
+
+Both are local-only and cost no Meshy credits.
+
+---
+
+## 6. Meshy, if you continue asset work
+
+`MESHY_API_KEY` must be exported in your shell. **It is not in the repo**, has
+never been committed, and must not be — verified against the full branch history.
+
+```bash
+export MESHY_API_KEY='...'      # do not commit, do not paste into a file
+```
+
+Spend is capped by the owner and recorded in `docs/MESHY_CREDIT_LEDGER.md` **before**
+each operation. Current balance: **3054**. The overnight pass used 10 of its
+30-credit ceiling.
+
+`tools/meshy_rig.sh` now requires an explicit output stem and refuses to overwrite
+an existing file — it previously had the baby's paths hardcoded and silently
+destroyed three paid-for assets when run for a second character.
+
+---
+
+## 7. First-day checklist on the MacBook
+
+1. `git clone` … `git checkout feature/overnight-production-candidate` (§1).
+2. Run the suite — expect **97/0**.
+3. Install Godot **4.7.2** and its **4.7.2 export templates**.
+4. Open `game/project.godot` once and let the import finish (a few minutes; it is
+   rebuilding the 195 MB `.godot` cache that does not clone).
+5. `./tools/export_ios.sh debug`, then the `xcodebuild` line in §3.
+6. *Optional:* rebuild the speech plugin (§4) if you want real speech on device.
+7. **Open Parent Corner → "Check speech" on the device first.** It names the root
+   cause of any speech problem in one line. Speech has never been validated on a
+   physical device and nothing in the repo claims it has.
+
+---
+
+## 8. Where to pick up
+
+`docs/OVERNIGHT_WOW_PASS_REPORT.md` §9 lists what was deliberately left undone.
+The shortest list:
+
+* The tidy-up activity has a complete, tested domain and working cabinets, but no
+  mission drives it yet — nothing scatters items and walks a child through it.
+* Kitchen, bathroom and living room got the stage backdrop and door signs but no
+  new hero props.
+* No launch/opening sequence.
+* Little Buddy is still 14,406 triangles against a 4,000 budget. Fixing it needs
+  another remesh **and** rig (10 credits); 20 remain of the overnight ceiling.
+* Interaction smoothness (joystick, tap-to-walk, drag) was not audited — unchanged,
+  but unreviewed.
