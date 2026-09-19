@@ -44,6 +44,11 @@ signal care_progress(value: float)
 const BRUSH: String = "brushTeeth"
 const WASH: String = "washFace"
 const DRY: String = "dryFace"
+## Mission 01's two acts. `MIX` happens at the kitchen counter and is the only
+## act whose subject is an OBJECT rather than Bunny's face; `FEED` is the
+## close-up the whole mission has been walking towards.
+const MIX: String = "prepareMilk"
+const FEED: String = "giveBottle"
 
 ## Copy per act: the instruction, the word being taught, and the child's line.
 const COPY: Dictionary = {
@@ -62,6 +67,16 @@ const COPY: Dictionary = {
 		"hint": "Wipe the towel everywhere.",
 		"childLine": "I'm all wet!", "doneLine": "Nice and dry!",
 	},
+	MIX: {
+		"title": "Make the milk!", "word": "milk", "thai": "ผสมนม",
+		"hint": "Hold the jug over the bottle, then shake it.",
+		"childLine": "I'm hungry!", "doneLine": "The milk is ready!",
+	},
+	FEED: {
+		"title": "Drink!", "word": "drink", "thai": "ดื่มนม",
+		"hint": "Hold the bottle at Bunny's mouth.",
+		"childLine": "Milk, please!", "doneLine": "Yum! Thank you!",
+	},
 }
 
 ## How much work each act is. Tuned so every one takes roughly the same few
@@ -70,11 +85,28 @@ const COPY: Dictionary = {
 const BRUSH_STROKES_NEEDED: int = 10
 const WASH_DISTANCE_NEEDED: float = 2600.0
 const DRY_PATCHES: int = 9
+## `MIX` is two halves: pour, then shake. The pour is a HOLD, so it is measured
+## in seconds rather than in pixels -- the first gesture in this overlay that
+## rewards keeping still, which is why `_process` exists below.
+const POUR_SECONDS: float = 1.5
+const MIX_SHAKES_NEEDED: int = 8
+## `FEED` is a pure hold at the mouth, and it LEAKS: let go or wander off the
+## mouth and the bottle drains back. A toddler who parks a finger anywhere on
+## screen does not feed Bunny.
+const FEED_SECONDS: float = 2.2
+const FEED_DECAY: float = 0.7
+
+## Acts whose progress advances with TIME rather than with movement.
+const HOLD_KINDS: Array[String] = [MIX, FEED]
 
 const FACE_RADIUS: float = 190.0
 const MOUTH_OFFSET := Vector2(0.0, 92.0)
 const MOUTH_RADIUS: float = 96.0
 const TOOL_SIZE: float = 96.0
+## `MIX` has no face on screen: the bottle stands where the face would be, and
+## this is the opening of its neck, relative to the same centre.
+const BOTTLE_NECK := Vector2(0.0, -120.0)
+const BOTTLE_SIZE := Vector2(132.0, 210.0)
 
 var _kind: String = BRUSH
 var _progress: float = 0.0
@@ -88,6 +120,11 @@ var _strokes: int = 0
 var _distance: float = 0.0
 var _dry_patches: Dictionary = {}
 var _foam: Array = []
+## MIX: seconds poured so far, and shakes counted after the pour finished.
+var _poured: float = 0.0
+var _shakes: int = 0
+## FEED: seconds the bottle has been held at the mouth.
+var _fed: float = 0.0
 
 var _face: Control = null
 var _tool: Control = null
@@ -200,6 +237,10 @@ func begin(care_kind: String) -> void:
 	_last_dir = 0.0
 	_dry_patches.clear()
 	_foam.clear()
+	_poured = 0.0
+	_shakes = 0
+	_fed = 0.0
+	set_process(HOLD_KINDS.has(_kind))
 	var copy: Dictionary = COPY[_kind]
 	_title.text = String(copy["title"])
 	_hint.text = String(copy["hint"])
@@ -301,6 +342,22 @@ func apply_stroke(to: Vector2) -> void:
 			var row: int = clampi(int((local.y + FACE_RADIUS) / (FACE_RADIUS * 2.0 / 3.0)), 0, 2)
 			_dry_patches[row * 3 + col] = true
 			_progress = clampf(float(_dry_patches.size()) / float(DRY_PATCHES), 0.0, 1.0)
+		MIX:
+			# The SECOND half only. Pouring is a hold and is counted in `_process`;
+			# once the jug is empty the same finger shakes the bottle, and only a
+			# reversal counts -- a shake is back AND forth.
+			if _poured < POUR_SECONDS:
+				return
+			var shake_dir: float = signf(delta.x)
+			if shake_dir != 0.0 and shake_dir != _last_dir:
+				if _last_dir != 0.0:
+					_shakes += 1
+				_last_dir = shake_dir
+			_progress = _mix_progress()
+		FEED:
+			# Movement does not feed Bunny; `_process` does. Moving is only how the
+			# bottle gets to the mouth in the first place.
+			_progress = clampf(_fed / FEED_SECONDS, 0.0, 1.0)
 
 	if _bar != null:
 		_bar.value = _progress
@@ -308,6 +365,57 @@ func apply_stroke(to: Vector2) -> void:
 	_redraw()
 	if _progress >= 1.0:
 		_finish()
+
+
+## The hold half of `MIX` and all of `FEED`.
+##
+## Separate from `apply_stroke` and taking its own delta, so a test can advance a
+## hold deterministically instead of waiting on real seconds -- the same reason
+## `apply_stroke` is public.
+func apply_hold(delta: float, at: Vector2) -> void:
+	if _finished or delta <= 0.0:
+		return
+	var centre: Vector2 = size * 0.5
+	match _kind:
+		MIX:
+			if _poured >= POUR_SECONDS:
+				return
+			# Only over the bottle's neck, so the jug has to be aimed.
+			if at.distance_to(centre + BOTTLE_NECK) > MOUTH_RADIUS:
+				return
+			_poured = minf(_poured + delta, POUR_SECONDS)
+			_progress = _mix_progress()
+			if _foam.size() < 20:
+				_add_foam(centre + BOTTLE_NECK + Vector2(randf_range(-22.0, 22.0), 0.0))
+		FEED:
+			if at.distance_to(centre + MOUTH_OFFSET) <= MOUTH_RADIUS:
+				_fed = minf(_fed + delta, FEED_SECONDS)
+			else:
+				# Leaks back. Holding the bottle in the wrong place is not feeding.
+				_fed = maxf(_fed - delta * FEED_DECAY, 0.0)
+			_progress = clampf(_fed / FEED_SECONDS, 0.0, 1.0)
+		_:
+			return
+	if _bar != null:
+		_bar.value = _progress
+	care_progress.emit(_progress)
+	_redraw()
+	if _progress >= 1.0:
+		_finish()
+
+
+func _process(delta: float) -> void:
+	if _finished or not _dragging:
+		return
+	apply_hold(delta, _last_pos)
+
+
+## Pour first, then shake: half the bar each, so the child can see that the act
+## has two parts and which one they are on.
+func _mix_progress() -> float:
+	var pour: float = clampf(_poured / POUR_SECONDS, 0.0, 1.0)
+	var shake: float = clampf(float(_shakes) / float(MIX_SHAKES_NEEDED), 0.0, 1.0)
+	return clampf(pour * 0.5 + shake * 0.5, 0.0, 1.0)
 
 
 func _move_tool(to: Vector2) -> void:
@@ -328,6 +436,7 @@ func _finish() -> void:
 		return
 	_finished = true
 	_progress = 1.0
+	set_process(false)
 	_child_line.text = String((COPY[_kind] as Dictionary)["doneLine"])
 	care_completed.emit(_kind)
 
@@ -357,6 +466,9 @@ func _redraw() -> void:
 func _draw_face(_unused: Variant = null) -> void:
 	var c: Control = _face
 	var o := Vector2.ZERO
+	if _kind == MIX:
+		_draw_bottle(c, o)
+		return
 	c.draw_circle(o, FACE_RADIUS, Color(1.0, 0.886, 0.839))
 	# cheeks
 	c.draw_circle(o + Vector2(-112.0, 40.0), 34.0, Color(1.0, 0.776, 0.776, 0.75))
@@ -378,6 +490,13 @@ func _draw_face(_unused: Variant = null) -> void:
 		# an open mouth with teeth to brush
 		c.draw_circle(mouth, MOUTH_RADIUS * 0.62, Color(0.85, 0.44, 0.44))
 		c.draw_rect(Rect2(mouth + Vector2(-46.0, -26.0), Vector2(92.0, 30.0)), Palette.CREAM, true)
+	elif _kind == FEED:
+		# A round open mouth waiting for the bottle, and a ring that shows where it
+		# has to be held -- the only guidance a child gets, since there is no fail.
+		c.draw_circle(mouth, MOUTH_RADIUS * 0.44, Color(0.85, 0.44, 0.44))
+		c.draw_arc(mouth, MOUTH_RADIUS, 0.0, TAU, 40,
+				Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b,
+						0.5 - 0.3 * _progress), 5.0)
 	else:
 		c.draw_arc(mouth, 44.0, 0.15 * PI, 0.85 * PI, 18, Palette.INK, 8.0)
 
@@ -401,7 +520,38 @@ func _draw_face(_unused: Variant = null) -> void:
 		c.draw_circle(blob["pos"], float(blob["r"]), Color(1.0, 1.0, 1.0, 0.85))
 
 
-## The tool in the player's hand, drawn as itself so the three acts never look
+## The bottle being filled, standing in for the face during `MIX`. The milk level
+## rises with the POUR half only -- so a child can see that shaking a half-empty
+## bottle is not what the first half of the bar was asking for.
+func _draw_bottle(c: Control, o: Vector2) -> void:
+	var pour: float = clampf(_poured / POUR_SECONDS, 0.0, 1.0)
+	var body := Rect2(o + Vector2(-BOTTLE_SIZE.x * 0.5, -BOTTLE_SIZE.y * 0.5), BOTTLE_SIZE)
+	# glass
+	c.draw_rect(body, Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, 0.55), true)
+	# milk, filling from the bottom
+	var milk_h: float = BOTTLE_SIZE.y * 0.86 * pour
+	if milk_h > 1.0:
+		c.draw_rect(Rect2(body.position + Vector2(6.0, body.size.y - 6.0 - milk_h),
+				Vector2(body.size.x - 12.0, milk_h)), Color(1.0, 0.988, 0.949), true)
+	c.draw_rect(body, Palette.DUSTY_BLUE, false, 5.0)
+	# neck and teat, at BOTTLE_NECK, which is what the pour has to be aimed at
+	var neck: Vector2 = o + BOTTLE_NECK
+	c.draw_rect(Rect2(neck + Vector2(-30.0, 0.0), Vector2(60.0, 40.0)), Palette.SOFT_PINK, true)
+	c.draw_circle(neck + Vector2(0.0, -12.0), 24.0, Palette.SOFT_PINK)
+	if pour < 1.0:
+		c.draw_arc(neck, MOUTH_RADIUS, 0.0, TAU, 40,
+				Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, 0.45), 5.0)
+	# the shake half, shown as the bottle rocking rather than as a number
+	if pour >= 1.0 and _shakes > 0 and not _finished:
+		var lean: float = float(_shakes % 2) * 2.0 - 1.0
+		c.draw_line(o + Vector2(lean * 46.0, -BOTTLE_SIZE.y * 0.62),
+				o + Vector2(-lean * 46.0, -BOTTLE_SIZE.y * 0.62),
+				Color(1.0, 1.0, 1.0, 0.7), 6.0)
+	for blob: Dictionary in _foam:
+		c.draw_circle(blob["pos"], float(blob["r"]) * 0.7, Color(1.0, 1.0, 1.0, 0.7))
+
+
+## The tool in the player's hand, drawn as itself so the acts never look
 ## the same. Position is the raw pointer; the shape says what it is.
 func _draw_tool(_unused: Variant = null) -> void:
 	var c: Control = _tool
@@ -420,3 +570,19 @@ func _draw_tool(_unused: Variant = null) -> void:
 					Palette.SOFT_PINK, true)
 			c.draw_rect(Rect2(o + Vector2(-38.0, -8.0), Vector2(76.0, 8.0)),
 					Palette.CREAM, true)
+		MIX:
+			# A little jug, tipped, with a spout that points where the milk lands.
+			c.draw_rect(Rect2(o + Vector2(-34.0, -30.0), Vector2(60.0, 56.0)),
+					Palette.DUSTY_BLUE, true)
+			c.draw_line(o + Vector2(26.0, -18.0), o + Vector2(52.0, 4.0),
+					Palette.DUSTY_BLUE, 12.0)
+			if _poured < POUR_SECONDS and _dragging:
+				c.draw_line(o + Vector2(52.0, 6.0), o + Vector2(52.0, 46.0),
+						Color(1.0, 0.988, 0.949), 9.0)
+		FEED:
+			# The bottle itself, held teat-down, so it is obvious which end goes in.
+			c.draw_rect(Rect2(o + Vector2(-26.0, -46.0), Vector2(52.0, 74.0)),
+					Color(1.0, 0.988, 0.949), true)
+			c.draw_rect(Rect2(o + Vector2(-26.0, -46.0), Vector2(52.0, 74.0)),
+					Palette.DUSTY_BLUE, false, 4.0)
+			c.draw_circle(o + Vector2(0.0, 40.0), 18.0, Palette.SOFT_PINK)

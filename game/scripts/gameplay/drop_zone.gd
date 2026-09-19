@@ -47,6 +47,12 @@ const INTERACTION_TO_ZONE_ID: Dictionary = {
 	"brushTeeth": ZONE_HAND,
 	"washFace": ZONE_HAND,
 	"dryFace": ZONE_HAND,
+	# Mission 01's two acts. `prepareMilk` is a tool in the hand at the counter,
+	# exactly like the three above. `giveBottle` is the one care act whose landing
+	# place is Bunny's own MOUTH, so it takes that zone -- the same one the Baby
+	# Room's `dragToMouth` uses, which is why no new zone is needed here either.
+	"prepareMilk": ZONE_HAND,
+	"giveBottle": ZONE_MOUTH,
 }
 
 ## Conventional scene-node name per zone id, so `ActivityScene` and the Baby Room

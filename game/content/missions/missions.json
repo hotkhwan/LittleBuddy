@@ -22,7 +22,7 @@
       "levelId": "gettingDressed",
       "levelTitle": "Getting Dressed",
       "levelThaiTitle": "แต่งตัว",
-      "levelNumber": 12,
+      "levelNumber": 13,
       "storyBeat": "Buddy walks back to the bedroom and chooses what to wear.",
       "template": "placeIt",
       "roomPath": [
@@ -307,7 +307,7 @@
       "levelId": "goodMorning",
       "levelTitle": "Good Morning",
       "levelThaiTitle": "อรุณสวัสดิ์",
-      "levelNumber": 11,
+      "levelNumber": 12,
       "storyBeat": "Buddy's first morning as a toddler: wake up, walk to the bathroom, brush your teeth.",
       "template": "sequenceRoutine",
       "roomPath": [
@@ -353,7 +353,7 @@
       "levelId": "breakfast",
       "levelTitle": "Breakfast",
       "levelThaiTitle": "อาหารเช้า",
-      "levelNumber": 13,
+      "levelNumber": 14,
       "storyBeat": "Buddy walks to the kitchen, sits down at the table and eats breakfast alone for the first time.",
       "template": "fetchAndGive",
       "roomPath": [
@@ -400,7 +400,7 @@
       "levelId": "playTime",
       "levelTitle": "Play Time",
       "levelThaiTitle": "เวลาเล่น",
-      "levelNumber": 14,
+      "levelNumber": 15,
       "storyBeat": "Buddy walks to the living room and plays with the teddy, the ball and the blocks.",
       "template": "fetchAndGive",
       "roomPath": [
@@ -447,7 +447,7 @@
       "levelId": "tidyAndBed",
       "levelTitle": "Clean Up and Good Night",
       "levelThaiTitle": "เก็บของแล้วเข้านอน",
-      "levelNumber": 15,
+      "levelNumber": 16,
       "storyBeat": "The day closes: Buddy tidies the toys away, walks home through the kitchen and goes to bed.",
       "template": "sequenceRoutine",
       "roomPath": [
@@ -513,6 +513,52 @@
         ],
         "listeningTaskIds": [
           "pickUpToothbrush"
+        ]
+      }
+    },
+    {
+      "missionId": "imHungry",
+      "title": "I'm Hungry!",
+      "thaiTitle": "หนูหิวแล้ว",
+      "category": "care",
+      "introPhrase": "I'm hungry, Aliz!",
+      "outroPhrase": "Thank you, Aliz!",
+      "unlockAtStars": 0,
+      "taskIds": [
+        "bunnyIsHungry",
+        "goToKitchen",
+        "findBottle",
+        "prepareMilkCare",
+        "carryMilkToBunny",
+        "feedBunnyCare",
+        "cuddleBunny"
+      ],
+      "chapterId": "ch3",
+      "levelId": "imHungry",
+      "levelTitle": "I'm Hungry!",
+      "levelThaiTitle": "หนูหิวแล้ว",
+      "levelNumber": 11,
+      "storyBeat": "Bunny is hungry. Aliz makes milk in the kitchen and helps Bunny drink.",
+      "template": "careRoutine",
+      "roomPath": [
+        "bedroom",
+        "kitchen",
+        "bedroom"
+      ],
+      "estimatedMinutes": 4,
+      "starRules": {
+        "coreTaskIds": [
+          "bunnyIsHungry",
+          "goToKitchen",
+          "prepareMilkCare",
+          "carryMilkToBunny",
+          "feedBunnyCare"
+        ],
+        "listeningTaskIds": [
+          "findBottle"
+        ],
+        "optionalTaskIds": [
+          "cuddleBunny"
         ]
       }
     }

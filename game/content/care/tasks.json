@@ -1,7 +1,7 @@
 {
   "contentVersion": 1,
   "categoryId": "care",
-  "title": "Caring for Little Buddy",
+  "title": "Caring for Bunny",
   "tasks": [
     {
       "taskId": "talkToChild",
@@ -235,6 +235,216 @@
       "objectId": "towel",
       "repeatPrompt": "Can you say towel?",
       "cooldown": 3
+    },
+    {
+      "taskId": "bunnyIsHungry",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "teddy",
+      "prompt": "Bunny is hungry!",
+      "instruction": "Go to Bunny.",
+      "repeatPrompt": "Can you say hungry?",
+      "thaiHint": "น้องบันนี่หิวแล้ว",
+      "targetWords": [
+        "hungry"
+      ],
+      "acceptedCommands": [
+        "hungry",
+        "bunny",
+        "coming"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bedroom.littleBuddy",
+      "targetId": "bedroom.littleBuddy",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "wave"
+    },
+    {
+      "taskId": "goToKitchen",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "milk",
+      "prompt": "Let's make some milk!",
+      "instruction": "Walk to the kitchen.",
+      "repeatPrompt": "Can you say milk?",
+      "thaiHint": "ไปห้องครัวกันเถอะ",
+      "targetWords": [
+        "milk"
+      ],
+      "acceptedCommands": [
+        "milk",
+        "kitchen",
+        "let's go"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bedroom.doorToKitchen",
+      "targetId": "bedroom.doorToKitchen",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "walk"
+    },
+    {
+      "taskId": "findBottle",
+      "category": "care",
+      "mode": "findIt",
+      "objectId": "cup",
+      "prompt": "Where is the bottle?",
+      "instruction": "Find the baby bottle.",
+      "repeatPrompt": "Can you say bottle?",
+      "thaiHint": "ขวดนมอยู่ไหน",
+      "targetWords": [
+        "bottle"
+      ],
+      "acceptedCommands": [
+        "bottle",
+        "the bottle",
+        "here it is"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.counter",
+      "targetId": "kitchen.counter",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "pickUp"
+    },
+    {
+      "taskId": "prepareMilkCare",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "milk",
+      "prompt": "Let's make the milk!",
+      "instruction": "Pour the water, then mix.",
+      "repeatPrompt": "Can you say water?",
+      "thaiHint": "ผสมนมกันเถอะ",
+      "targetWords": [
+        "water"
+      ],
+      "acceptedCommands": [
+        "water",
+        "milk",
+        "mix"
+      ],
+      "interaction": "prepareMilk",
+      "requiresWalkTo": "kitchen.counter",
+      "targetId": "kitchen.counter",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "hold"
+    },
+    {
+      "taskId": "carryMilkToBunny",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "milk",
+      "prompt": "Take it to Bunny!",
+      "instruction": "Walk back to Bunny.",
+      "repeatPrompt": "Can you say milk?",
+      "thaiHint": "เอาไปให้น้องบันนี่",
+      "targetWords": [
+        "milk"
+      ],
+      "acceptedCommands": [
+        "milk",
+        "bunny",
+        "back"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "kitchen.doorToBedroom",
+      "targetId": "kitchen.doorToBedroom",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "hold"
+    },
+    {
+      "taskId": "feedBunnyCare",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "milk",
+      "prompt": "Time to drink!",
+      "instruction": "Give Bunny the bottle.",
+      "repeatPrompt": "Can you say drink?",
+      "thaiHint": "ดื่มนมกันเถอะ",
+      "targetWords": [
+        "drink"
+      ],
+      "acceptedCommands": [
+        "drink",
+        "milk",
+        "here you are"
+      ],
+      "interaction": "giveBottle",
+      "requiresWalkTo": "bedroom.littleBuddy",
+      "targetId": "bedroom.littleBuddy",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "characterAction": "give"
+    },
+    {
+      "taskId": "cuddleBunny",
+      "category": "care",
+      "mode": "followInstruction",
+      "objectId": "teddy",
+      "prompt": "Bunny wants a cuddle.",
+      "instruction": "Give Bunny a big hug.",
+      "repeatPrompt": "Can you say hug?",
+      "thaiHint": "กอดน้องบันนี่",
+      "targetWords": [
+        "hug"
+      ],
+      "acceptedCommands": [
+        "hug",
+        "cuddle",
+        "a hug"
+      ],
+      "interaction": "dragToHug",
+      "requiresWalkTo": "bedroom.littleBuddy",
+      "targetId": "bedroom.littleBuddy",
+      "characterAction": "hug",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "cooldown": 3,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3
     }
   ]
 }

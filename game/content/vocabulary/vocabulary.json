@@ -1,68 +1,560 @@
 {
   "contentVersion": 1,
   "words": [
-    { "wordId": "milk", "word": "milk", "category": "feeding", "partOfSpeech": "noun", "objectId": "milk", "thai": "นม", "exampleSentence": "I want some milk." },
-    { "wordId": "water", "word": "water", "category": "feeding", "partOfSpeech": "noun", "objectId": "water", "thai": "น้ำ", "exampleSentence": "Give me some water." },
-    { "wordId": "apple", "word": "apple", "category": "feeding", "partOfSpeech": "noun", "objectId": "apple", "thai": "แอปเปิล", "exampleSentence": "The apple is red." },
-    { "wordId": "banana", "word": "banana", "category": "feeding", "partOfSpeech": "noun", "objectId": "banana", "thai": "กล้วย", "exampleSentence": "The banana is yellow." },
-    { "wordId": "spoon", "word": "spoon", "category": "feeding", "partOfSpeech": "noun", "objectId": "spoon", "thai": "ช้อน", "exampleSentence": "Here is my spoon." },
-    { "wordId": "bowl", "word": "bowl", "category": "feeding", "partOfSpeech": "noun", "objectId": "bowl", "thai": "ชาม", "exampleSentence": "Food goes in the bowl." },
-    { "wordId": "hungry", "word": "hungry", "category": "feeding", "partOfSpeech": "adjective", "objectId": "", "thai": "หิว", "exampleSentence": "I am hungry." },
-    { "wordId": "thirsty", "word": "thirsty", "category": "feeding", "partOfSpeech": "adjective", "objectId": "", "thai": "หิวน้ำ", "exampleSentence": "I am thirsty." },
-    { "wordId": "eat", "word": "eat", "category": "feeding", "partOfSpeech": "verb", "objectId": "", "thai": "กิน", "exampleSentence": "Let's eat." },
-    { "wordId": "drink", "word": "drink", "category": "feeding", "partOfSpeech": "verb", "objectId": "", "thai": "ดื่ม", "exampleSentence": "I drink my milk." },
-
-    { "wordId": "shirt", "word": "shirt", "category": "dressing", "partOfSpeech": "noun", "objectId": "redShirt", "thai": "เสื้อ", "exampleSentence": "Put on the shirt." },
-    { "wordId": "pants", "word": "pants", "category": "dressing", "partOfSpeech": "noun", "objectId": "pants", "thai": "กางเกง", "exampleSentence": "These are my pants." },
-    { "wordId": "shoes", "word": "shoes", "category": "dressing", "partOfSpeech": "noun", "objectId": "shoes", "thai": "รองเท้า", "exampleSentence": "My shoes are on." },
-    { "wordId": "hat", "word": "hat", "category": "dressing", "partOfSpeech": "noun", "objectId": "hat", "thai": "หมวก", "exampleSentence": "I wear a hat." },
-    { "wordId": "pajamas", "word": "pajamas", "category": "dressing", "partOfSpeech": "noun", "objectId": "pajamas", "thai": "ชุดนอน", "exampleSentence": "Pajamas are for bedtime." },
-    { "wordId": "red", "word": "red", "category": "dressing", "partOfSpeech": "color", "objectId": "redShirt", "thai": "สีแดง", "exampleSentence": "The shirt is red." },
-    { "wordId": "blue", "word": "blue", "category": "dressing", "partOfSpeech": "color", "objectId": "blueShirt", "thai": "สีน้ำเงิน", "exampleSentence": "The shirt is blue." },
-    { "wordId": "yellow", "word": "yellow", "category": "dressing", "partOfSpeech": "color", "objectId": "yellowShirt", "thai": "สีเหลือง", "exampleSentence": "The shirt is yellow." },
-    { "wordId": "wear", "word": "wear", "category": "dressing", "partOfSpeech": "verb", "objectId": "", "thai": "สวมใส่", "exampleSentence": "I wear my hat." },
-
-    { "wordId": "soap", "word": "soap", "category": "bath", "partOfSpeech": "noun", "objectId": "soap", "thai": "สบู่", "exampleSentence": "Give me the soap." },
-    { "wordId": "towel", "word": "towel", "category": "bath", "partOfSpeech": "noun", "objectId": "towel", "thai": "ผ้าเช็ดตัว", "exampleSentence": "The towel is soft." },
-    { "wordId": "toothbrush", "word": "toothbrush", "category": "bath", "partOfSpeech": "noun", "objectId": "toothbrush", "thai": "แปรงสีฟัน", "exampleSentence": "This is my toothbrush." },
-    { "wordId": "cup", "word": "cup", "category": "bath", "partOfSpeech": "noun", "objectId": "cup", "thai": "แก้วน้ำ", "exampleSentence": "I drink from my cup." },
-    { "wordId": "bath", "word": "bath", "category": "bath", "partOfSpeech": "noun", "objectId": "", "thai": "อาบน้ำ", "exampleSentence": "It is bath time." },
-    { "wordId": "wash", "word": "wash", "category": "bath", "partOfSpeech": "verb", "objectId": "", "thai": "ล้าง", "exampleSentence": "Let's wash." },
-    { "wordId": "clean", "word": "clean", "category": "bath", "partOfSpeech": "adjective", "objectId": "", "thai": "สะอาด", "exampleSentence": "I am clean." },
-    { "wordId": "teeth", "word": "teeth", "category": "bath", "partOfSpeech": "noun", "objectId": "", "thai": "ฟัน", "exampleSentence": "Brush my teeth." },
-    { "wordId": "wet", "word": "wet", "category": "bath", "partOfSpeech": "adjective", "objectId": "", "thai": "เปียก", "exampleSentence": "I am all wet." },
-    { "wordId": "dry", "word": "dry", "category": "bath", "partOfSpeech": "adjective", "objectId": "", "thai": "แห้ง", "exampleSentence": "Now I am dry." },
-
-    { "wordId": "teddy", "word": "teddy", "category": "play", "partOfSpeech": "noun", "objectId": "teddy", "thai": "ตุ๊กตาหมี", "exampleSentence": "I love my teddy." },
-    { "wordId": "ball", "word": "ball", "category": "play", "partOfSpeech": "noun", "objectId": "ball", "thai": "ลูกบอล", "exampleSentence": "Throw the ball." },
-    { "wordId": "block", "word": "block", "category": "play", "partOfSpeech": "noun", "objectId": "blocks", "thai": "บล็อกไม้", "exampleSentence": "Stack the block." },
-    { "wordId": "star", "word": "star", "category": "play", "partOfSpeech": "noun", "objectId": "starToy", "thai": "ดาว", "exampleSentence": "The star is yellow." },
-    { "wordId": "circle", "word": "circle", "category": "play", "partOfSpeech": "noun", "objectId": "circleToy", "thai": "วงกลม", "exampleSentence": "This is a circle." },
-    { "wordId": "square", "word": "square", "category": "play", "partOfSpeech": "noun", "objectId": "squareToy", "thai": "สี่เหลี่ยม", "exampleSentence": "This is a square." },
-    { "wordId": "play", "word": "play", "category": "play", "partOfSpeech": "verb", "objectId": "", "thai": "เล่น", "exampleSentence": "Let's play." },
-    { "wordId": "throw", "word": "throw", "category": "play", "partOfSpeech": "verb", "objectId": "", "thai": "โยน", "exampleSentence": "Throw the ball to me." },
-    { "wordId": "toyBox", "word": "toy box", "category": "play", "partOfSpeech": "noun", "objectId": "toyBox", "thai": "กล่องของเล่น", "exampleSentence": "Put the toys in the toy box." },
-
-    { "wordId": "sleepy", "word": "sleepy", "category": "bedtime", "partOfSpeech": "adjective", "objectId": "", "thai": "ง่วงนอน", "exampleSentence": "I am sleepy." },
-    { "wordId": "bed", "word": "bed", "category": "bedtime", "partOfSpeech": "noun", "objectId": "", "thai": "เตียง", "exampleSentence": "Time for bed." },
-    { "wordId": "blanket", "word": "blanket", "category": "bedtime", "partOfSpeech": "noun", "objectId": "blanket", "thai": "ผ้าห่ม", "exampleSentence": "The blanket is warm." },
-    { "wordId": "pillow", "word": "pillow", "category": "bedtime", "partOfSpeech": "noun", "objectId": "pillow", "thai": "หมอน", "exampleSentence": "My pillow is soft." },
-    { "wordId": "lamp", "word": "lamp", "category": "bedtime", "partOfSpeech": "noun", "objectId": "lamp", "thai": "โคมไฟ", "exampleSentence": "Turn off the lamp." },
-    { "wordId": "goodNight", "word": "good night", "category": "bedtime", "partOfSpeech": "phrase", "objectId": "", "thai": "ราตรีสวัสดิ์", "exampleSentence": "Good night!" },
-    { "wordId": "night", "word": "night", "category": "bedtime", "partOfSpeech": "noun", "objectId": "", "thai": "กลางคืน", "exampleSentence": "The night is quiet." },
-    { "wordId": "moon", "word": "moon", "category": "bedtime", "partOfSpeech": "noun", "objectId": "", "thai": "พระจันทร์", "exampleSentence": "The moon is in the sky." },
-
-    { "wordId": "goodMorning", "word": "good morning", "category": "routine", "partOfSpeech": "phrase", "objectId": "", "thai": "อรุณสวัสดิ์", "exampleSentence": "Good morning!", "stage": "toddler", "exposure": "active" },
-    { "wordId": "bedroom", "word": "bedroom", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "ห้องนอน", "exampleSentence": "My bed is in the bedroom.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "bathroom", "word": "bathroom", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "ห้องน้ำ", "exampleSentence": "We brush our teeth in the bathroom.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "kitchen", "word": "kitchen", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "ห้องครัว", "exampleSentence": "We eat in the kitchen.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "livingRoom", "word": "living room", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "ห้องนั่งเล่น", "exampleSentence": "We play in the living room.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "walk", "word": "walk", "category": "routine", "partOfSpeech": "verb", "objectId": "", "thai": "เดิน", "exampleSentence": "Walk to the kitchen.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "sit", "word": "sit", "category": "routine", "partOfSpeech": "verb", "objectId": "", "thai": "นั่ง", "exampleSentence": "Sit at the table.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "table", "word": "table", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "โต๊ะ", "exampleSentence": "Breakfast is on the table.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "sofa", "word": "sofa", "category": "routine", "partOfSpeech": "noun", "objectId": "", "thai": "โซฟา", "exampleSentence": "The sofa is soft.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "sleep", "word": "sleep", "category": "bedtime", "partOfSpeech": "verb", "objectId": "", "thai": "นอนหลับ", "exampleSentence": "Time to sleep.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "cleanUp", "word": "clean up", "category": "play", "partOfSpeech": "phrase", "objectId": "toyBox", "thai": "เก็บของ", "exampleSentence": "Clean up the toys.", "stage": "toddler", "exposure": "active" },
-    { "wordId": "hug", "word": "hug", "category": "play", "partOfSpeech": "verb", "objectId": "teddy", "thai": "กอด", "exampleSentence": "Hug the teddy.", "stage": "toddler", "exposure": "active" }
+    {
+      "wordId": "milk",
+      "word": "milk",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "milk",
+      "thai": "นม",
+      "exampleSentence": "I want some milk."
+    },
+    {
+      "wordId": "water",
+      "word": "water",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "water",
+      "thai": "น้ำ",
+      "exampleSentence": "Give me some water."
+    },
+    {
+      "wordId": "apple",
+      "word": "apple",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "apple",
+      "thai": "แอปเปิล",
+      "exampleSentence": "The apple is red."
+    },
+    {
+      "wordId": "banana",
+      "word": "banana",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "banana",
+      "thai": "กล้วย",
+      "exampleSentence": "The banana is yellow."
+    },
+    {
+      "wordId": "spoon",
+      "word": "spoon",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "spoon",
+      "thai": "ช้อน",
+      "exampleSentence": "Here is my spoon."
+    },
+    {
+      "wordId": "bowl",
+      "word": "bowl",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "bowl",
+      "thai": "ชาม",
+      "exampleSentence": "Food goes in the bowl."
+    },
+    {
+      "wordId": "hungry",
+      "word": "hungry",
+      "category": "feeding",
+      "partOfSpeech": "adjective",
+      "objectId": "",
+      "thai": "หิว",
+      "exampleSentence": "I am hungry."
+    },
+    {
+      "wordId": "thirsty",
+      "word": "thirsty",
+      "category": "feeding",
+      "partOfSpeech": "adjective",
+      "objectId": "",
+      "thai": "หิวน้ำ",
+      "exampleSentence": "I am thirsty."
+    },
+    {
+      "wordId": "eat",
+      "word": "eat",
+      "category": "feeding",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "กิน",
+      "exampleSentence": "Let's eat."
+    },
+    {
+      "wordId": "drink",
+      "word": "drink",
+      "category": "feeding",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "ดื่ม",
+      "exampleSentence": "I drink my milk."
+    },
+    {
+      "wordId": "shirt",
+      "word": "shirt",
+      "category": "dressing",
+      "partOfSpeech": "noun",
+      "objectId": "redShirt",
+      "thai": "เสื้อ",
+      "exampleSentence": "Put on the shirt."
+    },
+    {
+      "wordId": "pants",
+      "word": "pants",
+      "category": "dressing",
+      "partOfSpeech": "noun",
+      "objectId": "pants",
+      "thai": "กางเกง",
+      "exampleSentence": "These are my pants."
+    },
+    {
+      "wordId": "shoes",
+      "word": "shoes",
+      "category": "dressing",
+      "partOfSpeech": "noun",
+      "objectId": "shoes",
+      "thai": "รองเท้า",
+      "exampleSentence": "My shoes are on."
+    },
+    {
+      "wordId": "hat",
+      "word": "hat",
+      "category": "dressing",
+      "partOfSpeech": "noun",
+      "objectId": "hat",
+      "thai": "หมวก",
+      "exampleSentence": "I wear a hat."
+    },
+    {
+      "wordId": "pajamas",
+      "word": "pajamas",
+      "category": "dressing",
+      "partOfSpeech": "noun",
+      "objectId": "pajamas",
+      "thai": "ชุดนอน",
+      "exampleSentence": "Pajamas are for bedtime."
+    },
+    {
+      "wordId": "red",
+      "word": "red",
+      "category": "dressing",
+      "partOfSpeech": "color",
+      "objectId": "redShirt",
+      "thai": "สีแดง",
+      "exampleSentence": "The shirt is red."
+    },
+    {
+      "wordId": "blue",
+      "word": "blue",
+      "category": "dressing",
+      "partOfSpeech": "color",
+      "objectId": "blueShirt",
+      "thai": "สีน้ำเงิน",
+      "exampleSentence": "The shirt is blue."
+    },
+    {
+      "wordId": "yellow",
+      "word": "yellow",
+      "category": "dressing",
+      "partOfSpeech": "color",
+      "objectId": "yellowShirt",
+      "thai": "สีเหลือง",
+      "exampleSentence": "The shirt is yellow."
+    },
+    {
+      "wordId": "wear",
+      "word": "wear",
+      "category": "dressing",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "สวมใส่",
+      "exampleSentence": "I wear my hat."
+    },
+    {
+      "wordId": "soap",
+      "word": "soap",
+      "category": "bath",
+      "partOfSpeech": "noun",
+      "objectId": "soap",
+      "thai": "สบู่",
+      "exampleSentence": "Give me the soap."
+    },
+    {
+      "wordId": "towel",
+      "word": "towel",
+      "category": "bath",
+      "partOfSpeech": "noun",
+      "objectId": "towel",
+      "thai": "ผ้าเช็ดตัว",
+      "exampleSentence": "The towel is soft."
+    },
+    {
+      "wordId": "toothbrush",
+      "word": "toothbrush",
+      "category": "bath",
+      "partOfSpeech": "noun",
+      "objectId": "toothbrush",
+      "thai": "แปรงสีฟัน",
+      "exampleSentence": "This is my toothbrush."
+    },
+    {
+      "wordId": "cup",
+      "word": "cup",
+      "category": "bath",
+      "partOfSpeech": "noun",
+      "objectId": "cup",
+      "thai": "แก้วน้ำ",
+      "exampleSentence": "I drink from my cup."
+    },
+    {
+      "wordId": "bath",
+      "word": "bath",
+      "category": "bath",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "อาบน้ำ",
+      "exampleSentence": "It is bath time."
+    },
+    {
+      "wordId": "wash",
+      "word": "wash",
+      "category": "bath",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "ล้าง",
+      "exampleSentence": "Let's wash."
+    },
+    {
+      "wordId": "clean",
+      "word": "clean",
+      "category": "bath",
+      "partOfSpeech": "adjective",
+      "objectId": "",
+      "thai": "สะอาด",
+      "exampleSentence": "I am clean."
+    },
+    {
+      "wordId": "teeth",
+      "word": "teeth",
+      "category": "bath",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "ฟัน",
+      "exampleSentence": "Brush my teeth."
+    },
+    {
+      "wordId": "wet",
+      "word": "wet",
+      "category": "bath",
+      "partOfSpeech": "adjective",
+      "objectId": "",
+      "thai": "เปียก",
+      "exampleSentence": "I am all wet."
+    },
+    {
+      "wordId": "dry",
+      "word": "dry",
+      "category": "bath",
+      "partOfSpeech": "adjective",
+      "objectId": "",
+      "thai": "แห้ง",
+      "exampleSentence": "Now I am dry."
+    },
+    {
+      "wordId": "teddy",
+      "word": "teddy",
+      "category": "play",
+      "partOfSpeech": "noun",
+      "objectId": "teddy",
+      "thai": "ตุ๊กตาหมี",
+      "exampleSentence": "I love my teddy."
+    },
+    {
+      "wordId": "ball",
+      "word": "ball",
+      "category": "play",
+      "partOfSpeech": "noun",
+      "objectId": "ball",
+      "thai": "ลูกบอล",
+      "exampleSentence": "Throw the ball."
+    },
+    {
+      "wordId": "block",
+      "word": "block",
+      "category": "play",
+      "partOfSpeech": "noun",
+      "objectId": "blocks",
+      "thai": "บล็อกไม้",
+      "exampleSentence": "Stack the block."
+    },
+    {
+      "wordId": "star",
+      "word": "star",
+      "category": "play",
+      "partOfSpeech": "noun",
+      "objectId": "starToy",
+      "thai": "ดาว",
+      "exampleSentence": "The star is yellow."
+    },
+    {
+      "wordId": "circle",
+      "word": "circle",
+      "category": "play",
+      "partOfSpeech": "noun",
+      "objectId": "circleToy",
+      "thai": "วงกลม",
+      "exampleSentence": "This is a circle."
+    },
+    {
+      "wordId": "square",
+      "word": "square",
+      "category": "play",
+      "partOfSpeech": "noun",
+      "objectId": "squareToy",
+      "thai": "สี่เหลี่ยม",
+      "exampleSentence": "This is a square."
+    },
+    {
+      "wordId": "play",
+      "word": "play",
+      "category": "play",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "เล่น",
+      "exampleSentence": "Let's play."
+    },
+    {
+      "wordId": "throw",
+      "word": "throw",
+      "category": "play",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "โยน",
+      "exampleSentence": "Throw the ball to me."
+    },
+    {
+      "wordId": "toyBox",
+      "word": "toy box",
+      "category": "play",
+      "partOfSpeech": "noun",
+      "objectId": "toyBox",
+      "thai": "กล่องของเล่น",
+      "exampleSentence": "Put the toys in the toy box."
+    },
+    {
+      "wordId": "sleepy",
+      "word": "sleepy",
+      "category": "bedtime",
+      "partOfSpeech": "adjective",
+      "objectId": "",
+      "thai": "ง่วงนอน",
+      "exampleSentence": "I am sleepy."
+    },
+    {
+      "wordId": "bed",
+      "word": "bed",
+      "category": "bedtime",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "เตียง",
+      "exampleSentence": "Time for bed."
+    },
+    {
+      "wordId": "blanket",
+      "word": "blanket",
+      "category": "bedtime",
+      "partOfSpeech": "noun",
+      "objectId": "blanket",
+      "thai": "ผ้าห่ม",
+      "exampleSentence": "The blanket is warm."
+    },
+    {
+      "wordId": "pillow",
+      "word": "pillow",
+      "category": "bedtime",
+      "partOfSpeech": "noun",
+      "objectId": "pillow",
+      "thai": "หมอน",
+      "exampleSentence": "My pillow is soft."
+    },
+    {
+      "wordId": "lamp",
+      "word": "lamp",
+      "category": "bedtime",
+      "partOfSpeech": "noun",
+      "objectId": "lamp",
+      "thai": "โคมไฟ",
+      "exampleSentence": "Turn off the lamp."
+    },
+    {
+      "wordId": "goodNight",
+      "word": "good night",
+      "category": "bedtime",
+      "partOfSpeech": "phrase",
+      "objectId": "",
+      "thai": "ราตรีสวัสดิ์",
+      "exampleSentence": "Good night!"
+    },
+    {
+      "wordId": "night",
+      "word": "night",
+      "category": "bedtime",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "กลางคืน",
+      "exampleSentence": "The night is quiet."
+    },
+    {
+      "wordId": "moon",
+      "word": "moon",
+      "category": "bedtime",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "พระจันทร์",
+      "exampleSentence": "The moon is in the sky."
+    },
+    {
+      "wordId": "goodMorning",
+      "word": "good morning",
+      "category": "routine",
+      "partOfSpeech": "phrase",
+      "objectId": "",
+      "thai": "อรุณสวัสดิ์",
+      "exampleSentence": "Good morning!",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "bedroom",
+      "word": "bedroom",
+      "category": "routine",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "ห้องนอน",
+      "exampleSentence": "My bed is in the bedroom.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "bathroom",
+      "word": "bathroom",
+      "category": "routine",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "ห้องน้ำ",
+      "exampleSentence": "We brush our teeth in the bathroom.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "kitchen",
+      "word": "kitchen",
+      "category": "routine",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "ห้องครัว",
+      "exampleSentence": "We eat in the kitchen.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "livingRoom",
+      "word": "living room",
+      "category": "routine",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "ห้องนั่งเล่น",
+      "exampleSentence": "We play in the living room.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "walk",
+      "word": "walk",
+      "category": "routine",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "เดิน",
+      "exampleSentence": "Walk to the kitchen.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "sit",
+      "word": "sit",
+      "category": "routine",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "นั่ง",
+      "exampleSentence": "Sit at the table.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "table",
+      "word": "table",
+      "category": "routine",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "โต๊ะ",
+      "exampleSentence": "Breakfast is on the table.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "sofa",
+      "word": "sofa",
+      "category": "routine",
+      "partOfSpeech": "noun",
+      "objectId": "",
+      "thai": "โซฟา",
+      "exampleSentence": "The sofa is soft.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "sleep",
+      "word": "sleep",
+      "category": "bedtime",
+      "partOfSpeech": "verb",
+      "objectId": "",
+      "thai": "นอนหลับ",
+      "exampleSentence": "Time to sleep.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "cleanUp",
+      "word": "clean up",
+      "category": "play",
+      "partOfSpeech": "phrase",
+      "objectId": "toyBox",
+      "thai": "เก็บของ",
+      "exampleSentence": "Clean up the toys.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "hug",
+      "word": "hug",
+      "category": "play",
+      "partOfSpeech": "verb",
+      "objectId": "teddy",
+      "thai": "กอด",
+      "exampleSentence": "Hug the teddy.",
+      "stage": "toddler",
+      "exposure": "active"
+    },
+    {
+      "wordId": "bottle",
+      "word": "bottle",
+      "category": "feeding",
+      "partOfSpeech": "noun",
+      "objectId": "cup",
+      "thai": "ขวดนม",
+      "exampleSentence": "Here is the bottle."
+    }
   ]
 }

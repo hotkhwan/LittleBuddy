@@ -444,16 +444,24 @@ func _test_completing_a_chapter_unlocks_the_next():
 		failures.append("finishing every level must complete chapter 2")
 	if not _system.is_chapter_unlocked("ch3", done):
 		failures.append("completing chapter 2 must unlock chapter 3")
-	# `goodMorning` is L11, the first level of chapter 3. `gettingDressed` was the
-	# first only while chapter 3 held a single promoted level.
-	if not _system.is_level_unlocked("goodMorning", done):
-		failures.append("completing chapter 2 must unlock the first chapter 3 level")
+	# ASKED of the chain rather than hard-coded. This assertion has now gone stale
+	# twice -- once when `goodMorning` replaced `gettingDressed` at the front, and
+	# again when `imHungry` replaced `goodMorning` -- and each time the test failed
+	# for a fact about chapter 3's running order that it was never meant to pin.
+	# What it actually defends is "whatever is first unlocks when ch2 ends".
+	var ch3_chain: PackedStringArray = _system.get_chapter_chain("ch3")
+	var first_ch3: String = ch3_chain[0] if ch3_chain.size() > 0 else ""
+	if first_ch3.is_empty():
+		failures.append("chapter 3 has no chained levels at all")
+	elif not _system.is_level_unlocked(first_ch3, done):
+		failures.append("completing chapter 2 must unlock the first chapter 3 level ('%s')"
+				% first_ch3)
 	if not _system.is_level_unlocked("sayItChallenge", done):
 		failures.append("a bonus level must unlock with its chapter")
-	if _system.get_next_level_id("firstWords") != "goodMorning":
+	if _system.get_next_level_id("firstWords") != first_ch3:
 		failures.append(
-			"the level after the last of chapter 2 should be the first of chapter 3, got '%s'"
-			% _system.get_next_level_id("firstWords")
+			"the level after the last of chapter 2 should be chapter 3's first ('%s'), got '%s'"
+			% [first_ch3, _system.get_next_level_id("firstWords")]
 		)
 
 	var newly: PackedStringArray = _system.newly_unlocked_chapters(almost, done)

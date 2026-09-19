@@ -620,7 +620,16 @@ func _open_care(plan: Dictionary) -> void:
 		return
 	var child: Node = _find_child_actor()
 	if child != null and child.has_method("set_activity"):
-		child.call("set_activity", "bath" if kind != "giveBottle" else "feeding")
+		# What Bunny is doing while the close-up is open. `prepareMilk` happens at
+		# the kitchen counter with Bunny in another room, so it must not pose Bunny
+		# at all -- the pose belongs to the act being performed ON the child.
+		match kind:
+			"giveBottle":
+				child.call("set_activity", "feeding")
+			"prepareMilk":
+				pass
+			_:
+				child.call("set_activity", "bath")
 	_care_overlay.visible = true
 	_care_overlay.call("begin", kind)
 
@@ -639,7 +648,7 @@ func _on_care_completed(care_kind: String) -> void:
 				child.call("satisfy", "dirty", 40.0)
 			"giveBottle":
 				child.call("satisfy", "hungry", 70.0)
-	if child != null and child.has_method("set_activity"):
+	if child != null and child.has_method("set_activity") and care_kind != "prepareMilk":
 		child.call("set_activity", "idle")
 	_pending_complete = true
 

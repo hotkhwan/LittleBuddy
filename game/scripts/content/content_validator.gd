@@ -53,6 +53,12 @@ const VALID_INTERACTIONS: Array[String] = [
 	"brushTeeth",
 	"washFace",
 	"dryFace",
+	# Mission 01 "I'm Hungry!", added 2026-09-19. Same reasoning: making the milk
+	# and feeding Bunny are sustained gestures with their own close-up, so they
+	# are their own interactions rather than a `tap` that would finish either one
+	# in a single touch.
+	"prepareMilk",
+	"giveBottle",
 ]
 
 ## Acceptance targets from the overnight build plan. Tests assert against these

@@ -36,12 +36,19 @@ const CHAPTER_ID: String = "ch3"
 
 ## The slice, exactly as `docs/SLICE_CONTRACT.md` §1 locks it:
 ## `[levelId, missionId, title, levelNumber, taskCount]`.
+##
+## `imHungry` leads the chapter as of the 2026-09-19 amendment. It is FIRST for a
+## reachability reason rather than a pacing one -- the director plays the first
+## uncompleted level of this chain, so anything not at the front of it is not what
+## a fresh install opens into. The five original levels each moved up one display
+## number and are otherwise untouched.
 const SLICE: Array = [
-	["goodMorning", "goodMorningRoutine", "Good Morning", 11, 7],
-	["gettingDressed", "morningRoutine", "Getting Dressed", 12, 7],
-	["breakfast", "breakfastTime", "Breakfast", 13, 8],
-	["playTime", "toddlerPlayTime", "Play Time", 14, 8],
-	["tidyAndBed", "tidyAndBedtime", "Clean Up and Good Night", 15, 8],
+	["imHungry", "imHungry", "I'm Hungry!", 11, 7],
+	["goodMorning", "goodMorningRoutine", "Good Morning", 12, 7],
+	["gettingDressed", "morningRoutine", "Getting Dressed", 13, 7],
+	["breakfast", "breakfastTime", "Breakfast", 14, 8],
+	["playTime", "toddlerPlayTime", "Play Time", 15, 8],
+	["tidyAndBed", "tidyAndBedtime", "Clean Up and Good Night", 16, 8],
 ]
 
 ## Contract §2: every activity target the four greybox rooms provide. Furniture
@@ -72,7 +79,27 @@ const CONTRACT_TARGET_IDS: Array[String] = [
 	"livingRoom.book",
 	"livingRoom.doorToBathroom",
 	"livingRoom.doorToKitchen",
+	# THE ONE TARGET THAT IS NOT FURNITURE.
+	#
+	# Bunny is a target the caregiver walks to and acts on, exactly like the sink
+	# or the fridge, but no room BUILDS it: `child_actor.gd` registers an
+	# `ActivityTarget` named `littleBuddy` as a child of whichever room Bunny is
+	# currently in, and `room.gd::get_activity_targets()` collects contributed
+	# targets alongside the ones it built itself. So it is a real, reachable id
+	# that `house_layout.gd` cannot know about -- which is why it is listed here
+	# and excluded from the cross-check against the layout below.
+	#
+	# It is qualified with `bedroom` because that is where Bunny starts the day.
+	# Bunny MOVES: `child_actor.gd::room_changed()` re-parents the target, so the
+	# id is only valid in the room Bunny is actually in. A task in another room
+	# that names it would stall -- which is a content mistake this list cannot
+	# catch, and the reason `imHungry` only uses it for its bedroom beats.
+	"bedroom.littleBuddy",
 ]
+
+## The contributed subset of `CONTRACT_TARGET_IDS`: real targets that no room
+## builds, so the layout cross-check must not demand them of `house_layout.gd`.
+const CONTRIBUTED_TARGET_IDS: Array[String] = ["bedroom.littleBuddy"]
 
 ## The keys whose VALUE is a semantic target id. Declared in `content/index.json`
 ## as `semanticTargetKeys` too, so a validator can find them generically.
@@ -107,7 +134,16 @@ const LISTENING_MODES: Array[String] = ["findIt", "sayIt"]
 const MIN_LEVEL_MINUTES: int = 4
 const MAX_LEVEL_MINUTES: int = 10
 const MIN_SLICE_MINUTES: int = 20
-const MAX_SLICE_MINUTES: int = 30
+## Raised from 30 to 34 on 2026-09-19, when the chapter went from five levels to
+## six. The 20-30 figure was the Bible's estimate for a FIVE-level chapter, and a
+## sixth level of 4 minutes cannot fit inside a total written before it existed.
+##
+## The pacing guard that actually matters is the PER-LEVEL 4-10 minute bound just
+## below, and it is untouched: no level got longer, the chapter got wider. If a
+## 20-30 minute single sitting is the real requirement, the answer is to move a
+## level out of the chain, not to under-estimate one -- so this number is a
+## deliberate, recorded decision rather than a nudge to get green.
+const MAX_SLICE_MINUTES: int = 34
 
 ## Child UX (CLAUDE.md): no failure language anywhere a child can hear it.
 const BANNED_CHILD_FACING: Array[String] = [
@@ -267,6 +303,8 @@ func _test_every_target_id_is_real():
 			for target_id: Variant in layout.target_ids(String(room_id)):
 				from_layout[layout.semantic_id(String(room_id), String(target_id))] = true
 		for target_id: String in known.keys():
+			if CONTRIBUTED_TARGET_IDS.has(target_id):
+				continue  # contributed by an actor, not built by the room -- see the list
 			if not from_layout.has(target_id):
 				failures.append(
 					"contract target '%s' is not provided by house_layout.gd any more" % target_id)

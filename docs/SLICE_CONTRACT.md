@@ -10,16 +10,24 @@ Baseline protected: Phase 2B, 56/56, tag `phase2b-verified-baseline`, branch
 
 ## 1. Chapter 3 level structure — LOCKED
 
-The brief lists 14 beats. They ship as **5 levels** in chapter `ch3`, which is what makes the
+The brief lists 14 beats. They ship as **6 levels** in chapter `ch3`, which is what makes the
 20–30 minute target land while keeping each level to the Bible's 4–10 minutes.
+
+**Amended 2026-09-19.** `imHungry` — Mission 01, "I'm Hungry!" — was added as the chapter's
+**first** level, and the five original levels shifted one display number. The reason is
+reachability, not pacing: `HouseLevelDirector._pick_story_mission_id()` plays the first
+uncompleted level of the `ch3` chain, so a mission that is not in that chain is unreachable
+however complete its scripts are, and a mission that is not *first* is not what a fresh install
+opens into. Nothing was removed — every level below still ships, one number later.
 
 | # | levelId | Title | Beats | Rooms |
 |---|---|---|---|---|
-| L11 | `goodMorning` | Good Morning | wake, walk to bathroom, brush teeth | bedroom → bathroom |
-| L12 | `gettingDressed` | Getting Dressed | walk back, choose + wear shirt/pants/shoes | bathroom → bedroom |
-| L13 | `breakfast` | Breakfast | walk to kitchen, sit, choose food, eat + drink | bedroom → kitchen |
-| L14 | `playTime` | Play Time | walk to living room, teddy + ball + blocks | kitchen → livingRoom |
-| L15 | `tidyAndBed` | Clean Up & Good Night | tidy toys away, walk to bedroom, pyjamas, sleep | livingRoom → bedroom |
+| L11 | `imHungry` | I'm Hungry! | Bunny is hungry, walk to kitchen, find bottle, make milk, carry back, feed | bedroom → kitchen → bedroom |
+| L12 | `goodMorning` | Good Morning | wake, walk to bathroom, brush teeth | bedroom → bathroom |
+| L13 | `gettingDressed` | Getting Dressed | walk back, choose + wear shirt/pants/shoes | bathroom → bedroom |
+| L14 | `breakfast` | Breakfast | walk to kitchen, sit, choose food, eat + drink | bedroom → kitchen |
+| L15 | `playTime` | Play Time | walk to living room, teddy + ball + blocks | kitchen → livingRoom |
+| L16 | `tidyAndBed` | Clean Up & Good Night | tidy toys away, walk to bedroom, pyjamas, sleep | livingRoom → bedroom |
 
 > `gettingDressed` **already exists** as a Chapter 3 level id promoted from the old
 > `morningRoutine` mission. Reuse that id; do not create a second one.

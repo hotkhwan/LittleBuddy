@@ -59,6 +59,8 @@ const CARE_INTERACTIONS: Dictionary = {
 	"brushTeeth": "toothbrush",
 	"washFace": "cloth",
 	"dryFace": "towel",
+	"prepareMilk": "jug",
+	"giveBottle": "bottle",
 }
 
 ## Interactions that put an object in the child's hand and a landing pad
