@@ -608,9 +608,15 @@ func _test_the_load_is_lazy():
 	if not loaded.is_empty() and String(loaded[0]) != String(fresh.call("get_pose")):
 		failures.append("the pose that was loaded is not the pose that is shown")
 
-	fresh.call("set_pose", "sleeping")
-	if not bool(fresh.call("is_pose_loaded", "sleeping")):
-		failures.append("set_pose(\"sleeping\") did not load the sleeping pose")
+	# Only assert the lazy load for a pose whose FILE is in this build. The three
+	# pose-locked exports are gitignored (they are the 63.6 MB raw masters), so a
+	# fresh clone legitimately has only the rigged model -- and a clone going red
+	# is exactly the vacuous-versus-absent distinction this case was written to
+	# respect everywhere else.
+	if Baby.is_pose_available("sleeping"):
+		fresh.call("set_pose", "sleeping")
+		if not bool(fresh.call("is_pose_loaded", "sleeping")):
+			failures.append("set_pose(\"sleeping\") did not load the sleeping pose")
 	if bool(fresh.call("is_pose_loaded", "standing")):
 		failures.append("the standing pose was loaded without ever being asked for")
 	fresh.free()
@@ -753,7 +759,20 @@ func _test_material_policy(baby):
 					% [int(report.get("appliedTextures", 9)), pose_name]
 					+ "atlas, and dropping the normal and metallic/roughness maps should leave "
 					+ "only albedo")
-	if not _any_source_broken:
+	# Anti-vacuity, but only when there is something to be vacuous ABOUT.
+	#
+	# The wrapper's runtime §7 fix must not become dead code, and the way to catch
+	# that is to require some source material to still need correcting. That only
+	# means anything while a raw export is in the build: `rigged` is produced by
+	# `tools/build_runtime_character.py`, which strips the emissive, the specular
+	# extension and doubleSided at source, so it is clean BY CONSTRUCTION and a
+	# clone that has only that model would fail this for doing the right thing.
+	var has_raw_pose: bool = false
+	for pose_name: String in Baby.known_poses():
+		if pose_name != "rigged" and Baby.is_pose_available(pose_name):
+			has_raw_pose = true
+			break
+	if has_raw_pose and not _any_source_broken:
 		failures.append("no pose in this build has a source material that violates §7, so the "
 				+ "wrapper's material fix is protecting nothing. Delete the fix rather than "
 				+ "leaving dead code that looks like a safeguard.")
