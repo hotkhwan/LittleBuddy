@@ -329,6 +329,30 @@ func reset_profile() -> void:
 	stars_changed.emit(get_stars())
 
 
+## Clears ONE level's completion and rating so it can be played again, leaving
+## every other key -- the child's star total above all -- exactly as it was.
+##
+## The QA replay button in Parent Settings is the only caller. It exists so that
+## testing a mission never requires `reset_profile()`, which would delete a real
+## child's progress to check a developer's fix.
+##
+## The decision about WHAT to clear lives in `scripts/qa/mission_replay.gd`,
+## which is pure and asserted key by key; this method only applies it and tells
+## listeners. `stars_changed` is deliberately NOT emitted: the running total is
+## one of the keys that does not move, and re-emitting it would flash the star
+## counter for a change that did not happen.
+func replay_level(level_id: String) -> void:
+	if level_id.strip_edges().is_empty():
+		return
+	var replay: GDScript = load("res://scripts/qa/mission_replay.gd")
+	if replay == null:
+		return
+	_profile = replay.armed(_profile, level_id)
+	save_profile()
+	level_completed_changed.emit(level_id)
+	profile_changed.emit(get_profile())
+
+
 ## Returns a deep copy so callers cannot mutate internal state.
 func get_profile() -> Dictionary:
 	return _profile.duplicate(true)

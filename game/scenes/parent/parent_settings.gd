@@ -68,6 +68,7 @@ func _ready() -> void:
 	_speed_normal.pressed.connect(_on_speed_chosen.bind(ParentSettingsModelScript.TTS_SPEED_NORMAL))
 
 	_build_speech_check()
+	_build_qa_replay()
 
 	if show_gate:
 		_show_locked()
@@ -117,6 +118,73 @@ func _on_speech_check_toggled() -> void:
 ## hidden by default -- it is a tool, and a tool must not greet a child.
 func is_speech_check_visible() -> bool:
 	return _speech_check != null and _speech_check.visible
+
+
+## ---------------------------------------------------------------------------
+## QA: replay one mission
+## ---------------------------------------------------------------------------
+
+## The level the QA button re-arms. The FIRST level of the house chapter, asked
+## for rather than hard-coded, so this cannot drift from `chapters.json` the way
+## two other assertions in this repo already have.
+const QA_CHAPTER_ID: String = "ch3"
+
+var _qa_replay_button: Button = null
+var _qa_replay_level: String = ""
+
+
+## "Replay Mission 01", behind the same parental gate as everything else on this
+## panel -- it is built into the gated body, so a child never reaches it.
+##
+## It does NOT reset the profile. It clears exactly one level's completion and
+## rating (see `scripts/qa/mission_replay.gd`) and leaves the child's star total,
+## settings and every other level alone, which is what makes it safe to ship
+## rather than something that has to be stripped before release.
+func _build_qa_replay() -> void:
+	if _status_label == null:
+		return
+	var parent: Node = _status_label.get_parent()
+	if parent == null:
+		return
+
+	_qa_replay_level = _first_house_level()
+	if _qa_replay_level.is_empty():
+		return
+
+	_qa_replay_button = Button.new()
+	_qa_replay_button.name = "QaReplayButton"
+	_qa_replay_button.text = "Replay Mission 01"
+	_qa_replay_button.pressed.connect(_on_qa_replay_pressed)
+	parent.add_child(_qa_replay_button)
+	parent.move_child(_qa_replay_button, _status_label.get_index())
+
+
+## Chapter 3's first chained level, read from content.
+func _first_house_level() -> String:
+	var library: Object = load("res://scripts/content/content_library.gd").new()
+	library.call("load_all")
+	var system: Object = load("res://scripts/progression/level_system.gd").new()
+	system.call("load_all", library)
+	var chain: PackedStringArray = system.call("get_chapter_chain", QA_CHAPTER_ID)
+	return chain[0] if chain.size() > 0 else ""
+
+
+func _on_qa_replay_pressed() -> void:
+	var service: Node = get_node_or_null("/root/SaveService")
+	if service == null or not service.has_method("replay_level"):
+		_set_status("Replay is unavailable: no save service.")
+		return
+	var replay: GDScript = load("res://scripts/qa/mission_replay.gd")
+	var before: Dictionary = service.call("get_profile")
+	service.call("replay_level", _qa_replay_level)
+	# Reported from the BEFORE profile, so the line describes what was actually
+	# cleared rather than restating the request.
+	_set_status(replay.describe(before, _qa_replay_level))
+
+
+## The level the button will re-arm, for the test.
+func qa_replay_level_id() -> String:
+	return _qa_replay_level
 
 
 ## Opens the panel directly, bypassing the gate (for callers with their own

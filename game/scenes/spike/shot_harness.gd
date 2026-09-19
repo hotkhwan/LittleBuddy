@@ -99,6 +99,41 @@ func _run(job: String, extra: String) -> void:
 					# pending in a harness with no player input): open it the way
 					# arrival would.
 					director.call("_open_care", plan)
+		"alizface":
+			# A head-on close-up of Aliz, so a TEXTURE edit can be judged on the
+			# face the child actually sees rather than on the atlas. Loads the
+			# shipping wrapper, not the raw GLB.
+			var root := Node3D.new()
+			add_child(root)
+			var girl: Node = load("res://scripts/characters/buddy/pink_girl_buddy.gd").new()
+			root.add_child(girl)
+			if girl.has_method("build"):
+				girl.call("build")
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var light := DirectionalLight3D.new()
+			light.rotation_degrees = Vector3(-24.0, 18.0, 0.0)
+			light.light_energy = 1.25
+			root.add_child(light)
+			var env := WorldEnvironment.new()
+			var e := Environment.new()
+			e.background_mode = Environment.BG_COLOR
+			e.background_color = Color(0.604, 0.753, 0.851)
+			e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			e.ambient_light_color = Color(1, 1, 1)
+			e.ambient_light_energy = 0.55
+			env.environment = e
+			root.add_child(env)
+			var cam := Camera3D.new()
+			# Framed on the head. `extra` is the head height in metres, so the same
+			# job can frame a re-scaled character without editing the harness.
+			var head_y: float = float(extra) if extra != "" else 1.20
+			cam.position = Vector3(0.0, head_y, -1.05)
+			cam.fov = 34.0
+			root.add_child(cam)
+			cam.look_at(Vector3(0.0, head_y, 0.0), Vector3.UP)
+			cam.current = true
+			_scene = root
 		"nursery":
 			_load("res://scenes/baby_room/baby_room.tscn")
 		"speech":
