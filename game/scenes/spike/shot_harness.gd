@@ -125,13 +125,20 @@ func _run(job: String, extra: String) -> void:
 			env.environment = e
 			root.add_child(env)
 			var cam := Camera3D.new()
-			# Framed on the head. `extra` is the head height in metres, so the same
-			# job can frame a re-scaled character without editing the harness.
-			var head_y: float = float(extra) if extra != "" else 1.20
-			cam.position = Vector3(0.0, head_y, -1.05)
-			cam.fov = 34.0
+			# `extra` is the framing: a number frames the HEAD at that height,
+			# "body" frames the whole character head-to-toe on a plain field --
+			# which is the shape an image-to-3D reference has to be.
 			root.add_child(cam)
-			cam.look_at(Vector3(0.0, head_y, 0.0), Vector3.UP)
+			if extra == "body":
+				e.background_color = Color(1, 1, 1)
+				cam.position = Vector3(0.0, 0.66, -2.75)
+				cam.fov = 40.0
+				cam.look_at(Vector3(0.0, 0.66, 0.0), Vector3.UP)
+			else:
+				var head_y: float = float(extra) if extra != "" else 1.20
+				cam.position = Vector3(0.0, head_y, -1.05)
+				cam.fov = 34.0
+				cam.look_at(Vector3(0.0, head_y, 0.0), Vector3.UP)
 			cam.current = true
 			_scene = root
 		"nursery":
