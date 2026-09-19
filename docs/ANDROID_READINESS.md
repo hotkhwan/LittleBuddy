@@ -1,53 +1,82 @@
 # Android Readiness
 
-## STATUS: NO APK WAS PRODUCED. ANDROID HAS NEVER BEEN BUILT OR RUN.
-
-This document is preparation and an audit. It is **not** a claim of readiness.
-
-Nothing here has been validated on an Android device, in an emulator, or by a
-successful build, because the build machine has none of the required toolchain.
-Verified by running the checks, not by assuming:
-
-| Requirement | State on this machine |
-| --- | --- |
-| Android SDK | **absent** — no `~/Library/Android/sdk`, no `$ANDROID_HOME`, no `$ANDROID_SDK_ROOT` |
-| `adb` | **absent** — not on `PATH` |
-| `gradle` | **absent** — not on `PATH` |
-| `sdkmanager` | **absent** — not on `PATH` |
-| JDK | **absent** — `/usr/bin/java` is the macOS stub: *"Unable to locate a Java Runtime"* |
-| Debug keystore | **absent** — neither `~/.android/debug.keystore` nor Godot's `keystores/debug.keystore` |
-| Android device | **absent** — none connected, none owned |
-| Godot 4.7.2 editor | present — `4.7.2.stable.official.ed1daf0bf` |
-| Godot **Android export templates** | **present** — `android_debug.apk`, `android_release.apk`, `android_source.zip` already in `~/Library/Application Support/Godot/export_templates/4.7.2.stable/` |
-| `keytool` | present — `/usr/bin/keytool` (but needs a JDK to be useful) |
-| Android export preset | **absent** — `game/export_presets.cfg` contains only `"iOS"` |
-
-Godot confirms the last point directly:
+## STATUS (2026-09-19): AN APK EXISTS. IT HAS NEVER RUN ON A DEVICE.
 
 ```
-$ godot --headless --path game --export-debug "Android" /tmp/lb_test.apk
-ERROR: Invalid export preset name: Android.
-The following presets were detected in this project's `export_presets.cfg`:
-
-        "iOS"
+build/android/LittleDays-debug.apk   36,422,803 bytes   signed (v2 + v3)
 ```
 
-The one piece of good news is real and worth stating plainly: **the export
-templates are already downloaded.** That is the slowest item on the blocking
-list, and it is done.
+Two separate claims, and only the first one is proven:
 
-Everything else in this document is either (a) a patch written to be applied by
-someone else, (b) an audit finding with a file:line, or (c) a command to run.
-Where I could verify a fact from a local artifact I did, and I say which artifact.
-Where I could not, I say so.
+- **The build works.** The toolchain was installed, the preset applied, and
+  `tools/export_android.sh debug` ran the whole way through. The APK is real,
+  signed, and its manifest has been dumped and read.
+- **The game has NOT been validated on Android.** There is still no Android
+  device and no emulator. Nothing below is a statement about how the game looks,
+  performs, or feels on real hardware. Section 9 is the list that only a device
+  can close, and it is entirely unticked.
+
+An earlier revision of this document opened with *"NO APK WAS PRODUCED. ANDROID
+HAS NEVER BEEN BUILT OR RUN."* The first half of that is now obsolete. **The
+second half is not.**
+
+### What changed, verified by running the checks rather than assuming
+
+| Requirement | Was | Now |
+| --- | --- | --- |
+| JDK 17 | **absent** — `/usr/bin/java` is the macOS stub | **present** — Temurin `17.0.20.1`, user-local, **no sudo** |
+| Android SDK | absent | **present** — `~/Library/Android/sdk` |
+| `sdkmanager` / `adb` | absent | present — cmdline-tools `19.0`, platform-tools `37.0.1` |
+| build-tools / platform | absent | `build-tools;36.1.0`, `platforms;android-36` |
+| SDK licences | not accepted | accepted non-interactively |
+| Debug keystore | absent | **generated** — outside the repo, git-ignored |
+| Godot `java_sdk_path` | `""` | set to the Temurin home |
+| Godot `android_sdk_path` | pointed at a non-existent dir | now a directory that exists |
+| Android export preset | absent | `[preset.1]` appended; iOS preset byte-identical |
+| Launcher icons | absent | 192 + two 432 adaptive layers, generated from existing art |
+| Export templates | present | present (unchanged — the slowest item was already done) |
+| Android device | **absent** | **still absent** |
+| `gradle` | absent | **still absent, and not needed** — see below |
+
+### Three corrections to the previous revision
+
+1. **The debug APK declares ZERO permissions.** The previous revision predicted
+   Godot would add `INTERNET` to a debug export for the remote debugger. For
+   *this* export — template-based, `gradle_build/use_gradle_build=false` — it
+   does **not**. `aapt2 dump xmltree` reports **0 `uses-permission` elements**.
+   See section 2 for what this lets us conclude about the release build.
+2. **`gradle` is not required and never was.** The preset uses the prebuilt
+   template, so no Gradle build runs. The NDK is likewise unnecessary;
+   `export_android.sh` correctly treats it as a warning, not a blocker.
+3. **No sudo is needed for any of it.** The previously-recommended
+   `brew install --cask temurin@17` prompts for an admin password. Unpacking the
+   Temurin tarball into `~/Library/Java/JavaVirtualMachines/` does not, and
+   `/usr/libexec/java_home -v 17` still discovers it there (verified). Section 7
+   has been rewritten around the sudo-free route.
+
+Everything else in this document is either an audit finding with a file:line or
+a command that was actually run. Where a fact came from a local artifact I say
+which artifact; where I could not verify something, I say so.
 
 ---
 
-## 1. The Android export preset, as a patch — NOT APPLIED
+## 1. The Android export preset — APPLIED
 
-`game/export_presets.cfg` is owned by the Lead and has not been touched. The
-existing file contains exactly one preset, `[preset.0]` / `[preset.0.options]`
-(`platform="iOS"`), so **the next index is 1**.
+`game/export_presets.cfg` now contains `[preset.1]` / `[preset.1.options]`
+(`platform="Android"`) appended after the existing iOS preset.
+
+**The iOS preset was not touched.** Verified two ways rather than asserted:
+`diff` of lines 1–64 against `git show HEAD:game/export_presets.cfg` is empty,
+and `git diff --numstat` reports `60  0` — sixty insertions, **zero deletions**.
+
+Two values differ from the block originally drafted below:
+
+- `export_path` is `../build/android/LittleDays.apk` (was `LittleBuddy.apk`),
+  matching the app name. `export_android.sh` writes a mode-suffixed name
+  (`LittleDays-debug.apk`) so a debug build cannot silently overwrite a release
+  one.
+- the `launcher_icons/*` paths are `res://assets/icons/android/…`, and those
+  files now exist (section 5).
 
 ### The bundle identifier — reported, not changed
 
@@ -69,24 +98,32 @@ reason. Android imposes no `com.`-prefix constraint that iOS does not already
 satisfy, and `littlebuddy` is a valid final segment (lowercase, starts with a
 letter, no reserved Java keyword).
 
-### ⚠️ The app name is a decision, not a fact — read this before applying
+### The app name — RESOLVED, no longer a decision
 
-I was asked to set the app name to **"Little Days"**. I have done so in the block
-below, but flagging it loudly because **the string "Little Days" does not appear
-anywhere in this repository**:
+A previous revision flagged this loudly, on the grounds that *"the string
+'Little Days' does not appear anywhere in this repository"* and that an Android
+launcher reading **Little Days** would sit beside an iPad app reading **Little
+Buddy**. **That is no longer true and the warning is withdrawn.** The rename
+landed:
 
-- `game/project.godot` → `config/name="Little Buddy"`
-- the iOS bundle → `com.pointit.littlebuddy`
-- the iOS export path → `build/ios/LittleBuddy.ipa`
-- every doc, script and icon → `LittleBuddy` / `Little Buddy`
+- `game/project.godot:13` → `config/name="Little Days"`
+- `docs/NAMING_AND_TRADEMARK.md` exists and covers the decision
+- the name is used throughout content, audio and docs (`littleDaysTheme`, …)
 
-So applying this block as written ships an Android launcher labelled
-**Little Days** next to an iPad app labelled **Little Buddy**, from the same
-codebase. That may be an intentional rename in flight — if so, `config/name` in
-`project.godot` and the iOS side need the same treatment and that is the Lead's
-call, not mine. If it was a slip, change `package/name` to `"Little Buddy"` or
-set it to `""` (empty = Godot uses `config/name`, which is the lowest-maintenance
-option and keeps the two platforms in sync automatically).
+So `package/name="Little Days"` agrees with the rest of the project rather than
+contradicting it. Confirmed in the built APK:
+`aapt2 dump badging` → `application-label:'Little Days'`.
+
+Setting `package/name=""` (inherit `config/name`) would now give the identical
+result and be one less place to update. Either is defensible; the explicit
+string is kept because it is what the manifest assertion in this document
+quotes.
+
+**The bundle id did NOT change**, and must not: `com.pointit.littlebuddy` on
+both platforms. Apple forbids changing a bundle id after submission, and the
+owner has frozen all internal identifiers. The APK confirms it:
+`package: name='com.pointit.littlebuddy'`. Only the *display name* is
+"Little Days" — the identifier keeps the original spelling deliberately.
 
 ### Orientation is NOT in this preset — it comes from `project.godot`
 
@@ -289,10 +326,40 @@ works; the editor will normalise it on first open.
 
 ## 2. Permissions audit
 
-### What the current feature set actually requires: nothing.
+### MEASURED: the built APK declares zero permissions.
 
-The release APK should ship with **zero** `<uses-permission>` entries. Walking
-the actual feature set:
+This section used to be a prediction. It is now a measurement. From
+`build/android/LittleDays-debug.apk`:
+
+```
+$ aapt2 dump xmltree --file AndroidManifest.xml LittleDays-debug.apk | grep -c "E: uses-permission"
+0
+```
+
+**Zero `uses-permission` elements.** `aapt2 dump permissions` likewise prints
+only the package name.
+
+A grep for the word "permission" in the manifest returns two hits, and neither
+is the app requesting anything — worth spelling out so nobody re-reads them as
+permissions later:
+
+- `android:grantUriPermissions="true"` on androidx's `FileProvider` — a flag
+  about *granting* temporary URI access to others, not a permission request.
+- `android:permission="android.permission.DUMP"` on androidx's
+  `ProfileInstallReceiver` — this **restricts** the receiver, requiring any
+  *caller* to hold DUMP. It grants this app nothing.
+
+**What this says about the release build.** The previous revision warned that a
+debug APK's permission list is not the shipping one, because Godot can add
+`INTERNET` for the remote debugger. That warning is sound in general but did not
+fire here: the debug list is already empty. Since the debug export is the one
+that *adds* a permission, and it added none, the release export cannot have
+more. The shipping permission set is **empty** — but it is cheap to re-check
+with `aapt2` once a release keystore exists, and `export_android.sh` prints it
+automatically, so re-check anyway.
+
+The walk through the feature set below explains *why* that is the correct
+answer, rather than a lucky one:
 
 | Feature | Android permission | Needed? |
 | --- | --- | --- |
@@ -386,15 +453,17 @@ this app will be subject to because its audience is a four-year-old.
 4. **`package/show_in_android_tv=false`** is correct — a touch-and-voice game
    with a virtual thumbstick is not operable by a TV remote, and shipping it to
    the TV category invites a functionality rejection.
-5. **Debug builds get `INTERNET`.** Godot's Android exporter adds
-   `android.permission.INTERNET` to debug exports so the remote debugger can
-   connect (the literal `android.permission.INTERNET` sits next to the
-   `android.permission.` prefix in the exporter's own string table). This is
-   normal and harmless for local testing, **but it means the debug APK's
-   permission list is not the release APK's.** Never screenshot a debug APK's
-   manifest as evidence of the shipping permission set. `tools/export_android.sh`
-   dumps the real list with `aapt2 dump permissions` after every build for
-   exactly this reason.
+5. **Debug builds get `INTERNET` — CORRECTED: this one did not.** The claim
+   above was reasoning from the exporter's string table, and the measurement
+   contradicts it: the debug APK has no `INTERNET` and no permissions at all.
+   The likely reason is that this preset uses the **prebuilt template** with
+   `gradle_build/use_gradle_build=false`, so no manifest-merging Gradle build
+   runs to inject it.
+
+   The *habit* the original point recommends is still right — never present a
+   debug APK's manifest as the shipping permission set without checking — so
+   `tools/export_android.sh` still dumps the list after every build and still
+   prints a reminder on debug builds. Keep the habit; drop the assumption.
 
 ---
 
@@ -416,9 +485,28 @@ and calls only `is_available()` / `has_permission()` / `start_listening()` /
 `stop_listening()`. An `AndroidSpeechBackend extends SpeechBackend` would drop in
 with **no gameplay change at all**. That is the hard part, and it is done.
 
-### 3.2 But there is one leaked iOS assumption, and it is a shipping bug
+### 3.2 There WAS one leaked iOS assumption, and it was a shipping bug — NOW FIXED
 
-`game/scripts/speech/speech_service.gd:211-221`:
+> **Status: fixed and under test.** `speech_service.gd` now guards with
+> `OS.has_feature("mobile")`, which is true on iOS *and* Android, so an Android
+> build selects the inert `SpeechBackend` and reports `unavailable`. Two tests
+> pin it — `test_speech_never_mocks_on_device.gd` and
+> `test_speech_privacy_guard.gd` — and both pass, alongside
+> `speech_never_required` and `android_platform_guards`.
+>
+> Independently confirmed from the built APK: it contains **no** native speech
+> library. The iOS `.gdextension` descriptor is packed as a plain asset but has
+> no `arm64` Android entry, and the export log says so explicitly —
+> `No "arm64" library found for GDExtension … littlebuddyspeech.gdextension`.
+> So `Engine.has_singleton("LittleBuddySpeech")` is false on Android, the first
+> branch cannot match, and the `mobile` branch takes it. The diagnostics panel
+> will read `backend: unavailable`, **not** `mock`.
+>
+> The original finding is kept below, unedited, because it is the reason the
+> guard is written the way it is and deleting it would invite the regression
+> back.
+
+The bug as originally found, at `game/scripts/speech/speech_service.gd:211-221`:
 
 ```gdscript
 	if Engine.has_singleton(IosSpeechBackend.SINGLETON_NAME):
@@ -820,14 +908,59 @@ the icon-wobble. So:
 
 **Therefore `tools/make_ios_icons.sh` cannot be reused.** It is a pure
 `sips -Z` downscale, which produces exactly the "resized iOS icon" that fails the
-safe zone. A future `tools/make_android_icons.sh` needs a genuine two-layer
-source — foreground artwork inset into the 264 px circle, plus a flat background
-— and that is an **art task, not a scripting task**. Flagging it as a real
-dependency rather than a one-liner someone can knock out at export time.
+safe zone.
 
-Suggested destination, matching the preset paths above:
-`game/assets/icon/android/{icon_192.png, icon_adaptive_background_432.png,
-icon_adaptive_foreground_432.png}`.
+### The icons now exist — GENERATED, from existing art
+
+Three of the four slots are filled, in `game/assets/icons/android/`:
+
+| File | Size | Contents |
+| --- | --- | --- |
+| `icon_192.png` | 192x192 | the mark on flat cream, full-bleed |
+| `icon_adaptive_background_432.png` | 432x432 | flat cream `#FFF6E0`, opaque, no detail |
+| `icon_adaptive_foreground_432.png` | 432x432 | the mark on transparency, centred |
+| *(monochrome)* | — | deliberately left empty, see below |
+
+**Source and method.** No new artwork was invented. The source is
+`docs/reference/aliz_reference_v1.png` — Aliz on a plain white field. A
+full-body render is illegible at 192 px, so the generator crops to
+head-and-shoulders, which is the only part that survives the size.
+
+The white field is removed with a **border flood-fill**, not a global white key.
+That distinction is the whole trick: a global "make near-white transparent" pass
+would also punch holes through the **eye whites**, because the sclera is exactly
+as white as the background. Flooding inward from the border only reaches the
+outside, so interior whites survive. Edge pixels get partial alpha so the cut is
+not aliased, and the downscale averages **premultiplied** alpha to avoid a white
+fringe. Verified by eye on the output, not just asserted.
+
+**Safe zone.** The mark is scaled to 236 px and centred on the 432 px canvas, so
+the face sits well inside the guaranteed centred **264 px circle**. The corners
+of that 236 px square fall outside the circle, but they are transparent or hair
+edge — nothing meaningful is clipped by a circular, squircle or teardrop mask.
+
+The background is a flat wash of `Color(1, 0.964706, 0.878431, 1)` — the same
+cream as `boot_splash/bg_color` in `project.godot` and the iOS
+`storyboard/custom_bg_color`, so the launcher icon, the splash and the iPad app
+agree.
+
+**Monochrome is intentionally empty.** Android 13+ themed icons want a
+silhouette, and a silhouette of a head with long hair reads as an unrecognisable
+blob. When the slot is empty the launcher falls back to the full adaptive icon,
+which looks considerably better. This produces one benign `aapt2` warning —
+*"resource mipmap/themed_icon … no such path exists"* — which is a dangling row
+in the resource table left by Godot's template. Nothing references it: the
+manifest's `android:icon` points at `mipmap/icon`, whose `icon.xml` declares
+only `<background>` and `<foreground>`. Verified by dumping the XML. It cannot
+be resolved at runtime and so cannot fail.
+
+**The generator was not committed to `tools/`**, because this sprint's file
+ownership did not extend there. It is ~170 lines of dependency-free Python built
+on the existing `tools/png_edit.py` (which gained no changes). To re-cut the
+icons — after new art, or to add a monochrome layer — the logic is: load →
+RGBA → border flood-fill white key → crop `(330, 0, 350, 345)` → pad to square →
+premultiplied box-downscale → centre-composite. Promoting it to
+`tools/make_android_icons.py` is a reasonable follow-up.
 
 ### App name
 
@@ -870,157 +1003,137 @@ passed.
 After a successful build it runs `aapt2 dump permissions` on the APK and prints
 the real permission list, because of the debug-`INTERNET` trap in section 2.
 
-### It was run. Here is its actual output on this machine, unedited:
+### It was run, and it now passes. Actual output, unedited:
 
 ```
 ==> Little Buddy Android export preflight (debug)
 
   ok    Godot: /Applications/Godot.app/Contents/MacOS/Godot (4.7.2.stable.official.ed1daf0bf)
-  ok    export templates: /Users/hotkhwan/Library/Application Support/Godot/export_templates/4.7.2.stable (android_debug.apk present)
-  MISSING JDK (no working java on PATH; macOS ships a stub that only prints an ad)
-  MISSING Android SDK (looked in /Users/hotkhwan/Library/Android/sdk)
-  MISSING debug keystore
-  MISSING editor setting export/android/android_sdk_path (currently "/Users/hotkhwan/Library/Android/sdk")
-  MISSING editor setting export/android/java_sdk_path (currently "")
-  MISSING export preset "Android"
-  warn  adb not found (only needed for --install)
+  ok    export templates: .../export_templates/4.7.2.stable (android_debug.apk present)
+  ok    JDK: /Users/hotkhwan/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/java (major 17, need >= 17)
+  ok    Android SDK: /Users/hotkhwan/Library/Android/sdk
+  ok    apksigner: /Users/hotkhwan/Library/Android/sdk/build-tools/36.1.0/apksigner
+  ok    platform: android-36 (compileSdk 36)
+  warn  NDK 29.0.14206865 not installed
+  ok    debug keystore: /Users/hotkhwan/Library/Application Support/Godot/keystores/debug.keystore
+  ok    editor setting export/android/android_sdk_path = /Users/hotkhwan/Library/Android/sdk
+  ok    editor setting export/android/java_sdk_path = /Users/hotkhwan/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
+  ok    export preset "Android" present in export_presets.cfg
 
-================================================================
-  ANDROID EXPORT IS BLOCKED -- 6 thing(s) missing.
-  NO APK WAS PRODUCED. Nothing below has been guessed at:
-  each item is a real check that just failed on this machine.
-================================================================
-
-  1. No JDK. Install Temurin 17 and export JAVA_HOME:
-         brew install --cask temurin@17
-         export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
-         echo 'export JAVA_HOME="$(/usr/libexec/java_home -v 17)"' >> ~/.zshrc
-     Godot ALSO needs this path in its own Editor Settings (see below) -- the
-     shell environment alone is not enough, because the editor is launched from
-     Finder and never reads your ~/.zshrc.
-
-  2. No Android SDK. Install the command-line tools and the packages
-     Godot 4.7.2 needs:
-         brew install --cask android-commandlinetools
-         export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
-         sdkmanager --licenses
-         sdkmanager 'platform-tools' 'platforms;android-36' \
-                    'build-tools;36.1.0' 'cmdline-tools;latest'
-     (Android Studio also installs all of this, to ~/Library/Android/sdk.)
-
-  3. No debug keystore. Without one Godot reports 'Could not find debug
-     keystore, unable to export.' Generate the standard Android debug keystore
-     (the password is literally 'android' by convention, and Godot's Editor
-     Settings default to it):
-         mkdir -p "/Users/hotkhwan/Library/Application Support/Godot/keystores"
-         keytool -keyalg RSA -genkeypair -alias androiddebugkey \
-           -keypass android -keystore \
-           "/Users/hotkhwan/Library/Application Support/Godot/keystores/debug.keystore" \
-           -storepass android -dname 'CN=Android Debug,O=Android,C=US' \
-           -validity 9999 -deststoretype pkcs12
-     A debug keystore is for local installs ONLY. It must never sign a Play
-     Store build.
-
-  4. Godot's Editor Settings > Export > Android > Android SdK Path is
-     unset or points at a directory that does not exist. Godot ignores
-     ANDROID_HOME entirely. Set it in the editor GUI, or edit:
-         /Users/hotkhwan/Library/Application Support/Godot/editor_settings-4.7.tres
-         export/android/android_sdk_path = "/Users/hotkhwan/Library/Android/sdk"
-
-  5. Godot's Editor Settings > Export > Android > Java SdK Path is unset.
-     Godot reports 'A valid Java SDK path is required in Editor Settings.' Set
-     it in the editor GUI, or edit:
-         /Users/hotkhwan/Library/Application Support/Godot/editor_settings-4.7.tres
-         export/android/java_sdk_path = "$(/usr/libexec/java_home -v 17)"
-     Resolve the $(...) to a literal path first -- the .tres file is not a shell
-     script.
-
-  6. game/export_presets.cfg has no Android preset. The exact block to add
-     is written out in docs/ANDROID_READINESS.md section 1 -- paste it at the
-     end of the file, or add it through Project > Export > Add > Android and
-     then reconcile it against that document.
-
-  Full runbook: docs/ANDROID_READINESS.md
-
-EXIT CODE = 1
+All preflight checks passed.
 ```
 
-Worth noting what this output proves and what it does not. It proves the checks
-fire, name the right paths, and refuse to proceed. It does **not** prove the
-export branch works — that code has never executed, and cannot until the six
-items above are resolved.
+The single remaining `warn` is correct and is not a blocker: a template APK
+export ships prebuilt native libraries and needs no NDK. It becomes a blocker
+only if `gradle_build/use_gradle_build` is ever turned on.
 
-It also caught something a hand-written runbook would have missed: Godot's Editor
-Settings already contain `export/android/android_sdk_path =
-"/Users/hotkhwan/Library/Android/sdk"` and `export/android/debug_keystore =
-".../keystores/debug.keystore"` — both pointing at paths that **do not exist**.
-So the editor is pre-configured for an SDK and keystore that were never
-installed, and an export attempted from the GUI would fail with a path error
-rather than an obviously-missing-SDK error.
+Then the export branch — which had never executed before — ran to completion:
+
+```
+==> Built /Users/hotkhwan/Projects/little-buddy/build/android/LittleDays-debug.apk ( 35M)
+
+==> Permissions actually declared in the APK:
+    (none -- the APK declares no permissions at all)
+```
+
+### Two fixes made to the script while proving it
+
+1. **`OUT_APK` is now mode-suffixed** — `LittleDays-$MODE.apk`. It was a single
+   `LittleBuddy.apk` for both modes, so a debug build would silently overwrite a
+   release one. Those two artifacts are not interchangeable: the debug APK is
+   `android:debuggable=true` and signed with a throwaway key.
+2. **The empty-permission case printed silence.** The old line was
+   `... | grep -E ... | sed ... || echo "(none)"`. `sed` exits 0 even with no
+   input, so the `||` could never fire and a clean, permission-free APK produced
+   *no output at all* — indistinguishable from the check having failed to run.
+   For a children's app the difference between "nothing printed" and "asks for
+   nothing" is the whole point of the check, so the result is now captured and
+   stated explicitly.
+
+### What this output proves, and what it does not
+
+It proves the checks fire, the paths resolve, the export branch works, and the
+APK is signed and permission-free. It proves **nothing whatsoever** about how
+the game behaves on Android hardware. Section 9 remains entirely untested.
 
 ---
 
-## 7. Exact commands to make an APK possible
+## 7. Reproducing the toolchain — the commands that were actually run
 
-Run in order on the build Mac (Apple Silicon, zsh). Steps 1-4 are one-time.
+These are not suggestions; this is the transcript of what produced the APK, on
+Apple Silicon / zsh. **None of it needs sudo.** Steps 1-4 are one-time.
 
-### Step 1 — JDK 17
+Setting `ANDROID_HOME` / `JAVA_HOME` in the shell is convenient but is NOT what
+makes the export work — Godot reads its own Editor Settings (step 5).
+
+### Step 1 — JDK 17, user-local, no admin password
 
 Godot 4.7.2's build template pins `javaVersion JavaVersion.VERSION_17`
 (`config.gradle`). Newer JDKs are not a safe substitute.
 
-```bash
-brew install --cask temurin@17
-/usr/libexec/java_home -v 17                  # confirm it resolves
-echo 'export JAVA_HOME="$(/usr/libexec/java_home -v 17)"' >> ~/.zshrc
-export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
-java -version                                 # expect: openjdk version "17.x"
-```
-
-### Step 2 — Android SDK
-
-Either the command-line tools (lighter) **or** Android Studio. Do not do both.
+The documented route used to be `brew install --cask temurin@17`, which invokes
+a `.pkg` installer and **prompts for an administrator password**. That is a hard
+stop for an unattended build. The tarball needs no such thing, and
+`/usr/libexec/java_home` finds a JDK under `~/Library/...` exactly as it finds
+one under `/Library/...` (verified on this machine):
 
 ```bash
-# Option A: command-line tools only
-brew install --cask android-commandlinetools
-echo 'export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools' >> ~/.zshrc
-export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
-echo 'export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"' >> ~/.zshrc
-export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+mkdir -p ~/Library/Java/JavaVirtualMachines
+curl -L -o /tmp/jdk17.tar.gz \
+  "https://api.adoptium.net/v3/binary/latest/17/ga/mac/aarch64/jdk/hotspot/normal/eclipse?project=jdk"
+tar xzf /tmp/jdk17.tar.gz -C /tmp
+mv /tmp/jdk-17* ~/Library/Java/JavaVirtualMachines/temurin-17.jdk
 
-sdkmanager --licenses            # accept all; the export fails silently without this
-sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.1.0' 'cmdline-tools;latest'
-
-# Option B: Android Studio instead (installs to ~/Library/Android/sdk,
-# which is what Godot's Editor Settings on this machine ALREADY point at)
-# brew install --cask android-studio
-# then: Settings > Languages & Frameworks > Android SDK > SDK Tools,
-# tick "Android SDK Build-Tools 36.1.0" and "Android SDK Platform 36".
-# export ANDROID_HOME="$HOME/Library/Android/sdk"
-
-which adb && adb --version       # confirm
+/usr/libexec/java_home -v 17     # -> .../temurin-17.jdk/Contents/Home
+java -version                    # (with JAVA_HOME set) openjdk version "17.0.20.1"
 ```
 
-**NDK — only if you need a custom build** (an Android plugin, e.g. a speech
-backend; anything that sets `gradle_build/use_gradle_build=true`). A plain APK
-export from the prebuilt template does **not** need it:
+Use `mac/x64` instead of `mac/aarch64` on an Intel Mac.
+
+### Step 2 — Android SDK, user-local, licences accepted non-interactively
+
+```bash
+SDK="$HOME/Library/Android/sdk"          # where Godot's settings already pointed
+mkdir -p "$SDK/cmdline-tools"
+curl -L -o /tmp/cmdline-tools.zip \
+  https://dl.google.com/android/repository/commandlinetools-mac-13114758_latest.zip
+unzip -q /tmp/cmdline-tools.zip -d /tmp/clt
+mv /tmp/clt/cmdline-tools "$SDK/cmdline-tools/latest"
+
+export JAVA_HOME="$HOME/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
+export ANDROID_HOME="$SDK"
+export PATH="$JAVA_HOME/bin:$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$PATH"
+
+yes | sdkmanager --sdk_root="$SDK" --licenses
+yes | sdkmanager --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.1.0'
+```
+
+`sdkmanager` needs a JDK, so step 1 must come first. The `yes |` is the standard
+unattended licence acceptance — the licences are Google's and are accepted, not
+bypassed.
+
+**The NDK is NOT needed** and was not installed. A template APK export ships
+prebuilt native libraries. Install it only when turning on
+`gradle_build/use_gradle_build` (a custom build, or an Android plugin such as a
+speech backend):
 
 ```bash
 sdkmanager 'ndk;29.0.14206865'   # exact version pinned by Godot 4.7.2
 ```
 
+`gradle` is likewise not required and is not installed.
+
 ### Step 3 — Godot Android export templates
 
-**Already installed** — verified present at
-`~/Library/Application Support/Godot/export_templates/4.7.2.stable/`
-(`android_debug.apk`, `android_release.apk`, `android_source.zip`). **Skip this
-step.** Only needed after a Godot version bump:
+**Already installed**, and they are the slowest item, so this is a real saving.
+Verify rather than re-download:
 
 ```bash
-# Editor > Manage Export Templates > Download and Install
 ls ~/Library/Application\ Support/Godot/export_templates/4.7.2.stable/android_*.apk
 ```
+
+Only needed again after a Godot version bump — the version string must match the
+editor exactly.
 
 ### Step 4 — Debug keystore
 
@@ -1032,60 +1145,59 @@ keytool -keyalg RSA -genkeypair -alias androiddebugkey \
   -storepass android \
   -dname 'CN=Android Debug,O=Android,C=US' \
   -validity 9999 -deststoretype pkcs12
-
-ls -la ~/Library/Application\ Support/Godot/keystores/debug.keystore
 ```
 
-Requires step 1 — `keytool` exists at `/usr/bin/keytool` but is a stub without a
-JDK. Godot can also generate this itself once `java_sdk_path` is set (its
-*"Updated editor debug keystore to"* path), but doing it explicitly is one fewer
-moving part. **A debug keystore is for local installs only and must never sign a
+**Check before you run this.** If a keystore already exists at that path or at
+`~/.android/debug.keystore`, do **not** overwrite it — regenerating changes the
+signing identity, and Android then refuses to upgrade an already-installed app
+(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`); it must be uninstalled first.
+
+It deliberately lives **outside the repository**. `.gitignore` also blocks
+`*.keystore`, `*.jks`, `*.p12`, `*.pepk` and `keystore.properties` as
+belt-and-braces. A committed keystore is an unrevocable credential leak, and a
+committed *release* keystore means permanently losing the ability to update the
+app on Play. **A debug keystore is for local installs only and must never sign a
 Play Store build.**
 
-### Step 5 — Godot Editor Settings
+### Step 5 — Godot Editor Settings (the step people skip)
 
-**Godot does not read `ANDROID_HOME` or `JAVA_HOME`.** It reads its own settings,
-which currently point at paths that do not exist. GUI route:
+**Godot does not read `ANDROID_HOME` or `JAVA_HOME`.** It reads
+`~/Library/Application Support/Godot/editor_settings-4.7.tres`. On this machine
+that file already contained an `android_sdk_path` pointing at a directory that
+did not exist and an empty `java_sdk_path` — so a GUI export would have failed
+with a confusing path error rather than an obvious "no SDK" one.
 
-*Editor → Editor Settings → Export → Android*
-
-| Setting | Value |
-| --- | --- |
-| Android Sdk Path | the `$ANDROID_HOME` from step 2 |
-| Java Sdk Path | output of `/usr/libexec/java_home -v 17` |
-| Debug Keystore | `~/Library/Application Support/Godot/keystores/debug.keystore` |
-| Debug Keystore User | `androiddebugkey` |
-| Debug Keystore Pass | `android` |
-
-Or edit `~/Library/Application Support/Godot/editor_settings-4.7.tres` directly
-(**close the editor first** — it rewrites the file on exit):
+Set via *Editor → Editor Settings → Export → Android*, or edit the file
+(**close the editor first — it rewrites the file on exit**):
 
 ```ini
-export/android/android_sdk_path = "/opt/homebrew/share/android-commandlinetools"
-export/android/java_sdk_path = "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
-export/android/debug_keystore = "/Users/hotkhwan/Library/Application Support/Godot/keystores/debug.keystore"
+export/android/android_sdk_path = "/Users/<you>/Library/Android/sdk"
+export/android/java_sdk_path = "/Users/<you>/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
+export/android/debug_keystore = "/Users/<you>/Library/Application Support/Godot/keystores/debug.keystore"
 export/android/debug_keystore_user = "androiddebugkey"
 export/android/debug_keystore_pass = "android"
 ```
 
-Resolve every path to a literal — the `.tres` file is not a shell script. Lines 312-316
-already exist in that file; the SDK path needs correcting and the Java path
-filling in.
+Resolve every path to a literal — the `.tres` is not a shell script. Note Godot
+re-serialises this file and drops settings left at their default, so
+`debug_keystore_user` may vanish after the editor next runs; that is harmless,
+because the value it dropped *is* the default.
 
-### Step 6 — Add the export preset
+### Step 6 — The export preset
 
-Apply section 1's block to `game/export_presets.cfg` (**Lead-owned**), or add it
-via *Project → Export → Add → Android* and reconcile the values.
+Already applied — `[preset.1]` in `game/export_presets.cfg` (section 1).
 
 ### Step 7 — Verify, then build
 
 ```bash
 cd /Users/hotkhwan/Projects/little-buddy
-tools/export_android.sh --check           # must print "All preflight checks passed."
-tools/export_android.sh debug
+tools/export_android.sh --check           # prints "All preflight checks passed."
+tools/export_android.sh debug             # -> build/android/LittleDays-debug.apk
 ```
 
 ### Step 8 — Install on a device
+
+**Not done — there is no device.** These commands are untested here:
 
 ```bash
 # On the device: Settings > About > tap Build number 7x, then
@@ -1094,67 +1206,100 @@ adb devices                               # must list the device as "device"
 tools/export_android.sh debug --install
 ```
 
-### Step 9 — What to actually verify on the device
+---
 
-Nothing in this document substitutes for these. In priority order:
+## 8. Status list
 
-1. **Speech reports unavailable, not mock.** Open the parent speech diagnostics
-   panel. It must read `backend: unavailable`, **not** `backend: mock`. If it
-   reads `mock`, the bug in section 3.2 is live and a child can pass speaking
-   tasks without speaking. **Verify this first.**
-2. **Touch-only playthrough.** Complete Mission 01 and Snack Time start to
-   finish without ever pressing Speak. Stars must be awarded identically.
-3. **Speak button absent.** With speech unavailable it must be hidden, not greyed
-   (`house_hud.gd:452`, and the guarantee in `test_speech_never_required.gd:233`).
-4. **TTS speaks.** Confirm English prompts are audible (`CLAUDE.md` DoD 6). If
-   silent, check for an installed English voice — and confirm silence is a quiet
-   no-op, not a stall.
-5. **Safe area, both ways up.** Flip the tablet 180°. No HUD control may sit
-   under a cutout or the gesture bar in either orientation (risks R3-R5).
-6. **Joystick in the bottom-left corner.** Drive from the extreme corner and
-   confirm no system back-gesture fires (risk R3).
-7. **Release permission list.** `aapt2 dump permissions` on a **release** APK
-   must show **no permissions at all** — the script prints this automatically.
-   The debug APK will show `INTERNET`; that is expected and is not the shipping
-   set (section 2).
-8. **Performance.** Mobile renderer, one `DirectionalLight3D`, 1024 shadow map
-   (`project.godot`). Verify the frame rate on the actual target hardware, which
-   is weaker than an iPad.
+### Resolved
+
+1. ~~No JDK 17~~ — Temurin 17.0.20.1, user-local, no sudo. (step 1)
+2. ~~No Android SDK~~ — cmdline-tools, platform-tools, build-tools 36.1.0,
+   platforms;android-36, licences accepted. (step 2)
+3. ~~No debug keystore~~ — generated outside the repo, git-ignored. (step 4)
+4. ~~Godot Editor Settings wrong~~ — both paths now resolve. (step 5)
+5. ~~No Android export preset~~ — `[preset.1]` applied, iOS preset untouched and
+   byte-identical. (section 1)
+6. ~~No Android launcher icons~~ — 192 + two 432 adaptive layers generated from
+   existing art, safe-zone-correct. (section 5)
+7. ~~`speech_service.gd` selects `MockSpeechBackend` on Android~~ — fixed with an
+   `OS.has_feature("mobile")` guard and pinned by two tests. (section 3.2)
+8. ~~App name "Little Days" appears nowhere in the repo~~ — the rename landed;
+   `config/name="Little Days"` and the APK label matches. (section 1)
+
+### Still open
+
+9. **No Android device.** Nothing in section 9 has been verified. This is now
+   *the* blocker, and it is not a software one — it needs hardware. Everything
+   above only proves a file was produced.
+10. **No release build.** Only a debug APK exists. A release build needs a
+    **release** keystore, which is a credential the owner must create and hold;
+    it was deliberately not generated here. The permission set is expected to
+    stay empty (section 2) but should be re-dumped once it exists.
+11. **Android speech recognition is not proven offline-capable.** Ship Android
+    touch-only and scope it separately, with on-device recognition as the
+    acceptance criterion. The game is fully playable without it — that path is
+    under test (`test_speech_never_required.gd`). (section 3.4)
+12. **Joystick clearance risks R1/R2** — 0.6 px of margin on a square foldable,
+    and a floor that can overlap Speak below ~920 px viewport width. Pinned by
+    `test_android_platform_guards.gd`, but only device use will show whether it
+    matters. (section 4)
+13. **Play Store readiness is untouched** — no Play Console app, no privacy
+    policy URL, no Data Safety form, no target-audience declaration. (section 2)
+
+### Files this work touched
+
+`game/export_presets.cfg` (append-only: 60 insertions, 0 deletions),
+`tools/export_android.sh`, `docs/ANDROID_READINESS.md`, `.gitignore`
+(append-only), and three new PNGs under `game/assets/icons/android/`.
+
+`game/project.godot` and everything under `game/scripts/`, `game/scenes/` and
+`game/content/` were **not modified** — in particular the speech files, which
+were read to verify the fix and left alone. **Nothing was committed.**
+
+Machine state changed outside the repo (deliberately, and not in git): the JDK,
+the Android SDK, the debug keystore, and Godot's editor settings.
 
 ---
 
-## 8. Blocking list
+## 9. What must be verified on a real device — NONE OF IT DONE
 
-Must be resolved before an Android APK can exist:
+There is no Android device and no emulator, so **every item below is untested**.
+This list is the honest remainder of the work. Nothing earlier in this document
+substitutes for it. In priority order:
 
-1. **No JDK 17** on the build machine. (step 1)
-2. **No Android SDK** — no `sdkmanager`, no `build-tools`/`apksigner`, no
-   `platforms/android-36`, no `adb`. (step 2)
-3. **No debug keystore.** (step 4)
-4. **Godot Editor Settings** `java_sdk_path` empty and `android_sdk_path`
-   pointing at a non-existent directory. (step 5)
-5. **No Android export preset** in `game/export_presets.cfg` — patch ready in
-   section 1, unapplied, Lead-owned. (step 6)
-6. **No Android launcher icons** — 192x192 plus two 432x432 adaptive layers. Needs
-   real two-layer art; `make_ios_icons.sh` cannot be reused. (section 5)
-7. **No Android device** to install on or verify against.
+1. **Speech reports `unavailable`, not `mock`.** Open the parent speech
+   diagnostics panel. It must read `backend: unavailable`. Reading `mock` would
+   mean a child can pass speaking tasks without speaking. The code now guards
+   this with `OS.has_feature("mobile")`, two tests pin it, and the APK provably
+   contains no Android speech library — but the panel on real glass is the only
+   end-to-end proof. **Check this first.**
+2. **Touch-only playthrough.** Complete Mission 01 and Snack Time start to
+   finish without ever pressing Speak. Stars must be awarded identically.
+3. **Speak button absent.** With speech unavailable it must be hidden, not
+   greyed (`house_hud.gd:452`, `test_speech_never_required.gd:233`).
+4. **TTS speaks.** Confirm English prompts are audible (`CLAUDE.md` DoD 6). TTS
+   goes through Godot's built-in `DisplayServer`, needs no permission and no
+   plugin, so it has a genuine chance of working — but it depends on an
+   installed English voice. If silent, confirm that silence is a quiet no-op and
+   not a stall.
+5. **Safe area, both ways up.** The manifest sets `sensorLandscape`
+   (`screenOrientation=11`, confirmed in the APK), so a child flipping the
+   tablet moves the unsafe edge. No HUD control may sit under a cutout or the
+   gesture bar in either orientation (risks R3-R5). With `targetSdk 36` Android
+   enforces edge-to-edge, so this rests entirely on
+   `DisplayServer.get_display_safe_area()` being correct on Android — the single
+   highest-value thing to check.
+6. **Joystick in the bottom-left corner.** Drive from the extreme corner and
+   confirm no system back-gesture fires (risk R3).
+7. **Launcher icon.** Confirm the adaptive icon is not clipped badly under a
+   circular *and* a squircle mask, and that the legacy 192 icon looks right on
+   an older launcher. Icons were checked by eye as flat images only.
+8. **Release permission list.** Once a release keystore exists, `aapt2 dump
+   permissions` on the **release** APK must show none. The debug APK already
+   shows none (section 2), so this should be a formality.
+9. **Performance.** Mobile renderer, one `DirectionalLight3D`, 1024 shadow map.
+   Android tablets are weaker than the target iPad, and `arm64-v8a` is the only
+   ABI shipped. Measure the frame rate on the real thing.
 
-Not blocking an APK, but blocking a *correct* one:
-
-8. **`speech_service.gd:215` selects `MockSpeechBackend` on Android**, faking a
-   `"milk"` transcript on a real child's device. One-line fix in section 3.2.
-   **This should land before any Android build is put in front of a child.**
-9. **App name "Little Days"** appears nowhere in the repo and would disagree with
-   the iPad app's name. Needs a decision. (section 1)
-10. **Android speech recognition is not proven offline-capable** and should be
-    treated as separate, independently-scoped work with on-device recognition as
-    its acceptance criterion. Ship Android touch-only. (section 3.4)
-11. **Joystick clearance risks R1/R2** — 0.6 px of margin on a square foldable,
-    and a floor that can overlap Speak below ~920 px viewport width.
-    (section 4)
-
-Files created by this work: `tools/export_android.sh`,
-`docs/ANDROID_READINESS.md`, `game/tests/cases/test_android_platform_guards.gd`.
-`game/export_presets.cfg`, `game/project.godot` and everything under
-`game/scripts/`, `game/scenes/` and `game/content/` were **not modified**.
-Nothing was committed.
+**Do not mark any of these as passed on the strength of this document.** A
+signed APK on a Mac is a file, not a playtest.

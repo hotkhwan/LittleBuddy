@@ -1,14 +1,23 @@
 #!/bin/bash
 # Export Little Buddy to an Android APK.
 #
-# ## Status on the machine this was written on
+# ## Status
 #
-# This script HAS NEVER PRODUCED AN APK, because the machine it was written on
-# has no Android SDK, no JDK, no adb and no debug keystore. It was written to be
-# correct the moment those exist, and -- more importantly -- to fail in a way
-# that TELLS YOU WHAT TO INSTALL instead of dying inside Gradle with a stack
-# trace. Run it; it will print a numbered blocking list with copy-pasteable
-# commands. See `docs/ANDROID_READINESS.md` for the same list in prose.
+# 2026-09-19: this now WORKS. The toolchain was installed and the export branch
+# has actually run -- build/android/LittleDays-debug.apk, 36.4 MB, signed, with
+# ZERO declared permissions. Before that date the script had never produced an
+# APK and only ever printed its blocking list.
+#
+# It still fails loudly and usefully on a machine that is missing a piece: it
+# collects EVERY missing prerequisite rather than dying on the first, and prints
+# a numbered list with copy-pasteable commands instead of dying inside Gradle
+# with a stack trace. See `docs/ANDROID_READINESS.md` for the same list in prose.
+#
+# Everything the toolchain needs installs WITHOUT sudo, into the user's home
+# directory. That is worth knowing: the obvious `brew install --cask temurin@17`
+# route needs an admin password, and a plain tarball unpacked into
+# ~/Library/Java/JavaVirtualMachines/ does not -- `/usr/libexec/java_home`
+# discovers it there just the same (verified).
 #
 # ## Why every check is here
 #
@@ -54,7 +63,10 @@ GAME_DIR="$REPO_ROOT/game"
 PRESETS="$GAME_DIR/export_presets.cfg"
 PRESET_NAME="Android"
 OUT_DIR="$REPO_ROOT/build/android"
-OUT_APK="$OUT_DIR/LittleBuddy.apk"
+# Mode-suffixed on purpose. A debug and a release APK are NOT interchangeable
+# (the debug one is signed with a throwaway key and is android:debuggable), and
+# a single filename lets one silently overwrite the other.
+OUT_APK="$OUT_DIR/LittleDays-$MODE.apk"
 
 GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
 if [ ! -x "$GODOT" ]; then
@@ -387,9 +399,24 @@ if [ -n "$SDK_DIR" ]; then
 	if [ -n "$AAPT2" ]; then
 		echo ""
 		echo "==> Permissions actually declared in the APK:"
-		"$AAPT2" dump permissions "$OUT_APK" 2>/dev/null \
-			| grep -E "^(uses-permission|permission)" \
-			| sed 's/^/    /' || echo "    (none)"
+		# Captured rather than piped straight to sed: `grep | sed` exits 0 even
+		# when grep matched nothing, so the old `|| echo "(none)"` could never
+		# fire and an empty permission list printed as silence. Silence and
+		# "none" look identical but mean very different things when the question
+		# is "what is this children's app asking for?", so say it explicitly.
+		PERMS="$("$AAPT2" dump permissions "$OUT_APK" 2>/dev/null \
+			| grep -E "^(uses-permission|permission)" || true)"
+		if [ -n "$PERMS" ]; then
+			printf '%s\n' "$PERMS" | sed 's/^/    /'
+		else
+			echo "    (none -- the APK declares no permissions at all)"
+		fi
+		if [ "$MODE" = "debug" ]; then
+			echo ""
+			echo "    NOTE: this is the $MODE APK. Godot CAN add INTERNET to a debug"
+			echo "    export for the remote debugger, so a debug permission list is not"
+			echo "    automatically the shipping one -- always re-check a release build."
+		fi
 	fi
 fi
 

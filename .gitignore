@@ -82,3 +82,16 @@ game/assets_source/**/*.import
 
 # python bytecode from the local glb inspection tools
 tools/__pycache__/
+
+# --- Signing material: never commit a keystore or its passwords ------------
+# A debug keystore is generated per-machine by tools/export_android.sh (or by
+# hand, see docs/ANDROID_READINESS.md) and lives OUTSIDE the repo, under
+# ~/Library/Application Support/Godot/keystores/. These rules are belt-and-
+# braces for the case where someone generates one inside the working tree: a
+# committed keystore is an unrevocable credential leak, and a release keystore
+# in git history means losing the ability to update the app on Play at all.
+*.keystore
+*.jks
+*.p12
+*.pepk
+keystore.properties
