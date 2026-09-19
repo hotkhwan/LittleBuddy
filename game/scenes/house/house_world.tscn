@@ -5,7 +5,7 @@
 [ext_resource type="Script" path="res://scripts/character/little_buddy_character.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/character/toddler_view.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/characters/buddy/pink_girl_buddy.gd" id="7"]
-[ext_resource type="Script" path="res://scripts/characters/little_buddy/baby_little_buddy.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/care/child_actor.gd" id="8"]
 [ext_resource type="Script" path="res://scripts/navigation/navigation_controller.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/house/room_transition_controller.gd" id="6"]
 
