@@ -55,6 +55,7 @@ const WORDS: Dictionary = {
 	"sofa": {"word": "sofa", "thai": "โซฟา"},
 	"toyBox": {"word": "toy box", "thai": "กล่องของเล่น"},
 	"toyShelf": {"word": "shelf", "thai": "ชั้นวางของ"},
+	"littleBuddy": {"word": "baby", "thai": "น้อง"},
 	"book": {"word": "book", "thai": "หนังสือ"},
 }
 
@@ -107,6 +108,7 @@ const ACTIONS: Dictionary = {
 	"sofa": "sit",
 	"toyBox": "pickUp",
 	"toyShelf": "pickUp",
+	"littleBuddy": "hug",
 	"book": "pickUp",
 }
 

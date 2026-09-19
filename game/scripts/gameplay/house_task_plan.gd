@@ -41,6 +41,25 @@ const KIND_TRAVEL: String = "travel"
 const KIND_GO_AND_DO: String = "goAndDo"
 const KIND_DELIVER: String = "deliver"
 const KIND_CHOOSE: String = "choose"
+## A hands-on care act performed ON Little Buddy at a piece of furniture:
+## brushing teeth at the sink, washing a face, drying it.
+##
+## It is its own kind because none of the other four fit. `goAndDo` finishes the
+## moment you arrive, which would make brushing a child's teeth a single tap.
+## `deliver` drags one object onto one pad and is done. Care is a SUSTAINED
+## gesture with progress, so it needs the walk of `goAndDo` and then a screen of
+## its own -- which is the reusable semantic action type the brief asks for
+## rather than a second mission engine.
+const KIND_CARE: String = "care"
+
+## The care acts, and the tool each one puts in the player's hand. Adding a
+## fourth (combing hair, cleaning a nose) is a row here plus copy -- no new kind,
+## no director change.
+const CARE_INTERACTIONS: Dictionary = {
+	"brushTeeth": "toothbrush",
+	"washFace": "cloth",
+	"dryFace": "towel",
+}
 
 ## Interactions that put an object in the child's hand and a landing pad
 ## somewhere in the world. Anything else is a plain tap.
@@ -77,6 +96,10 @@ static func describe(task: Variant, current_room_id: String = "") -> Dictionary:
 	var kind: String = KIND_CHOOSE
 	if is_door:
 		kind = KIND_TRAVEL
+	elif CARE_INTERACTIONS.has(interaction):
+		# Care is checked BEFORE the drag test: `dragTo*` is a delivery, but a care
+		# act is a drag too and must not be mistaken for one.
+		kind = KIND_CARE
 	elif not walk_target.is_empty():
 		kind = KIND_DELIVER if interaction.begins_with(DRAG_PREFIX) else KIND_GO_AND_DO
 
@@ -110,6 +133,9 @@ static func describe(task: Variant, current_room_id: String = "") -> Dictionary:
 		# A pad on the furniture (toy box, bath) or a pad on the toddler himself.
 		"zoneFollowsCharacter": BODY_ZONE_IDS.has(zone_id),
 		"zoneTargetId": focus_target,
+		# "brushTeeth" | "washFace" | "dryFace", else "". The overlay reads this.
+		"careKind": interaction if CARE_INTERACTIONS.has(interaction) else "",
+		"careTool": String(CARE_INTERACTIONS.get(interaction, "")),
 	}
 
 
@@ -135,6 +161,10 @@ static func is_choose(plan: Variant) -> bool:
 	return _kind_of(plan) == KIND_CHOOSE
 
 
+static func is_care(plan: Variant) -> bool:
+	return _kind_of(plan) == KIND_CARE
+
+
 ## Whether this beat is worth moving the camera in on.
 ##
 ## The rule, and it is a rule about children rather than about cameras:
@@ -152,6 +182,8 @@ static func is_choose(plan: Variant) -> bool:
 ## impossible to notice from a test that only checks the camera moved.
 static func wants_close_up(plan: Variant) -> bool:
 	var kind: String = _kind_of(plan)
+	if kind == KIND_CARE:
+		return true
 	if kind.is_empty() or kind == KIND_TRAVEL:
 		return false
 	return true

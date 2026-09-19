@@ -133,7 +133,17 @@ func has_spawn_point(spawn_id: String) -> bool:
 ## room, never in a global bucket, so a room is self-contained.
 func get_activity_targets() -> Array:
 	build()
-	return _targets.duplicate()
+	var all: Array = _targets.duplicate()
+	# Inhabitants contribute targets too. Little Buddy registers its own, so a
+	# mission can say "go to bedroom.littleBuddy" -- and without this the room's
+	# registry would not contain it and the reference would miss silently, which
+	# is exactly what `test_semantic_validation` exists to catch.
+	for child: Node in get_children():
+		if child.has_method("get_activity_target"):
+			var contributed: Node = child.call("get_activity_target")
+			if contributed != null and not all.has(contributed):
+				all.append(contributed)
+	return all
 
 
 ## Accepts either half of the address: `"bed"` or `"bedroom.bed"`. The
@@ -141,7 +151,10 @@ func get_activity_targets() -> Array:
 ## id, so a caller holding only the local half would otherwise find nothing.
 func get_activity_target(target_id: String) -> Node:
 	build()
-	for target: Node in _targets:
+	# Over the COLLECTED list, not the private one: an inhabitant's target is
+	# reachable by `get_activity_targets()` and must be findable by id too, or a
+	# mission can see it in the registry and fail to look it up.
+	for target: Node in get_activity_targets():
 		for candidate: String in _ids_of(target):
 			if candidate == target_id:
 				return target

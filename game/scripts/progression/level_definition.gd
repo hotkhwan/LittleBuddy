@@ -38,6 +38,9 @@ const TEMPLATES: Array[String] = [
 	"chooseCorrectObject",
 	"placeIt",
 	"sequenceRoutine",
+	# A caregiver routine: walk to the child, take them somewhere, perform a
+	# hands-on care act. Added with the Brush My Teeth mission.
+	"careRoutine",
 	"walkTo",
 	"storybookBeat",
 ]

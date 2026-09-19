@@ -27,6 +27,11 @@ const INTERACTIONS: Array[String] = [
 	"dragToDress",
 	"dragToToyBox",
 	"tap",
+	# Care acts performed ON the child at a piece of furniture. They are drags
+	# too, but not deliveries -- see `house_task_plan.gd::CARE_INTERACTIONS`.
+	"brushTeeth",
+	"washFace",
+	"dryFace",
 ]
 
 ## Fallback category list used when `index.json` is missing or unreadable.

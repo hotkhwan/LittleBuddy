@@ -352,10 +352,17 @@ func _test_targets(world: Node):
 		# derived from the layout rather than restated here. Hardcoding 5 would
 		# have meant either no containers or a test that stopped describing the
 		# rooms.
-		var expected_targets: int = 5 + HouseLayout.storages(room_id).size()
+		# 3 furniture + 2 doors + containers + INHABITANTS. Little Buddy registers
+		# its own target so a mission can say "go to the child"; deriving the
+		# count keeps this test describing the room rather than freezing it.
+		var inhabitants: int = 0
+		for child: Node in room.get_children():
+			if child.has_method("get_activity_target") and child.call("get_activity_target") != null:
+				inhabitants += 1
+		var expected_targets: int = 5 + HouseLayout.storages(room_id).size() + inhabitants
 		if local_ids.size() != expected_targets:
-			failures.append("%s has %d targets, expected 3 furniture + 2 doors + %d container(s)"
-					% [room_id, local_ids.size(), HouseLayout.storages(room_id).size()])
+			failures.append("%s has %d targets, expected 3 furniture + 2 doors + %d container(s) + %d inhabitant(s)"
+					% [room_id, local_ids.size(), HouseLayout.storages(room_id).size(), inhabitants])
 
 	var problems: Array = world.call("get_target_problems")
 	if not problems.is_empty():

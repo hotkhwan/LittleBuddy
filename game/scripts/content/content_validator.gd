@@ -42,6 +42,17 @@ const VALID_INTERACTIONS: Array[String] = [
 	"dragToDress",
 	"dragToToyBox",
 	"tap",
+	# CARE ACTS, added 2026-09-19. A sustained gesture performed ON Little Buddy
+	# at a piece of furniture -- brushing teeth, washing a face, drying it.
+	#
+	# Registering a new valid value, not relaxing a rule: every other check still
+	# applies to these tasks, and an interaction outside this list is still
+	# rejected. They need their own names because `tap` would finish brushing a
+	# child's teeth in one touch and `dragTo*` means "deliver an object to a pad",
+	# which is a different thing. See `house_task_plan.gd::CARE_INTERACTIONS`.
+	"brushTeeth",
+	"washFace",
+	"dryFace",
 ]
 
 ## Acceptance targets from the overnight build plan. Tests assert against these

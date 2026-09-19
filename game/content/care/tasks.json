@@ -1,0 +1,240 @@
+{
+  "contentVersion": 1,
+  "categoryId": "care",
+  "title": "Caring for Little Buddy",
+  "tasks": [
+    {
+      "taskId": "talkToChild",
+      "category": "care",
+      "mode": "followInstruction",
+      "prompt": "Little Buddy needs you!",
+      "instruction": "Go to Little Buddy.",
+      "thaiHint": "ไปหาน้องบัดดี้",
+      "targetWords": [
+        "little buddy"
+      ],
+      "acceptedCommands": [
+        "little buddy",
+        "buddy",
+        "coming"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bedroom.littleBuddy",
+      "targetId": "bedroom.littleBuddy",
+      "characterAction": "wave",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "objectId": "teddy",
+      "repeatPrompt": "Can you say Little Buddy?",
+      "cooldown": 3
+    },
+    {
+      "taskId": "goToBathroom",
+      "category": "care",
+      "mode": "followInstruction",
+      "prompt": "Let's go to the bathroom.",
+      "instruction": "Walk to the bathroom.",
+      "thaiHint": "ไปห้องน้ำกันเถอะ",
+      "targetWords": [
+        "bathroom"
+      ],
+      "acceptedCommands": [
+        "bathroom",
+        "the bathroom",
+        "let's go"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bedroom.doorToBathroom",
+      "targetId": "bedroom.doorToBathroom",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "objectId": "toothbrush",
+      "repeatPrompt": "Can you say bathroom?",
+      "cooldown": 3
+    },
+    {
+      "taskId": "approachSink",
+      "category": "care",
+      "mode": "followInstruction",
+      "prompt": "Here is the sink.",
+      "instruction": "Go to the sink.",
+      "thaiHint": "ไปที่อ่างล้างหน้า",
+      "targetWords": [
+        "sink"
+      ],
+      "acceptedCommands": [
+        "sink",
+        "the sink"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bathroom.sink",
+      "targetId": "bathroom.sink",
+      "characterAction": "point",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 1,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "objectId": "toothbrush",
+      "repeatPrompt": "Can you say sink?",
+      "cooldown": 3
+    },
+    {
+      "taskId": "pickUpToothbrush",
+      "category": "care",
+      "mode": "findIt",
+      "objectId": "toothbrush",
+      "prompt": "Where is the toothbrush?",
+      "instruction": "Find the toothbrush and the toothpaste.",
+      "repeatPrompt": "Can you say toothbrush?",
+      "thaiHint": "แปรงสีฟันอยู่ไหน",
+      "targetWords": [
+        "toothbrush"
+      ],
+      "acceptedCommands": [
+        "toothbrush",
+        "the toothbrush",
+        "here it is"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bathroom.sink",
+      "targetId": "bathroom.sink",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 2,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "cooldown": 3
+    },
+    {
+      "taskId": "brushTeethCare",
+      "category": "care",
+      "mode": "followInstruction",
+      "prompt": "Brush Little Buddy's teeth!",
+      "instruction": "Rub the brush back and forth.",
+      "thaiHint": "แปรงฟันให้น้อง",
+      "targetWords": [
+        "brush"
+      ],
+      "acceptedCommands": [
+        "brush",
+        "brushing",
+        "brush teeth"
+      ],
+      "interaction": "brushTeeth",
+      "requiresWalkTo": "bathroom.sink",
+      "targetId": "bathroom.sink",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "objectId": "toothbrush",
+      "repeatPrompt": "Can you say brush?",
+      "cooldown": 3
+    },
+    {
+      "taskId": "rinseMouth",
+      "category": "care",
+      "mode": "followInstruction",
+      "prompt": "Time to rinse.",
+      "instruction": "Give Little Buddy the water.",
+      "thaiHint": "บ้วนปากด้วยน้ำ",
+      "targetWords": [
+        "water"
+      ],
+      "acceptedCommands": [
+        "water",
+        "rinse",
+        "the water"
+      ],
+      "interaction": "tap",
+      "requiresWalkTo": "bathroom.sink",
+      "targetId": "bathroom.sink",
+      "reward": {
+        "stars": 1
+      },
+      "difficulty": 2,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "objectId": "cup",
+      "repeatPrompt": "Can you say water?",
+      "cooldown": 3
+    },
+    {
+      "taskId": "washFaceCare",
+      "category": "care",
+      "mode": "followInstruction",
+      "prompt": "Wash the face!",
+      "instruction": "Rub the cloth all over.",
+      "thaiHint": "ล้างหน้าให้น้อง",
+      "targetWords": [
+        "wash"
+      ],
+      "acceptedCommands": [
+        "wash",
+        "washing",
+        "wash face"
+      ],
+      "interaction": "washFace",
+      "requiresWalkTo": "bathroom.sink",
+      "targetId": "bathroom.sink",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "objectId": "soap",
+      "repeatPrompt": "Can you say wash?",
+      "cooldown": 3
+    },
+    {
+      "taskId": "dryFaceCare",
+      "category": "care",
+      "mode": "followInstruction",
+      "prompt": "Dry with the towel.",
+      "instruction": "Wipe the towel everywhere.",
+      "thaiHint": "เช็ดหน้าด้วยผ้า",
+      "targetWords": [
+        "towel"
+      ],
+      "acceptedCommands": [
+        "towel",
+        "dry",
+        "the towel"
+      ],
+      "interaction": "dryFace",
+      "requiresWalkTo": "bathroom.towel",
+      "targetId": "bathroom.towel",
+      "reward": {
+        "stars": 2
+      },
+      "difficulty": 2,
+      "stage": "toddler",
+      "speechRequired": false,
+      "assistAfterAttempts": 3,
+      "objectId": "towel",
+      "repeatPrompt": "Can you say towel?",
+      "cooldown": 3
+    }
+  ]
+}

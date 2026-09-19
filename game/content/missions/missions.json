@@ -472,6 +472,49 @@
           "hugTeddyGoodNight"
         ]
       }
+    },
+    {
+      "missionId": "brushMyTeeth",
+      "title": "Brush My Teeth!",
+      "thaiTitle": "แปรงฟันกันเถอะ",
+      "category": "care",
+      "introPhrase": "Little Buddy needs help!",
+      "outroPhrase": "All clean! Put the brush away. Great job, Buddy!",
+      "unlockAtStars": 0,
+      "taskIds": [
+        "talkToChild",
+        "goToBathroom",
+        "approachSink",
+        "pickUpToothbrush",
+        "brushTeethCare",
+        "rinseMouth",
+        "washFaceCare",
+        "dryFaceCare"
+      ],
+      "chapterId": "ch3",
+      "levelId": "brushMyTeeth",
+      "levelTitle": "Brush My Teeth",
+      "levelThaiTitle": "แปรงฟัน",
+      "levelNumber": 20,
+      "storyBeat": "Buddy helps Little Buddy get clean before the day starts.",
+      "template": "careRoutine",
+      "roomPath": [
+        "bedroom",
+        "bathroom"
+      ],
+      "estimatedMinutes": 4,
+      "starRules": {
+        "coreTaskIds": [
+          "talkToChild",
+          "goToBathroom",
+          "brushTeethCare",
+          "washFaceCare",
+          "dryFaceCare"
+        ],
+        "listeningTaskIds": [
+          "pickUpToothbrush"
+        ]
+      }
     }
   ]
 }

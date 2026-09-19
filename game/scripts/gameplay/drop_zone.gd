@@ -39,6 +39,14 @@ const INTERACTION_TO_ZONE_ID: Dictionary = {
 	"dragToDress": ZONE_DRESS,
 	"dragToToyBox": ZONE_TOY_BOX,
 	"tap": ZONE_HAND,
+	# CARE ACTS. They map to `hand` -- the same zone a tap uses -- because from
+	# the drop-zone system's point of view that is exactly what they are: a tool
+	# in the player's hand. The gesture itself lives in `care_overlay.gd` and
+	# needs no landing pad, so inventing a `face` zone would have forced every
+	# one of the five activity scenes to declare a node none of them uses.
+	"brushTeeth": ZONE_HAND,
+	"washFace": ZONE_HAND,
+	"dryFace": ZONE_HAND,
 }
 
 ## Conventional scene-node name per zone id, so `ActivityScene` and the Baby Room
