@@ -197,9 +197,66 @@ func _ready() -> void:
 	_coming_soon_label.visible = false
 	_play_button.pressed.connect(_on_play_pressed)
 	_free_play_button.pressed.connect(_on_free_play_pressed)
+	_label_play_button()
 	_build_secondary_menu()
 
 	_arm_first_run()
+
+
+# ---------------------------------------------------------------------------
+# Start, or Continue
+# ---------------------------------------------------------------------------
+
+## The two words a returning family looks for.
+##
+## The button used to say "Play" whether this was the first launch or the
+## fiftieth, which loses the one piece of information a parent actually wants
+## from a title screen: *is our progress still here?* A child who has played
+## before is not starting; they are carrying on, and saying so is the difference
+## between a menu and a front door.
+##
+## The choice is made from COMPLETION, not from a star count. Stars can be zero
+## after a genuinely finished level -- the skip button is the room's no-dead-end
+## escape hatch and rates 0 on purpose -- so a child who skipped their way
+## through Monday would be greeted with "Start" on Tuesday and reasonably wonder
+## where their house went.
+const LABEL_START: String = "Start"
+const LABEL_CONTINUE: String = "Continue"
+
+
+func _label_play_button() -> void:
+	if _play_button == null:
+		return
+	var label: String = LABEL_CONTINUE if _has_progress() else LABEL_START
+	# The word lives in a CHILD `Label` ("PlayCaption"), not in the button's own
+	# `text` -- the button carries an icon above a caption, and setting `text`
+	# draws a second, smaller word behind the icon instead of replacing the
+	# visible one. Found by rendering the menu and looking at it; the first
+	# version of this function set `text` and changed nothing on screen.
+	var caption: Label = _play_button.get_node_or_null("PlayCaption") as Label
+	if caption != null:
+		caption.text = label
+	else:
+		_play_button.text = label
+
+
+## Has this family played before? Asked of SaveService, defensively -- a build
+## without one, or an older one, answers "no" and gets "Start", which is the safe
+## way to be wrong.
+func _has_progress() -> bool:
+	var save_service: Node = get_node_or_null("/root/SaveService")
+	if save_service == null:
+		return false
+	if save_service.has_method("get_level_completed"):
+		var completed: Variant = save_service.call("get_level_completed")
+		if typeof(completed) == TYPE_DICTIONARY and not (completed as Dictionary).is_empty():
+			return true
+	# Mid-level counts too: a child who stopped half way through Tuesday's
+	# mission has progress even though nothing is finished yet.
+	if save_service.has_method("get_current_level"):
+		if not String(save_service.call("get_current_level")).strip_edges().is_empty():
+			return true
+	return false
 
 
 # ---------------------------------------------------------------------------
