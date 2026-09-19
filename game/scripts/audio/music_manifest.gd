@@ -295,6 +295,20 @@ func licence_cleared(track_id: String) -> bool:
 	return _has_evidence(String(track.get("licenseEvidence", "")))
 
 
+## True when the row says, in so many words, that commercial use is NOT permitted.
+##
+## Different in kind from every other refusal, and the difference matters: a
+## `"pending"` row means nobody has checked yet, a missing field means nobody has
+## thought about it, and `"denied"` means somebody checked and the answer was no.
+## `refusal_reason()` cannot tell them apart -- all three answer
+## `commercialUseUnverified`, because all three must be refused -- so anything that
+## releases a refusal (see `AudioDirector.may_play()`) has to ask this as well.
+func is_denied(track_id: String) -> bool:
+	if not _tracks.has(track_id):
+		return false
+	return String((_tracks[track_id] as Dictionary).get("commercialUse", "")) == COMMERCIAL_USE_DENIED
+
+
 ## True when the track may be played AND there is a file to play. This is the
 ## only question the audio manager is allowed to ask before assigning a stream.
 func is_playable(track_id: String) -> bool:
@@ -415,8 +429,14 @@ func to_dictionary() -> Dictionary:
 	}
 
 
+## `sort_keys` is FALSE deliberately. It defaults to true, which reorders every
+## row alphabetically -- so `trackId` stopped being the first thing a human reads,
+## and, worse, the JSON round-trip above stopped being an identity as soon as a row
+## carried a field outside `REQUIRED_FIELDS`: `to_dictionary()` emits the canonical
+## order and a sorted re-parse comes back in a different one. The provenance fields
+## added with the 2026-09-19 delivery are exactly that case, and they found it.
 func to_json_string() -> String:
-	return JSON.stringify(to_dictionary(), "  ")
+	return JSON.stringify(to_dictionary(), "  ", false)
 
 
 # -----------------------------------------------------------------------------

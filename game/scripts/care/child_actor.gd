@@ -50,10 +50,22 @@ signal arrived()
 ## that a hungry child actually fusses rather than only being described as one.
 signal life_changed(clip: String)
 
-## Clear of the CAREGIVER's head, not just the child's. Buddy is 1.65 m and
-## stands right next to a 0.78 m child, so a bubble sized to the child alone
-## renders behind her hair -- which is where the first version put it.
-const BUBBLE_HEIGHT: float = 1.12
+## Clear of the CAREGIVER, not just the child.
+##
+## Raising it was the first attempt and it is not enough. Aliz stands BEHIND a
+## 0.78 m child and is more than twice his height, so every height that clears
+## his head lands somewhere on her -- the bubble simply moved from her hair to
+## her chest, which is where the close-up camera now frames it. Height alone
+## cannot solve an overlap in depth.
+##
+## So the bubble also steps SIDEWAYS, away from whichever side she is on. That
+## is a direction the actor already knows: `_find_caregiver()` exists for the
+## attention turn. When she is not there it falls back to screen-left, over the
+## open floor a room always has.
+const BUBBLE_HEIGHT: float = 1.02
+## How far to the side, in metres. Wide enough to clear her shoulder at the
+## close-up framing, short enough that the bubble still reads as HIS.
+const BUBBLE_SIDE_STEP: float = 0.52
 const BUBBLE_FONT_SIZE: int = 56
 const BUBBLE_PIXEL_SIZE: float = 0.0016
 
@@ -115,7 +127,7 @@ func build() -> void:
 	# Billboarded: the child is small and may be approached from any side, and a
 	# line the player has to walk around to read is not a signal.
 	_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_bubble.position = Vector3(0.0, BUBBLE_HEIGHT, 0.0)
+	_bubble.position = Vector3(-BUBBLE_SIDE_STEP, BUBBLE_HEIGHT, 0.0)
 	add_child(_bubble)
 
 	# A pose cut is also a RIG cut: only the rigged export has a skeleton, so the
@@ -358,6 +370,22 @@ func live(delta: float) -> void:
 ##
 ## The per-frame turn is procedural, and is the only procedural motion in this
 ## pass. It steps an angle towards an angle; it does not sway, bob or breathe.
+## Steps the need bubble to the side Aliz is NOT on, so a line about Bunny never
+## reads as coming out of her chest. Cheap, and re-evaluated whenever the child
+## refreshes rather than every frame -- she does not teleport.
+func _place_bubble() -> void:
+	if _bubble == null:
+		return
+	var side: float = -1.0
+	var caregiver: Node3D = _find_caregiver()
+	if caregiver != null and is_instance_valid(caregiver):
+		# If she is to his left, put it on his right, and the other way round.
+		var dx: float = caregiver.global_position.x - global_position.x
+		if absf(dx) > 0.05:
+			side = 1.0 if dx < 0.0 else -1.0
+	_bubble.position = Vector3(side * BUBBLE_SIDE_STEP, BUBBLE_HEIGHT, 0.0)
+
+
 func _attend_to_caregiver(delta: float) -> void:
 	if _wrapper == null or _walking or _attending:
 		return
@@ -568,6 +596,7 @@ func _refresh() -> void:
 		_wrapper.call("set_pose", pose)
 		activity_changed.emit(String(described["activity"]), pose)
 
+	_place_bubble()
 	if _bubble != null:
 		# Nothing to say when content: an empty bubble is quieter than a cheerful
 		# one, and the child should only interrupt when it wants something.

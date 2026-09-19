@@ -4,29 +4,49 @@
   "tracks": [
     {
       "trackId": "littleDaysTheme",
-      "source": "",
+      "source": "Anny - original composition, delivered 2026-09-19 as 'Little Days.wav'. Which tool or DAW produced it is NOT recorded: OWNER TO CONFIRM.",
       "createdAt": "",
-      "downloadedAt": "",
-      "licenseEvidence": "PENDING",
+      "downloadedAt": "2026-09-19",
+      "licenseEvidence": "OWNER TO CONFIRM",
       "commercialUse": "pending",
       "localPath": "res://audio/music/little_days_theme.ogg",
       "loopStart": 0.0,
       "loopEnd": 0.0,
       "volumeDb": -12.0,
-      "usageScenes": ["menu"]
+      "usageScenes": ["menu"],
+      "masterFile": "~/Music/LittleDays/masters/Little Days.wav",
+      "masterFormat": "WAV 48000 Hz, 2 ch, 16-bit PCM",
+      "masterBytes": 17816080,
+      "masterDurationSeconds": 92.72,
+      "masterSha256": "ce87963575cb6177e267cf58bd33cf0fa0fc8697d39203d69c4a08aea6565e59",
+      "runtimeEncoding": "oggenc -q 4 --resample 44100 (Vorbis 1.4.3, ~121.5 kb/s, 44100 Hz, 2 ch)",
+      "runtimeBytes": 1412253,
+      "runtimeDurationSeconds": 92.719,
+      "runtimeSha256": "de5588a77ed8591b82dc0eec5e3a40e829953440598692b839ee86796132eaf8",
+      "loopNote": "loopEnd 0.0 means 'to the end of the file'. The master ends with a musical release that decays from about -18 dBFS at 91.0 s to -38 dBFS at 92.7 s, so the wrap is a decay into the quiet 0.10 s lead-in rather than a click. A tighter seamless loop needs a re-cut MASTER, not a manifest edit: Godot's Ogg Vorbis stream has no loop-end, so loopEnd is honoured for WAV only."
     },
     {
       "trackId": "hungryBunny",
-      "source": "",
+      "source": "Anny - original composition, delivered 2026-09-19 as \"I'm Hungry!.wav\". Which tool or DAW produced it is NOT recorded: OWNER TO CONFIRM.",
       "createdAt": "",
-      "downloadedAt": "",
-      "licenseEvidence": "PENDING",
+      "downloadedAt": "2026-09-19",
+      "licenseEvidence": "OWNER TO CONFIRM",
       "commercialUse": "pending",
       "localPath": "res://audio/music/hungry_bunny.ogg",
       "loopStart": 0.0,
       "loopEnd": 0.0,
       "volumeDb": -16.0,
-      "usageScenes": ["miniGame"]
+      "usageScenes": ["miniGame"],
+      "masterFile": "~/Music/LittleDays/masters/I'm Hungry!.wav",
+      "masterFormat": "WAV 48000 Hz, 2 ch, 16-bit PCM",
+      "masterBytes": 12378640,
+      "masterDurationSeconds": 64.4,
+      "masterSha256": "43e62ad41955d7d5c766af6a104e65c311e423186831aa669835c900e9988739",
+      "runtimeEncoding": "oggenc -q 4 --resample 44100 (Vorbis 1.4.3, ~123.6 kb/s, 44100 Hz, 2 ch)",
+      "runtimeBytes": 999758,
+      "runtimeDurationSeconds": 64.4,
+      "runtimeSha256": "64653da1f483c78f9f1d704322c04da01e5eef1b43463389d30bb27a25694b3d",
+      "loopNote": "loopEnd 0.0 means 'to the end of the file'. The master's final note decays to about -32 dBFS over the last 1.0 s. Same caveat as littleDaysTheme: a seamless loop is a re-cut master, not a manifest edit."
     }
   ]
 }

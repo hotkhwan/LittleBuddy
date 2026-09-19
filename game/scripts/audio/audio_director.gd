@@ -10,9 +10,11 @@ extends Node
 ## It is a plain `Node`, not a singleton. Instantiate it, compose it into a scene,
 ## or register it as an autoload -- all three work, and the tests use the first.
 ##
-## ## The normal case today is that there is no music at all
+## ## Silence is still a supported configuration, and still the default
 ##
-## No track file exists in this repository yet. Every path through this class
+## Two real tracks landed on 2026-09-19 (`audio/music/*.ogg`), but their licence
+## rows say `commercialUse: "pending"`, so the gate refuses them and the shipping
+## default is silent -- the same condition this class was written for. Every path
 ## treats that as ordinary: `set_state()` succeeds, reports honestly that nothing
 ## is playing, emits `track_unavailable` once, and produces no engine error and no
 ## repeated warning. The game must be as complete and as pleasant silent as it is
@@ -25,6 +27,19 @@ extends Node
 ## owns that gate (it fails closed); this class simply never assigns a stream it
 ## has not asked about. A licence refusal is warned about exactly once per track,
 ## because unlike a missing file it means something is wrong.
+##
+## The one exception is deliberate, named, and off in every build:
+## `allow_unverified_music`, set from `MusicLicenceOverride` (see that file). When
+## a human has armed it on their own machine, a track refused *for a licence
+## reason only* is played anyway and a loud banner says so. The gate itself is
+## never softened -- `manifest().is_playable()` keeps answering false.
+##
+## ## Music gets out of the way of English
+##
+## `set_ducked(true)` drops music by `duck_db` on a short ramp and
+## `set_ducked(false)` brings it back on a slower one, so a spoken prompt or an
+## open microphone is never competing with a melody. `MusicBinder` drives it from
+## the real speech services; nothing here knows they exist.
 ##
 ## ## Levels
 ##
@@ -59,6 +74,12 @@ signal music_stopped()
 signal track_unavailable(track_id: String, reason: String)
 ## The mix changed (trim or mute). Carries the effective values.
 signal mix_changed(master_db: float, music_db: float, sfx_db: float, muted: bool)
+## Music started or stopped getting out of the way of speech.
+signal duck_changed(ducked: bool)
+## A track was played ONLY because `allow_unverified_music` is armed. Emitted once
+## per track so a diagnostics panel can show the preview state; it is never a
+## normal condition.
+signal unverified_music_allowed(track_id: String, reason: String)
 
 # -----------------------------------------------------------------------------
 # Constants
@@ -66,6 +87,8 @@ signal mix_changed(master_db: float, music_db: float, sfx_db: float, muted: bool
 
 const MusicCatalogue := preload("res://scripts/audio/music_manifest.gd")
 const BgmMachine := preload("res://scripts/audio/bgm_state_machine.gd")
+const LicenceOverride := preload("res://scripts/audio/music_licence_override.gd")
+const BinderScript := preload("res://scripts/audio/music_binder.gd")
 
 const STATE_SILENT: String = BgmMachine.STATE_SILENT
 const STATE_MENU: String = BgmMachine.STATE_MENU
@@ -85,6 +108,16 @@ const OFF_DB: float = -80.0
 
 ## Two voices is all a crossfade needs.
 const VOICE_COUNT: int = 2
+
+## How far music drops while the game is speaking or listening. Music already
+## sits at most at `MusicManifest.MAX_VOLUME_DB`; this takes it a further 10 dB
+## down, which is roughly half as loud again -- clearly behind the voice, still
+## present enough that the room does not feel switched off.
+const DEFAULT_DUCK_DB: float = -10.0
+## Ducking down is quick, because the prompt has already started. Coming back is
+## slower, because the child is still thinking about the word they just heard.
+const DUCK_ATTACK_SECONDS: float = 0.18
+const DUCK_RELEASE_SECONDS: float = 0.55
 
 ## Profile setting consulted before music plays, mirroring `SfxPlayer`'s use of
 ## `soundEnabled`. A parent turning sound off must silence music too.
@@ -112,6 +145,24 @@ const SFX_AUTOLOAD_PATH: String = "/root/Sfx"
 ## file is present. See `should_warn_about()`. Tests turn it off so the suite
 ## output stays clean while still asserting the decision.
 @export var warn_on_licence_refusal: bool = true
+## How far music drops while speech is happening.
+@export var duck_db: float = DEFAULT_DUCK_DB
+## Create a `MusicBinder` child that follows the real game states.
+##
+## Left false, `_ready()` still turns it on when this director looks like an
+## autoload -- a direct child of `/root` that is not the current scene -- because
+## that is the only configuration in which there is a game to follow and exactly
+## one director to follow it with. A composed instance or a test's instance binds
+## nothing and cannot double up on a tree-wide `node_added` watch.
+@export var auto_bind_game_states: bool = false
+## Play a track the licence gate refused, when the refusal is a licence one and a
+## human armed `MusicLicenceOverride` on this machine.
+##
+## FALSE in every build. `_ready()` sets it from `MusicLicenceOverride.is_armed()`,
+## which is false unless a marker file or a command-line flag says otherwise, and
+## nothing committed to this repository arms either. Read
+## `music_licence_override.gd` before touching this.
+@export var allow_unverified_music: bool = false
 
 # -----------------------------------------------------------------------------
 # State
@@ -130,9 +181,17 @@ var _reported: Dictionary = {}
 var _streams: Dictionary = {}
 var _sfx_player: Node = null
 var _save_service: Node = null
+## Ducking: a plain gain multiplier, 1.0 open and `db_to_linear(duck_db)` closed,
+## ramped in `advance()` so it is testable without a mixer.
+var _ducked: bool = false
+var _duck_gain: float = 1.0
+var _override_reported: Dictionary = {}
 
 
 func _ready() -> void:
+	# Off unless a human armed it on this machine. See music_licence_override.gd.
+	if not allow_unverified_music:
+		allow_unverified_music = LicenceOverride.is_armed()
 	_ensure_voices()
 	_ensure_manifest()
 	# One mixer should own every level. Binding the SFX autoload here means an
@@ -140,10 +199,48 @@ func _ready() -> void:
 	# picks it up too. `bind_sfx_player()` overrides it; a missing `Sfx` is fine.
 	if sfx_player() == null:
 		bind_sfx_player(get_node_or_null(SFX_AUTOLOAD_PATH))
+	if auto_bind_game_states or _looks_like_an_autoload():
+		ensure_binder()
 
 
 func _process(delta: float) -> void:
 	advance(delta)
+
+
+# -----------------------------------------------------------------------------
+# Following the game
+# -----------------------------------------------------------------------------
+
+
+## The `MusicBinder` that watches the game, created on first use. This is the only
+## thing in the audio system that knows the game exists; see `music_binder.gd`.
+func ensure_binder() -> Node:
+	var existing: Node = binder()
+	if existing != null:
+		return existing
+	var created: Node = BinderScript.new()
+	created.name = "MusicBinder"
+	created.bind_director(self)
+	add_child(created)
+	return created
+
+
+func binder() -> Node:
+	var found: Node = get_node_or_null("MusicBinder")
+	return found if is_instance_valid(found) else null
+
+
+## Whether this instance is the project's single audio autoload rather than a
+## composed child or a test fixture. An autoload sits directly under `/root` and is
+## not the current scene; both halves matter, because a scene run straight from the
+## editor is also a direct child of `/root`.
+func _looks_like_an_autoload() -> bool:
+	if not is_inside_tree():
+		return false
+	var tree: SceneTree = get_tree()
+	if tree == null or get_parent() != tree.root:
+		return false
+	return tree.current_scene != self
 
 
 # -----------------------------------------------------------------------------
@@ -182,11 +279,51 @@ func licence_refused_track_ids() -> Array:
 ## True when the build currently has no playable music at all -- the state this
 ## repository is in today, and a state that must not change how anything behaves.
 func is_silent_build() -> bool:
-	var catalogue: MusicCatalogue = manifest()
-	for track_id: String in catalogue.track_ids():
-		if catalogue.is_playable(track_id):
+	for track_id: String in manifest().track_ids():
+		if may_play(track_id):
 			return false
 	return true
+
+
+## Whether THIS DIRECTOR will assign a stream for `track_id`.
+##
+## Normally identical to `manifest().is_playable()`. It differs only when
+## `allow_unverified_music` is armed, and then only for a track that the gate
+## refused on licence grounds and whose file is actually on disk. A missing file,
+## an unknown id or a `"denied"` row is refused either way -- an override that
+## could conjure a track out of nothing would be useless as well as dishonest.
+##
+## The gate in `MusicManifest` is never consulted differently and never softened:
+## `is_playable()` keeps answering false for an unverified track, which is what
+## `licence_refused_track_ids()` and the shipping checks read.
+func may_play(track_id: String) -> bool:
+	var catalogue: MusicCatalogue = manifest()
+	if catalogue.is_playable(track_id):
+		return true
+	if not allow_unverified_music:
+		return false
+	# "denied" is not a pending question, it is an answer. `refusal_reason()` reports
+	# it as `commercialUseUnverified` -- the same code a not-yet-checked track gets,
+	# because both must be refused -- so without this the override would release a
+	# track somebody had already established we may not use.
+	if catalogue.is_denied(track_id):
+		return false
+	if not MusicCatalogue.is_licence_refusal(catalogue.refusal_reason(track_id)):
+		return false
+	return not catalogue.resolved_path(track_id).is_empty()
+
+
+## Track ids this director is playing only because the override is armed. Empty in
+## every build, and the thing to assert on before shipping.
+func overridden_track_ids() -> Array:
+	var overridden: Array = []
+	if not allow_unverified_music:
+		return overridden
+	var catalogue: MusicCatalogue = manifest()
+	for track_id: String in catalogue.track_ids():
+		if not catalogue.is_playable(track_id) and may_play(track_id):
+			overridden.append(track_id)
+	return overridden
 
 
 # -----------------------------------------------------------------------------
@@ -335,6 +472,87 @@ func is_sound_enabled() -> bool:
 
 
 # -----------------------------------------------------------------------------
+# Ducking: music gets out of the way of English
+# -----------------------------------------------------------------------------
+#
+# A child learning "milk" has to hear the word, and a 4-year-old cannot be asked
+# to concentrate past a melody. So while the game is speaking, or while the
+# microphone is open waiting for them to answer, music drops by `duck_db`.
+#
+# This is a plain gain multiplier on top of everything else rather than a change
+# to the trims, for two reasons: the trims are the parent's settings and must not
+# be rewritten by a passing prompt, and a crossfade may be running at the same
+# time -- two independent gains multiply cleanly where two competing writes to
+# `volume_db` would fight.
+#
+# `MusicBinder` decides WHEN. This class only knows how.
+
+
+## Drops music out of the way (`true`) or brings it back (`false`). Idempotent, so
+## a caller may assert the state it wants every frame without causing a ramp.
+func set_ducked(value: bool) -> void:
+	if _ducked == value:
+		return
+	_ducked = value
+	duck_changed.emit(_ducked)
+
+
+func is_ducked() -> bool:
+	return _ducked
+
+
+## The duck's current gain, 1.0 fully open down to `db_to_linear(duck_db)` fully
+## closed. Mid-ramp values are normal. Diagnostics and tests.
+func duck_gain() -> float:
+	return _duck_gain
+
+
+## Where the duck is heading.
+func duck_target_gain() -> float:
+	if not _ducked:
+		return 1.0
+	return db_to_linear(clampf(duck_db, MIN_TRIM_DB, MAX_TRIM_DB))
+
+
+## Runs the duck ramp to completion instantly. For tests, and for a scene change
+## that would otherwise outlive the ramp.
+func finish_duck() -> void:
+	_duck_gain = duck_target_gain()
+	for index in range(_voice_level.size()):
+		_apply_voice_level(index)
+
+
+## The level a voice is ACTUALLY at right now, duck included. `effective_music_
+## volume_db()` deliberately reports the undocked target instead, because that is
+## the mix the parent configured; this is what the speaker is being asked for.
+func audible_music_volume_db(track_id: String = "") -> float:
+	var target_db: float = effective_music_volume_db(track_id)
+	if target_db <= SILENCE_DB:
+		return OFF_DB
+	return linear_to_db(maxf(db_to_linear(target_db) * _duck_gain, 0.00001))
+
+
+## Moves `_duck_gain` towards its target. Called from `advance()`.
+func _advance_duck(delta: float) -> void:
+	var target: float = duck_target_gain()
+	if is_equal_approx(_duck_gain, target):
+		_duck_gain = target
+		return
+	var duration: float = DUCK_ATTACK_SECONDS if _ducked else DUCK_RELEASE_SECONDS
+	if duration <= 0.0:
+		_duck_gain = target
+	else:
+		# The step is the FULL span of the duck over `duration`, so the ramp takes
+		# the time it says it does whatever `duck_db` is set to. `delta / duration`
+		# alone would be a 1.0-wide ramp and would finish early.
+		var closed: float = db_to_linear(clampf(duck_db, MIN_TRIM_DB, MAX_TRIM_DB))
+		var span: float = maxf(absf(1.0 - closed), 0.0001)
+		_duck_gain = move_toward(_duck_gain, target, span * delta / duration)
+	for index in range(_voice_level.size()):
+		_apply_voice_level(index)
+
+
+# -----------------------------------------------------------------------------
 # Sound effects
 # -----------------------------------------------------------------------------
 
@@ -371,6 +589,7 @@ func play_sfx(sfx_name: String, volume_db: float = 0.0) -> void:
 func advance(delta: float) -> void:
 	if delta <= 0.0:
 		return
+	_advance_duck(delta)
 	for index in range(_voice_level.size()):
 		var fade: Dictionary = _voice_fade[index]
 		if not bool(fade.get("active", false)):
@@ -469,8 +688,10 @@ func _resolve_desired_track() -> void:
 	var candidates: Array = catalogue.tracks_for_scene(state)
 	_desired_track = ""
 	for track_id: String in candidates:
-		if catalogue.is_playable(track_id):
+		if may_play(track_id):
 			_desired_track = track_id
+			if not catalogue.is_playable(track_id):
+				_report_override(track_id, catalogue.refusal_reason(track_id))
 			return
 
 	# Nothing playable. Report the first candidate's reason once, so a diagnostics
@@ -488,6 +709,8 @@ func _report_unavailable(track_id: String, reason: String) -> void:
 		return
 	_reported[key] = true
 	if warn_on_licence_refusal and should_warn_about(track_id, reason):
+		# The override is armed but this track is still refused (no file, or
+		# "denied"): the normal message is the right one.
 		push_warning(
 			("AudioDirector refused music track '%s' (%s), and there IS a file at %s. "
 			+ "A track plays only when commercialUse is \"verified\" and licenseEvidence "
@@ -510,7 +733,30 @@ func _report_unavailable(track_id: String, reason: String) -> void:
 func should_warn_about(track_id: String, reason: String) -> bool:
 	if not MusicCatalogue.is_licence_refusal(reason):
 		return false
+	if allow_unverified_music:
+		# The override reports this case itself, with a louder message.
+		return false
 	return not manifest().resolved_path(track_id).is_empty()
+
+
+## Says -- once per track, and unmissably -- that a track is being heard only
+## because the override is armed. A preview that is indistinguishable from a
+## shipping build is how unlicensed audio reaches a store.
+##
+## `warn_on_licence_refusal` silences the engine warning, exactly as it does for an
+## ordinary licence refusal, and for the same reason: the test suite asserts the
+## DECISION and its output has to stay readable. The signal is emitted either way,
+## so nothing that matters can be switched off -- and the flag is true in every
+## build, because nothing but a test ever sets it.
+func _report_override(track_id: String, reason: String) -> void:
+	if _override_reported.has(track_id):
+		return
+	_override_reported[track_id] = true
+	if warn_on_licence_refusal:
+		push_warning(LicenceOverride.BANNER % [
+			track_id, LicenceOverride.MARKER_PATH, LicenceOverride.CLI_FLAG,
+		])
+	unverified_music_allowed.emit(track_id, reason)
 
 
 ## Brings the voices into line with `_desired_track` and the current mix.
@@ -612,8 +858,10 @@ func _apply_voice_level(index: int) -> void:
 		voice.volume_db = OFF_DB
 		return
 	# Fade in LINEAR amplitude, then convert. A dB-linear fade sounds like it
-	# happens all at once at the quiet end.
-	var linear: float = db_to_linear(target_db) * level
+	# happens all at once at the quiet end. The duck is a second, independent
+	# gain: a crossfade and a spoken prompt can overlap, and multiplying two
+	# gains handles that where two writers of `volume_db` would fight.
+	var linear: float = db_to_linear(target_db) * level * _duck_gain
 	voice.volume_db = linear_to_db(maxf(linear, 0.00001))
 
 
@@ -684,18 +932,45 @@ func _stream_for(track_id: String) -> AudioStream:
 			var resource: Resource = ResourceLoader.load(path, "AudioStream")
 			if resource is AudioStream:
 				stream = resource
-		if stream == null and path.get_extension().to_lower() == "wav":
-			# A source checkout has no imported sample for a raw .wav; read the
-			# RIFF bytes directly, exactly as the SFX player does.
-			var loader := load("res://scripts/audio/wav_loader.gd")
-			if loader != null:
-				var parsed: Variant = loader.load_wav(path)
-				if parsed is AudioStream:
-					stream = parsed
+		if stream == null:
+			stream = _decode_source_file(path)
 	if stream != null:
 		stream = _apply_loop(stream, track_id)
 	_streams[track_id] = stream
 	return stream
+
+
+## Decodes an audio file straight from its bytes, with no import step.
+##
+## Needed because `.godot/imported/` is gitignored, so a fresh clone -- and the
+## headless `--script` runner on a machine that has never opened the editor -- has
+## the source files and the committed `.import` sidecars but not the imported
+## resources they point at. `ResourceLoader` then reports nothing, and music that
+## is definitely on disk would be silently "missing". `SfxPlayer` solved the same
+## problem for WAV with `wav_loader.gd`; this covers the two compressed formats
+## the manifest accepts as well.
+##
+## Returns null for anything it cannot read, which the caller already treats as an
+## ordinary missing file.
+func _decode_source_file(path: String) -> AudioStream:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return null
+	match path.get_extension().to_lower():
+		"ogg":
+			return AudioStreamOggVorbis.load_from_file(path)
+		"mp3":
+			var bytes: PackedByteArray = FileAccess.get_file_as_bytes(path)
+			if bytes.is_empty():
+				return null
+			return AudioStreamMP3.load_from_buffer(bytes)
+		"wav":
+			# Read the RIFF bytes directly, exactly as the SFX player does.
+			var loader: Variant = load("res://scripts/audio/wav_loader.gd")
+			if loader == null:
+				return null
+			var parsed: Variant = loader.load_wav(path)
+			return parsed as AudioStream if parsed is AudioStream else null
+	return null
 
 
 ## Applies the manifest's loop points. Duck-typed across stream types so an OGG,

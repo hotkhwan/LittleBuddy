@@ -32,6 +32,7 @@ const Palette := preload("res://scripts/ui/palette.gd")
 const Items := preload("res://scripts/kitchen/kitchen_items.gd")
 const Rules := preload("res://scripts/kitchen/kitchen_rules.gd")
 const StateScript := preload("res://scripts/kitchen/kitchen_state.gd")
+const HouseLayout := preload("res://scripts/house/house_layout.gd")
 
 ## Where a station puts things a child can see, in ROOM-LOCAL space. Derived from
 ## `house_layout.gd`'s own furniture table rather than typed twice -- see
@@ -41,23 +42,59 @@ const StateScript := preload("res://scripts/kitchen/kitchen_state.gd")
 ## shows its contents on when its door is open.
 const SURFACE_LIFT: float = 0.03
 
+## How much bigger an item is drawn while it is STANDING somewhere.
+##
+## The same argument as `HAND_SCALE` below, one step gentler. A 0.14 m banana is
+## the right size for a 0.9 m worktop and is about 30 px on an iPad at the room
+## shot's 4.3 m -- against a cream worktop, in front of a cream wall. The brief's
+## test is "a child must be able to spot the bottle instantly", and 30 px of pale
+## yellow is not that. The model is untouched; only the drawing grows.
+const SURFACE_SCALE: float = 1.2
+
 ## The fridge door. Hinged on its -X edge so it swings toward the camera and to
 ## the left, which keeps the opening -- and the food -- facing the child.
 const DOOR_OPEN_DEGREES: float = 104.0
 const DOOR_SWING_SEC: float = 0.32
 
-## How the held item sits in front of Aliz: forward of her chest, at hand height.
-const HAND_FORWARD: float = 0.26
-const HAND_HEIGHT: float = 0.62
+## How the held item sits in front of Aliz, when her hands cannot be found.
+##
+## These numbers were the whole of the answer before, and rendered, they were
+## plainly wrong: the item hung at chest height with her arms at her sides,
+## clipping into her dress, and read as stuck to her tummy rather than carried.
+## They are now only the FALLBACK, for the toddler placeholder view and for any
+## future character with no skeleton.
+const HAND_FORWARD: float = 0.22
+const HAND_HEIGHT: float = 0.46
+
+## The bone the item is really carried in, and the bone tried if that is missing.
+## Both spellings of the rig's convention, because a rig is another agent's file
+## and a hard-coded bone name that has quietly stopped matching is a silent
+## regression rather than a loud one.
+const HAND_BONES: Array[String] = [
+	"RightHand", "mixamorig:RightHand", "hand_r", "Hand_R", "RightHandIndex1",
+]
+
+## From the WRIST bone to the middle of the thing she is holding: barely inboard
+## of the wrist, a little above it and a little in front, so her mitt closes
+## round the item's upper third and the item hangs clear of the skirt. Tuned
+## against `docs/shots/world_carry_ipad.png` -- the hand mesh reaches well below
+## the wrist joint, which is why this is not simply zero.
+const HAND_BONE_OFFSET: Vector3 = Vector3(-0.005, 0.035, -0.06)
 
 ## And how much BIGGER it is drawn while carried.
 ##
 ## A 0.13 m spoon is correct on a worktop and unreadable in a hand at the house
 ## camera's distance -- it measured a handful of pixels, against a striped dress
 ## of a similar value. "What am I carrying?" is the single question this system
-## must always be able to answer at a glance, so the held copy is drawn half as
-## big again. The world copy is untouched; nothing about the model changes.
-const HAND_SCALE: float = 1.55
+## must always be able to answer at a glance, so the held copy is drawn bigger.
+## The world copy is untouched; nothing about the model changes.
+##
+## It was 1.55, and once the item moved out of the middle of her body and into
+## her hand that stopped being readable and started being absurd: a 0.26 m bottle
+## drawn at 1.55 is 0.41 m, which on a 1 m child is a bottle reaching from her
+## hand past her shoulder. 1.3 is still well clear of the "handful of pixels"
+## problem and is something a child could actually be holding.
+const HAND_SCALE: float = 1.3
 
 var _state: RefCounted = null
 var _room: Node3D = null
@@ -182,25 +219,38 @@ func _refresh() -> void:
 		# What is sitting ON the station, in plain sight.
 		var resting: String = _state.on_station(id)
 		if resting != Items.NONE:
-			_items_root.add_child(_make_item(resting, anchor["surface"]))
+			_items_root.add_child(_make_item(resting, anchor["surface"], SURFACE_SCALE))
 
 		# What is INSIDE it -- drawn only while the door is open, which is the
 		# reason opening the fridge is worth a beat of its own.
 		if Rules.opens(id) and not _state.is_open(id):
 			continue
 		var contents: Array = _state.inside(id)
+		# Whether or not there is anything left in it: an empty fridge that looks
+		# shut is the same defect as a full one that looks shut.
+		if Rules.opens(id):
+			_items_root.add_child(_store_interior(id, anchor["inside"]))
+		var spread: float = float(anchor.get("spread", 0.19))
 		for i: int in range(contents.size()):
 			var spot: Vector3 = anchor["inside"] + Vector3(
-					(float(i) - float(contents.size() - 1) * 0.5) * 0.19,
+					(float(i) - float(contents.size() - 1) * 0.5) * spread,
 					0.0,
 					0.0)
-			_items_root.add_child(_make_item(String(contents[i]), spot))
+			_items_root.add_child(_make_item(String(contents[i]), spot, SURFACE_SCALE))
 
 	# And what Aliz is carrying, in front of her rather than inside her.
 	var held: String = _state.held()
 	if held != Items.NONE:
-		var carried: Node3D = _make_item(held, Vector3.ZERO)
-		carried.scale = Vector3.ONE * HAND_SCALE
+		var carried: MeshInstance3D = _make_item(held, Vector3.ZERO, HAND_SCALE)
+		# Every item mesh is authored STANDING on its own origin (pivot at base
+		# centre, §6), which is right for a worktop and wrong for a hand: it hung
+		# the whole bottle ABOVE her fist. Drop it by half its own height so the
+		# hand holds the middle of it, measured off the mesh rather than guessed
+		# per shape.
+		var bounds: AABB = carried.mesh.get_aabb() if carried.mesh != null else AABB()
+		carried.position = Vector3(
+			0.0, -(bounds.position.y + bounds.size.y * 0.5) * HAND_SCALE, 0.0
+		)
 		_hand_root.add_child(carried)
 		_hand_root.visible = true
 		_place_hand()
@@ -209,11 +259,16 @@ func _refresh() -> void:
 
 
 func _process(_delta: float) -> void:
-	# Only re-checks the ATTACHMENT -- the offset is fixed in her own space, so
-	# there is no per-frame position maths to get wrong. Cheap enough to run
-	# while something is carried, and it self-heals if she is ever rebuilt.
-	if _hand_root != null and _hand_root.visible and _hand_root.get_parent() == self:
+	if _hand_root == null or not _hand_root.visible:
+		return
+	# Re-checks the ATTACHMENT, so it self-heals if she is ever rebuilt.
+	if _hand_root.get_parent() == self:
 		_attach_hand()
+	# And follows her hand. Her arms swing while she walks, so this cannot be a
+	# fixed offset -- but it is only a position, never a rotation: the item stays
+	# upright in her own frame, because a bottle that rolls with the wrist reads
+	# as dropped rather than as carried.
+	_follow_hand()
 
 
 ## Puts the carried-item node under whoever is carrying things, falling back to
@@ -232,14 +287,90 @@ func _attach_hand() -> void:
 	if _hand_root.get_parent() != null:
 		_hand_root.get_parent().remove_child(_hand_root)
 	parent.add_child(_hand_root)
-	# A fixed offset in HER space: forward of the chest, at hand height. No
-	# per-frame maths, and it cannot drift out of sync with her.
 	_hand_root.position = Vector3(0.0, HAND_HEIGHT, -HAND_FORWARD)
 	_hand_root.rotation = Vector3.ZERO
+	_skeleton = null
+	_hand_bone = -1
+	_rig_searched = false
+	_follow_hand()
 
 
 func _place_hand() -> void:
 	_attach_hand()
+
+
+# ---------------------------------------------------------------------------
+# Her hands
+# ---------------------------------------------------------------------------
+
+## The rig, found once and remembered. `-1` means "looked and there was none",
+## which is a different state from "not looked yet" (`_skeleton == null`).
+var _skeleton: Skeleton3D = null
+var _hand_bone: int = -1
+## Set once the subtree has been walked, so a character with no rig costs one
+## search rather than one per frame.
+var _rig_searched: bool = false
+
+
+## Puts the carried item where her hand actually is.
+##
+## ## Why this is not a constant any more
+##
+## The item used to hang at a fixed (0, 0.62, -0.26) in her own space. Rendered
+## at the close-up the game really uses, that is chest height with both arms
+## hanging at her sides: the bottle intersected her dress and read as stuck to
+## her tummy. The brief is explicit -- "carried items must sit in Aliz's hands
+## rather than hovering" -- and no single constant can satisfy it, because her
+## arms swing.
+##
+## The shipped character is a skinned GLB with a 24-bone rig, so the hand is
+## simply a bone and its position is available every frame for the cost of two
+## matrix multiplies. Only the POSITION is taken. Taking the rotation too would
+## be more "correct" and looks worse: the wrist rolls through the walk cycle and
+## a bottle that rolls with it reads as dropped.
+##
+## Everything here degrades quietly. A character with no skeleton (the toddler
+## placeholder), or a rig whose hand bone has been renamed, keeps the old fixed
+## offset -- which is not right, but is on-screen and stable rather than at the
+## world origin.
+func _follow_hand() -> void:
+	if _hand_root == null or _carrier == null or not is_instance_valid(_carrier):
+		return
+	if _hand_root.get_parent() != _carrier:
+		return
+	if not _rig_searched:
+		_rig_searched = true
+		_skeleton = _find_skeleton(_carrier)
+		_hand_bone = -1
+		if _skeleton != null:
+			for bone_name: String in HAND_BONES:
+				var index: int = _skeleton.find_bone(bone_name)
+				if index >= 0:
+					_hand_bone = index
+					break
+			if _hand_bone < 0:
+				push_warning("The carried item has no hand to sit in: none of %s is a bone "
+						% str(HAND_BONES) + "on this rig, so it falls back to a fixed offset.")
+	if _skeleton == null or _hand_bone < 0 or not _skeleton.is_inside_tree():
+		return
+	var wrist: Transform3D = (
+		_skeleton.global_transform * _skeleton.get_bone_global_pose(_hand_bone)
+	)
+	# Into HER space, where the offset below is authored: +X is her right, -Z is
+	# the way she is facing.
+	var local: Vector3 = _carrier.global_transform.affine_inverse() * wrist.origin
+	_hand_root.position = local + HAND_BONE_OFFSET
+	_hand_root.rotation = Vector3.ZERO
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node as Skeleton3D
+	for child: Node in node.get_children():
+		var found: Skeleton3D = _find_skeleton(child)
+		if found != null:
+			return found
+	return null
 
 
 ## The character who carries things, asked of the world rather than remembered.
@@ -259,7 +390,7 @@ func _find_carrier() -> Node3D:
 ## ART_BIBLE section 6: an object must be recognisable by outline alone. A child who
 ## cannot tell the bowl from the apple cannot be asked for either by name, so the
 ## shapes are deliberately unalike rather than five tinted spheres.
-func _make_item(item_id: String, at: Vector3) -> MeshInstance3D:
+func _make_item(item_id: String, at: Vector3, draw_scale: float = 1.0) -> MeshInstance3D:
 	var size: float = Items.size_for(item_id)
 	var color: Color = Items.color_for(item_id)
 	var tool: SurfaceTool = Kit.begin()
@@ -297,6 +428,82 @@ func _make_item(item_id: String, at: Vector3) -> MeshInstance3D:
 	node.mesh = Kit.commit(tool)
 	node.material_override = Kit.material()
 	node.position = at
+	node.scale = Vector3.ONE * draw_scale
+	return node
+
+
+## -- The inside of a cupboard that opens -----------------------------------------
+
+## How far above a store station's centre its one shelf runs.
+const SHELF_Y: float = 0.22
+## Of the station's own width and height.
+const LINING_INSET: float = 0.17
+
+
+## The lining and the shelf a `store` station's contents stand on, built only
+## while the door is open.
+##
+## ## Why the fridge looked shut when it was open
+##
+## `room_props.gd` draws the fridge with its door ALREADY ON IT -- two pale
+## panels and a freezer line on the front face -- and this file then hangs a
+## second, real, hinged door in front of that. Swinging the real one open
+## therefore revealed the painted one underneath, and the only way to tell an
+## open fridge from a closed one was three small items apparently stuck to its
+## front. Cold, on an iPad, the fridge simply did not open.
+##
+## So opening it now puts a lining over that painted door: a warm-deep cavity
+## face with a cream shelf across it. Two things come out of one change -- the
+## fridge visibly opens, and the food stops floating, because the shelf is really
+## underneath it.
+##
+## It cannot be a recess. The fridge body is a solid mesh and anything modelled
+## behind its front face is simply occluded by it (the same mistake that made the
+## food invisible in the first place), so the lining stands a few centimetres
+## PROUD of the front and reads as depth because its interior is a step darker
+## than everything around it. No collider, no touch target: the fridge's own
+## `ActivityTarget` box already covers all of this, so a tap anywhere here still
+## lands on `kitchen.fridge`.
+func _store_interior(station_id: String, shelf_at: Vector3) -> MeshInstance3D:
+	var row: Dictionary = _prop_row(station_id)
+	var size: Vector3 = row.get("size", Vector3(0.7, 1.7, 0.65))
+	var front: float = shelf_at.z
+
+	var tool: SurfaceTool = Kit.begin()
+	# The cavity face, in the house's "there is no metal" dusty blue (§7) rather
+	# than in a deepened step of the fridge's own mint. Mint on mint is one shape
+	# in two values and the opening did not read; a cool blue-grey interior reads
+	# as cold storage and, more usefully, is the one value in the room that a
+	# cream bottle, a yellow banana and a pink apple all stand out against.
+	Kit.plate(
+		tool,
+		Kit.at_rotated(Vector3(0.0, 0.0, -0.045), Vector3(-90.0, 0.0, 0.0)),
+		Kit.rounded_rect(
+			Vector2(size.x - LINING_INSET, size.y * 0.68), 0.05, 3),
+		0.05, Palette.DUSTY_BLUE, 0.014
+	)
+	# The shelf, a little proud of the lining so it catches the light and so an
+	# item standing on it is not half-buried in the back wall.
+	Kit.plate(
+		tool,
+		Kit.at(Vector3(0.0, -0.012, 0.03)),
+		Kit.rounded_rect(Vector2(size.x - LINING_INSET - 0.04, 0.20), 0.03, 2),
+		0.024, Palette.CREAM, 0.008
+	)
+	# And a second, empty shelf below it, because one shelf is a ledge and two
+	# are a fridge.
+	Kit.plate(
+		tool,
+		Kit.at(Vector3(0.0, -0.42, 0.03)),
+		Kit.rounded_rect(Vector2(size.x - LINING_INSET - 0.04, 0.20), 0.03, 2),
+		0.024, Palette.CREAM, 0.008
+	)
+
+	var node := MeshInstance3D.new()
+	node.name = "Interior_%s" % station_id
+	node.mesh = Kit.commit(tool)
+	node.material_override = Kit.material()
+	node.position = Vector3(shelf_at.x, shelf_at.y, front)
 	return node
 
 
@@ -316,8 +523,22 @@ func _prop_row(station_id: String) -> Dictionary:
 	return {}
 
 
-## `{surface, inside}` in room-local space for a station, or `{}` if the kitchen
-## has no such furniture.
+## `{surface, inside, spread}` in room-local space for a station, or `{}` if the
+## kitchen has no such furniture.
+##
+## ## The counter has TWO rows, and that was a bug before it was a composition
+##
+## `inside` used to be computed the same way for every station: proud of the
+## front face, at `size.y * 0.16` above the centre. On the fridge that is the
+## open doorway and it is correct. On the COUNTER -- which has no door, so its
+## contents are drawn all the time -- it put the bowl and the spoon **0.59 m up
+## and 0.30 m out in front of the cabinet doors, resting on nothing**. That is
+## the brief's "objects floating in mid-air", and it was in the first frame of
+## the kitchen.
+##
+## So a station that does not open puts its contents ON its top, at the back,
+## against the splashback, with the front of the worktop left clear for the prep
+## board -- the two rows `house_layout.gd` plans out under `WORKTOP_*`.
 func _anchor(station_id: String) -> Dictionary:
 	var row: Dictionary = _prop_row(station_id)
 	if row.is_empty():
@@ -325,15 +546,62 @@ func _anchor(station_id: String) -> Dictionary:
 	var size: Vector3 = row["size"]
 	var centre: Vector3 = row["position"]
 	var top: float = centre.y + size.y * 0.5 + SURFACE_LIFT
+
+	if station_id == Rules.STATION_COUNTER:
+		return {
+			# The prep board, which `room.gd` draws at exactly these numbers.
+			"surface": Vector3(
+				HouseLayout.WORKTOP_BOARD_X,
+				HouseLayout.WORKTOP_Y + HouseLayout.WORKTOP_BOARD_THICKNESS,
+				HouseLayout.WORKTOP_BOARD_Z
+			),
+			# Standing on the worktop at the back, between the hob and the sink.
+			"inside": Vector3(
+				HouseLayout.WORKTOP_BOARD_X, HouseLayout.WORKTOP_Y, HouseLayout.WORKTOP_BACK_Z
+			),
+			"spread": HouseLayout.WORKTOP_SPREAD,
+		}
+
+	if Rules.opens(station_id):
+		return {
+			"surface": Vector3(centre.x, top, centre.z + size.z * 0.22),
+			# ON THE SHELF, in the doorway -- not in the middle of the cupboard.
+			#
+			# The first version put contents at `centre.z + size.z * 0.18`, which
+			# is geometrically inside the fridge and therefore inside a solid
+			# mesh: the food was built, was in the right place, and was completely
+			# invisible. A child cannot tap what they cannot see. It then sat on
+			# the threshold with nothing under it, which is the same defect one
+			# step out; `_store_interior()` now builds the shelf it stands on.
+			"inside": Vector3(centre.x, centre.y + SHELF_Y, centre.z + size.z * 0.5 + 0.075),
+			"spread": 0.17,
+		}
+
+	# `top` carries `SURFACE_LIFT`, which is a 3 cm hover. On a worktop nobody
+	# could see it; on the TABLE, which is the station a finished meal is served
+	# on and which the camera then flies in to look at, a bowl 3 cm off the wood
+	# is exactly the "floating in mid-air" the brief asks to be rid of. So a
+	# served dish sits on the placemat `room.gd` lays for it, and nothing here
+	# hovers.
+	var serve_z: float = centre.z + size.z * HouseLayout.TABLE_MAT_FORWARD
+	if room_serves(station_id):
+		return {
+			"surface": Vector3(
+				centre.x,
+				centre.y + size.y * 0.5 + HouseLayout.TABLE_MAT_THICKNESS,
+				serve_z
+			),
+			"inside": Vector3(centre.x, centre.y + size.y * 0.5, centre.z - size.z * 0.20),
+			"spread": 0.19,
+		}
 	return {
-		# On top, pulled toward the camera so the furniture does not hide it.
-		"surface": Vector3(centre.x, top, centre.z + size.z * 0.22),
-		# IN THE DOORWAY, not in the middle of the cupboard.
-		#
-		# The first version put contents at `centre.z + size.z * 0.18`, which is
-		# geometrically inside the fridge and therefore inside a solid mesh: the
-		# food was built, was in the right place, and was completely invisible.
-		# A child cannot tap what they cannot see, so the contents sit ON the
-		# threshold -- just proud of the front face, at hand height.
-		"inside": Vector3(centre.x, centre.y + size.y * 0.16, centre.z + size.z * 0.5 + 0.10),
+		"surface": Vector3(centre.x, top, serve_z),
+		"inside": Vector3(centre.x, centre.y + size.y * 0.5, centre.z - size.z * 0.20),
+		"spread": 0.19,
 	}
+
+
+## Does this station lay a placemat? The table, and anything else that is ever
+## given the `serve` role.
+func room_serves(station_id: String) -> bool:
+	return Rules.role_of(station_id) == "serve"

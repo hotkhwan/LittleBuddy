@@ -522,13 +522,30 @@ func _build_rug(tool: SurfaceTool) -> void:
 		return
 	var size: Vector2 = rug["size"]
 	var at: Vector2 = rug["at"]
+	var accent: Color = HouseLayout.accent_color(room_id)
+	# A BORDER and a paler field, rather than one flat slab of accent, and it buys
+	# two things for ~90 triangles. A 2 m plate of saturated mint or dusty blue is
+	# the largest single colour in the room shot and it was competing with the
+	# child standing on it; dropping the middle to `light()` puts the strongest
+	# value where the eye should go (her, and whatever she is carrying) and leaves
+	# the accent as a frame. And a rug with a border reads as a RUG -- without one
+	# a rounded rectangle of flat colour on floorboards reads as spilt paint.
 	Kit.plate(
 		tool,
 		Kit.at(Vector3(at.x, HouseLayout.FLOOR_Y + 0.008, at.y)),
 		Kit.rounded_rect(size, minf(size.x, size.y) * 0.22, 4),
 		0.016,
-		HouseLayout.accent_color(room_id),
+		accent,
 		0.005
+	)
+	var field: Vector2 = size - Vector2(0.26, 0.26)
+	Kit.plate(
+		tool,
+		Kit.at(Vector3(at.x, HouseLayout.FLOOR_Y + 0.013, at.y)),
+		Kit.rounded_rect(field, minf(field.x, field.y) * 0.20, 4),
+		0.010,
+		Palette.light(accent),
+		0.004
 	)
 
 
@@ -626,6 +643,31 @@ func _nursery_wall_art(tool: SurfaceTool, x: float, y: float, accent: Color) -> 
 		)
 		index += 1
 
+	# Three sparkles drifting off to the right of the cloud, in the ONE colour §3
+	# calls "the single most important colour in the game". They are why this wall
+	# now reads at a glance rather than after a moment's looking: the cloud and
+	# its charms are all the room's own lavender-and-blue, so until something warm
+	# landed on that wall the whole composition was a single hue.
+	#
+	# Three, at three sizes, on a rising diagonal -- a row of equal marks is a
+	# pattern and a scatter is a mess. The gap between the cloud's right lobe
+	# (x ~ -1.03) and the window's left edge (x -0.50) is 0.53 m, and every one of
+	# them stays inside it.
+	#
+	# They are CROSSED LOZENGES, not discs. Rendered as discs they read as three
+	# yellow dots -- the kit has no five-point star outline, and two crossed
+	# lozenges is the twinkle that shape is standing in for anyway.
+	for star: Array in [[0.36, 0.17, 0.085], [0.56, 0.33, 0.058], [0.29, -0.09, 0.046]]:
+		var radius: float = float(star[2])
+		var centre := Vector3(x + float(star[0]), y + float(star[1]), INNER_Z + 0.032)
+		for turn: float in [22.0, 112.0]:
+			Kit.plate(
+				tool,
+				Kit.at_rotated(centre, Vector3(-90.0, 0.0, turn)),
+				Kit.rounded_rect(Vector2(radius * 2.0, radius * 0.62), radius * 0.31, 3),
+				0.028, Palette.STAR_EARNED, 0.007
+			)
+
 
 ## -- The kitchen's fixtures ------------------------------------------------------
 ##
@@ -645,23 +687,34 @@ func _nursery_wall_art(tool: SurfaceTool, x: float, y: float, accent: Color) -> 
 ##
 ## ## The worktop is a shared surface, so these are placed around what uses it
 ##
-## `kitchen_view.gd` puts carried items down at the counter's CENTRE
-## (`x = -0.8`). The sink and the hob therefore live at the two ends, with a
-## hand's width of clear worktop either side of the drop zone. The plant that used
-## to stand at `x = -1.46` is gone: it was occupying the only part of the worktop
-## a sink could go, and a kitchen that reads as a kitchen is worth more than a
-## second pot in a room that already has one on the sill.
-const SINK_X: float = -1.24
-const HOB_X: float = -0.26
-## The counter's own top (`HouseLayout.furniture()`: centre 0.45, height 0.9).
-const WORKTOP_Y: float = 0.90
-## Forward of the counter's centre line, so the basin is not half swallowed by
-## the splashback at this camera angle.
-const FIXTURE_Z: float = -1.62
+## The plan is `HouseLayout`'s (`WORKTOP_*`), because `kitchen_view.gd` stands
+## the child's ingredients on the same 1.8 m plank and two files placing things
+## on one surface by eye is how a bowl ends up half inside a hob.
+##
+## Left to right: hob, prep board, sink -- **the sink under the window**, which
+## is where a sink is. The first version of this room had it in the dark
+## left-hand corner under the wall units, with a bare stretch of worktop under
+## the window; cold, that is a workbench, not a kitchen.
+##
+## The board is the piece that earns its place twice. `kitchen_view.gd` puts a
+## carried item down at `WORKTOP_BOARD_X`, so it is the visible answer to "where
+## does this go?", and it is the warm dark field that a cream bottle or a pale
+## banana needs behind it -- on bare cream worktop, against a cream wall, an
+## ingredient measured a handful of pale pixels on an iPad render, which is a
+## gameplay defect and not a taste one.
+const CUPBOARD_X: float = -1.15
+const CUPBOARD_Y: float = 1.50
+const CUPBOARD_SIZE: Vector2 = Vector2(1.26, 0.50)
+const CUPBOARD_DEPTH: float = 0.30
+## The tiled band between the worktop and the wall units. Left of the window,
+## whose sill takes over as the splashback for the rest of the run.
+const SPLASHBACK_X: float = -1.17
+const SPLASHBACK_SIZE: Vector2 = Vector2(1.10, 0.30)
 
 
 func _kitchen_fixtures(tool: SurfaceTool) -> void:
 	var steel: Color = Palette.deep(Palette.DUSTY_BLUE)
+	var top: float = HouseLayout.WORKTOP_Y
 
 	# The sink: a real open basin. §6 wants visible interior depth in anything
 	# that holds something, and a solid-topped basin reads as a cupboard door
@@ -670,41 +723,149 @@ func _kitchen_fixtures(tool: SurfaceTool) -> void:
 	# counter is a solid mesh and a recess would simply be filled by it.
 	Kit.vessel(
 		tool,
-		Kit.at(Vector3(SINK_X, WORKTOP_Y + 0.055, FIXTURE_Z)),
-		Kit.rounded_rect(Vector2(0.42, 0.34), 0.10, 3),
+		Kit.at(Vector3(HouseLayout.WORKTOP_SINK_X, top + 0.055, HouseLayout.WORKTOP_SINK_Z)),
+		Kit.rounded_rect(Vector2(0.44, 0.36), 0.10, 3),
 		0.11, 0.035, 0.03,
 		Palette.CREAM, Palette.DUSTY_BLUE
 	)
 	# The tap. §7: "there is no metal; 'metal' is a dusty-blue convention."
-	Kit.cylinder(tool, Kit.at(Vector3(SINK_X, WORKTOP_Y + 0.11, FIXTURE_Z - 0.17)),
-			0.022, 0.22, steel, 10)
-	Kit.box(tool, Kit.at(Vector3(SINK_X, WORKTOP_Y + 0.215, FIXTURE_Z - 0.115)),
-			Vector3(0.042, 0.042, 0.13), steel, 0.014)
+	Kit.cylinder(tool, Kit.at(Vector3(HouseLayout.WORKTOP_SINK_X, top + 0.12,
+			HouseLayout.WORKTOP_SINK_Z - 0.17)), 0.024, 0.24, steel, 10)
+	Kit.box(tool, Kit.at(Vector3(HouseLayout.WORKTOP_SINK_X, top + 0.235,
+			HouseLayout.WORKTOP_SINK_Z - 0.112)),
+			Vector3(0.044, 0.044, 0.14), steel, 0.014)
 
 	# The hob: a plate and two rings. Two rings rather than four, because at this
 	# camera distance four would merge into a texture, and the ring is the whole
 	# reason this is a stove and not a chopping board.
-	Kit.plate(tool, Kit.at(Vector3(HOB_X, WORKTOP_Y + 0.018, FIXTURE_Z)),
-			Kit.rounded_rect(Vector2(0.44, 0.36), 0.09, 3), 0.036, Palette.DUSTY_BLUE, 0.012)
+	Kit.plate(tool, Kit.at(Vector3(HouseLayout.WORKTOP_HOB_X, top + 0.018,
+			HouseLayout.WORKTOP_HOB_Z)),
+			Kit.rounded_rect(Vector2(0.38, 0.32), 0.08, 3), 0.036, Palette.DUSTY_BLUE, 0.012)
 	for side: float in [-1.0, 1.0]:
-		Kit.torus(tool, Kit.at(Vector3(HOB_X + side * 0.105, WORKTOP_Y + 0.042, FIXTURE_Z)),
-				0.062, 0.013, steel, 14, 6)
+		Kit.torus(tool, Kit.at(Vector3(HouseLayout.WORKTOP_HOB_X + side * 0.092,
+				top + 0.042, HouseLayout.WORKTOP_HOB_Z)),
+				0.056, 0.013, steel, 14, 6)
 
-	# Wall cupboards over the worktop -- the storage the fridge is not. Set to the
-	# LEFT of the window (which spans x -0.50 to 0.80) so nothing overlaps, and
-	# kept below 1.75 m so the shot still holds them.
+	# The prep board. Deliberately the one WOOD-coloured thing on a cream worktop:
+	# it is both the drop zone and the contrast the ingredients stand against.
+	Kit.plate(
+		tool,
+		Kit.at(Vector3(HouseLayout.WORKTOP_BOARD_X,
+				top + HouseLayout.WORKTOP_BOARD_THICKNESS * 0.5, HouseLayout.WORKTOP_BOARD_Z)),
+		Kit.rounded_rect(HouseLayout.WORKTOP_BOARD_SIZE, 0.07, 3),
+		HouseLayout.WORKTOP_BOARD_THICKNESS, HouseLayout.WOOD_COLOR, 0.012
+	)
+
+	_splashback(tool)
+	_wall_cupboards(tool)
+	_table_mat(tool)
+
+
+## The placemat on the table, laid exactly where `kitchen_view.gd` serves a
+## finished dish (`TABLE_MAT_FORWARD` of the table's centre).
+##
+## Read from the furniture table rather than typed as a coordinate, so a table
+## that moves takes its mat with it.
+func _table_mat(tool: SurfaceTool) -> void:
+	for row: Dictionary in HouseLayout.furniture(room_id):
+		if String(row["targetId"]) != "table":
+			continue
+		var size: Vector3 = row["size"]
+		var centre: Vector3 = row["position"]
+		Kit.plate(
+			tool,
+			Kit.at(Vector3(
+				centre.x,
+				centre.y + size.y * 0.5 + HouseLayout.TABLE_MAT_THICKNESS * 0.5,
+				centre.z + size.z * HouseLayout.TABLE_MAT_FORWARD
+			)),
+			Kit.rounded_rect(HouseLayout.TABLE_MAT_SIZE, 0.06, 3),
+			HouseLayout.TABLE_MAT_THICKNESS,
+			# Two colours were tried and looked at before this one. The room's own
+			# accent, `light(mint)`, is the EXACT colour of the rug's field, so the
+			# mat matched the floor two metres behind it pixel for pixel and read
+			# as a rectangular hole cut through the table. `light(dustyBlue)` fixed
+			# that and brought its own problem: it is the coolest, least saturated
+			# thing in a warm room and at the wide iPhone aspect it read as a grey
+			# patch. `softPink` is warm, is nothing else in this kitchen, and is
+			# the one value a cream bowl of pale yellow food sits cleanly on.
+			Palette.SOFT_PINK,
+			0.008
+		)
+		return
+
+
+## The tiled band between the worktop and the wall units.
+##
+## Cheap, and it does more for "this is a kitchen" than any single prop: a
+## horizontal accent at worktop height ties the counter, the hob and the
+## cupboards into one run instead of three objects parked against a cream wall.
+## Four tiles rather than a grid -- at this camera distance a real tile pattern
+## merges into noise, and §7 has no textures to draw it with anyway.
+func _splashback(tool: SurfaceTool) -> void:
+	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
+	var base_y: float = HouseLayout.WORKTOP_Y + SPLASHBACK_SIZE.y * 0.5 + 0.01
+	Kit.plate(
+		tool,
+		Kit.at_rotated(Vector3(SPLASHBACK_X, base_y, INNER_Z + 0.02), facing),
+		Kit.rounded_rect(SPLASHBACK_SIZE, 0.03, 2), 0.04,
+		Palette.light(HouseLayout.accent_color(room_id)), 0.012
+	)
+	var tile: float = SPLASHBACK_SIZE.x / 4.0
+	for index: int in range(4):
+		Kit.plate(
+			tool,
+			Kit.at_rotated(Vector3(
+					SPLASHBACK_X - SPLASHBACK_SIZE.x * 0.5 + tile * (float(index) + 0.5),
+					base_y, INNER_Z + 0.045), facing),
+			Kit.rounded_rect(Vector2(tile - 0.035, SPLASHBACK_SIZE.y - 0.045), 0.025, 2),
+			0.018, Palette.CREAM, 0.008
+		)
+
+
+## Wall units over the worktop -- the storage the fridge is not.
+##
+## Set to the LEFT of the window (which spans x -0.50 to 0.80) so nothing
+## overlaps, and kept below 1.75 m so the room shot still holds them.
+##
+## The first pass of these read, cold, as a framed picture: a flat peach slab
+## with two paler rectangles on it and two knobs too small to see. What fixes it
+## is not more detail but the two things that say "cupboard" in silhouette -- a
+## carcass with a visible UNDERSIDE (so it is a box hanging on a wall rather than
+## a panel stuck to one) and handles that are BARS, which at 1.5 m read as two
+## dark strokes where a sphere reads as nothing at all.
+func _wall_cupboards(tool: SurfaceTool) -> void:
+	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
+	var front: float = INNER_Z + CUPBOARD_DEPTH
+	Kit.plate(
+		tool,
+		Kit.at_rotated(Vector3(CUPBOARD_X, CUPBOARD_Y, INNER_Z + CUPBOARD_DEPTH * 0.5), facing),
+		Kit.rounded_rect(CUPBOARD_SIZE, 0.05, 3), CUPBOARD_DEPTH,
+		HouseLayout.WOOD_COLOR, 0.018
+	)
+	# The underside lip: a shadow line under a wall unit is most of what tells the
+	# eye it is hanging off the wall, and there are no shadows in this game (§7).
+	Kit.box(
+		tool,
+		Kit.at(Vector3(CUPBOARD_X, CUPBOARD_Y - CUPBOARD_SIZE.y * 0.5 - 0.018,
+				INNER_Z + CUPBOARD_DEPTH * 0.5 + 0.012)),
+		Vector3(CUPBOARD_SIZE.x + 0.05, 0.036, CUPBOARD_DEPTH + 0.03),
+		Palette.deep(HouseLayout.WOOD_COLOR), 0.012
+	)
 	var door_face: Color = Palette.light(Palette.PEACH)
-	Kit.plate(tool, Kit.at_rotated(Vector3(-1.18, 1.50, INNER_Z + 0.16), Vector3(-90.0, 0.0, 0.0)),
-			Kit.rounded_rect(Vector2(1.22, 0.46), 0.05, 3), 0.30, HouseLayout.WOOD_COLOR, 0.018)
 	for side: float in [-1.0, 1.0]:
 		Kit.plate(
 			tool,
-			Kit.at_rotated(Vector3(-1.18 + side * 0.30, 1.50, INNER_Z + 0.315),
-					Vector3(-90.0, 0.0, 0.0)),
-			Kit.rounded_rect(Vector2(0.54, 0.36), 0.04, 3), 0.035, door_face, 0.012
+			Kit.at_rotated(Vector3(CUPBOARD_X + side * 0.305, CUPBOARD_Y, front + 0.012),
+					facing),
+			Kit.rounded_rect(Vector2(0.56, 0.40), 0.04, 3), 0.035, door_face, 0.012
 		)
-		Kit.sphere(tool, Kit.at(Vector3(-1.18 + side * 0.055, 1.38, INNER_Z + 0.34)),
-				0.028, Palette.CREAM, 10, 6)
+		# A bar handle on the door's inner edge, running down the door.
+		Kit.box(
+			tool,
+			Kit.at(Vector3(CUPBOARD_X + side * 0.075, CUPBOARD_Y - 0.03, front + 0.05)),
+			Vector3(0.026, 0.16, 0.026), Palette.deep(Palette.DUSTY_BLUE), 0.008
+		)
 
 
 ## A framed picture. No text, no representational subject -- one soft shape, so
@@ -766,9 +927,15 @@ func _floor_dressing() -> Array:
 	}
 	match room_id:
 		HouseLayout.BEDROOM:
+			# The one exception to the "pot takes the room's dominant" rule above,
+			# and it is the baby's room that earns it. `deep(lavender)` rendered as
+			# a grey-mauve pail and was, cold, the least appealing object in the
+			# house -- it read as a bin standing next to a cot. §3 gives the
+			# nursery `softPink` as its dominant, so a soft pink basket is both the
+			# warmest thing on that side of the room and the correct note for it.
 			return [plant, {
 				"kind": "basket", "at": DRESSING_RIGHT, "height": 0.40,
-				"color": Palette.deep(HouseLayout.dominant_color(room_id)),
+				"color": Palette.SOFT_PINK,
 			}]
 		HouseLayout.BATHROOM:
 			return [plant, {

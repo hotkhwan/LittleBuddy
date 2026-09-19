@@ -11,6 +11,11 @@ extends Node
 const OUT_DIR := "docs/shots/"
 
 var _settle := 0
+## Frames to let the scene rest before the capture. Shortened for the reward
+## shot, whose subject expires: `house_hud.gd`'s REWARD_SECONDS is 1.8 s and a
+## 40-frame wait on a slow machine can outlive it, which would photograph the
+## mode AFTER the one that was asked for and file it under the right name.
+var _settle_after_run := 40
 var _out := ""
 var _scene: Node = null
 
@@ -58,10 +63,40 @@ func _run(job: String, extra: String) -> void:
 			# photographing is rarely the first one: the opening task of a level is
 			# usually a `choose`, whose box has to hold a whole row of objects and
 			# is therefore the WIDEST close-up the game composes, not the tightest.
+			# A third field, "<levelId>:<skip>:reward", photographs the moment
+			# just AFTER the beat instead: the reward presentation. It replays the
+			# exact pair of HUD calls `house_level_director._on_task_completed()`
+			# and `_on_encouragement()` make, in that order, with the close-up
+			# still held -- which is what the director does, and the reason it is
+			# reproduced here rather than faked is that the beat itself still has
+			# to be reached by gameplay first.
 			var parts: PackedStringArray = extra.split(":")
 			var level: String = parts[0] if parts.size() > 0 and parts[0] != "" \
 					else "goodMorningRoutine"
 			var skip: int = parts[1].to_int() if parts.size() > 1 else 0
+			var after: String = parts[2] if parts.size() > 2 else ""
+			# End the first-run tour BEFORE forcing a level on.
+			#
+			# `house_world._ready()` is `if _begin_onboarding(): return` -- the game
+			# runs the tour OR a mission, never both. A harness that calls
+			# `_start_level()` on a fresh profile gets both at once, and the tour's
+			# own caption ("Now tap the bed!") plus its pointing hand then
+			# photograph themselves into the middle of every beat shot. Every
+			# `c_beat_*` and `c_focus_*` picture in `docs/shots/` has that second
+			# overlay in it and it was read as part of the HUD's text stack.
+			# Anything that cannot be ended PRINTS rather than quietly appearing in
+			# the evidence.
+			if _scene.has_method("is_onboarding_active") \
+					and bool(_scene.call("is_onboarding_active")):
+				var tour: Node = _scene.call("get_onboarding_director")
+				if tour != null and tour.has_method("finish"):
+					tour.call("finish")
+					print("  first-run tour ended (harness-only overlap: the game never "
+							+ "runs the tour and a mission together)")
+				else:
+					print("  WARN: the first-run tour is running and cannot be ended -- "
+							+ "this shot will contain TWO overlays")
+				await get_tree().process_frame
 			var beat_director: Node = null
 			if _scene.has_method("ensure_level_director"):
 				beat_director = _scene.call("ensure_level_director")
@@ -105,11 +140,28 @@ func _run(job: String, extra: String) -> void:
 						beat_director.call("_reach_beat")
 						for _settle in range(40):
 							await get_tree().process_frame
+				if after == "reward":
+					_settle_after_run = 12
+					var reward_hud: Node = _find_hud()
+					if reward_hud == null:
+						print("  WARN: no HouseHud -- cannot stage the reward moment")
+					else:
+						reward_hud.call("mark_current_done")
+						reward_hud.call("show_encouragement", "Great!")
+						await get_tree().process_frame
 				var beat_plan: Dictionary = beat_director.call("get_current_plan")
-				print("  level=%s task=%s kind=%s focused=%s" % [
+				# The close-up's RADIUS is printed as well, because the HUD's
+				# presentation mode is chosen from how tight the shot is (see
+				# `hud_presentation.gd`) and "which mode did this beat land in" has
+				# to be measurable from a run rather than argued about.
+				var beat_shot: Dictionary = beat_director.call("get_camera_focus")
+				print("  level=%s task=%s kind=%s focused=%s radius=%.2f" % [
 					level, String(beat_plan.get("taskId", "")),
 					String(beat_plan.get("kind", "")),
-					str(beat_director.call("is_camera_focused"))])
+					str(beat_director.call("is_camera_focused")),
+					float(beat_shot.get("radius", 0.0))])
+				_report_room()
+				_report_hud_mode()
 		"storage":
 			# The house with the bedroom's toy box forced open or shut, so the two
 			# states can be compared side by side.
@@ -233,7 +285,48 @@ func _run(job: String, extra: String) -> void:
 			_scene = panel
 		_:
 			_load(job)  # treat the job as a raw scene path
-	_settle = 40
+	_settle = _settle_after_run
+
+
+## Prints which room is actually on screen, and shouts if the answer is "none".
+##
+## A beat that does not tighten leaves the ROOM shot up, and a house caught part
+## way through a door transition has every room hidden: the capture is then a
+## flat beige void with the character standing in it, which is a perfectly
+## plausible-looking picture of nothing. One render of
+## `hud_explore_BEFORE_ipad.png` came out exactly like that. It is only obvious
+## if you look, so it prints as well.
+func _report_room() -> void:
+	if _scene == null or not _scene.has_method("get_current_room_id"):
+		return
+	var room_id: String = String(_scene.call("get_current_room_id"))
+	var shown: bool = false
+	if not room_id.is_empty() and _scene.has_method("get_room"):
+		var room: Node = _scene.call("get_room", room_id)
+		shown = room is Node3D and (room as Node3D).visible
+	print("  room=%s onScreen=%s" % [room_id if not room_id.is_empty() else "(none)", str(shown)])
+	if not shown:
+		print("  WARN: no room is on screen -- this capture is the empty void, not the game")
+
+
+## Prints which presentation mode the HUD settled in, so a screenshot carries its
+## own label. A miss PRINTS -- the `house` job's silent mis-aim is the class of
+## failure this harness is not allowed to repeat.
+func _report_hud_mode() -> void:
+	var hud: Node = _find_hud()
+	if hud == null:
+		print("  WARN: no HouseHud in the tree -- cannot report a presentation mode")
+		return
+	if not hud.has_method("get_presentation_mode_name"):
+		print("  WARN: this HouseHud has no presentation mode")
+		return
+	print("  hudMode=%s" % String(hud.call("get_presentation_mode_name")))
+
+
+func _find_hud() -> Node:
+	if _scene == null:
+		return null
+	return _scene.find_child("HouseHud", true, false)
 
 
 func _load(path: String) -> void:

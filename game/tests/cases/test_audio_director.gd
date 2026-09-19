@@ -30,6 +30,7 @@ const DIRECTOR_SCRIPT: String = "res://scripts/audio/audio_director.gd"
 const MANIFEST_SCRIPT: String = "res://scripts/audio/music_manifest.gd"
 const MACHINE_SCRIPT: String = "res://scripts/audio/bgm_state_machine.gd"
 const SFX_SCRIPT: String = "res://scripts/audio/sfx_player.gd"
+const OVERRIDE_SCRIPT: String = "res://scripts/audio/music_licence_override.gd"
 const SHIPPED_MANIFEST: String = "res://content/audio/manifest.json"
 
 ## Real files, ours, used as stand-in tracks. See the class docs.
@@ -45,6 +46,10 @@ var _machine_script: GDScript = null
 
 func test_name() -> String:
 	return "audio_director"
+
+
+func _override_script() -> GDScript:
+	return load(OVERRIDE_SCRIPT) as GDScript
 
 
 func run():
@@ -83,6 +88,9 @@ func _test_a_build_with_no_music_behaves_normally():
 	var failures: Array = []
 
 	var director: Node = _director_script.new()
+	# The decision is asserted below; the engine warning itself would only make the
+	# suite output noisy. See `warn_on_licence_refusal`.
+	director.warn_on_licence_refusal = false
 	var unavailable: Array = []
 	director.track_unavailable.connect(
 		func(track_id: String, reason: String) -> void:
@@ -93,10 +101,18 @@ func _test_a_build_with_no_music_behaves_normally():
 		func(state: String) -> void: states_seen.append(state)
 	)
 
+	if director.allow_unverified_music:
+		failures.append(
+			("allow_unverified_music is armed inside the test suite. It must be false unless a "
+			+ "human passed %s or created %s -- see music_licence_override.gd.")
+			% [_override_script().CLI_FLAG, _override_script().MARKER_PATH]
+		)
 	if not director.is_silent_build():
 		failures.append(
-			("is_silent_build() is false. If a real music file has landed this case needs "
-			+ "updating alongside its licence evidence -- but the silent path must keep a test.")
+			("is_silent_build() is false. The two delivered tracks are still refused (rights "
+			+ "unrecorded), so the shipping build is silent. If that changes -- real licence "
+			+ "evidence, `commercialUse: \"verified\"` -- update this case alongside it, but the "
+			+ "silent path must keep a test: a build with no playable music is supported forever.")
 		)
 	if director.manifest() == null:
 		failures.append("manifest() must never return null, even with no manifest on disk")
@@ -146,13 +162,34 @@ func _test_a_build_with_no_music_behaves_normally():
 			% [first_report_count, unavailable.size()]
 		)
 
-	# A missing file must NOT be treated as something to warn a developer about.
+	# WHY the build is silent decides whether a developer is told about it, and the
+	# two reasons are opposites:
+	#
+	#   no file yet      -> the designed state before a delivery. Say nothing; a
+	#                       boot-time warning for the normal case teaches people to
+	#                       ignore warnings.
+	#   file, no licence -> a delivery landed and nobody recorded its rights. That
+	#                       is the one audio mistake that could reach a shipped
+	#                       build, so warn, once.
+	#
+	# Since 2026-09-19 this repository is in the SECOND state: `audio/music/*.ogg`
+	# exist and their rows say commercialUse "pending". So the warning is now
+	# expected, and what is asserted is that it tracks the file's presence rather
+	# than firing or staying quiet unconditionally.
 	for track_id: String in director.manifest().track_ids():
 		var reason: String = director.manifest().refusal_reason(track_id)
-		if director.should_warn_about(track_id, reason):
+		var has_file: bool = not director.manifest().resolved_path(track_id).is_empty()
+		var wants_to_warn: bool = director.should_warn_about(track_id, reason)
+		if has_file and not wants_to_warn:
 			failures.append(
-				("the director wants to warn about %s (%s) in a build where no music file exists. "
-				+ "A boot-time warning for the designed state teaches people to ignore warnings.")
+				("there IS a file for %s and its licence is refused (%s), yet the director stays "
+				+ "quiet. Unrecorded rights on a delivered track must be said out loud.")
+				% [track_id, reason]
+			)
+		if not has_file and wants_to_warn:
+			failures.append(
+				("the director wants to warn about %s (%s) when no file for it exists. A boot-time "
+				+ "warning for the designed state teaches people to ignore warnings.")
 				% [track_id, reason]
 			)
 

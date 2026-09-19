@@ -261,6 +261,28 @@ func is_focused_on_activity() -> bool:
 	return _focused
 
 
+## The half-width of the close-up currently being held, in metres, or 0.0 while
+## the room shot is up.
+##
+## Exists so a layer that must not obstruct the shot can ask how tight it is
+## without knowing anything about beats, tasks or the director.
+## `scripts/ui/hud_presentation.gd` is the caller: the difference between a
+## 0.90 m shot (one subject filling the middle) and a 1.88 m one (a row of
+## objects across the room) is exactly the difference between where its text can
+## and cannot go, and this is where that number already lives.
+##
+## Read from `bounds` rather than cached separately, so it cannot drift away from
+## the shot that is actually on screen: `focus_framing()` builds those bounds as
+## a square of side `radius * 2`, and `refresh()` fits that same square.
+func get_focus_radius() -> float:
+	if not _focused or _active_framing.is_empty():
+		return 0.0
+	var bounds: Variant = _active_framing.get("bounds")
+	if not (bounds is Rect2):
+		return 0.0
+	return maxf((bounds as Rect2).size.x, (bounds as Rect2).size.y) * 0.5
+
+
 func get_room_framing() -> Dictionary:
 	return _room_framing.duplicate(true)
 

@@ -128,8 +128,16 @@ func _test_shipped_manifest_is_well_formed():
 	return failures
 
 
-## The shipped state of this repository: two tracks listed, no files, nothing
-## playable, and that must be completely ordinary.
+## The shipped state of this repository, as of the 2026-09-19 delivery: two tracks
+## listed, **both files now present**, and still nothing playable -- because no
+## licence evidence has been supplied for either.
+##
+## That is the gate doing its job, and it is the assertion that matters most in
+## this file. Anny delivered two real tracks; the owner has not said what rights
+## come with them. Until someone does, `commercialUse` stays `"pending"`, the gate
+## stays shut and the game ships silent. The temptation this case exists to defeat
+## is the small edit -- `"pending"` -> `"verified"`, evidence invented -- that
+## would make the music audible and the project liable.
 func _test_shipped_manifest_is_silent_today():
 	var failures: Array = []
 
@@ -139,13 +147,22 @@ func _test_shipped_manifest_is_silent_today():
 	for track_id: String in manifest.track_ids():
 		if manifest.is_playable(track_id):
 			failures.append(
-				("track %s reports as playable. If a real music file has landed, this test needs "
-				+ "updating together with the licence evidence -- do not simply delete the "
-				+ "assertion.") % track_id
+				("track %s reports as playable. Real licence evidence is the ONLY thing that may "
+				+ "make this true. If it now exists, update this case alongside it and say what "
+				+ "the evidence is -- do not simply delete the assertion.") % track_id
 			)
 		var reason: String = manifest.refusal_reason(track_id)
 		if reason.is_empty():
 			failures.append("track %s is refused but gives no reason" % track_id)
+		# The refusal must be about the PAPERWORK, not about a missing file. If a
+		# track starts reporting `fileMissing` the delivery has been lost or
+		# renamed, and the licence question would be silently hidden behind it.
+		if reason == _script.REFUSAL_FILE_MISSING:
+			failures.append(
+				("track %s is refused for a missing file. Both tracks were delivered on "
+				+ "2026-09-19 and must be on disk; a missing file would hide the licence "
+				+ "refusal behind it.") % track_id
+			)
 
 	# Scene lookups must answer "" rather than guessing, for every state the BGM
 	# machine can be in.
@@ -153,10 +170,24 @@ func _test_shipped_manifest_is_silent_today():
 		if manifest.playable_track_for_scene(scene) != "":
 			failures.append("scene %s resolved to a playable track in a build with no music" % scene)
 
-	if manifest.missing_track_ids().size() != manifest.track_count():
+	# The files really are there. This is the half of the old assertion that
+	# inverted when the delivery landed, and inverting it is the point: the audio
+	# pipeline is proven, only the rights are outstanding.
+	if not manifest.missing_track_ids().is_empty():
 		failures.append(
-			"missing_track_ids() should list every track while no music file exists, got %s"
+			("missing_track_ids() is %s. Both delivered tracks must resolve to a file on disk; "
+			+ "see docs/ORIGINAL_MUSIC_INTEGRATION.md for how they are produced.")
 			% str(manifest.missing_track_ids())
+		)
+
+	# Every track the gate refuses is a track nobody may ship. It should be BOTH of
+	# them today, and the count is asserted so that clearing one by accident is a
+	# failure rather than an improvement.
+	if manifest.licence_refused_track_ids().size() != manifest.track_count():
+		failures.append(
+			("licence_refused_track_ids() is %s of %d tracks. Neither delivered track has licence "
+			+ "evidence, so both must be refused.")
+			% [str(manifest.licence_refused_track_ids()), manifest.track_count()]
 		)
 
 	return failures

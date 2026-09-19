@@ -97,12 +97,20 @@ func _bring_bunny() -> bool:
 		if child.has_method("satisfy") and child.has_method("set_activity"):
 			bedroom.remove_child(child)
 			kitchen_room.add_child(child)
+			# `room_changed(new_room, buddy)` -- TWO Node3D arguments, not a room
+			# id string. The first version passed "kitchen" and threw, abandoning
+			# the move half-done and producing a kitchen with no Bunny in it.
 			if child.has_method("room_changed"):
-				child.call("room_changed", "kitchen")
+				child.call("room_changed", kitchen_room, _find_caregiver())
 			if child is Node3D:
 				(child as Node3D).position = Vector3(0.55, 0.0, 0.9)
 			return true
 	return false
+
+
+## Aliz, so Bunny can be told who to attend to after the move.
+func _find_caregiver() -> Node3D:
+	return _world.get_node_or_null("LittleBuddy") as Node3D
 
 
 func _shot(name: String, caption: String) -> void:

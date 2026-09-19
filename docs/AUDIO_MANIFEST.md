@@ -14,28 +14,43 @@ whose story is incomplete.
 | Manifest | `game/content/audio/manifest.json` |
 | Loader + licence gate | `game/scripts/audio/music_manifest.gd` |
 | BGM state machine | `game/scripts/audio/bgm_state_machine.gd` |
-| Audio manager | `game/scripts/audio/audio_director.gd` |
-| Music files (created on first delivery) | `game/audio/music/` |
-| Tests | `game/tests/cases/test_audio_music_manifest.gd`, `game/tests/cases/test_audio_director.gd` |
+| Audio manager (mixer, fades, duck) | `game/scripts/audio/audio_director.gd` |
+| Game-state wiring | `game/scripts/audio/music_binder.gd` |
+| Owner-armed preview switch | `game/scripts/audio/music_licence_override.gd` |
+| Music files | `game/audio/music/` — **two tracks delivered 2026-09-19** |
+| Tests | `game/tests/cases/test_audio_music_manifest.gd`, `test_audio_director.gd`, `test_audio_music_binder.gd` |
+| Proof it plays in the real game | `game/tests/smoke_audio_shipping.gd` |
 | Creative brief | `docs/MUSIC_BRIEFS_FOR_ANNY.md` |
+| The 2026-09-19 delivery, in full | **`docs/ORIGINAL_MUSIC_INTEGRATION.md`** |
 
 ---
 
-## 1. Current state: there is no music, and that is fine
+## 1. Current state: the music exists, and the build is still silent
 
-**No music file exists in this repository.** Both expected tracks are listed in the manifest
-*before* they exist, with honest placeholder values, so that a delivery is a file drop rather
-than a code change.
+Anny delivered both tracks on **2026-09-19**. They are encoded, catalogued and wired to the
+real game states — and the shipping build plays **no music at all**, because no licence
+evidence has been supplied for either of them.
 
-The build is therefore **silent-safe**, and that is a tested property rather than a hope:
+| | |
+|---|---|
+| `little_days_theme.ogg` | 1.35 MiB, 92.72 s, `menu` — plays `littleDaysTheme` at −12 dB |
+| `hungry_bunny.ogg` | 0.95 MiB, 64.40 s, `miniGame` — plays `hungryBunny` at −16 dB |
+| `commercialUse` | `"pending"` on both |
+| `licenseEvidence` | `"OWNER TO CONFIRM"` on both |
+| Consequence | the licence gate refuses both; the game is silent |
+
+That is the gate working, not a fault. **To ship the music, establish the rights, capture the
+evidence, and set `commercialUse` to `"verified"`** — §5, step 4. To *hear* it locally in the
+meantime there is one explicit, off-by-default switch: §7.
+
+The build remains **silent-safe**, and that is a tested property rather than a hope:
 
 - `set_state()` succeeds for every state and honestly reports that nothing is playing.
-- No engine error, no broken resource path, and **no repeated warning** — a missing file is
-  the designed state of this build, not a fault, so nothing complains about it.
+- No engine error and no broken resource path.
 - Volume controls and mute work whether or not music exists, so a settings screen does not
   need to know.
 - `AudioDirector.is_silent_build()` returns `true` today. When it starts returning `false`,
-  music has arrived.
+  the licence has been recorded.
 
 `test_audio_director.gd::_test_a_build_with_no_music_behaves_normally()` drives every state,
 every trim and mute through a director with nothing to play. If someone later makes music
@@ -81,7 +96,7 @@ JSON keys are camelCase, per `CLAUDE.md`.
 | `commercialUse` | String | `"verified"`, `"pending"` or `"denied"`. **Only the exact string `"verified"` permits playback.** |
 | `localPath` | String | `res://` path to the audio file. May point at a file that does not exist yet — that is the normal case. |
 | `loopStart` | float | Loop start, seconds. `0.0` means the beginning. |
-| `loopEnd` | float | Loop end, seconds. `0.0` means the end of the file, so `0.0`/`0.0` loops the whole thing — what a well-made loop wants. A range that ends before it starts falls back to the whole file rather than producing a zero-length loop that would buzz on a device. |
+| `loopEnd` | float | Loop end, seconds. `0.0` means the end of the file, so `0.0`/`0.0` loops the whole thing — what a well-made loop wants. A range that ends before it starts falls back to the whole file rather than producing a zero-length loop that would buzz on a device. **Honoured for WAV only:** Godot's `AudioStreamOggVorbis` and `AudioStreamMP3` have a loop flag and a loop *offset* but no loop end, so a compressed delivery has to be re-cut to change where it loops back. |
 | `volumeDb` | float | The track's own level, negative. Clamped to a maximum of −6 dB (§4). |
 | `usageScenes` | Array[String] | Which BGM states this track plays under: `menu`, `house`, `miniGame`, `reward`. A state with no track is silent, which is legal. |
 
@@ -94,7 +109,13 @@ JSON keys are camelCase, per `CLAUDE.md`.
   `commercialUse: true` to `"pending"` would be tidier and would erase the evidence that
   someone typed something wrong.
 - **Unknown fields are preserved** through a load/save round-trip, so a field added by a later
-  version of the manifest survives intact.
+  version of the manifest survives intact. The delivered rows use that to record provenance:
+  `masterFile`, `masterFormat`, `masterBytes`, `masterDurationSeconds`, `masterSha256`,
+  `runtimeEncoding`, `runtimeBytes`, `runtimeDurationSeconds`, `runtimeSha256`, `loopNote`. The
+  repository therefore knows exactly which master each shipped file came from, and the smoke
+  test uses `runtimeDurationSeconds` to prove the live stream is the right file.
+  (`to_json_string()` passes `sort_keys = false` for this reason — the default `true` reorders
+  every row alphabetically and broke the round-trip identity as soon as extra fields existed.)
 - **A missing or corrupt manifest yields an empty catalogue and safe defaults**, never an
   engine error — the same contract the save layer has for a corrupt profile.
 
@@ -130,13 +151,19 @@ The licence is checked **before** the disk deliberately. A refused track must re
 licence problem rather than hiding behind a missing file and quietly becoming playable the day
 someone drops a file in.
 
+Note that `"denied"` and `"pending"` both report `commercialUseUnverified` — correctly, since
+both must be refused. But they are opposite facts: `"pending"` means nobody has checked,
+`"denied"` means somebody checked and the answer was no. Anything that *releases* a refusal
+(there is exactly one such thing, §7) must therefore also ask `MusicManifest.is_denied()`.
+
 ### Warnings: loud about the right thing
 
-- `fileMissing` → **silent.** It is the designed state of this repository. A boot-time warning
-  for the designed state is noise, and noise is how a real warning gets ignored.
+- `fileMissing` → **silent.** A boot-time warning for a track that has not been delivered yet
+  is noise, and noise is how a real warning gets ignored.
 - `commercialUseUnverified` / `licenceEvidenceMissing` **and a file is present** → one engine
   warning per track. Someone has dropped a delivery in without recording where it came from,
-  and that is the one audio mistake in this project that could reach a shipped build.
+  and that is the one audio mistake in this project that could reach a shipped build. **This is
+  the state both tracks are in today**, so both warnings fire once per launch, deliberately.
 - Either way, `AudioDirector` emits `track_unavailable(trackId, reason)` once per track so a
   diagnostics panel can show the truth without anything being logged per frame.
 
@@ -173,9 +200,26 @@ The mix, from file to speaker:
 track volumeDb  +  music trim  +  master trim  →  clamped to [-60 dB, -6 dB]
 ```
 
-Seeded levels: `littleDaysTheme` at −12 dB (menus, no speech competing), `hungryBunny` at
-−16 dB (plays under prompts). Adjusting these after listening on the device is a one-number
-manifest change and needs nothing from the composer.
+Shipped levels: `littleDaysTheme` at −12 dB (menus, no speech competing), `hungryBunny` at
+−16 dB (plays under prompts). Both masters measure ~−17.3 dBFS RMS, so those numbers were chosen
+against a like-for-like loudness; they have **not** been checked by ear on the device. Adjusting
+them is a one-number manifest change and needs nothing from the composer.
+
+### Music also ducks while the game speaks
+
+On top of the cap, music drops by `AudioDirector.duck_db` (default **−10 dB**) whenever
+`TtsService.is_speaking()` or `SpeechService.is_listening()` is true — 0.18 s down, 0.55 s back.
+Measured in the real milk mission: −16.0 dB → −26.0 dB → −16.0 dB.
+
+The duck is a separate gain multiplied into the mix, never a change to the trims: the trims are
+the parent's settings and a passing prompt must not rewrite them, and a crossfade may be running
+at the same time. It can only attenuate — whatever `duck_db` is set to, the gain never exceeds
+1.0 and the audible level never exceeds the −6 dB ceiling (`test_audio_music_binder.gd`).
+
+It is **polled once per frame rather than driven by signals**, because
+`SpeechService.listening_stopped` is not guaranteed to fire (the iOS backend's
+`_on_recognition_failed()` does not emit it, nor does `permission_result(false)`), and a duck
+that sticks is music that goes quiet and stays quiet.
 
 ### Transitions are never hard cuts
 
@@ -188,6 +232,11 @@ state, including an unknown one, can produce a cut.
 ---
 
 ## 5. Drop-in procedure
+
+> **Steps 1–3 and 5–8 were carried out for the 2026-09-19 delivery. Step 4 is blocked on the
+> owner.** The narrative of what was actually done — checksums, encoder, sizes, the licensing
+> decision — is in `docs/ORIGINAL_MUSIC_INTEGRATION.md`. Follow the list below for the next
+> delivery, or to finish this one.
 
 When a delivery arrives (files + evidence, per `docs/MUSIC_BRIEFS_FOR_ANNY.md`):
 
@@ -206,6 +255,21 @@ When a delivery arrives (files + evidence, per `docs/MUSIC_BRIEFS_FOR_ANNY.md`):
    Any of the three containers works. The loader probes the declared `localPath` first, then
    the same basename with each accepted extension, so a delivery of `.mp3` against a manifest
    that says `.ogg` still plays. No conversion is needed to make it work.
+
+   **But convert a WAV delivery before committing it.** A master is ~200 KiB per second; this
+   repository has no git-lfs and 30 MiB of WAV is a permanent addition to its history. Keep the
+   masters outside the repo (`~/Music/LittleDays/masters/`), record their checksums in the
+   manifest, and commit Ogg Vorbis:
+
+   ```sh
+   brew install vorbis-tools          # if `oggenc` is missing; ffmpeg also works
+   oggenc -q 4 --resample 44100 -o game/audio/music/<name>.ogg "<master>.wav"
+   /Applications/Godot.app/Contents/MacOS/Godot --headless --path game --import
+   ```
+
+   `-q 4` is ~128 kb/s, which is generous for a bed playing 12–16 dB under speech; `44100`
+   matches Godot's default mix rate so nothing resamples at runtime. The 2026-09-19 delivery
+   went from 28.8 MiB of WAV to 2.30 MiB of Ogg this way.
 
 4. **Fill in the manifest row** in `game/content/audio/manifest.json`:
    ```json
@@ -226,13 +290,22 @@ When a delivery arrives (files + evidence, per `docs/MUSIC_BRIEFS_FOR_ANNY.md`):
    ```
    /Applications/Godot.app/Contents/MacOS/Godot --headless --path game --script res://tests/run_tests.gd
    ```
-   Two audio cases will now be exercising the *playing* path. Two assertions are written to
-   fail deliberately once real music lands — the "this build is silent" checks in
+   Then prove it actually *plays*, which the unit suite cannot:
+   ```
+   … --script res://tests/smoke_audio_shipping.gd
+   ```
+   That drives the real `main.tscn` and `house_world.tscn` and asserts against the live
+   `AudioStreamPlayer` — stream, class, length, `playing`, `volume_db`, playback position.
+   "The .ogg exists" is not evidence.
+
+   Two assertions in the unit suite are written to fail deliberately when the licence state
+   changes — the "this build is silent" checks in
    `test_audio_music_manifest.gd::_test_shipped_manifest_is_silent_today()` and
    `test_audio_director.gd::_test_a_build_with_no_music_behaves_normally()`. **Update them
    together with the licence evidence; do not simply delete them.** They are the record that
    the silent path still works, and the silent path is what a device with a corrupted download
-   falls back to.
+   falls back to. (Their *file-presence* halves already inverted when the 2026-09-19 delivery
+   landed, and were rewritten rather than removed.)
 
 7. **Listen on the device, not on a laptop.** Play the menu, walk into a room, run the milk
    mission, and check that a spoken prompt still cuts through. If it does not, lower the
@@ -262,6 +335,8 @@ audio.set_master_volume_db(-6.0)
 audio.set_music_volume_db(-3.0)
 audio.set_sfx_volume_db(0.0)
 audio.set_muted(true)
+
+audio.set_ducked(true)   # music out of the way of a spoken prompt; MusicBinder does this
 ```
 
 Callers say **where the child is**, never which track to play; the manifest decides what that
@@ -271,3 +346,65 @@ gameplay file changing, so please keep track ids out of gameplay code.
 `set_state()` returns `false` when the state has no cleared, present track. That is a normal
 answer today and callers must treat it as one — never as an error, and never as a reason to
 change what happens on screen.
+
+### In the shipping game, nothing calls any of that
+
+`MusicBinder` (`game/scripts/audio/music_binder.gd`) does it. The director creates one when it
+is installed as an autoload (a direct child of `/root` that is not the current scene), and the
+binder watches `SceneTree.node_added`, recognises gameplay nodes **by script path**, and
+connects to their signals. **No gameplay file references music** — nothing in `scripts/house/`,
+`scripts/gameplay/`, `scripts/ui/`, `scripts/speech/` or `scenes/` mentions it, and deleting
+`music_binder.gd` removes the feature completely.
+
+The autoload line, which `project.godot` needs for any of this to happen:
+
+```ini
+Audio="*res://scripts/audio/audio_director.gd"
+```
+
+| what happens | music state |
+|---|---|
+| `scenes/main/main.gd` enters the tree | `menu` |
+| `house_world.gd` enters the tree, or `room_entered` outside a mission | `house` |
+| `level_started` / `mission_started` | `miniGame` |
+| `mission_completed` / `level_finished` | unchanged — the celebration keeps its music |
+| session summary `closed` / `play_again` / `next_level` | `house` |
+
+**`task_plan_changed` and `transition_started` are deliberately not connected.** An objective
+changes seven times in a mission and a child walks through several doors; re-requesting music on
+either is how a soundtrack stutters back to bar one every few seconds. `room_entered` *is*
+connected — it is how free exploration is detected — but it is ignored while a mission is
+running. `reward` is never requested either, because no reward track exists and asking for it
+would replace the mission's music with silence mid-celebration.
+
+---
+
+## 7. The owner-armed preview switch
+
+`game/scripts/audio/music_licence_override.gd` exists for exactly one situation: a real delivery
+has landed and its rights are not yet recorded, so the gate refuses it and nobody can hear
+whether the integration works.
+
+It does **not** soften the gate. `MusicManifest.is_playable()` still answers `false`, and every
+shipping check still sees the truth. All it changes is whether `AudioDirector` assigns a stream,
+and only for a track whose *only* problem is paperwork — never one with no file, never an unknown
+id, never `commercialUse: "denied"`.
+
+It is **off in every build** and has to be armed by hand, per machine:
+
+```sh
+# one run
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path game \
+    --script res://tests/smoke_audio_shipping.gd -- --allow-unverified-music
+
+# or, to keep the preview on while playing on a device, create the marker file
+user://OWNER_ACKNOWLEDGED_UNVERIFIED_MUSIC
+```
+
+Arming it pushes an unmissable warning naming the track and how to disarm, and emits
+`unverified_music_allowed(trackId, reason)`. `test_audio_music_binder.gd` asserts that nothing in
+this repository arms it, that it cannot soften the gate, and that it cannot resurrect a denied or
+missing track.
+
+**It is not a substitute for step 4 of §5.** Once `commercialUse` is `"verified"` this file is
+dead code and should be deleted.

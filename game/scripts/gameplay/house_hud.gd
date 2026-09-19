@@ -17,9 +17,25 @@ extends Control
 ##     it completes nothing, costs nothing, blames nobody, and simply moves on.
 ##   * Speak is HIDDEN, not greyed, when there is nothing to speak to. A child
 ##     poking a dead button learns the wrong lesson.
+##
+## ## The presentation mode
+##
+## This chrome does not sit in one place any more. The text stack used to be four
+## lines down the middle of the top third whatever the camera was doing, which
+## during a close-up put it squarely on the character's face -- the P0 defect
+## recorded in `docs/WORLD_CAMERA_PASS.md` §7.1, and one that provably cannot be
+## fixed from the camera.
+##
+## So the HUD watches the shot and lays itself out around it. The rule, the four
+## modes and the measurements behind them are in `scripts/ui/hud_presentation.gd`;
+## this file only applies them. The one thing worth repeating here is where the
+## information comes from: **the camera**, via `RoomCamera.get_focus_radius()`.
+## Nothing new is asked of the director, no new signal is invented, and a HUD
+## dropped into a scene with no `RoomCamera` at all simply stays in EXPLORE.
 
 ## The locked palette (SLICE_CONTRACT §7 / ART_BIBLE).
 const SpeechFeedbackScript := preload("res://scripts/ui/speech_feedback.gd")
+const Presentation := preload("res://scripts/ui/hud_presentation.gd")
 
 const CREAM: Color = Color("#FFF6E5")
 const DUSTY_BLUE: Color = Color("#9AC0D9")
@@ -70,6 +86,15 @@ const SPEAK_HALF_WIDTH: float = 112.0
 
 const ENCOURAGEMENT_SEC: float = 1.8
 
+## How long the reward presentation holds after a task is marked done.
+##
+## Matched to `ENCOURAGEMENT_SEC` on purpose: the praise line IS the reward
+## presentation, so the mode and the line it exists to show end together. It is
+## also cancelled early by the next prompt arriving (`set_prompt()`), which is
+## what keeps a completed task from ever hiding the next instruction -- the
+## no-dead-ends rule in `CLAUDE.md` applied to a transient layout.
+const REWARD_SECONDS: float = ENCOURAGEMENT_SEC
+
 signal skip_pressed()
 signal speak_pressed()
 
@@ -112,6 +137,23 @@ var _built: bool = false
 var _free_play: bool = false
 var _word_generation: int = 0
 
+## -- Presentation state --------------------------------------------------------
+var _mode: int = Presentation.MODE_EXPLORE
+## -1 for "derive it". Set by a test or the shot harness to photograph a mode
+## without having to drive the game into it.
+var _mode_override: int = -1
+## Optional and empty today. `hud_presentation.kind_mode()` explains why.
+var _task_kind: String = ""
+## What `set_play_chrome_visible()` last said. Tracked rather than read back off
+## the labels, because the mode now changes their visibility too and the two
+## reasons for a hidden label must not be confused.
+var _chrome_on: bool = true
+var _encouragement_on: bool = false
+var _reward_until_msec: int = -1
+## The last radius the camera reported, kept only so a test can see what the HUD
+## saw without a viewport of its own.
+var _seen_focus_radius: float = 0.0
+
 
 func _ready() -> void:
 	build()
@@ -126,6 +168,10 @@ func build() -> void:
 	name = "HouseHud"
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# `_process()` is where the camera is watched. Set explicitly for the same
+	# reason `room_camera.gd` does it: a node that has its script attached after
+	# it is already in the tree never gets the chance to opt in from `_ready()`.
+	set_process(true)
 
 	_caption = _add_label("Caption", CAPTION_FONT_SIZE, LAVENDER)
 	_caption.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -145,19 +191,16 @@ func build() -> void:
 	_prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	_hint = _add_label("ThaiHint", HINT_FONT_SIZE, SOFT_PINK)
-	_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_hint.offset_left = 150.0
-	_hint.offset_top = 236.0
-	_hint.offset_right = -150.0
-	_hint.offset_bottom = 288.0
+	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.visible = false
 
+	# The assist / praise line. It used to be a FOURTH line in the same top
+	# column as the prompt and the hint, which is how the stack reached 35% of an
+	# iPad's height. It now lives in a band above the buttons in every mode: it
+	# is the one line that is always short, always transient and never the thing
+	# the child is being asked to look at.
 	_encouragement = _add_label("Encouragement", PROMPT_FONT_SIZE, MINT)
-	_encouragement.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_encouragement.offset_left = -300.0
-	_encouragement.offset_top = 300.0
-	_encouragement.offset_right = 300.0
-	_encouragement.offset_bottom = 380.0
+	_encouragement.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_encouragement.visible = false
 
 	_stars = _add_label("StarCount", STAR_FONT_SIZE, STAR_GOLD)
@@ -165,7 +208,9 @@ func build() -> void:
 	_stars.offset_left = 36.0
 	_stars.offset_top = 26.0
 	_stars.offset_right = 260.0
-	_stars.offset_bottom = 84.0
+	# 86 rather than 84: COMPLETE grows this label to 42 pt, and a box the text
+	# overflows would clip the thing the reward presentation is ABOUT.
+	_stars.offset_bottom = 86.0
 	_stars.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_stars.text = "★ 0"
 
@@ -242,6 +287,190 @@ func build() -> void:
 	_word_thai.offset_bottom = -104.0
 	_word_thai.visible = false
 
+	_apply_mode(true)
+
+
+## -- Presentation mode ---------------------------------------------------------
+##
+## `hud_presentation.gd` holds the rule and the numbers; everything here is the
+## plumbing that applies them and the plumbing that decides when.
+
+## Recomputes the mode and re-lays the text out if it changed.
+##
+## `_process()` does nothing else, so a headless test drives exactly the same
+## code a device does -- the convention `room_camera.gd` and
+## `house_level_director.gd` both already follow -- and it is cheap enough to run
+## every frame: one method call on the camera and an integer comparison.
+func refresh_presentation() -> void:
+	build()
+	_seen_focus_radius = _observed_focus_radius()
+	var wanted: int = _mode_override
+	if wanted < 0:
+		wanted = Presentation.derive({
+			"freePlay": _free_play,
+			"rewarding": _is_rewarding(),
+			"focusRadius": _seen_focus_radius,
+			"taskKind": _task_kind,
+		})
+	if wanted == _mode:
+		return
+	_mode = wanted
+	_apply_mode(false)
+
+
+func get_presentation_mode() -> int:
+	build()
+	return _mode
+
+
+func get_presentation_mode_name() -> String:
+	build()
+	return Presentation.mode_name(_mode)
+
+
+## Pins the mode, for a test or for `scenes/spike/shot_harness.gd`. A real run
+## never calls this: the whole point is that the HUD works it out.
+func set_presentation_mode(mode: int) -> void:
+	build()
+	_mode_override = mode if mode >= 0 and mode < Presentation.MODE_NAMES.size() else -1
+	refresh_presentation()
+
+
+func clear_presentation_override() -> void:
+	build()
+	_mode_override = -1
+	refresh_presentation()
+
+
+## An optional, authoritative statement of what kind of beat this is.
+##
+## Nothing calls it today and the HUD does not need it -- see
+## `hud_presentation.kind_mode()`. It is the seam for the one-line change a
+## director would make if a future beat's shot ever stopped describing it.
+func set_task_kind(kind: String) -> void:
+	build()
+	_task_kind = kind.strip_edges()
+	refresh_presentation()
+
+
+func get_task_kind() -> String:
+	build()
+	return _task_kind
+
+
+## The radius the camera last reported, so a test can prove the HUD is reading
+## the real shot rather than a default.
+func get_seen_focus_radius() -> float:
+	build()
+	return _seen_focus_radius
+
+
+func _process(_delta: float) -> void:
+	refresh_presentation()
+
+
+## The live close-up's half-width, straight from whichever camera is rendering.
+##
+## Duck-typed on purpose. The HUD must stay renderable with no camera at all --
+## `test_freeplay.gd` and half a dozen others build it into a bare tree -- and it
+## must not acquire a 3D type to ask a one-number question. No camera, or a
+## camera that is not a `RoomCamera`, means no close-up, which means EXPLORE.
+func _observed_focus_radius() -> float:
+	if not is_inside_tree():
+		return 0.0
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return 0.0
+	var camera: Object = viewport.get_camera_3d()
+	if camera == null or not camera.has_method("get_focus_radius"):
+		return 0.0
+	return float(camera.call("get_focus_radius"))
+
+
+func _is_rewarding() -> bool:
+	if _reward_until_msec < 0:
+		return false
+	if Time.get_ticks_msec() >= _reward_until_msec:
+		_reward_until_msec = -1
+		return false
+	return true
+
+
+## Ends the reward presentation early. Called the moment a DIFFERENT prompt
+## arrives: the next instruction always outranks the last one's applause.
+func _end_reward() -> void:
+	_reward_until_msec = -1
+
+
+func _apply_mode(initial: bool) -> void:
+	var l: Dictionary = Presentation.layout(_mode)
+
+	if String(l["promptAnchor"]) == "topLeft":
+		_prompt.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	else:
+		_prompt.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_place(_prompt, l["promptRect"])
+	_prompt.add_theme_font_size_override("font_size", int(l["promptSize"]))
+	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT \
+			if bool(l["promptLeftAligned"]) else HORIZONTAL_ALIGNMENT_CENTER
+	_set_inverted(_prompt, bool(l["promptInverted"]), CREAM)
+	_set_inverted(_hint, bool(l["promptInverted"]), SOFT_PINK)
+
+	if String(l["promptAnchor"]) == "topLeft":
+		_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	else:
+		_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_place(_hint, l["hintRect"])
+	_hint.add_theme_font_size_override("font_size", int(l["hintSize"]))
+	_hint.horizontal_alignment = _prompt.horizontal_alignment
+
+	_encouragement.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_place(_encouragement, l["encouragementRect"])
+	_encouragement.add_theme_font_size_override("font_size", int(l["encouragementSize"]))
+
+	_stars.add_theme_font_size_override("font_size", int(l["starSize"]))
+
+	if not initial:
+		_refresh_visibility()
+
+
+## Swaps a label between "pale text, ink edge" and "ink text, cream edge".
+##
+## Both are palette-legal and both are already used in this file; which one
+## reads depends entirely on what is behind the line, and the mode is exactly
+## the thing that knows. `#000000` appears in neither: `ink` is the only dark
+## this game has (ART_BIBLE §3).
+func _set_inverted(label: Label, inverted: bool, normal_color: Color) -> void:
+	label.add_theme_color_override("font_color", INK if inverted else normal_color)
+	label.add_theme_color_override("font_outline_color", CREAM if inverted else INK)
+
+
+func _place(control: Control, rect: Variant) -> void:
+	var r: Array = rect as Array
+	control.offset_left = float(r[0])
+	control.offset_top = float(r[1])
+	control.offset_right = float(r[2])
+	control.offset_bottom = float(r[3])
+
+
+## The single place any of the chrome labels decides whether it is on screen.
+##
+## Three independent reasons overlap -- Free Play has no objective, the summary
+## turns the whole play chrome off, and the presentation mode stands some lines
+## down -- and before this they were applied from three different methods that
+## each overwrote the others. `visible` is now derived from all three, every
+## time, so the order the calls arrive in cannot change the outcome.
+func _refresh_visibility() -> void:
+	var l: Dictionary = Presentation.layout(_mode)
+	var objective: bool = _chrome_on and not _free_play
+	_prompt.visible = objective and bool(l["promptVisible"])
+	_hint.visible = objective and bool(l["hintVisible"]) \
+			and not _hint.text.strip_edges().is_empty()
+	_caption.visible = objective and not _caption.text.strip_edges().is_empty()
+	_dots.visible = objective and _total > 0
+	_encouragement.visible = _chrome_on and _encouragement_on
+	_stars.visible = _chrome_on
+
 
 ## -- Free Play -----------------------------------------------------------------
 
@@ -256,14 +485,13 @@ func set_free_play_mode(enabled: bool) -> void:
 	build()
 	_free_play = enabled
 	if not enabled:
+		_refresh_visibility()
 		return
 	configure_progress(0)
 	_next_button.visible = false
 	_speak_button.visible = false
-	_prompt.visible = false
-	_hint.visible = false
-	_caption.visible = false
-	_stars.visible = true
+	_end_reward()
+	_refresh_visibility()
 
 
 func is_free_play_mode() -> bool:
@@ -325,9 +553,15 @@ func get_word_thai_text() -> String:
 
 func set_prompt(text: String, thai_hint: String = "") -> void:
 	build()
+	# A new instruction ends the previous task's reward presentation immediately.
+	# Without this the applause for task N would hide the prompt for task N+1 for
+	# up to `REWARD_SECONDS`, which is a dead end with a timer on it.
+	if text != _prompt.text:
+		_end_reward()
 	_prompt.text = text
 	_hint.text = thai_hint
-	_hint.visible = not thai_hint.strip_edges().is_empty()
+	refresh_presentation()
+	_refresh_visibility()
 
 
 func get_prompt() -> String:
@@ -338,7 +572,7 @@ func get_prompt() -> String:
 func set_caption(text: String) -> void:
 	build()
 	_caption.text = text
-	_caption.visible = not text.strip_edges().is_empty()
+	_refresh_visibility()
 
 
 func show_encouragement(text: String) -> void:
@@ -346,7 +580,8 @@ func show_encouragement(text: String) -> void:
 	if text.strip_edges().is_empty():
 		return
 	_encouragement.text = text
-	_encouragement.visible = true
+	_encouragement_on = true
+	_refresh_visibility()
 	if not is_inside_tree():
 		return
 	var tree: SceneTree = get_tree()
@@ -357,7 +592,8 @@ func show_encouragement(text: String) -> void:
 
 func hide_encouragement() -> void:
 	build()
-	_encouragement.visible = false
+	_encouragement_on = false
+	_refresh_visibility()
 
 
 ## -- Progress ------------------------------------------------------------------
@@ -379,7 +615,8 @@ func configure_progress(total: int) -> void:
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		dot.add_theme_stylebox_override("panel", _dot_style(STAR_GHOST))
 		_dots.add_child(dot)
-	_dots.visible = _total > 0
+	_end_reward()
+	_refresh_visibility()
 
 
 func set_current(index: int) -> void:
@@ -388,11 +625,18 @@ func set_current(index: int) -> void:
 	_refresh_dots()
 
 
+## Also opens the reward presentation: this is the only call the HUD receives
+## that means "a task just ended", and it arrives for a SKIP as well as for a
+## completion. That is deliberate and it is safe -- COMPLETE shows praise and a
+## filled dot and never a score, so it cannot congratulate a child for something
+## they did not do, and `CLAUDE.md` forbids marking a skip as a failure anyway.
 func mark_current_done() -> void:
 	build()
 	if _current >= 1:
 		_done[_current] = true
 	_refresh_dots()
+	_reward_until_msec = Time.get_ticks_msec() + int(REWARD_SECONDS * 1000.0)
+	refresh_presentation()
 
 
 func clear_progress() -> void:
@@ -462,16 +706,14 @@ func is_speak_visible() -> bool:
 ## Everything off, for an overlay (the summary) or the end of a level.
 func set_play_chrome_visible(value: bool) -> void:
 	build()
-	_prompt.visible = value and not _free_play
-	_hint.visible = value and not _free_play and not _hint.text.strip_edges().is_empty()
-	_dots.visible = value and not _free_play and _total > 0
-	_caption.visible = value and not _free_play and not _caption.text.strip_edges().is_empty()
-	_stars.visible = value
+	_chrome_on = value
 	if not value:
 		_next_button.visible = false
 		_speak_button.visible = false
-		_encouragement.visible = false
+		_encouragement_on = false
+		_end_reward()
 		hide_word()
+	_refresh_visibility()
 
 
 func _on_next_pressed() -> void:

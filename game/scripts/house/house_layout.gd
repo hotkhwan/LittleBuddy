@@ -77,6 +77,63 @@ const DOOR_SIGN_CENTRE_Y: float = 1.45
 ## How far into the room the plaque hangs from the side wall.
 const DOOR_SIGN_X: float = 1.76
 
+## -- The kitchen worktop -------------------------------------------------------
+##
+## The counter is the one SHARED surface in the house: `room.gd` draws the sink,
+## the tap, the hob and the prep board into it, and `kitchen_view.gd` stands the
+## child's ingredients on it. Two files placing things on one 1.8 m plank by
+## eye is how a bowl ends up half inside a hob, so the plan lives here once and
+## both of them read it.
+##
+## ## The layout, and why it is this one
+##
+## Left to right: **hob, prep board, sink**. The sink is under the window
+## because that is where a sink is, and "a room a four-year-old recognises as a
+## kitchen at a glance" is the whole point of the fixtures -- the previous
+## arrangement had the sink in the dark left-hand corner under the wall units and
+## a bare stretch of worktop under the window, which is nobody's kitchen.
+##
+## The prep board is the middle third, and it is not decoration: `kitchen_view`
+## puts a carried item down at `WORKTOP_BOARD_X`, so the board is the visible
+## answer to "where does this go?" **and** the dark warm field a cream bottle or
+## a pale banana needs behind it. Ingredients on a cream worktop in front of a
+## cream wall were, measured on an iPad render, a few pale pixels.
+const WORKTOP_Y: float = 0.90
+## Under the window (which spans x -0.50 to 0.80), and as far right as the
+## worktop allows: the counter runs to x = 0.10 and the basin is 0.44 wide, so
+## anything past -0.13 hangs the bowl of the sink off the end of the bench.
+## `test_kitchen_view_placement.gd` measures it; the first value here was -0.10
+## and really did overhang by 2 cm.
+const WORKTOP_SINK_X: float = -0.13
+const WORKTOP_SINK_Z: float = -1.60
+const WORKTOP_HOB_X: float = -1.50
+const WORKTOP_HOB_Z: float = -1.68
+## The prep board: the drop zone, made visible.
+const WORKTOP_BOARD_X: float = -0.80
+const WORKTOP_BOARD_Z: float = -1.52
+const WORKTOP_BOARD_SIZE: Vector2 = Vector2(0.72, 0.34)
+const WORKTOP_BOARD_THICKNESS: float = 0.035
+## Two rows, and that is what stops the worktop reading as a jumble: what LIVES
+## on the counter stands at the back against the splashback, and what the child
+## is working on sits at the front on the board.
+const WORKTOP_BACK_Z: float = -1.78
+## The placemat on the kitchen table. Same argument as the prep board one line
+## up: `kitchen_view.gd` serves a finished dish here, so the spot is marked, and
+## a pale bowl set on bare `deep(peach)` wood needs something under it. It also
+## stops the table being the one piece of furniture in the room with nothing on
+## it at all.
+const TABLE_MAT_SIZE: Vector2 = Vector2(0.48, 0.34)
+const TABLE_MAT_THICKNESS: float = 0.018
+## How far forward of the table's centre, as a fraction of its depth. The mat is
+## pulled toward the camera so the table itself does not hide what is on it.
+const TABLE_MAT_FORWARD: float = 0.22
+
+## Half the gap between two things standing in the back row. Derived, not
+## chosen: the free worktop between the hob's right edge (-1.31) and the sink's
+## left (-0.32) is 0.99 m, and a 0.15 m bowl drawn at `SURFACE_SCALE` needs
+## 0.18 m of it either side of its centre.
+const WORKTOP_SPREAD: float = 0.22
+
 ## Distance between neighbouring room origins along X. Far larger than a 4 m room
 ## plus the navigation map's edge-connection margin, so no two rooms' meshes can
 ## ever be joined.

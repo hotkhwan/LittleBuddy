@@ -34,7 +34,7 @@ const CASES_DIR := "res://tests/cases"
 ## Detached for the run. Named explicitly rather than "every root child", so a
 ## scene a case leaves behind is not silently swept up with them.
 const PROJECT_AUTOLOADS: Array[String] = [
-	"SaveService", "SpeechService", "TtsService", "Sfx",
+	"SaveService", "SpeechService", "TtsService", "Sfx", "Audio",
 ]
 
 
