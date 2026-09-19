@@ -68,6 +68,37 @@ func _run(job: String, extra: String) -> void:
 					print("  posed clip=%s scale=%.2f" % [pl.current_animation, pl.speed_scale])
 				else:
 					print("  WARN: no walk clip on the player's view")
+		"care":
+			# The REAL house, running the REAL mission, advanced to the care beat
+			# so the close-up is opened by gameplay rather than by the harness.
+			_load("res://scenes/house/house_world.tscn")
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var director: Node = null
+			if _scene.has_method("ensure_level_director"):
+				director = _scene.call("ensure_level_director")
+			if director != null and director.has_method("start"):
+				director.call("start")
+				await get_tree().process_frame
+				var runner: Node = director.get("_runner")
+				# Skip forward to the first care task without faking its completion.
+				for _i in range(12):
+					var task: Dictionary = runner.call("get_current_task") if runner != null else {}
+					if String(task.get("interaction", "")) in ["brushTeeth", "washFace", "dryFace"]:
+						break
+					if runner != null:
+						runner.call("skip_current_task")
+					await get_tree().process_frame
+				var ov: Node = director.get("_care_overlay")
+				var plan: Dictionary = director.call("get_current_plan")
+				print("  task=%s kind=%s overlayVisible=%s" % [
+					String(plan.get("taskId","")), String(plan.get("careKind","")),
+					str(ov.visible) if ov != null else "no overlay"])
+				if ov != null and not ov.visible and not String(plan.get("careKind","")).is_empty():
+					# Reached the task but not yet its beat (the walk is still
+					# pending in a harness with no player input): open it the way
+					# arrival would.
+					director.call("_open_care", plan)
 		"nursery":
 			_load("res://scenes/baby_room/baby_room.tscn")
 		"speech":

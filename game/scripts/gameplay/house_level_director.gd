@@ -66,6 +66,7 @@ const MissionRunnerScript := preload("res://scripts/gameplay/mission_runner.gd")
 const HouseMissionRunnerScript := preload("res://scripts/gameplay/house_mission_runner.gd")
 const PromptSpeakerScript := preload("res://scripts/speech/prompt_speaker.gd")
 const SpeechBinderScript := preload("res://scripts/ui/speech_feedback_binder.gd")
+const CareOverlayScript := preload("res://scripts/care/care_overlay.gd")
 const VocabularyReviewScript := preload("res://scripts/content/vocabulary_review.gd")
 const ContentLibraryScript := preload("res://scripts/content/content_library.gd")
 const LevelSystemScript := preload("res://scripts/progression/level_system.gd")
@@ -137,6 +138,7 @@ var _last_mission_id: String = ""
 var _forced_next_mission_id: String = ""
 var _new_stickers: Array = []
 var _speech_binder: RefCounted = null
+var _care_overlay: Control = null
 
 var _plan: Dictionary = {}
 ## True once Little Buddy is standing where the task happens, which is what
@@ -223,6 +225,19 @@ func bind(world: Node) -> void:
 	_hud.connect("skip_pressed", _on_skip_pressed)
 	_hud.connect("speak_pressed", _on_speak_pressed)
 	_bind_speech_feedback()
+
+	# The care close-up. Mounted beside the HUD and hidden until a care task
+	# reaches its beat -- without this, a `KIND_CARE` task would arrive at the
+	# sink and have nothing to do, which is content that exists and gameplay
+	# that does not.
+	_care_overlay = CareOverlayScript.new()
+	if ui != null:
+		ui.add_child(_care_overlay)
+	else:
+		add_child(_care_overlay)
+	_care_overlay.call("build")
+	_care_overlay.visible = false
+	_care_overlay.connect("care_completed", _on_care_completed)
 
 	_rewards = RewardManagerScript.new()
 	_rewards.name = "RewardManager"
@@ -526,6 +541,13 @@ func _reach_beat() -> void:
 	# already staged and can be composed into the frame.
 	_begin_focus()
 
+	if TaskPlan.is_care(_plan):
+		# Arriving is not the task -- the care act is. The overlay owns the
+		# gesture and reports back through `_on_care_completed`, so nothing
+		# completes merely because the player walked here.
+		_open_care(_plan)
+		return
+
 	if TaskPlan.is_go_and_do(_plan):
 		# Nothing to choose: being here and doing it IS the task.
 		if _play_task_action():
@@ -585,6 +607,54 @@ func _on_interaction_ready(target_id: String) -> void:
 	if target_id != String(_plan.get("walkTargetId", "")):
 		return
 	_reach_beat()
+
+
+## Shows the close-up for a care act, and tells the child what is happening to it.
+func _open_care(plan: Dictionary) -> void:
+	if _care_overlay == null:
+		_pending_complete = true
+		return
+	var kind: String = String(plan.get("careKind", ""))
+	if kind.is_empty():
+		_pending_complete = true
+		return
+	var child: Node = _find_child_actor()
+	if child != null and child.has_method("set_activity"):
+		child.call("set_activity", "bath" if kind != "giveBottle" else "feeding")
+	_care_overlay.visible = true
+	_care_overlay.call("begin", kind)
+
+
+func _on_care_completed(care_kind: String) -> void:
+	if not _running or _task_done:
+		return
+	if _care_overlay != null:
+		_care_overlay.visible = false
+	# The child's REAL stats move, so the need the mission was about actually
+	# goes away rather than a message claiming it did.
+	var child: Node = _find_child_actor()
+	if child != null and child.has_method("satisfy"):
+		match care_kind:
+			"brushTeeth", "washFace", "dryFace":
+				child.call("satisfy", "dirty", 40.0)
+			"giveBottle":
+				child.call("satisfy", "hungry", 70.0)
+	if child != null and child.has_method("set_activity"):
+		child.call("set_activity", "idle")
+	_pending_complete = true
+
+
+## The Little Buddy actor in whichever room it is currently in.
+func _find_child_actor() -> Node:
+	if _world == null or not _world.has_method("get_current_room"):
+		return null
+	var room: Node = _world.call("get_current_room")
+	if room == null:
+		return null
+	for child: Node in room.get_children():
+		if child.has_method("satisfy") and child.has_method("set_activity"):
+			return child
+	return null
 
 
 func _on_action_finished(action_name: String) -> void:
