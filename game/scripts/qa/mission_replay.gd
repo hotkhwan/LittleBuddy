@@ -61,15 +61,16 @@ static func armed(profile: Variant, level_id: String) -> Dictionary:
 	if level_id.strip_edges().is_empty():
 		return out
 
-	var completed: Dictionary = out.get(KEY_COMPLETED, {})
-	if typeof(completed) != TYPE_DICTIONARY:
-		completed = {}
+	# Read as `Variant` and THEN coerce. A statically typed `Dictionary` local
+	# throws before the guard below can run when a corrupt profile has a string
+	# where a map belongs -- which is exactly the input this guard exists for.
+	var raw_completed: Variant = out.get(KEY_COMPLETED, {})
+	var completed: Dictionary = raw_completed if typeof(raw_completed) == TYPE_DICTIONARY else {}
 	completed.erase(level_id)
 	out[KEY_COMPLETED] = completed
 
-	var stars: Dictionary = out.get(KEY_STARS_BY_LEVEL, {})
-	if typeof(stars) != TYPE_DICTIONARY:
-		stars = {}
+	var raw_stars: Variant = out.get(KEY_STARS_BY_LEVEL, {})
+	var stars: Dictionary = raw_stars if typeof(raw_stars) == TYPE_DICTIONARY else {}
 	stars.erase(level_id)
 	out[KEY_STARS_BY_LEVEL] = stars
 

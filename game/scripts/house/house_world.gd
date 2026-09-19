@@ -61,6 +61,11 @@ const ROOM_CAMERA_SCRIPT_PATH: String = "res://scripts/camera/room_camera.gd"
 ## PARSE if that file were ever moved, taking every test down with it.
 const TARGET_REGISTRY_SCRIPT_PATH: String = "res://scripts/navigation/activity_target_registry.gd"
 
+## The interactive kitchen. Probed with `ResourceLoader.exists` at build time, so
+## a stripped build simply has a static kitchen instead of failing to load.
+const KITCHEN_STATE_SCRIPT: String = "res://scripts/kitchen/kitchen_state.gd"
+const KITCHEN_VIEW_SCRIPT: String = "res://scripts/kitchen/kitchen_view.gd"
+
 ## The domain layer, reached DOWN into for the content cross-check. `load()`ed
 ## rather than `preload()`ed for the same reason as the registry above, and
 ## because a house that cannot parse would take the whole suite down with it.
@@ -121,6 +126,8 @@ var _progression_mode: int = ProgressionMode.STORY
 var _unlocked_room_ids: Array = []
 var _rooms: Array = []
 var _rooms_by_id: Dictionary = {}
+var _kitchen_state: RefCounted = null
+var _kitchen_view: Node3D = null
 var _regions: Dictionary = {}
 var _registered_target_ids: Array = []
 ## The RoV-style thumbstick, built into the world's own `UI` layer so it exists
@@ -300,6 +307,39 @@ func _collect_rooms() -> void:
 			continue
 		_rooms_by_id[room_id] = child
 		_rooms.append(child)
+	_build_kitchen()
+
+
+## The kitchen's interactive layer: a fridge that opens, food that can be taken
+## out of it, and a counter things can be put down on.
+##
+## Mounted here rather than inside `room.gd` because `room.gd` builds STATIC
+## geometry -- it is the file that folds the whole room into one `SurfaceTool` --
+## and these items appear and disappear as the child plays. Keeping them in a
+## sibling node is what lets the room stay a single draw call.
+##
+## Degrades silently and completely: a house without a kitchen, or a build where
+## the scripts are absent, is exactly the house it was before.
+func _build_kitchen() -> void:
+	if _kitchen_state != null:
+		return
+	var room: Node = _rooms_by_id.get(HouseLayout.KITCHEN, null)
+	if room == null or not ResourceLoader.exists(KITCHEN_STATE_SCRIPT):
+		return
+	var state_script: Resource = load(KITCHEN_STATE_SCRIPT)
+	var view_script: Resource = load(KITCHEN_VIEW_SCRIPT)
+	if not (state_script is GDScript) or not (view_script is GDScript):
+		return
+	_kitchen_state = (state_script as GDScript).new()
+	_kitchen_view = (view_script as GDScript).new()
+	room.add_child(_kitchen_view)
+	_kitchen_view.call("setup", _kitchen_state, room, _character)
+
+
+## The kitchen's model, so a mission can ask what Aliz is carrying.
+func get_kitchen_state() -> RefCounted:
+	build_world()
+	return _kitchen_state
 
 
 ## Builds the semantic-id lookup, if that part of the contract has landed.
