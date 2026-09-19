@@ -58,6 +58,25 @@ const DOOR_Z: float = 0.6
 ## Where the child stands to use a door: inside the room, in front of it.
 const DOOR_STAND_X: float = 1.45
 
+## -- The door plaque -----------------------------------------------------------
+##
+## `room.gd::_build_door_sign()` draws it; the numbers live here because
+## `camera_framing()` has to keep it on screen, and a sign whose size is known in
+## one file and framed from another drifts the first time either is touched.
+##
+## **Half the area it used to be.** The first plaque was 0.92 x 0.46 m -- as wide
+## as the door it hung over, and about the width of the child's whole body -- with
+## a 64 pt word under a chunky glyph. On an iPad it read as a placeholder label
+## stuck onto the scene, which is precisely what the brief rejects. A 0.60 x 0.30 m
+## plaque is a sign in a home rather than a banner over a shop, and at the room
+## shot's distance the glyph is still ~40 px across, which is what a pre-reader
+## actually navigates by.
+const DOOR_SIGN_SIZE: Vector2 = Vector2(0.60, 0.30)
+## Centre height. Clear of the door's sunk panel below and the architrave above.
+const DOOR_SIGN_CENTRE_Y: float = 1.45
+## How far into the room the plaque hangs from the side wall.
+const DOOR_SIGN_X: float = 1.76
+
 ## Distance between neighbouring room origins along X. Far larger than a 4 m room
 ## plus the navigation map's edge-connection margin, so no two rooms' meshes can
 ## ever be joined.
@@ -88,9 +107,37 @@ const NAVMESH_DIR: String = "res://scenes/house/navmesh"
 const CAMERA_ANGLE_DEGREES: float = 32.0
 const CAMERA_MIN_DISTANCE: float = 3.5
 const CAMERA_MAX_DISTANCE: float = 18.0
-## What the camera looks at: the middle of the room, a little above the floor so
-## the toddler's head rather than its feet sits in the centre of the frame.
+## What the camera looks at: a little above the floor so the toddler's head
+## rather than its feet sits in the centre of the frame.
 const CAMERA_FOCUS_HEIGHT: float = 0.55
+
+## ...and NOT the middle of the room. The look-at point sits this far towards the
+## open front, and that one number is worth ~13% of the room shot's scale.
+##
+## The fit is symmetric about the look-at point but the room is not symmetric
+## about the camera: pitched down 32 degrees, the near floor edge falls a long
+## way BELOW a centred focus while the far wall rises only a little above it. The
+## room-centred shot was therefore bound, at every aspect ratio the game ships on,
+## by the near-left floor corner needing 5.13 m while the back wall needed 2.24 m
+## -- more than two metres of distance spent on a constraint that was not even
+## close to being the hard one. Sliding the look-at point forward trades that
+## slack for scale until the two constraints meet.
+##
+## It is a composition change, not a crop: `camera_framing.solve()` still fits
+## every floor corner, every head-height corner and every tall prop, so nothing
+## the child can walk to or tap leaves the safe area.
+const CAMERA_FOCUS_Z: float = 0.42
+
+## Above this, a prop's top corners are added to the camera's must-be-visible
+## list by name rather than left to the generic `headroom`. The wardrobe (1.8 m)
+## and the fridge (1.7 m) are activity targets with doors that open; a tighter
+## shot that cropped their tops would be cropping an interaction.
+##
+## Deliberately NOT applied to the window (top at ~2.03 m): it is warmth, not
+## gameplay, it is the single highest thing in the house, and keeping it inside
+## the safe area on its own costs the whole of the gain above. It stays on
+## screen -- it simply loses the right to sit below the status line.
+const CAMERA_TALL_PROP_Y: float = 1.05
 
 ## -- Colour (ART_BIBLE.md section 3, LOCKED) ------------------------------------
 ##
@@ -455,12 +502,57 @@ static func camera_framing(room_id: String) -> Dictionary:
 	var origin: Vector3 = room_origin(room_id)
 	return {
 		"bounds": world_floor_bounds(room_id),
-		"focus": Vector3(origin.x, FLOOR_Y + CAMERA_FOCUS_HEIGHT, origin.z),
+		"focus": Vector3(
+			origin.x, FLOOR_Y + CAMERA_FOCUS_HEIGHT, origin.z + CAMERA_FOCUS_Z
+		),
 		"angle": CAMERA_ANGLE_DEGREES,
 		"minDistance": CAMERA_MIN_DISTANCE,
 		"maxDistance": CAMERA_MAX_DISTANCE,
 		"floorY": FLOOR_Y,
+		"extraPoints": camera_fit_points(room_id),
 	}
+
+
+## Everything in a room that the generic `headroom` does not already cover.
+##
+## `camera_framing.solve()` fits the floor corners and the same corners at head
+## height, which is exactly right for "a child standing anywhere is visible" and
+## says nothing at all about a 1.8 m wardrobe. While the shot stood 5.1 m back
+## that gap never showed; the moment the look-at point moves forward it is the
+## difference between a tighter room and a decapitated fridge.
+##
+## Returned in WORLD space, as the framing dictionary expects. Doors get their
+## plaque's top corners for the same reason: a sign whose word is cropped is
+## worse than no sign.
+static func camera_fit_points(room_id: String) -> Array:
+	var origin: Vector3 = room_origin(room_id)
+	var points: Array = []
+
+	var boxes: Array = []
+	boxes.append_array(furniture(room_id))
+	boxes.append_array(storages(room_id))
+	for box: Dictionary in boxes:
+		var size: Vector3 = box["size"]
+		var centre: Vector3 = box["position"]
+		var top: float = centre.y + size.y * 0.5
+		if top < CAMERA_TALL_PROP_Y:
+			continue
+		for sx: float in [-0.5, 0.5]:
+			for sz: float in [-0.5, 0.5]:
+				points.append(origin + Vector3(
+					centre.x + sx * size.x, top, centre.z + sz * size.z
+				))
+
+	for door: Dictionary in doors(room_id):
+		var side: float = float(door["side"])
+		var sign_top: float = DOOR_SIGN_CENTRE_Y + DOOR_SIGN_SIZE.y * 0.5
+		for sx: float in [-0.5, 0.5]:
+			points.append(origin + Vector3(
+				side * DOOR_SIGN_X + sx * DOOR_SIGN_SIZE.x,
+				sign_top,
+				(door["position"] as Vector3).z
+			))
+	return points
 
 
 static func navmesh_path(room_id: String) -> String:

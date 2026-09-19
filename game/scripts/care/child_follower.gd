@@ -138,8 +138,12 @@ static func facing_for(state_name: String, child_position: Vector3,
 	return to_target.normalized()
 
 
-## The action the child's model should be playing, from the rig's real clips.
-## `walk` and `run` are the only two that exist, so nothing else is claimed.
+## The LOCOMOTION clip the child's model should be playing. `walk` and `run` are
+## the only two the export ships with, so nothing else is claimed here.
+##
+## Standing still is deliberately "" rather than `idle`: this file's business is
+## going places, and what a child does when it is not going anywhere -- breathe,
+## fuss, be fed, be pleased -- is `child_life.gd`'s decision, not the follower's.
 static func clip_for(state_name: String) -> String:
 	return "walk" if state_name == STATE_FOLLOWING else ""
 

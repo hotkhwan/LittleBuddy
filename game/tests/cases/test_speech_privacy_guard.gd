@@ -208,16 +208,32 @@ func _test_mock_is_never_used_on_a_device():
 	if source.is_empty():
 		return ["could not read speech_service.gd"]
 
-	var ios_branch: int = source.find("OS.has_feature(\"ios\")")
-	if ios_branch == -1:
-		failures.append("speech_service.gd no longer special-cases iOS backend selection")
+	# BROADENED 2026-09-19, and this is a tightening rather than a relaxation.
+	#
+	# This function is named `_test_mock_is_never_used_on_a_device` and its
+	# docstring says "on a device" -- but the assertion below used to look for
+	# the literal `OS.has_feature("ios")`. That gap between the stated intent and
+	# the checked condition is not a detail: it is the exact shape of the bug the
+	# Android audit found. The production code tested iOS alone, Android matched
+	# neither branch, and a real Android device fell through to the MOCK -- which
+	# reports itself available and emits a canned "milk". Every speaking task
+	# would pass without the child speaking.
+	#
+	# So the guard now requires a check that covers EVERY mobile platform.
+	# `OS.has_feature("mobile")` is true on iOS as well, so nothing that was
+	# protected before is protected less.
+	var device_branch: int = source.find("OS.has_feature(\"mobile\")")
+	if device_branch == -1:
+		failures.append("speech_service.gd has no `OS.has_feature(\"mobile\")` guard on "
+				+ "backend selection. Naming a single platform lets the next mobile "
+				+ "export fall through to the mock by omission.")
 		return failures
 
-	var tail: String = source.substr(ios_branch)
+	var tail: String = source.substr(device_branch)
 	var mock_in_tail: int = tail.find("MockSpeechBackend")
 	var unavailable_in_tail: int = tail.find("\"unavailable\"")
 	if unavailable_in_tail == -1:
-		failures.append("the iOS branch no longer reports 'unavailable' honestly")
+		failures.append("the device branch no longer reports 'unavailable' honestly")
 	elif mock_in_tail != -1 and mock_in_tail < unavailable_in_tail:
-		failures.append("the iOS branch falls back to the mock backend")
+		failures.append("the device branch falls back to the mock backend")
 	return failures

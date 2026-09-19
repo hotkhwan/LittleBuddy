@@ -16,7 +16,7 @@ extends RefCounted
 ## ## The five beats
 ##
 ## ```
-##   meet      Buddy waves.        "Hi! I am Buddy. Let's take care of Little Buddy!"
+##   meet      Buddy waves.        "Hi! I am Aliz. Let's take care of Bunny!"
 ##   tapFloor  a hand taps a pulsing ripple on the floor.  He walks there.
 ##   tapThing  the hand moves to a real object.  He walks to it and uses it.
 ##   drag      the hand drags a REAL pickup to where it goes, with a trail.
@@ -103,7 +103,7 @@ static func steps() -> Array:
 	return [
 		{
 			"stepId": STEP_MEET,
-			"speech": "Hi! I am Buddy. Let's take care of Little Buddy!",
+			"speech": "Hi! I am Aliz. Let's take care of Bunny!",
 			"gesture": GESTURE_MEET,
 			"requires": REQUIRES_NOTHING,
 			"timeoutSec": 3.6,

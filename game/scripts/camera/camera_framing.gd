@@ -84,6 +84,24 @@ const DEFAULT_HEADROOM: float = 1.0
 ## Half-width of the box `focus_framing()` frames around a single activity.
 const DEFAULT_ACTIVITY_RADIUS: float = 1.2
 
+## How close a CLOSE-UP is allowed to stand, whatever the room authored.
+##
+## A room's own `minDistance` (3.5 m in this house) exists to stop the WHOLE-ROOM
+## shot from crawling in among its own furniture. Applied unchanged to an
+## activity box it does something quite different and quite wrong: the beat's box
+## is ~0.9 m of radius, it fits from 2.77 m, and the room's floor clamped it back
+## out to 3.5 m -- so every "close-up" in the game was 26% further away than the
+## shot it had computed, and the pull-in from the 5.1 m room shot was a barely
+## perceptible 1.5x. The brief's "characters and interactions look small" was
+## this clamp.
+##
+## It is not replaced by zero. The camera must still never end up inside the
+## child's head, and `CAMERA_CLEARANCE` alone permits ~1.3 m at this pitch, which
+## on a 0.85 m toddler is a nose-to-nose shot. 1.9 m is a two-shot of a standing
+## child and the station in front of him, and it is a FLOOR rather than a target:
+## a box larger than the minimum still fits from wherever the maths says.
+const FOCUS_MIN_DISTANCE: float = 1.9
+
 ## Nothing may sit closer to the camera plane than this. Also what stops the
 ## "behind the focus" case: the focus itself sits at `depth == d`, so a positive
 ## distance already puts it in front, and this guards every other point too.
@@ -198,6 +216,13 @@ static func focus_framing(
 	# The room's own extra "must be visible" points are a room-scale concern; an
 	# activity close-up deliberately does not have to keep the far wall on screen.
 	base["extraPoints"] = []
+	# ...and for the same reason it is not held out at the room's own standoff.
+	# See `FOCUS_MIN_DISTANCE`: this one line is the difference between a close-up
+	# and a slightly-less-wide shot.
+	base["minDistance"] = maxf(
+		minf(float(base["minDistance"]), FOCUS_MIN_DISTANCE), MIN_DEPTH
+	)
+	base["maxDistance"] = maxf(float(base["maxDistance"]), float(base["minDistance"]))
 	return base
 
 

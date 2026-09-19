@@ -58,7 +58,7 @@
     },
     {
       "categoryId": "care",
-      "title": "Caring for Little Buddy",
+      "title": "Caring for Bunny",
       "tasksFile": "res://content/care/tasks.json"
     }
   ],

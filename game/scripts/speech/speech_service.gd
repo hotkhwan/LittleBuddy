@@ -212,12 +212,28 @@ func _select_backend() -> void:
 		_set_backend(IosSpeechBackend.new(), "ios")
 		return
 
-	if OS.has_feature("ios"):
-		# Real iOS device/export without the native plugin present.
-		# Never substitute the mock here — report unavailable honestly.
+	if OS.has_feature("mobile"):
+		# A real device — iOS OR ANDROID — with no native recognizer behind it.
+		# Report unavailable honestly and let the touch fallback carry the game.
+		#
+		# This used to test `ios` alone, which was one platform too narrow and is
+		# a shipping bug rather than a tidiness point. On Android neither branch
+		# above matched, so execution fell through to the MOCK: `is_available()`
+		# returns true and `next_transcript` is the canned `"milk"`. The Speak
+		# button would therefore appear on a build with no speech support at all,
+		# and 0.6 s after any tap the game would accept `"milk"` whether or not
+		# the child made a sound — every speaking task passed, silently, without
+		# speech. For a product whose entire purpose is a child practising
+		# English aloud, that is the worst possible failure: it looks like
+		# success.
+		#
+		# `mobile` covers both platforms and any future one, so the next mobile
+		# export cannot re-introduce it by omission.
 		_set_backend(SpeechBackend.new(), "unavailable")
 		return
 
+	# Editor and desktop only. The mock exists so the game can be developed and
+	# tested without a device; it must never be reachable on one.
 	_set_backend(MockSpeechBackend.new(), "mock")
 
 

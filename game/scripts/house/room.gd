@@ -568,14 +568,143 @@ func _build_dressing(tool: SurfaceTool) -> void:
 	)
 	match room_id:
 		HouseLayout.BEDROOM:
-			_wall_picture(tool, -1.25, 1.52, accent)
+			_nursery_wall_art(tool, -1.22, 1.44, accent)
 		HouseLayout.BATHROOM:
 			_mirror(tool, -1.20, 1.36)
 		HouseLayout.KITCHEN:
-			RoomProps.plant(tool, Kit.at(Vector3(-1.46, 0.90, -1.62)), 0.62,
-					Palette.deep(Palette.SOFT_PINK))
+			_kitchen_fixtures(tool)
 		HouseLayout.LIVING_ROOM:
 			_wall_picture(tool, -1.10, 1.52, accent)
+
+
+## -- The nursery's wall -----------------------------------------------------------
+##
+## The bedroom is where the baby lives, and it was telling the child so with a
+## framed abstract square -- the same generic picture the living room has. A
+## cloud with three charms hanging under it is the cheapest possible "this is the
+## baby's room": it is read instantly, it costs one extrusion group in the shell
+## mesh, and it carries no text for a player who cannot read.
+##
+## It stays ABOVE the bed's headboard and BELOW the wall top, so it neither
+## collides with furniture nor leaves the frame; and it is flat wall art rather
+## than a hanging mobile, because anything hanging over a cot invites a tap that
+## does nothing.
+func _nursery_wall_art(tool: SurfaceTool, x: float, y: float, accent: Color) -> void:
+	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
+	var cloud: Color = accent
+	# Three overlapping discs plus a bar under them: a cloud has no outline in
+	# this style, so its silhouette has to do all the work (§2, silhouette test).
+	for lobe: Array in [[-0.20, 0.015, 0.145], [0.0, 0.055, 0.180], [0.19, 0.005, 0.135]]:
+		Kit.plate(
+			tool,
+			Kit.at_rotated(Vector3(x + float(lobe[0]), y + float(lobe[1]), INNER_Z + 0.035),
+					facing),
+			Kit.circle(float(lobe[2]), 16), 0.045, cloud, 0.012
+		)
+	Kit.plate(tool, Kit.at_rotated(Vector3(x, y - 0.055, INNER_Z + 0.035), facing),
+			Kit.rounded_rect(Vector2(0.48, 0.15), 0.07, 3), 0.045, cloud, 0.012)
+
+	# Three charms on three cords. Diamonds rather than discs: a disc beside a
+	# round cloud is one more bubble, and the point of the charms is a second
+	# shape.
+	var charm: Color = Palette.deep(HouseLayout.dominant_color(room_id))
+	var index: int = 0
+	for drop: Array in [[-0.18, 0.23], [0.02, 0.33], [0.20, 0.26]]:
+		var at_x: float = x + float(drop[0])
+		var length: float = float(drop[1])
+		Kit.plate(
+			tool,
+			Kit.at_rotated(Vector3(at_x, y - 0.12 - length * 0.5, INNER_Z + 0.028), facing),
+			Kit.rounded_rect(Vector2(0.016, length), 0.006, 2), 0.02,
+			Palette.deep(accent), 0.004
+		)
+		Kit.plate(
+			tool,
+			Kit.at_rotated(Vector3(at_x, y - 0.12 - length, INNER_Z + 0.04),
+					Vector3(-90.0, 0.0, 45.0)),
+			Kit.rounded_rect(Vector2(0.115, 0.115), 0.028, 3), 0.035, charm, 0.01
+		)
+		index += 1
+
+
+## -- The kitchen's fixtures ------------------------------------------------------
+##
+## A fridge, a worktop and a table is a *room with furniture in it*. A sink, a tap
+## and a hob is a KITCHEN, and the difference is the one a four-year-old uses to
+## name the place. Reviewed cold, the room before this could as easily have been
+## read as a hallway with a cupboard in it.
+##
+## ## Why they are drawn into the shell and have no colliders
+##
+## Every one of these sits ON the worktop, inside the counter's own 1.8 x 0.6 m
+## collider and inside its `ActivityTarget` box, so the child's tap still lands on
+## "counter" wherever on it they touch. A separate body would have split one
+## generous touch target into three small ones and taken floor away from a baked
+## navigation mesh that cannot be re-baked from here -- which is also why nothing
+## here stands on the floor.
+##
+## ## The worktop is a shared surface, so these are placed around what uses it
+##
+## `kitchen_view.gd` puts carried items down at the counter's CENTRE
+## (`x = -0.8`). The sink and the hob therefore live at the two ends, with a
+## hand's width of clear worktop either side of the drop zone. The plant that used
+## to stand at `x = -1.46` is gone: it was occupying the only part of the worktop
+## a sink could go, and a kitchen that reads as a kitchen is worth more than a
+## second pot in a room that already has one on the sill.
+const SINK_X: float = -1.24
+const HOB_X: float = -0.26
+## The counter's own top (`HouseLayout.furniture()`: centre 0.45, height 0.9).
+const WORKTOP_Y: float = 0.90
+## Forward of the counter's centre line, so the basin is not half swallowed by
+## the splashback at this camera angle.
+const FIXTURE_Z: float = -1.62
+
+
+func _kitchen_fixtures(tool: SurfaceTool) -> void:
+	var steel: Color = Palette.deep(Palette.DUSTY_BLUE)
+
+	# The sink: a real open basin. §6 wants visible interior depth in anything
+	# that holds something, and a solid-topped basin reads as a cupboard door
+	# lying flat -- which is exactly how the bath failed its first three passes.
+	# It stands proud of the worktop rather than being sunk into it, because the
+	# counter is a solid mesh and a recess would simply be filled by it.
+	Kit.vessel(
+		tool,
+		Kit.at(Vector3(SINK_X, WORKTOP_Y + 0.055, FIXTURE_Z)),
+		Kit.rounded_rect(Vector2(0.42, 0.34), 0.10, 3),
+		0.11, 0.035, 0.03,
+		Palette.CREAM, Palette.DUSTY_BLUE
+	)
+	# The tap. §7: "there is no metal; 'metal' is a dusty-blue convention."
+	Kit.cylinder(tool, Kit.at(Vector3(SINK_X, WORKTOP_Y + 0.11, FIXTURE_Z - 0.17)),
+			0.022, 0.22, steel, 10)
+	Kit.box(tool, Kit.at(Vector3(SINK_X, WORKTOP_Y + 0.215, FIXTURE_Z - 0.115)),
+			Vector3(0.042, 0.042, 0.13), steel, 0.014)
+
+	# The hob: a plate and two rings. Two rings rather than four, because at this
+	# camera distance four would merge into a texture, and the ring is the whole
+	# reason this is a stove and not a chopping board.
+	Kit.plate(tool, Kit.at(Vector3(HOB_X, WORKTOP_Y + 0.018, FIXTURE_Z)),
+			Kit.rounded_rect(Vector2(0.44, 0.36), 0.09, 3), 0.036, Palette.DUSTY_BLUE, 0.012)
+	for side: float in [-1.0, 1.0]:
+		Kit.torus(tool, Kit.at(Vector3(HOB_X + side * 0.105, WORKTOP_Y + 0.042, FIXTURE_Z)),
+				0.062, 0.013, steel, 14, 6)
+
+	# Wall cupboards over the worktop -- the storage the fridge is not. Set to the
+	# LEFT of the window (which spans x -0.50 to 0.80) so nothing overlaps, and
+	# kept below 1.75 m so the shot still holds them.
+	var door_face: Color = Palette.light(Palette.PEACH)
+	Kit.plate(tool, Kit.at_rotated(Vector3(-1.18, 1.50, INNER_Z + 0.16), Vector3(-90.0, 0.0, 0.0)),
+			Kit.rounded_rect(Vector2(1.22, 0.46), 0.05, 3), 0.30, HouseLayout.WOOD_COLOR, 0.018)
+	for side: float in [-1.0, 1.0]:
+		Kit.plate(
+			tool,
+			Kit.at_rotated(Vector3(-1.18 + side * 0.30, 1.50, INNER_Z + 0.315),
+					Vector3(-90.0, 0.0, 0.0)),
+			Kit.rounded_rect(Vector2(0.54, 0.36), 0.04, 3), 0.035, door_face, 0.012
+		)
+		Kit.sphere(tool, Kit.at(Vector3(-1.18 + side * 0.055, 1.38, INNER_Z + 0.34)),
+				0.028, Palette.CREAM, 10, 6)
 
 
 ## A framed picture. No text, no representational subject -- one soft shape, so
@@ -780,8 +909,18 @@ func _build_doors() -> void:
 ## and was clipped by the ceiling, and a sign on a side wall is edge-on to this
 ## camera and unreadable. On the door itself it faces into the room, sits at
 ## roughly a child's eye line, and cannot be cropped by the wall top.
+##
+## ## It was twice this size, and that was the "giant placeholder room label"
+##
+## The plaque used to be 0.92 x 0.46 m -- as wide as the door, wider than the
+## child -- carrying a 64 pt word. Reviewed cold on an iPad it read as a debug
+## label that had been given a frame, not as part of the house, and it was the
+## single loudest object in every room. It is now 0.60 x 0.30 m
+## (`HouseLayout.DOOR_SIGN_SIZE`): a thin accent rim round a cream face, with the
+## word set smaller. The glyph did NOT shrink proportionally -- it is the half a
+## four-year-old reads, so it now fills more of a smaller board.
 ## Wide enough for the longest label ("LIVING ROOM") at the size below.
-const SIGN_SIZE: Vector2 = Vector2(0.92, 0.46)
+const SIGN_SIZE: Vector2 = HouseLayout.DOOR_SIGN_SIZE
 
 ## One distinct pastel per destination, so the sign reads by COLOUR before the
 ## child has focused on either the glyph or the word. Neither
@@ -795,10 +934,7 @@ const SIGN_COLORS: Dictionary = {
 	HouseLayout.KITCHEN: Palette.PEACH,
 	HouseLayout.LIVING_ROOM: Palette.SOFT_PINK,
 }
-const SIGN_DEPTH: float = 0.035
-## Above the door's own centre (doors are `DOOR_HEIGHT * 0.5` off the floor), so
-## the plaque lands around 1.4 m -- clear of the sunk panel below it.
-const SIGN_RISE: float = 0.45
+const SIGN_DEPTH: float = 0.03
 
 
 func _build_door_sign(door: Dictionary) -> void:
@@ -812,22 +948,28 @@ func _build_door_sign(door: Dictionary) -> void:
 	# unreadable; that was the first two attempts. The kit extrudes towards +Z by
 	# default (the door itself rotates that by 90 degrees), so an unrotated
 	# plaque already faces the way the child is looking.
-	var origin := Vector3(side * 1.74, centre.y + SIGN_RISE, centre.z)
+	var origin := Vector3(
+		side * HouseLayout.DOOR_SIGN_X, HouseLayout.DOOR_SIGN_CENTRE_Y, centre.z
+	)
 
 	var tool: SurfaceTool = Kit.begin()
 	# Bracket back to the wall, so the sign is hanging off something.
 	Kit.box(
 		tool,
-		Kit.at(Vector3(side * 0.16, 0.0, 0.0)),
-		Vector3(0.30, 0.055, 0.055),
+		Kit.at(Vector3(side * 0.13, 0.0, 0.0)),
+		Vector3(0.26, 0.04, 0.04),
 		Palette.deep(accent)
 	)
-	# Plaque: accent-tinted board so each destination reads by colour too, with a
-	# cream inner panel for the glyph.
-	Kit.extrude(tool, Kit.at(Vector3.ZERO), Kit.arch(SIGN_SIZE, 0.16, 6),
-			SIGN_DEPTH, accent, 0.014)
-	Kit.extrude(tool, Kit.at(Vector3(0.0, 0.045, SIGN_DEPTH * 0.55)),
-			Kit.arch(SIGN_SIZE - Vector2(0.14, 0.20), 0.12, 6), 0.022, Palette.CREAM, 0.01)
+	# Plaque: a soft accent board with a cream face, so the destination reads by
+	# COLOUR before the child has focused on either the glyph or the word. The
+	# accent is only a 2 cm rim now rather than a solid slab -- at the old size a
+	# saturated board was the brightest thing in the room and pulled the eye off
+	# the furniture the beat was actually about.
+	Kit.extrude(tool, Kit.at(Vector3.ZERO), Kit.arch(SIGN_SIZE, 0.12, 6),
+			SIGN_DEPTH, accent, 0.012)
+	Kit.extrude(tool, Kit.at(Vector3(0.0, 0.0, SIGN_DEPTH * 0.55)),
+			Kit.arch(SIGN_SIZE - Vector2(0.07, 0.07), 0.09, 6), 0.018,
+			Palette.CREAM, 0.009)
 	_build_room_glyph(tool, to_room, SIGN_DEPTH * 0.9, accent)
 
 	var mesh: MeshInstance3D = _add_mesh("DoorSign_%s" % to_room, Kit.commit(tool), false)
@@ -838,15 +980,18 @@ func _build_door_sign(door: Dictionary) -> void:
 	var label := Label3D.new()
 	label.name = "DoorSignLabel_%s" % to_room
 	label.text = HouseLayout.display_name(to_room).to_upper()
-	label.font_size = 64
-	label.pixel_size = 0.0013
-	# INK, not the accent: an accent-on-cream label is pastel on pastel and was
-	# the one part of the sign that stayed hard to read at gameplay distance.
+	# Smaller board, smaller word -- but still `ink` on `cream`, and that was
+	# tried the other way first. A word set in the plaque's own deepened accent
+	# looked calmer in isolation and vanished in the room: `deep(peach)` on a
+	# cream face, 40 px wide at gameplay distance, is pastel on pastel. The word
+	# is the secondary element by SIZE, not by contrast.
+	label.font_size = 48
+	label.pixel_size = 0.00104
 	label.modulate = Palette.INK
 	label.outline_size = 0
 	label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	label.double_sided = false
-	label.position = origin + Vector3(0.0, -0.155, SIGN_DEPTH * 1.1)
+	label.position = origin + Vector3(0.0, -0.101, SIGN_DEPTH * 1.1)
 	_geometry.add_child(label)
 
 
@@ -857,36 +1002,52 @@ func _build_door_sign(door: Dictionary) -> void:
 ## "KITCHEN" can still learn "the door with the plate on it".
 ##
 ## `z` is depth towards the camera; x/y are in the sign's face.
+##
+## `GLYPH_SCALE` is 0.78 against a board that shrank by 0.65, which is the whole
+## point: on a smaller sign the picture keeps more of the face and the word gives
+## some up, because the picture is the half that works on a pre-reader.
+const GLYPH_SCALE: float = 0.78
+## Centre of the picture in the sign's face; the word sits below it.
+const GLYPH_Y: float = 0.046
+
+
 func _build_room_glyph(tool: SurfaceTool, room: String, z: float, accent: Color) -> void:
 	var ink: Color = Palette.deep(accent)
-	var y: float = 0.075
+	var s: float = GLYPH_SCALE
+	var y: float = GLYPH_Y
+	var face: Color = Palette.CREAM
 	match room:
 		HouseLayout.BEDROOM:
 			# A bed: base, headboard, pillow.
-			Kit.box(tool, Kit.at(Vector3(0.02, y - 0.03, z)), Vector3(0.30, 0.075, 0.02), ink)
-			Kit.box(tool, Kit.at(Vector3(-0.15, y + 0.03, z)), Vector3(0.05, 0.14, 0.02), ink)
-			Kit.box(tool, Kit.at(Vector3(-0.07, y + 0.035, z + 0.01)),
-					Vector3(0.09, 0.05, 0.02), Palette.CREAM)
+			Kit.box(tool, Kit.at(Vector3(0.02 * s, y - 0.03 * s, z)),
+					Vector3(0.30 * s, 0.075 * s, 0.02), ink)
+			Kit.box(tool, Kit.at(Vector3(-0.15 * s, y + 0.03 * s, z)),
+					Vector3(0.05 * s, 0.14 * s, 0.02), ink)
+			Kit.box(tool, Kit.at(Vector3(-0.07 * s, y + 0.035 * s, z + 0.01)),
+					Vector3(0.09 * s, 0.05 * s, 0.02), face)
 		HouseLayout.BATHROOM:
 			# A tub with a water drop above it.
-			Kit.box(tool, Kit.at(Vector3(0.0, y - 0.045, z)), Vector3(0.30, 0.09, 0.02), ink)
-			Kit.sphere(tool, Kit.at(Vector3(0.0, y + 0.075, z)), 0.05, ink, 12, 7)
+			Kit.box(tool, Kit.at(Vector3(0.0, y - 0.045 * s, z)),
+					Vector3(0.30 * s, 0.09 * s, 0.02), ink)
+			Kit.sphere(tool, Kit.at(Vector3(0.0, y + 0.075 * s, z)), 0.05 * s, ink, 12, 7)
 		HouseLayout.KITCHEN:
 			# A plate, with a spoon beside it.
-			Kit.sphere(tool, Kit.at(Vector3(-0.02, y, z - 0.02)), 0.105, ink, 16, 8)
-			Kit.sphere(tool, Kit.at(Vector3(-0.02, y, z + 0.005)), 0.072, Palette.CREAM, 16, 8)
-			Kit.box(tool, Kit.at(Vector3(0.15, y, z)), Vector3(0.028, 0.17, 0.02), ink)
-			Kit.sphere(tool, Kit.at(Vector3(0.15, y + 0.085, z)), 0.035, ink, 10, 6)
+			Kit.sphere(tool, Kit.at(Vector3(-0.02 * s, y, z - 0.02)), 0.105 * s, ink, 16, 8)
+			Kit.sphere(tool, Kit.at(Vector3(-0.02 * s, y, z + 0.005)), 0.072 * s, face, 16, 8)
+			Kit.box(tool, Kit.at(Vector3(0.15 * s, y, z)),
+					Vector3(0.028 * s, 0.17 * s, 0.02), ink)
+			Kit.sphere(tool, Kit.at(Vector3(0.15 * s, y + 0.085 * s, z)), 0.035 * s, ink, 10, 6)
 		HouseLayout.LIVING_ROOM:
 			# A sofa: seat plus two arms.
-			Kit.box(tool, Kit.at(Vector3(0.0, y - 0.025, z)), Vector3(0.30, 0.08, 0.02), ink)
-			Kit.box(tool, Kit.at(Vector3(0.0, y + 0.045, z - 0.005)),
-					Vector3(0.22, 0.07, 0.02), Palette.CREAM)
+			Kit.box(tool, Kit.at(Vector3(0.0, y - 0.025 * s, z)),
+					Vector3(0.30 * s, 0.08 * s, 0.02), ink)
+			Kit.box(tool, Kit.at(Vector3(0.0, y + 0.045 * s, z - 0.005)),
+					Vector3(0.22 * s, 0.07 * s, 0.02), face)
 			for arm: int in [-1, 1]:
-				Kit.box(tool, Kit.at(Vector3(float(arm) * 0.135, y + 0.035, z)),
-						Vector3(0.05, 0.12, 0.02), ink)
+				Kit.box(tool, Kit.at(Vector3(float(arm) * 0.135 * s, y + 0.035 * s, z)),
+						Vector3(0.05 * s, 0.12 * s, 0.02), ink)
 		_:
-			Kit.sphere(tool, Kit.at(Vector3(0.0, y, z)), 0.09, ink, 12, 7)
+			Kit.sphere(tool, Kit.at(Vector3(0.0, y, z)), 0.09 * s, ink, 12, 7)
 
 
 ## Containers the child can open and put things into.

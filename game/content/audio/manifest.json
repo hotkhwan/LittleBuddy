@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "musicDir": "res://audio/music",
+  "tracks": [
+    {
+      "trackId": "littleDaysTheme",
+      "source": "",
+      "createdAt": "",
+      "downloadedAt": "",
+      "licenseEvidence": "PENDING",
+      "commercialUse": "pending",
+      "localPath": "res://audio/music/little_days_theme.ogg",
+      "loopStart": 0.0,
+      "loopEnd": 0.0,
+      "volumeDb": -12.0,
+      "usageScenes": ["menu"]
+    },
+    {
+      "trackId": "hungryBunny",
+      "source": "",
+      "createdAt": "",
+      "downloadedAt": "",
+      "licenseEvidence": "PENDING",
+      "commercialUse": "pending",
+      "localPath": "res://audio/music/hungry_bunny.ogg",
+      "loopStart": 0.0,
+      "loopEnd": 0.0,
+      "volumeDb": -16.0,
+      "usageScenes": ["miniGame"]
+    }
+  ]
+}

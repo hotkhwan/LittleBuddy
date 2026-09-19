@@ -1,0 +1,33 @@
+{
+  "packId": "freeStarter",
+  "version": 1,
+  "requiredGameVersion": "0.1.0",
+  "missions": [
+    "imHungry",
+    "snackTime"
+  ],
+  "rooms": [
+    "bedroom",
+    "bathroom",
+    "kitchen",
+    "livingRoom"
+  ],
+  "characters": [
+    "littleBuddy",
+    "buddy"
+  ],
+  "outfits": [],
+  "audio": [
+    "success_chime",
+    "soft_pop",
+    "pickup",
+    "place_soft",
+    "drop_return",
+    "room_change",
+    "sticker_unlock",
+    "star_earned",
+    "bedtime_chime",
+    "gentle_tap"
+  ],
+  "entitlementId": "freeStarter"
+}

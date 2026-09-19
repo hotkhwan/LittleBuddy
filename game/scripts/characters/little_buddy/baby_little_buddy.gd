@@ -224,6 +224,9 @@ extends Node3D
 
 const ActionDriverScript := preload("res://scripts/character/character_action_driver.gd")
 const AnimationDriverScript := preload("res://scripts/character/animation_player_action_driver.gd")
+## The hand-authored reaction clips. See `_author_life_clips()` for why the
+## keyframes live in their own file rather than in this one.
+const LifeClipsScript := preload("res://scripts/characters/little_buddy/baby_life_clips.gd")
 
 ## Emitted when a requested action begins. Emitted even though nothing is shown,
 ## so a caller's await is symmetric with `LittleBuddyCharacter`'s.
@@ -885,6 +888,7 @@ func _ensure_pose(pose_name: String) -> bool:
 	_apply_art_bible_material(mesh_instance)
 	_normalise(pose_name, holder, oriented, instance as Node3D, mesh_instance)
 	_merge_clips(instance)
+	_author_life_clips(instance)
 	_loaded[pose_name]["sockets"] = _build_sockets(instance)
 	return true
 
@@ -925,6 +929,46 @@ func _merge_clips(instance: Node) -> void:
 					copy.loop_mode = Animation.LOOP_LINEAR
 					library.add_animation(action, copy)
 		clip_root.free()
+
+
+## Adds the hand-authored reaction clips -- `idle`, `fuss`, `eat`, `drink`,
+## `celebrate` -- to the pose's own `AnimationLibrary`.
+##
+## **What the asset actually ships with is `walk`, `run` and a 0.3 s stub.** There
+## is no idle and no reaction, which is why Little Buddy stood in the bedroom
+## perfectly still whatever was happening to him. `baby_life_clips.gd` fills that
+## gap with keyframed BONE tracks on this model's real skeleton -- read its class
+## doc, which is explicit that these are a programmer's keyframes on a real rig
+## and not a DCC-authored clip, and explicit about what it is not doing.
+##
+## Two things this deliberately does NOT do, both of them the failure mode
+## `test_baby_avatar.gd` exists to prevent:
+##
+##   * it never runs when the visible pose has no skeleton -- `_find_skeleton()`
+##     returns null for the three pose-locked exports and nothing is added, so
+##     they keep answering `can_play_action()` with `false`;
+##   * it adds no clip whose name the library already has, so a real `idle.glb`
+##     merged through `CLIP_SOURCES` always wins over the authored stopgap.
+##
+## The keyframes live in their own file because this one's job is filenames,
+## normalisation and the §7 material policy; 300 lines of animation curves here
+## would bury all three. That file is where to look, and where to delete from.
+func _author_life_clips(instance: Node) -> void:
+	var player: AnimationPlayer = _find_animation_player(instance)
+	if player == null:
+		return
+	var skeleton: Skeleton3D = _find_skeleton(instance)
+	if skeleton == null:
+		return
+	var library: AnimationLibrary = player.get_animation_library("")
+	if library == null:
+		return
+	# Addressed exactly the way the imported `walk` clip addresses the same bones:
+	# relative to the player's own root node, not to the player.
+	var root: Node = player.get_node_or_null(player.root_node)
+	if root == null:
+		return
+	LifeClipsScript.merge_into(library, skeleton, String(root.get_path_to(skeleton)))
 
 
 ## Builds one `BoneAttachment3D` per `LB_Rig_v1` socket from the `RigProfile`.

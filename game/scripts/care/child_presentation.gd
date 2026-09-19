@@ -20,7 +20,7 @@ extends RefCounted
 ## ## Why a pose is chosen by ACTIVITY, not by need
 ##
 ## The obvious design -- one pose per need -- reads badly. A hungry child and a
-## thirsty child are both fed sitting down, and switching pose between them would
+## thirsty child are both fed the same way, and switching pose between them would
 ## make the child twitch for no reason the player can see. So the caller names
 ## what is HAPPENING (`feeding`, `bedtime`, `play`) and the need only decides the
 ## activity when nothing else has.
@@ -28,9 +28,14 @@ extends RefCounted
 ## ## A pose change is a cut, and the wrapper says so
 ##
 ## `baby_little_buddy.gd` is explicit that swapping pose is a visibility cut with
-## no blend, because the exports are three separate models. So this file keeps
-## changes RARE and tied to a real beat -- the brief's "make transitions
-## deliberate" -- rather than letting a drifting stat flip the mesh mid-step.
+## no blend, because the exports are separate models. So this file keeps changes
+## RARE and tied to a real beat -- the brief's "make transitions deliberate" --
+## rather than letting a drifting stat flip the mesh mid-step.
+##
+## **And rarer still since the rig landed.** A pose cut now also costs the
+## character its motion: only the `rigged` export has a skeleton, so every cut
+## away from it is a cut to something that cannot breathe, fuss or be fed. See
+## `pose_for_activity()`, which is down to one such cut.
 
 const Needs := preload("res://scripts/care/child_needs.gd")
 
@@ -57,13 +62,35 @@ const ACTIVITIES: Array[String] = [
 ]
 
 
-## The pose an activity calls for. `rigged` is the answer for everything upright
-## because it is the shipping model; the pose-locked exports are used only where
-## they say something the rigged one cannot -- sitting down, and lying asleep.
+## The pose an activity calls for.
+##
+## **Changed 2026-09-19, and the reason matters more than the mapping.** This used
+## to seat the child for `feeding` and `play`, because when it was written the
+## only babies in the project were three frozen exports and *seating him was the
+## only way the game had of saying "this is feeding"*.
+##
+## That is no longer true, and keeping it did active harm. `sitting` is an
+## unrigged 398,404-triangle statue with no skeleton and no clips, so selecting it
+## for feeding meant: at the exact moment the player finally does the thing the
+## whole mission is about, Bunny cuts to a mesh that **cannot react at all** --
+## and, because `hungry` implies `feeding` through `activity_for_need()`, that
+## statue was what stood in the bedroom for the entire opening of the game. The
+## "rigid statue" this pass was asked to fix was, in the largest part, this line.
+##
+## The rigged export now carries hand-authored `eat`, `drink`, `fuss`, `idle` and
+## `celebrate` clips on its real skeleton (`baby_life_clips.gd`), so it can SHOW
+## being fed rather than being posed as though it had been. So the rule is now
+## the one the paragraph above always claimed: **a pose-locked export is used only
+## where it says something the rigged model cannot.**
+##
+## That leaves exactly one: `sleeping`. Lying supine is a whole-body pose with no
+## clip behind it, and no amount of arm animation implies it. `sitting` and
+## `standing` stay in the vocabulary as the graceful degradation -- a build
+## without the rigged export resolves `rigged` down to `sitting` inside
+## `baby_little_buddy.gd::resolve_pose()`, so this mapping does not need to know
+## which files shipped.
 static func pose_for_activity(activity: String) -> String:
 	match activity:
-		ACTIVITY_FEEDING, ACTIVITY_PLAY:
-			return POSE_SITTING
 		ACTIVITY_BEDTIME:
 			return POSE_SLEEPING
 		_:

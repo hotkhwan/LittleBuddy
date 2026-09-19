@@ -50,7 +50,7 @@ const TOKENS: Array[String] = [
 ]
 
 
-func get_name() -> String:
+func test_name() -> String:
 	return "art_rooms"
 
 

@@ -198,7 +198,7 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
 theme_override_font_sizes/font_size = 88
-text = "Little Buddy"
+text = "Little Days"
 horizontal_alignment = 1
 vertical_alignment = 1
 

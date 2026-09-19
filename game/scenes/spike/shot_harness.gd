@@ -31,10 +31,85 @@ func _run(job: String, extra: String) -> void:
 			_load("res://scenes/house/house_world.tscn")
 			if _scene != null and extra != "":
 				await get_tree().process_frame
-				if _scene.has_method("enter_room"):
+				await get_tree().process_frame
+				# `place_in_room` is the name `HouseWorld` actually exports. Neither
+				# of the two guesses that used to be here matched anything, so every
+				# `-- house <outName> <roomId>` run since this harness was written
+				# silently photographed the BEDROOM and filed it as evidence for
+				# whichever room had been asked for. It is checked first, and a miss
+				# now prints rather than passing quietly.
+				if _scene.has_method("place_in_room"):
+					if not bool(_scene.call("place_in_room", extra, "default")):
+						print("  WARN: the house has no room '%s'" % extra)
+				elif _scene.has_method("enter_room"):
 					_scene.call("enter_room", extra)
-				elif _scene.has_method("go_to_room"):
-					_scene.call("go_to_room", extra)
+				else:
+					print("  WARN: the house cannot be told which room to show")
+		"beat":
+			# The close-up, opened by GAMEPLAY. The real house, the real level
+			# director, stepped by the real engine: the harness only starts the
+			# level and waits for `is_camera_focused()` to come back true, so it
+			# cannot photograph a shot the game would not have composed.
+			# `extra` names the level; it defaults to the first one a child plays.
+			_load("res://scenes/house/house_world.tscn")
+			await get_tree().process_frame
+			await get_tree().process_frame
+			# "<levelId>" or "<levelId>:<tasksToSkipFirst>", because the beat worth
+			# photographing is rarely the first one: the opening task of a level is
+			# usually a `choose`, whose box has to hold a whole row of objects and
+			# is therefore the WIDEST close-up the game composes, not the tightest.
+			var parts: PackedStringArray = extra.split(":")
+			var level: String = parts[0] if parts.size() > 0 and parts[0] != "" \
+					else "goodMorningRoutine"
+			var skip: int = parts[1].to_int() if parts.size() > 1 else 0
+			var beat_director: Node = null
+			if _scene.has_method("ensure_level_director"):
+				beat_director = _scene.call("ensure_level_director")
+			if beat_director == null:
+				print("  WARN: this build has no level director")
+			else:
+				beat_director.call("_start_level", level)
+				var beat_runner: Node = beat_director.get("_runner")
+				for _skipped in range(skip):
+					if beat_runner != null:
+						beat_runner.call("skip_current_task")
+					for _settle_frame in range(20):
+						await get_tree().process_frame
+				for _frame in range(300):
+					await get_tree().process_frame
+					if bool(beat_director.call("is_camera_focused")):
+						break
+				if not bool(beat_director.call("is_camera_focused")):
+					# A `goAndDo` or `deliver` beat only tightens ON ARRIVAL, and
+					# nobody is tapping the floor in a screenshot run. Stand the
+					# child where the walk would have ended and let the director
+					# reach the beat -- the same call arriving makes, with the same
+					# staging and the same close-up, so the picture is still of a
+					# shot the game composes and not one the harness invented.
+					var beat_plan_room: Dictionary = beat_director.call("get_current_plan")
+					var focus_id: String = String(beat_plan_room.get("focusTargetId", ""))
+					# The room FIRST. A beat in the kitchen reached while the bedroom
+					# is the active room composes a perfectly correct close-up on a
+					# room that is currently hidden, and photographs an empty beige
+					# field -- which is exactly what this printed before the walk
+					# was made to include the doors it would really have gone
+					# through.
+					if focus_id.contains("."):
+						_scene.call("place_in_room", focus_id.split(".")[0], "default")
+						await get_tree().process_frame
+					var stand: Variant = beat_director.call("_beat_stand_position")
+					var walker: Node = _scene.get_node_or_null("LittleBuddy")
+					if stand is Vector3 and walker is Node3D:
+						(walker as Node3D).global_position = stand
+						await get_tree().process_frame
+						beat_director.call("_reach_beat")
+						for _settle in range(40):
+							await get_tree().process_frame
+				var beat_plan: Dictionary = beat_director.call("get_current_plan")
+				print("  level=%s task=%s kind=%s focused=%s" % [
+					level, String(beat_plan.get("taskId", "")),
+					String(beat_plan.get("kind", "")),
+					str(beat_director.call("is_camera_focused"))])
 		"storage":
 			# The house with the bedroom's toy box forced open or shut, so the two
 			# states can be compared side by side.

@@ -14,6 +14,13 @@ extends Node3D
 ## nothing else. Neither should own a `BabyState` or a speech bubble, so this is
 ## the node that joins them and is the only thing `house_world` has to find.
 ##
+## ## ...and it makes him move
+##
+## Added 2026-09-19. `child_life.gd` decides what Bunny's body should be doing --
+## breathing, fussing, being fed, pleased -- and this node plays it on the rigged
+## model's real `AnimationPlayer`. See the "Bunny is alive" section below, which
+## is also where the one piece of procedural motion in the pass is named as one.
+##
 ## ## The bubble is the whole point
 ##
 ## A child whose need is invisible is furniture. The floating line is how a
@@ -28,6 +35,7 @@ const Needs := preload("res://scripts/care/child_needs.gd")
 const Present := preload("res://scripts/care/child_presentation.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 const Follower := preload("res://scripts/care/child_follower.gd")
+const Life := preload("res://scripts/care/child_life.gd")
 const ActivityTargetScript := preload("res://scripts/navigation/activity_target.gd")
 const InteractionPointScript := preload("res://scripts/navigation/interaction_point.gd")
 
@@ -38,6 +46,9 @@ signal need_changed(need: String)
 signal activity_changed(activity: String, pose: String)
 ## Emitted once when the child finishes walking to where it was sent.
 signal arrived()
+## Emitted when the clip Bunny's body is playing changes, so a test can assert
+## that a hungry child actually fusses rather than only being described as one.
+signal life_changed(clip: String)
 
 ## Clear of the CAREGIVER's head, not just the child's. Buddy is 1.65 m and
 ## stands right next to a 0.78 m child, so a bubble sized to the child alone
@@ -50,6 +61,8 @@ var _state: RefCounted = null
 var _wrapper: Node3D = null
 var _bubble: Label3D = null
 var _activity: String = Present.ACTIVITY_IDLE
+## Which act the activity is, when the caller knows. See `set_activity()`.
+var _activity_detail: String = ""
 var _need: String = ""
 var _built: bool = false
 
@@ -59,6 +72,19 @@ var _following: Node3D = null
 var _attend_point: Vector3 = Vector3.ZERO
 var _attending: bool = false
 var _player: AnimationPlayer = null
+
+## -- Life ----------------------------------------------------------------------
+##
+## See `child_life.gd` for the decisions; these are only what has to be
+## remembered between frames to apply them.
+var _life_clip: String = ""
+var _walking: bool = false
+var _happy_left: float = 0.0
+## Degrees, on the MODEL rather than on this node -- see `_attend_to_caregiver()`.
+var _model_yaw: float = 0.0
+var _watching: bool = false
+var _caregiver: Node3D = null
+var _looked_for_caregiver: bool = false
 
 
 func _ready() -> void:
@@ -92,9 +118,35 @@ func build() -> void:
 	_bubble.position = Vector3(0.0, BUBBLE_HEIGHT, 0.0)
 	add_child(_bubble)
 
-	_player = _find_player(_wrapper)
+	# A pose cut is also a RIG cut: only the rigged export has a skeleton, so the
+	# player that drives Bunny's body belongs to whichever pose is on screen.
+	# Caching it once was a live bug -- the wrapper starts on the rigged model,
+	# the first `_refresh()` used to cut to the seated export, and every clip
+	# afterwards played on a model that had been hidden one line earlier.
+	if _wrapper.has_signal("pose_changed"):
+		_wrapper.connect("pose_changed", _on_pose_changed)
+	_resolve_player()
 	_build_target()
 	_refresh()
+
+
+func _on_pose_changed(_pose_name: String) -> void:
+	_resolve_player()
+	_life_clip = ""
+	_apply_life()
+
+
+## The `AnimationPlayer` of the pose currently VISIBLE, asked of the wrapper
+## rather than searched for: a subtree search finds whichever player it meets
+## first, which with two poses loaded is as likely to be the hidden one.
+##
+## Null is a correct answer, not a failure -- it is what a pose-locked export
+## honestly has -- and `_apply_life()` plays nothing when it gets one.
+func _resolve_player() -> void:
+	if _wrapper != null and _wrapper.has_method("get_animation_player"):
+		_player = _wrapper.call("get_animation_player") as AnimationPlayer
+		return
+	_player = _find_player(_wrapper)
 
 
 ## The child is a place Buddy can WALK TO.
@@ -214,15 +266,17 @@ func step(delta: float) -> void:
 	_follow_state = Follower.next_state(
 		previous, global_position, target, true, false)
 
-	if _follow_state == Follower.STATE_FOLLOWING:
+	_walking = _follow_state == Follower.STATE_FOLLOWING
+	if _walking:
 		global_position = Follower.step_towards(global_position, target, delta)
 		var facing: Vector3 = Follower.facing_for(_follow_state, global_position, target)
 		if facing.length_squared() > 0.0001:
 			# The model faces -Z, so look along the travel direction.
 			look_at(global_position - facing, Vector3.UP)
-		_play_clip(Follower.clip_for(_follow_state))
-	else:
-		_play_clip("")
+		# Walking beats looking at anybody: a child cannot watch Aliz over its
+		# shoulder and walk after her at the same time without reading as broken.
+		_model_yaw = 0.0
+		_watching = false
 
 	if _follow_state == Follower.STATE_ARRIVING and previous != Follower.STATE_ARRIVING:
 		arrived.emit()
@@ -230,6 +284,7 @@ func step(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	step(delta)
+	live(delta)
 
 
 ## Called by the world when Buddy changes room. The child is MOVED, not walked:
@@ -249,15 +304,158 @@ func room_changed(new_room: Node3D, buddy: Node3D) -> void:
 	_play_clip("")
 
 
+## -- Bunny is alive --------------------------------------------------------------
+##
+## The brief for this pass was one sentence: "Bunny must not remain a rigid
+## statue." He was one, and for a concrete reason -- the rigged export ships with
+## `walk`, `run` and nothing else, so the instant he stopped walking there was
+## nothing to play and he froze in his bind pose in the middle of the bedroom
+## while a mission about his hunger ran around him.
+##
+## What is here now:
+##
+##   * **an idle** -- breathing, a weight shift, and a slow look around the room;
+##   * **a fuss** whose PACE is driven by the real `ChildStats.hunger` axis, so
+##     the same motion reads as more urgent the hungrier he actually is;
+##   * **attention** -- he turns to watch Aliz when she comes near, and turns
+##     back when she leaves;
+##   * **feeding** -- a spoon or a bottle, chosen by which need is loudest;
+##   * **being pleased** for a few seconds after he is cared for.
+##
+## All five are `AnimationPlayer` clips on the model's real skeleton, authored in
+## `baby_life_clips.gd`. **The one thing here that is not a clip** is the
+## attention turn: that is a plain yaw on the model node, stepped per frame by
+## `child_life.gd::turn_towards()`. It is procedural, it is called procedural,
+## and it is a body turn rather than a limb motion precisely because a body turn
+## is the one thing a rotation can honestly express.
+
+## Advances everything that is alive about Bunny. Split out of `_process()` for
+## the same reason `step()` is: a headless test drives exactly the code a device
+## does, one frame at a time.
+func live(delta: float) -> void:
+	if not _built:
+		return
+	if _happy_left > 0.0:
+		_happy_left = maxf(_happy_left - delta, 0.0)
+		if _happy_left == 0.0:
+			_apply_life()
+	_attend_to_caregiver(delta)
+	# One-shot clips (`eat`, `drink`) end by themselves; re-applying picks the
+	# next spoonful up, or drops back to the idle, without a signal round trip.
+	if _player != null and not _player.is_playing():
+		_apply_life()
+
+
+## Turns Bunny to watch Aliz, and back again when she goes.
+##
+## **Rotated: the model, not this node.** Bunny's `ActivityTarget` and its
+## `InteractionPoint` are children of this node, and the interaction point is
+## where Aliz is told to STAND -- 0.62 m in front of Bunny. Yawing this node
+## would swing the place she is walking to around him while she walks to it, and
+## the two verified missions both route through that point. The model is a child
+## with nothing hanging off it, so turning it turns exactly the thing that should
+## turn and nothing that should not.
+##
+## The per-frame turn is procedural, and is the only procedural motion in this
+## pass. It steps an angle towards an angle; it does not sway, bob or breathe.
+func _attend_to_caregiver(delta: float) -> void:
+	if _wrapper == null or _walking or _attending:
+		return
+	var caregiver: Node3D = _find_caregiver()
+	var wanted: float = 0.0
+	if caregiver != null:
+		var to_her: Vector3 = caregiver.global_position - global_position
+		var flat: float = Vector2(to_her.x, to_her.z).length()
+		_watching = Life.should_attend(flat, _watching)
+		if _watching and flat > 0.01:
+			# The model faces -Z at rest, so the yaw that points it at her is the
+			# angle of the vector to her measured from -Z. Local, so this node's own
+			# rotation is already accounted for.
+			var local: Vector3 = global_transform.basis.inverse() * to_her
+			wanted = Life.attend_yaw(rad_to_deg(atan2(-local.x, -local.z)))
+	else:
+		_watching = false
+	_model_yaw = Life.turn_towards(_model_yaw, wanted, delta)
+	_wrapper.rotation.y = deg_to_rad(_model_yaw)
+
+
+## Aliz, found once by asking the world for her rather than by a hard path.
+##
+## `house_world.gd` exposes `get_character()`; nothing else in the ancestry does,
+## so the walk up is unambiguous and this file learns no scene layout. Null is a
+## normal answer -- Bunny is instantiated bare in several tests, and a child who
+## crashes when nobody is looking after him is worse than one who does not turn.
+func _find_caregiver() -> Node3D:
+	if _caregiver != null and is_instance_valid(_caregiver):
+		return _caregiver
+	if _looked_for_caregiver and _caregiver == null:
+		return null
+	_looked_for_caregiver = true
+	var walker: Node = get_parent()
+	while walker != null:
+		if walker.has_method("get_character"):
+			var found: Variant = walker.call("get_character")
+			_caregiver = found as Node3D
+			return _caregiver
+		walker = walker.get_parent()
+	return null
+
+
+## Plays whatever `child_life.gd` says Bunny should be doing, at the pace his
+## real stats call for.
+func _apply_life() -> void:
+	if _player == null or _state == null:
+		return
+	var stats: Dictionary = _state.call("describe")
+	var wanted: String = Life.clip_for(
+			stats, _activity, _walking, _happy_left, _activity_detail)
+	if not _player.has_animation(wanted):
+		# Honest degradation: a build whose model has no such clip plays nothing
+		# rather than substituting a clip that means something else.
+		return
+	_player.speed_scale = Life.pace_for(wanted, Life.distress(stats))
+	if _player.current_animation == wanted and _player.is_playing():
+		return
+	# Cross-faded rather than cut. Every one of these clips rests every bone it
+	# does not animate, so a hard cut between them is a visible snap.
+	_player.play(wanted, LIFE_BLEND_SEC)
+	if wanted != _life_clip:
+		_life_clip = wanted
+		life_changed.emit(wanted)
+
+
+## Seconds of cross-fade between life clips. Short enough that a tap still reads
+## as immediate, long enough that fuss -> celebrate is a change of mood rather
+## than a jump cut.
+const LIFE_BLEND_SEC: float = 0.22
+
+
+## The clip Bunny's body is playing, for tests and for the production report.
+func get_life_clip() -> String:
+	build()
+	return _life_clip
+
+
+## How hard Bunny is finding it, 0.0 to 1.0, straight off his real stats.
+func get_distress() -> float:
+	build()
+	return Life.distress(_state.call("describe")) if _state != null else 0.0
+
+
+## True while Bunny has turned to watch Aliz.
+func is_watching_caregiver() -> bool:
+	return _watching
+
+
 func _play_clip(clip: String) -> void:
 	if _player == null:
 		return
 	if clip.is_empty():
-		if _player.is_playing():
-			_player.stop()
+		_walking = false
+		_apply_life()
 		return
 	if _player.has_animation(clip) and _player.current_animation != clip:
-		_player.play(clip)
+		_player.play(clip, LIFE_BLEND_SEC)
 
 
 func _find_player(node: Node) -> AnimationPlayer:
@@ -297,11 +495,22 @@ func get_line() -> String:
 ## over whatever the stats would have chosen -- that is what lets Milk Time seat
 ## the child even while another stat drifts, and it is the brief's "make
 ## transitions deliberate".
-func set_activity(activity: String) -> void:
+## `detail` is optional and names WHICH act it is, when the caller knows -- the
+## care kind (`giveBottle`, `washFace`) is the vocabulary. It exists because
+## "feeding" alone cannot tell a bottle from a spoon, and those are two different
+## motions: a bottle is two hands and a head tipped back, a spoon is one hand.
+##
+## It defaults to "" and every existing caller passes nothing, in which case
+## `child_life.gd` falls back to reading the child's own stats -- see
+## `clip_for()`. `house_level_director.gd` already knows the care kind at both
+## call sites and could pass it; that is a one-word change in a file this pass
+## does not own, and is listed in `docs/BUNNY_LIFE_PASS.md`.
+func set_activity(activity: String, detail: String = "") -> void:
 	build()
-	if _activity == activity:
+	if _activity == activity and _activity_detail == detail:
 		return
 	_activity = activity
+	_activity_detail = detail
 	_refresh()
 
 
@@ -324,6 +533,10 @@ func satisfy(need: String, amount: float = 60.0) -> void:
 			_state.call("adjust", "happiness", amount)
 	# Being cared for is pleasant whatever the need was.
 	_state.call("adjust", "happiness", 8.0)
+	# ...and it SHOWS, for a few seconds. Without this the only thing that happens
+	# when a child finishes a whole mission is that a bubble goes away, which is
+	# the quietest possible answer to "you looked after me".
+	_happy_left = Life.HAPPY_SECONDS
 	_refresh()
 
 
@@ -360,6 +573,11 @@ func _refresh() -> void:
 		# one, and the child should only interrupt when it wants something.
 		_bubble.visible = not _need.is_empty()
 		_bubble.text = String(described["line"])
+
+	# The body says the same thing the bubble does. A line that reads "I'm
+	# hungry!" over a child standing perfectly still is the statue problem in one
+	# frame, so the need and the motion are refreshed together, always.
+	_apply_life()
 
 
 ## The pose currently shown, for tests and for the production report.

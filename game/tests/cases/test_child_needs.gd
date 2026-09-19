@@ -156,21 +156,57 @@ func _test_dirty_and_bath_are_one_axis():
 	return failures
 
 
+## **Rewritten 2026-09-19, and the rule it checks is stricter than before.**
+##
+## This used to assert that feeding SEATS the child, because when it was written
+## the seated export was the only way the game could say "this is feeding". That
+## turned out to be the single biggest cause of the "Bunny is a rigid statue"
+## complaint: `sitting` is an unrigged 398,404-triangle mesh with no skeleton, and
+## because `hungry` implies `feeding`, it was what stood in the bedroom for the
+## whole opening of the game -- unable to breathe, fuss or react.
+##
+## The rule now is the stronger one: **a pose-locked export may only be chosen
+## where it says something the rigged model cannot.** There is exactly one such
+## thing, lying down, so `bedtime` is the only activity allowed to leave the rig.
+## The old invariant it replaced -- that an explicit activity beats a drifting
+## stat -- is still asserted, on the same fixture, below.
 func _test_poses_follow_activity_not_need():
 	var failures: Array = []
-	# Feeding seats the child, whatever the stats are doing.
+
+	# An explicit activity still beats a drifting stat: a child put down to feed
+	# is NOT laid out asleep because some other axis went low.
 	var sleepy: Dictionary = _content()
 	sleepy["energy"] = 5.0
 	var feeding: Dictionary = Present.describe(sleepy, Present.ACTIVITY_FEEDING)
-	if String(feeding["pose"]) != Present.POSE_SITTING:
-		failures.append(("an explicit feeding activity must seat the child even while another "
-				+ "stat drifts; got pose '%s'") % String(feeding["pose"]))
+	if String(feeding["activity"]) != Present.ACTIVITY_FEEDING:
+		failures.append("an explicit activity must win over the need; got '%s'"
+				% String(feeding["activity"]))
+	if String(feeding["pose"]) == Present.POSE_SLEEPING:
+		failures.append("a sleepy child put down to FEED was laid out asleep; an explicit "
+				+ "activity must win over a drifting stat")
+	if String(feeding["pose"]) != Present.POSE_RIGGED:
+		failures.append(("feeding selected the '%s' pose. Only `rigged` has a skeleton, and "
+				+ "feeding is the one moment the whole mission is about -- cutting to a mesh "
+				+ "that cannot move there is what made Bunny a statue.") % String(feeding["pose"]))
 
-	# Bedtime lies it down.
+	# Bedtime lies it down: the one thing the rig genuinely cannot show.
 	if String(Present.describe(_content(), Present.ACTIVITY_BEDTIME)["pose"]) != Present.POSE_SLEEPING:
 		failures.append("bedtime must use the sleeping pose")
 
-	# And every activity resolves to exactly one known pose.
+	# ...and it is the ONLY activity allowed off the rigged model. This is the
+	# assertion that keeps a future "sitting looks nicer here" from silently
+	# re-freezing the character.
+	for activity: String in Present.ACTIVITIES:
+		var pose: String = Present.pose_for_activity(activity)
+		if activity == Present.ACTIVITY_BEDTIME:
+			continue
+		if pose != Present.POSE_RIGGED:
+			failures.append(("activity '%s' selects the '%s' pose. Only `sleeping` says something "
+					+ "the rigged model cannot; every other pose-locked export is a mesh with no "
+					+ "skeleton, so choosing one here freezes the child for the whole activity.")
+					% [activity, pose])
+
+	# And every activity still resolves to a pose that exists.
 	var known: Array = [Present.POSE_STANDING, Present.POSE_SITTING,
 			Present.POSE_SLEEPING, Present.POSE_RIGGED]
 	for activity: String in Present.ACTIVITIES:

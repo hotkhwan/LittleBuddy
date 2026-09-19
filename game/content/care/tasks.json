@@ -7,14 +7,14 @@
       "taskId": "talkToChild",
       "category": "care",
       "mode": "followInstruction",
-      "prompt": "Little Buddy needs you!",
-      "instruction": "Go to Little Buddy.",
-      "thaiHint": "ไปหาน้องบัดดี้",
+      "prompt": "Bunny needs you!",
+      "instruction": "Go to Bunny.",
+      "thaiHint": "ไปหาน้องบันนี่",
       "targetWords": [
-        "little buddy"
+        "bunny"
       ],
       "acceptedCommands": [
-        "little buddy",
+        "bunny",
         "buddy",
         "coming"
       ],
@@ -30,7 +30,7 @@
       "speechRequired": false,
       "assistAfterAttempts": 3,
       "objectId": "teddy",
-      "repeatPrompt": "Can you say Little Buddy?",
+      "repeatPrompt": "Can you say Bunny?",
       "cooldown": 3
     },
     {
@@ -124,7 +124,7 @@
       "taskId": "brushTeethCare",
       "category": "care",
       "mode": "followInstruction",
-      "prompt": "Brush Little Buddy's teeth!",
+      "prompt": "Brush Bunny's teeth!",
       "instruction": "Rub the brush back and forth.",
       "thaiHint": "แปรงฟันให้น้อง",
       "targetWords": [
@@ -154,7 +154,7 @@
       "category": "care",
       "mode": "followInstruction",
       "prompt": "Time to rinse.",
-      "instruction": "Give Little Buddy the water.",
+      "instruction": "Give Bunny the water.",
       "thaiHint": "บ้วนปากด้วยน้ำ",
       "targetWords": [
         "water"
