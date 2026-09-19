@@ -20,7 +20,9 @@ whose story is incomplete.
 | Music files | `game/audio/music/` — **two tracks delivered 2026-09-19** |
 | Tests | `game/tests/cases/test_audio_music_manifest.gd`, `test_audio_director.gd`, `test_audio_music_binder.gd` |
 | Proof it plays in the real game | `game/tests/smoke_audio_shipping.gd` |
+| Proof a NORMAL build plays nothing | `game/tests/smoke_audio_silent_build.gd` |
 | Creative brief | `docs/MUSIC_BRIEFS_FOR_ANNY.md` |
+| **What the owner must answer to turn the music on** | **`docs/MUSIC_RIGHTS_CHECKLIST.md`** |
 | The 2026-09-19 delivery, in full | **`docs/ORIGINAL_MUSIC_INTEGRATION.md`** |
 
 ---
@@ -40,8 +42,19 @@ evidence has been supplied for either of them.
 | Consequence | the licence gate refuses both; the game is silent |
 
 That is the gate working, not a fault. **To ship the music, establish the rights, capture the
-evidence, and set `commercialUse` to `"verified"`** — §5, step 4. To *hear* it locally in the
-meantime there is one explicit, off-by-default switch: §7.
+evidence, and set `commercialUse` to `"verified"`** — §5, step 4. The owner-facing sheet that
+gathers those facts is **`docs/MUSIC_RIGHTS_CHECKLIST.md`**: ten minutes, one question per line,
+blocking answers marked, and it is explicit that the deciding fact is *which plan was active at
+the moment each track was generated* — the one fact that cannot be recovered later. To *hear* the
+tracks locally in the meantime there is one explicit, off-by-default switch: §7.
+
+Re-verified on 2026-09-19 against the real `/root/Audio` autoload, the real scenes and a real
+mission, with nothing armed: both `.ogg` files present and decoding to the exact recorded
+durations, both refused for `commercialUseUnverified` (**not** `fileMissing`), no
+`AudioStreamPlayer` anywhere in the tree holding a music stream in the menu, the house, the
+mission or four room transitions later, effects and spoken English unaffected, and Mission 01
+played end to end silent. `game/tests/smoke_audio_silent_build.gd`; transcript in
+`docs/ORIGINAL_MUSIC_INTEGRATION.md` §10.1.
 
 The build remains **silent-safe**, and that is a tested property rather than a hope:
 
@@ -405,6 +418,20 @@ Arming it pushes an unmissable warning naming the track and how to disarm, and e
 `unverified_music_allowed(trackId, reason)`. `test_audio_music_binder.gd` asserts that nothing in
 this repository arms it, that it cannot soften the gate, and that it cannot resurrect a denied or
 missing track.
+
+⚠️ **Two things to know before you run the command above** (both from the 2026-09-19 rights audit,
+detail in `docs/ORIGINAL_MUSIC_INTEGRATION.md` §10.2–10.3):
+
+- **`smoke_audio_shipping.gd` fails when you pass the flag.** It installs its own `AudioDirector`
+  alongside the `Audio` autoload, so the flag arms *two* directors and every track plays doubled.
+  Run it without the flag — it arms its own director internally and passes — or use the marker
+  file. This is a harness fault; the production path is unaffected.
+- **Android's `command_line/extra_args` reaches `has_cli_flag()`.** Godot writes that preset field
+  into `assets/_cl_` in the APK, and it is merged into `OS.get_cmdline_args()`. It is empty today
+  and the shipped APK's `_cl_` contains no such argument, but the flag is one committed line in
+  `export_presets.cfg` away from arming unverified music in a distributed Android build. Narrowing
+  `has_cli_flag()` to `OS.get_cmdline_user_args()` would close that route without affecting the
+  documented `-- --allow-unverified-music` form.
 
 **It is not a substitute for step 4 of §5.** Once `commercialUse` is `"verified"` this file is
 dead code and should be deleted.

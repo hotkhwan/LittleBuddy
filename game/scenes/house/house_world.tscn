@@ -17,13 +17,29 @@
 ; Nothing is enabled here that section 7 forbids: no GI/SDFGI/VoxelGI, no SSAO,
 ; no SSIL, no SSR, no glow, no volumetric fog, no depth of field, no colour
 ; correction. Every one of those is off by default and must stay off.
+;
+; ---------------------------------------------------------------------------
+; These four numbers, and the light below them, are the SAME values held as
+; constants in `scripts/house/lighting.gd::AFTER`, with the reasoning for each
+; written out there and in `docs/LIGHTING_PASS.md`. They are duplicated on
+; purpose -- the scene must look right in the editor without a script running --
+; and `tests/cases/test_lighting_house.gd` fails if the two copies ever drift.
+;
+; Ambient is 0.62 -> 0.52 and is no longer `cream`: `cream` fill on `cream`
+; walls can only ever produce more cream, which is the "milky" look stated as a
+; colour identity. It is now CREAM -> PEACH at 0.35 (#FFEAD5), which is section
+; 3's "never darken by value alone, always mix toward `ink`" -- so the shaded
+; side of every form goes warm instead of going pale.
+;
+; The background is deeper too. As the brightest thing in frame it made the room
+; read as a cut-out held up in front of a light box.
 [sub_resource type="Environment" id="Environment_house"]
 background_mode = 1
 tonemap_mode = 0
-background_color = Color(0.921, 0.877, 0.806, 1)
+background_color = Color(0.8958, 0.852, 0.7814, 1)
 ambient_light_source = 2
-ambient_light_color = Color(1, 0.965, 0.898, 1)
-ambient_light_energy = 0.62
+ambient_light_color = Color(1, 0.9167, 0.8336, 1)
+ambient_light_energy = 0.52
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_buddy"]
 radius = 0.22
@@ -36,17 +52,50 @@ script = ExtResource("1")
 environment = SubResource("Environment_house")
 
 ; Exactly one, and never more (section 7, non-negotiable; `test_house_world.gd`
-; pins the count). Mid-morning sun from the upper left, in front of the camera:
-; rotation (-50 deg, -34 deg, 0), so shadows fall down-right and away, across the
-; open front of the room where they can be seen.
+; pins the count).
 ;
-; Shadows are ON, soft and half-strength. Section 7: "Shadows are what ground
-; objects on the floor" -- with them off, every prop in this house floated.
+; ## The sun was under the floor, and had been since this scene was authored
+;
+; `Transform3D(...)` takes its nine basis values in ROW-major order, and the
+; matrix that used to be here --
+;   Transform3D(0.7826, 0, 0.6225, 0.4769, 0.6428, -0.5995, -0.4001, 0.766, 0.5031, ...)
+; -- was written as though they were the x, y and z AXES, i.e. columns. The
+; transpose of a rotation is another perfectly valid rotation, so nothing
+; errored and nothing warned. Read back live off the running light, the house
+; was lit from (0.623, -0.599, 0.503): elevation -36.8 degrees, azimuth +51.1 --
+; a sun BELOW the floor, shining upwards. The comment that used to sit here
+; ("mid-morning sun from the upper left, rotation (-50, -34, 0)") described a
+; light this file did not contain, and `WORLD_POLISH_PASS.md` section 8 and the
+; towel note in `house_layout.gd` both read the same matrix the same wrong way.
+;
+; Every upward-facing surface in the house -- floor, worktop, table, bed, sill,
+; and the top of every head -- therefore received ZERO key light and sat at flat
+; ambient, while every downward-facing one got the full key. That is the whole
+; of the "milky, no depth, nothing has weight" complaint.
+;
+; This is elevation 48, azimuth +61, written out the way the constructor really
+; reads it (rows). `scripts/house/lighting.gd` states the same rotation as two
+; angles, and `tests/cases/test_lighting_house.gd` fails if this matrix stops
+; agreeing with them -- including if it is ever transposed again.
+;
+; Azimuth stays POSITIVE, so the sun stays on the side it has always appeared to
+; be on and no room's composition flips: the `-X` wall (screen left, the one the
+; bathroom towel hangs on) is the lit one, the `+X` wall sits at pure ambient,
+; and the back wall lands between them. Three walls, three values.
+;
+; Key energy 1.12 -> 0.61 is exposure, not mood. With the sun under the floor
+; only two planes caught it and both clipped; lift it and five times as much
+; surface catches it, so the old energy would have blown the room out. 24.5% of
+; the kitchen frame used to sit at or above 0.97 luminance. It is now 0.1%.
+;
+; Shadows stay OFF (section 7 amendment, 2026-09-18, owner decision taken on a
+; physical iPhone). Nothing in this pass re-enables them: the settings below are
+; kept, unchanged and inert, exactly as that amendment asks.
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.7826, 0, 0.6225, 0.4769, 0.6428, -0.5995, -0.4001, 0.766, 0.5031, 0, 6, 3)
-light_color = Color(1, 0.961, 0.898, 1)
-light_energy = 1.12
-light_angular_distance = 1.2
+transform = Transform3D(0.48481, -0.649971, 0.585237, 0, 0.669131, 0.743145, -0.87462, -0.36028, 0.324398, 0, 6, 3)
+light_color = Color(1, 0.93464, 0.85752, 1)
+light_energy = 0.61
+light_angular_distance = 2.4
 shadow_enabled = false
 shadow_bias = 0.06
 shadow_normal_bias = 0.6

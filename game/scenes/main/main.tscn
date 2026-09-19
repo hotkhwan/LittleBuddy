@@ -11,12 +11,24 @@
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_peach_down.tres" id="9"]
 [ext_resource type="Script" path="res://scripts/character/toddler_view.gd" id="10"]
 
+; The menu's fill, matched to the house's (`scripts/house/lighting.gd::AFTER`,
+; and `scenes/house/house_world.tscn`) so that pressing Play is not a jump in
+; colour temperature. It was `#F5F0E5` at 0.55 -- a desaturated near-neutral
+; that is in no part of ART_BIBLE.md section 3's palette -- and is now
+; CREAM -> PEACH at 0.35, the same warm fill the rooms use.
+;
+; The menu's own SUN is deliberately left alone. Its matrix is correct (it reads
+; back as elevation 51.3 degrees, azimuth +34.0, above the horizon, unlike the
+; house's, which was transposed and pointing up from under the floor), it is an
+; outdoor scene with its own framing, and its shadow is cast on one large open
+; plane rather than across pastel walls, which is what the section 7 amendment
+; of 2026-09-18 was about. Only the colour is shared.
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
 background_color = Color(0.604, 0.753, 0.851, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.96, 0.94, 0.9, 1)
-ambient_light_energy = 0.55
+ambient_light_color = Color(1, 0.9167, 0.8336, 1)
+ambient_light_energy = 0.52
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_1"]
 size = Vector2(40, 40)
@@ -93,7 +105,8 @@ fov = 50.0
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.8296, -0.4356, 0.3494, 0, 0.6248, 0.7808, -0.5583, -0.6479, 0.5185, 0, 3, 0)
-light_color = Color(1, 0.976, 0.925, 1)
+light_color = Color(1, 0.93464, 0.85752, 1)
+light_energy = 0.92
 shadow_enabled = true
 shadow_opacity = 0.45
 directional_shadow_max_distance = 18.0

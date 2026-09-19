@@ -38,6 +38,7 @@ const Follower := preload("res://scripts/care/child_follower.gd")
 const Life := preload("res://scripts/care/child_life.gd")
 const ActivityTargetScript := preload("res://scripts/navigation/activity_target.gd")
 const InteractionPointScript := preload("res://scripts/navigation/interaction_point.gd")
+const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 
 ## Emitted when the child's dominant need changes, so a mission can react without
 ## polling. Empty string means content.
@@ -58,14 +59,30 @@ signal life_changed(clip: String)
 ## her chest, which is where the close-up camera now frames it. Height alone
 ## cannot solve an overlap in depth.
 ##
-## So the bubble also steps SIDEWAYS, away from whichever side she is on. That
-## is a direction the actor already knows: `_find_caregiver()` exists for the
-## attention turn. When she is not there it falls back to screen-left, over the
-## open floor a room always has.
+## So the bubble also steps SIDEWAYS, away from whichever side she is on -- but
+## only while she is actually in the way. See `_place_bubble()`, which is where
+## the two things the first version of this got wrong are written down.
 const BUBBLE_HEIGHT: float = 1.02
-## How far to the side, in metres. Wide enough to clear her shoulder at the
-## close-up framing, short enough that the bubble still reads as HIS.
-const BUBBLE_SIDE_STEP: float = 0.52
+
+## Half of Aliz's silhouette, in metres, hair included.
+##
+## Measured off the verification shots rather than chosen: at the close-up the
+## beat composes she renders ~0.54 m wide including hair, and her arms swing a
+## little wider than that. `docs/BUBBLE_VERIFICATION.md` has the frames.
+const CAREGIVER_HALF_WIDTH: float = 0.30
+## Daylight left between the line and her, once neither is overlapping. Small
+## enough that the bubble stays near the child it belongs to, large enough that
+## "clear of her" survives a step of her walk cycle.
+const BUBBLE_CLEAR_MARGIN: float = 0.12
+## Used when the rendered width cannot be measured -- no text yet, or a build
+## whose text server has not shaped the line. It is the width of the longest need
+## line (`"I need changing."`) halved, so the fallback errs wide.
+const BUBBLE_FALLBACK_HALF_WIDTH: float = 0.42
+## Inside this, "which side is she on" has no answer worth acting on, so the last
+## answer is kept. Without it the bubble would jump across him the instant she
+## crossed his centre line -- and standing dead behind him is exactly what the
+## beat makes her do.
+const BUBBLE_SIDE_DEADZONE: float = 0.12
 const BUBBLE_FONT_SIZE: int = 56
 const BUBBLE_PIXEL_SIZE: float = 0.0016
 
@@ -77,6 +94,13 @@ var _activity: String = Present.ACTIVITY_IDLE
 var _activity_detail: String = ""
 var _need: String = ""
 var _built: bool = false
+
+## -- Bubble placement ----------------------------------------------------------
+## Which side of Bunny the line steps towards: -1 screen-left, +1 screen-right.
+## Remembered rather than recomputed, so that while the caregiver is standing
+## dead behind him -- which is where the beat puts her -- the line stays on the
+## side it was already on instead of having to invent one.
+var _bubble_side: float = -1.0
 
 ## -- Accompaniment -------------------------------------------------------------
 var _follow_state: String = Follower.STATE_WAITING
@@ -100,7 +124,38 @@ var _looked_for_caregiver: bool = false
 
 
 func _ready() -> void:
-	build()
+	# DEFERRED, and the deferral is a shipping-path fix rather than a style choice.
+	#
+	# `build()` ends up asking for the caregiver, which walks up to `HouseWorld`
+	# and calls `get_character()` -- a LAZY getter that begins `build_world()`.
+	# Run straight from `_ready()`, that started assembling the world while the
+	# bedroom node was still setting up its own children. Godot refuses
+	# `add_child()` in that state, so `room.gd` had BOTH of its calls rejected,
+	# marked itself built, and left its Geometry parented to nothing: THE BEDROOM
+	# RENDERED AS AN EMPTY CREAM VOID with the characters floating in it.
+	#
+	# One frame later the tree has settled and every lookup answers properly.
+	# Nothing waits on this: `build()` is idempotent and every public method
+	# calls it first, so anything that arrives sooner builds the actor itself.
+	build.call_deferred()
+
+
+## `build()` can legitimately run OUTSIDE the tree: `get_activity_target()`
+## reaches it while `house_world.place_in_room()` is still assembling the room,
+## and the actor may not be parented at all yet.
+##
+## `_find_caregiver()` LATCHES its miss -- one failed walk up the ancestry and it
+## answers null for the rest of the session, by design, so a bare Bunny does not
+## re-search every frame. Those two together mean an actor built a moment too
+## early would never find Aliz again: no attention turn, and a need bubble that
+## never dodges anybody. Entering the tree is the first moment the ancestry is
+## real, so the miss is retired and the line re-placed.
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_ENTER_TREE or not _built:
+		return
+	if _caregiver == null:
+		_looked_for_caregiver = false
+	_place_bubble()
 
 
 ## Idempotent and callable before `_ready()`, for the same reason every other
@@ -127,8 +182,11 @@ func build() -> void:
 	# Billboarded: the child is small and may be approached from any side, and a
 	# line the player has to walk around to read is not a signal.
 	_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_bubble.position = Vector3(-BUBBLE_SIDE_STEP, BUBBLE_HEIGHT, 0.0)
 	add_child(_bubble)
+	# Over his own head, which is where it belongs when there is nobody to dodge.
+	# `_refresh()` below, and `live()` every frame after that, move it aside only
+	# if the caregiver turns out to be in the way.
+	_apply_bubble_offset(Vector3.ZERO)
 
 	# A pose cut is also a RIG cut: only the rigged export has a skeleton, so the
 	# player that drives Bunny's body belongs to whichever pose is on screen.
@@ -352,10 +410,185 @@ func live(delta: float) -> void:
 		if _happy_left == 0.0:
 			_apply_life()
 	_attend_to_caregiver(delta)
+	# The bubble dodges the CAREGIVER, and she walks. Re-placing it only when the
+	# child refreshed -- which is what the first version did -- meant the side was
+	# picked once at `build()` and then never again, so it never actually dodged
+	# anything. It is a dot product and a basis multiply, and only while the line
+	# is on screen at all.
+	if _bubble != null and _bubble.visible:
+		_place_bubble()
 	# One-shot clips (`eat`, `drink`) end by themselves; re-applying picks the
 	# next spoonful up, or drops back to the idle, without a signal round trip.
 	if _player != null and not _player.is_playing():
 		_apply_life()
+
+
+## -- Where the need bubble goes --------------------------------------------------
+##
+## Steps the line to the side Aliz is NOT on, so a sentence about Bunny never
+## reads as coming out of her chest.
+##
+## ## The two things the first version got wrong, both now photographed
+##
+## `docs/BUBBLE_VERIFICATION.md` has the before pictures. Neither was a tuning
+## problem; both were the rule being applied in the wrong place.
+##
+##   1. **World in, LOCAL out.** It compared the caregiver's WORLD x against
+##      Bunny's, then wrote the answer into `_bubble.position`, which is the
+##      child's LOCAL frame. In the bedroom Bunny is authored yawed 180 degrees,
+##      so local +x IS world -x and the sign came out backwards: told she was on
+##      his left, the bubble moved onto her.
+##      `docs/shots/bubble_BEFORE_left_ipad.png` is the line sitting squarely on
+##      her dress.
+##   2. **Never re-evaluated.** It ran only from `_refresh()` -- a need change, an
+##      activity change -- and Aliz walking over is none of those. So the side was
+##      decided once, at `build()`, against wherever she happened to be spawned,
+##      and then never moved again for the rest of the session. The five
+##      `bubble_BEFORE_*` shots are five different stagings with the line in the
+##      identical spot, to the centimetre.
+##
+## So: the side is chosen along the CAMERA's horizontal axis (which is what
+## "beside her on screen" actually means), the result is converted into this
+## node's own frame before it is written, and `live()` re-runs it every frame
+## while the bubble is up.
+##
+## ## It steps exactly as far as it has to, and no further
+##
+## Stepping aside by a FIXED amount was the other half of the bad picture: with
+## Aliz already a stride to one side, a bubble shoved the other way lands over
+## bare floor with the child nowhere near it, and a line that far from anybody
+## belongs to nobody. So the rule is stated as the thing actually wanted --
+## `_side_clearance()` metres between the line's centre and hers -- and the step
+## is whatever is left over:
+##
+##     step = max(0, clearance - |how far to the side she already is|)
+##
+## which is continuous. She walks in from the side and the line slides off his
+## head only as she closes; she stands directly behind him and it is at full
+## stretch; she wanders away and it settles back over his own head with no
+## threshold to flicker across. `docs/shots/bubble_abeam_*.png` is the far end of
+## that and `docs/shots/bubble_front_*.png` the near one.
+##
+## `clearance` is measured, not fixed, because the need lines are not all one
+## width: "I'm hungry!" renders ~0.54 m wide and "I need changing." ~0.76 m, and a
+## step that clears the short one leaves the long one lying across her.
+## `docs/shots/bubble_longline_*.png` is that case.
+func _place_bubble() -> void:
+	if _bubble == null:
+		return
+	var right: Vector3 = _screen_right()
+	var lateral: Variant = _caregiver_lateral(right)
+	if lateral == null:
+		# Nobody to dodge, which is a normal answer: Bunny is instantiated bare in
+		# several tests, and over his own head is where the line belongs then.
+		_apply_bubble_offset(Vector3.ZERO)
+		return
+
+	var offset: float = float(lateral)
+	if absf(offset) > BUBBLE_SIDE_DEADZONE:
+		_bubble_side = -signf(offset)
+	var step: float = maxf(_side_clearance() - absf(offset), 0.0)
+	_apply_bubble_offset(right * (_bubble_side * step))
+
+
+## How much room the line needs beside the caregiver's centre, in metres.
+func _side_clearance() -> float:
+	return CAREGIVER_HALF_WIDTH + _bubble_half_width() + BUBBLE_CLEAR_MARGIN
+
+
+## Half the rendered width of the line that is on the bubble right now, in metres.
+##
+## Shaped by the text server rather than estimated from the character count, so a
+## font or a `pixel_size` change cannot silently invalidate a hard-coded number.
+##
+## NOT `Label3D.get_aabb()`, which was the obvious answer and is wrong here: it
+## reports the last mesh the renderer BUILT, and a headless run never builds one.
+## It answers zero there, every line measures the same, and the rule quietly
+## degrades to a constant in exactly the environment the tests run in --
+## `test_bubble_placement.gd` caught that on its first run.
+func _bubble_half_width() -> float:
+	if _bubble == null or _bubble.text.strip_edges().is_empty():
+		return BUBBLE_FALLBACK_HALF_WIDTH
+	var font: Font = _bubble.font if _bubble.font != null else ThemeDB.fallback_font
+	if font == null:
+		return BUBBLE_FALLBACK_HALF_WIDTH
+	var shaped: float = font.get_string_size(
+		_bubble.text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, _bubble.font_size).x
+	# The outline is drawn OUTSIDE the glyphs, on both sides.
+	var width: float = (shaped + float(_bubble.outline_size) * 2.0) * _bubble.pixel_size
+	if not is_finite(width) or width < 0.05:
+		return BUBBLE_FALLBACK_HALF_WIDTH
+	return width * 0.5
+
+
+## How far the caregiver is to one side of Bunny ON SCREEN, in metres: negative
+## screen-left, positive screen-right. Null when there is nobody to dodge.
+##
+## Read through `SpatialUtil`, not through `global_position`.
+##
+## `build()` legitimately runs OUTSIDE the tree -- `get_activity_target()` reaches
+## it while `house_world.place_in_room()` is still assembling the room -- and
+## `Node3D.global_position` asserts `is_inside_tree()` there, logs an error and
+## quietly returns the origin. That both floods the log and answers "she is at
+## (0,0,0)", which is a wrong answer rather than no answer. `spatial_util.gd`
+## exists for precisely this and accumulates the parent transforms by hand, so the
+## side is correct even before the actor is parented.
+func _caregiver_lateral(right: Vector3) -> Variant:
+	var caregiver: Node3D = _find_caregiver()
+	if caregiver == null or not is_instance_valid(caregiver):
+		return null
+	var to_her: Vector3 = SpatialUtil.world_position(caregiver) - SpatialUtil.world_position(self)
+	return to_her.dot(right)
+
+
+## The world direction that points to the RIGHT of the frame, flattened onto the
+## floor.
+##
+## Asked of whichever camera is rendering rather than assumed to be world +x. It
+## happens to be +x today -- every room authors `yaw = 0` -- but "which side of
+## the screen is she on" is a question about the camera, and a house that ever
+## framed a room from another angle would otherwise silently start putting the
+## bubble on the wrong side again. `Vector3.RIGHT` is the same answer at yaw 0,
+## so the fallback for "no camera" is not a different rule.
+func _screen_right() -> Vector3:
+	if not is_inside_tree():
+		return Vector3.RIGHT
+	var viewport: Viewport = get_viewport()
+	var camera: Camera3D = viewport.get_camera_3d() if viewport != null else null
+	if camera == null or not camera.is_inside_tree():
+		return Vector3.RIGHT
+	var right: Vector3 = camera.global_transform.basis.x
+	right.y = 0.0
+	if right.length_squared() < 0.0001:
+		return Vector3.RIGHT
+	return right.normalized()
+
+
+## Writes a WORLD-space offset into the bubble's LOCAL position, which is the
+## conversion the first version was missing. Yaw-only in practice, so this is an
+## exact inverse rather than an approximation.
+func _apply_bubble_offset(world_offset: Vector3) -> void:
+	if _bubble == null:
+		return
+	var wanted: Vector3 = world_offset + Vector3(0.0, BUBBLE_HEIGHT, 0.0)
+	_bubble.position = SpatialUtil.world_transform(self).basis.inverse() * wanted
+
+
+## The bubble node, so a test or a screenshot harness can measure the thing on
+## screen rather than a number this file agreed with itself about.
+func get_need_bubble() -> Label3D:
+	build()
+	return _bubble
+
+
+## Where the bubble sits relative to Bunny in WORLD metres -- which is the frame
+## the placement rule reasons in, and the frame the bug was in. Positive x is
+## world-right, which at every room's authored `yaw = 0` is screen-right.
+func get_bubble_world_offset() -> Vector3:
+	build()
+	if _bubble == null:
+		return Vector3.ZERO
+	return SpatialUtil.world_transform(self).basis * _bubble.position
 
 
 ## Turns Bunny to watch Aliz, and back again when she goes.
@@ -370,36 +603,24 @@ func live(delta: float) -> void:
 ##
 ## The per-frame turn is procedural, and is the only procedural motion in this
 ## pass. It steps an angle towards an angle; it does not sway, bob or breathe.
-## Steps the need bubble to the side Aliz is NOT on, so a line about Bunny never
-## reads as coming out of her chest. Cheap, and re-evaluated whenever the child
-## refreshes rather than every frame -- she does not teleport.
-func _place_bubble() -> void:
-	if _bubble == null:
-		return
-	var side: float = -1.0
-	var caregiver: Node3D = _find_caregiver()
-	if caregiver != null and is_instance_valid(caregiver):
-		# If she is to his left, put it on his right, and the other way round.
-		var dx: float = caregiver.global_position.x - global_position.x
-		if absf(dx) > 0.05:
-			side = 1.0 if dx < 0.0 else -1.0
-	_bubble.position = Vector3(side * BUBBLE_SIDE_STEP, BUBBLE_HEIGHT, 0.0)
-
-
 func _attend_to_caregiver(delta: float) -> void:
 	if _wrapper == null or _walking or _attending:
 		return
 	var caregiver: Node3D = _find_caregiver()
 	var wanted: float = 0.0
 	if caregiver != null:
-		var to_her: Vector3 = caregiver.global_position - global_position
+		# Through `SpatialUtil` for the reason `_caregiver_lateral()` documents:
+		# out of the tree `global_position` answers (0, 0, 0) rather than refusing,
+		# so Bunny would turn to watch the origin.
+		var to_her: Vector3 = SpatialUtil.world_position(caregiver) \
+				- SpatialUtil.world_position(self)
 		var flat: float = Vector2(to_her.x, to_her.z).length()
 		_watching = Life.should_attend(flat, _watching)
 		if _watching and flat > 0.01:
 			# The model faces -Z at rest, so the yaw that points it at her is the
 			# angle of the vector to her measured from -Z. Local, so this node's own
 			# rotation is already accounted for.
-			var local: Vector3 = global_transform.basis.inverse() * to_her
+			var local: Vector3 = SpatialUtil.world_transform(self).basis.inverse() * to_her
 			wanted = Life.attend_yaw(rad_to_deg(atan2(-local.x, -local.z)))
 	else:
 		_watching = false
@@ -416,10 +637,16 @@ func _attend_to_caregiver(delta: float) -> void:
 func _find_caregiver() -> Node3D:
 	if _caregiver != null and is_instance_valid(_caregiver):
 		return _caregiver
+	var walker: Node = get_parent()
+	if walker == null:
+		# There was nothing to search, so nothing was learned. Latching here is
+		# what made an actor built a moment before it was parented -- which
+		# `get_activity_target()` really does -- stay caregiver-less for the rest
+		# of the session: no attention turn, and a bubble that dodges nobody.
+		return null
 	if _looked_for_caregiver and _caregiver == null:
 		return null
 	_looked_for_caregiver = true
-	var walker: Node = get_parent()
 	while walker != null:
 		if walker.has_method("get_character"):
 			var found: Variant = walker.call("get_character")
@@ -596,12 +823,15 @@ func _refresh() -> void:
 		_wrapper.call("set_pose", pose)
 		activity_changed.emit(String(described["activity"]), pose)
 
-	_place_bubble()
 	if _bubble != null:
 		# Nothing to say when content: an empty bubble is quieter than a cheerful
 		# one, and the child should only interrupt when it wants something.
 		_bubble.visible = not _need.is_empty()
 		_bubble.text = String(described["line"])
+	# AFTER the text, not before it. The step aside is sized from the line's
+	# rendered width (`_bubble_half_width()`), so placing first would measure the
+	# PREVIOUS need's line -- and the two are not the same width.
+	_place_bubble()
 
 	# The body says the same thing the bubble does. A line that reads "I'm
 	# hungry!" over a child standing perfectly still is the statue problem in one

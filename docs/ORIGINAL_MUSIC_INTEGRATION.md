@@ -397,3 +397,212 @@ reads.
   `ResourceLoader.load()` returns null for them (verified). `AudioDirector._decode_source_file()`
   decodes the source `.ogg` directly in that case, mirroring what `wav_loader.gd` already does
   for the SFX. Both paths are proven by the smoke.
+
+---
+
+## 10. Rights readiness — re-verification, 2026-09-19
+
+A second pass over the *paperwork*, not the code. Nothing in `game/scripts/`,
+`game/audio/`, `game/content/audio/manifest.json`, `project.godot`, `export_presets.cfg` or
+`scenes/` was changed. What follows is what is now proven, what leaks were looked for, and the
+one question engineering is not allowed to answer.
+
+**The owner-facing sheet is `docs/MUSIC_RIGHTS_CHECKLIST.md`.** Ten minutes, one question per
+line, blocking answers marked. Until it is filled in, the manifest rows stay `"pending"`.
+
+### 10.1 A NORMAL build plays no music — proven, and a pass
+
+`game/tests/smoke_audio_silent_build.gd` was added to close a real gap: `smoke_audio_shipping.gd`
+arms the override *before* it loads a single scene, so everything it shows from the menu onwards
+is a preview. This file is the other half. It uses the **real `/root/Audio` autoload** (not a
+fixture director), arms nothing, refuses to run at all if the operator has armed the override,
+and asserts that the silence has the right cause and no side effects.
+
+```
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path game \
+    --script res://tests/smoke_audio_silent_build.gd
+  → exit 0
+
+=== proving the SHIPPING DEFAULT: unverified music is silent ===
+1. licence override: disarmed (unverified music is silent, which is the shipping default)
+   /root/Audio present, allow_unverified_music=false
+2. littleDaysTheme -> res://audio/music/little_days_theme.ogg  present=true  imported=true  decodes=true  92.72 s (manifest 92.72 s)
+2. hungryBunny -> res://audio/music/hungry_bunny.ogg  present=true  imported=true  decodes=true  64.40 s (manifest 64.40 s)
+3. littleDaysTheme: commercialUse=pending licenseEvidence=OWNER TO CONFIRM -> is_playable=false refusal=commercialUseUnverified
+3. hungryBunny: commercialUse=pending licenseEvidence=OWNER TO CONFIRM -> is_playable=false refusal=commercialUseUnverified
+WARNING: AudioDirector refused music track 'littleDaysTheme' (commercialUseUnverified), and there IS a file at res://audio/music/little_days_theme.ogg. …
+4. main.tscn in the tree -> state 'menu', wants '', playing ''
+5. house_world.tscn in the tree -> state 'house'
+WARNING: AudioDirector refused music track 'hungryBunny' (commercialUseUnverified), and there IS a file at res://audio/music/hungry_bunny.ogg. …
+6. mission 'imHungry' running -> state 'miniGame'
+7. 4 room transitions completed while silent
+8. sound is alive: Sfx 'star_earned' available=true, TtsService speaking=true
+9. track_unavailable reasons: { "littleDaysTheme": "commercialUseUnverified", "hungryBunny": "commercialUseUnverified" }
+
+SMOKE PASS -- a normal build plays NO music: both files are present and
+              decodable, the licence gate refuses them for the paperwork,
+              no AudioStreamPlayer ever holds a track, and the mission,
+              the room transitions, the effects and the English all work.
+```
+
+Why each line is worth having:
+
+- **line 2** — the files are on disk *and decode to the exact duration the manifest recorded*.
+  Silence caused by a broken resource path would look identical from the outside; this rules it
+  out. Nothing asks the director for a stream, because asking is the one thing a silent-build
+  test must not do.
+- **line 3** — the refusal is `commercialUseUnverified`, never `fileMissing`. The silence is the
+  paperwork.
+- **lines 4-7** — `_assert_silent()` walks the whole tree at every stage and fails if *any*
+  `AudioStreamPlayer` anywhere is holding a stream longer than five seconds. Both music voices
+  are checked for a null `stream` and a false `playing` as well.
+- **line 8** — the silence is music-only. The effects are loaded and `TtsService` speaks; a
+  build that had gone quiet altogether would pass a naive "no music" check.
+- **line 9** — the refusal is *reported*, once per track, so a diagnostics panel has something
+  to show. `unverified_music_allowed` firing at all fails the run, as does `track_started`.
+
+The two engine `WARNING`s are the designed output: a licence refusal with a file present is the
+one audio mistake that could reach a store, so it is warned about exactly once per track. **No
+audio-related engine error occurs.** (The run does print two unrelated `ERROR: Parent node is
+busy setting up children` lines from `scripts/house/room.gd` during world construction. They
+pre-date this work, appear identically in `smoke_mission01.gd`, and have nothing to do with
+audio — but they are real and someone should own them.)
+
+Supporting evidence from the rest of the suite, same shipping defaults:
+
+```
+… --script res://tests/run_tests.gd        → PASS - 116 case(s), 0 failure(s)
+… --script res://tests/smoke_mission01.gd  → SMOKE PASS
+     1. fresh profile opened: imHungry
+     4. Bunny's hunger after: 0.0 (was 55.0)
+     6. saved: completed=true stars=3/3  lifetime stars=10
+```
+
+Mission 01 plays end to end, hunger 55 → 0, three stars awarded — with no music at any point.
+The game is not degraded by silence; it is complete in it.
+
+### 10.2 WITH the override armed the music genuinely plays
+
+Both documented arming paths were exercised on this machine and then disarmed.
+
+**The marker file.** `user://OWNER_ACKNOWLEDGED_UNVERIFIED_MUSIC` created by hand at
+`~/Library/Application Support/Godot/app_userdata/Little Days/`:
+
+```
+1. licence override: armed by the marker file user://OWNER_ACKNOWLEDGED_UNVERIFIED_MUSIC
+```
+
+Deleting the file restored `disarmed` on the next run. The marker is **not present** on this
+machine now.
+
+**The command-line flag,** and the live players it produces — the real autoload, the real Ogg
+streams, the real `playing` flag:
+
+```
+… --script res://tests/smoke_audio_shipping.gd -- --allow-unverified-music
+
+1. licence override: armed by --allow-unverified-music on the command line
+   shipping default: silent in every state, both .ogg files present, 0 errors
+2. licence override ARMED (by the operator, on the command line or via the marker file).
+   refuses: MusicManifest.is_playable() is false for both tracks.
+   Overridden tracks: ["littleDaysTheme", "hungryBunny"]
+   /root/Audio/MusicVoice1  AudioStreamOggVorbis 64.40 s  playing=true  volume=-26.0 dB
+```
+
+Run **without** the flag (the arming then done inside the script) the same smoke passes outright:
+
+```
+… --script res://tests/smoke_audio_shipping.gd   → SMOKE PASS, exit 0
+   live player: …/MusicVoice0  class=AudioStreamOggVorbis  from=little_days_theme.ogg  playing=true  -19.4 dB  pos=0.56 s  length=92.72 s
+   live player: …/MusicVoice1  class=AudioStreamOggVorbis  from=hungry_bunny.ogg       playing=true  -26.0 dB  pos=0.93 s  length=64.40 s
+   9. mid-crossfade menu -> miniGame: ["littleDaysTheme @ -15.3 dB", "hungryBunny @ -26.1 dB"]
+```
+
+Arming the override never changed `MusicManifest.is_playable()`, which stayed `false` for both
+tracks in every run above. The gate was not softened; only the director's willingness to assign
+a stream changed.
+
+#### ⚠️ A defect this found in `smoke_audio_shipping.gd`
+
+**Run with the documented `-- --allow-unverified-music` flag, that smoke now FAILS (exit 1)** with
+four variations of *"2 players hold a music stream"*. It is a harness fault, not a production
+one, and it was introduced by the very change §7 asked for:
+
+- the file installs its own `AudioDirector` and names it `Audio` — written before `Audio` existed
+  as an autoload, when that *was* the real boot path;
+- now that `project.godot` registers the autoload, `add_child()` finds the name taken and renames
+  the copy to `@Node@2`, so **two directors are live**;
+- the flag arms *both* of them, so both play `hungryBunny` at once and the "exactly one player"
+  assertions fail. (Without the flag only the script's own director is armed, the autoload stays
+  silent, and the file passes — which is why this went unnoticed.)
+
+Consequences: the arming command printed in this document and in `docs/AUDIO_MANIFEST.md` §7 fails
+if you follow it literally, and a device preview driven that way would play every track doubled.
+The fix is one the author should make, not this pass: use the existing `/root/Audio` rather than
+installing a second director, as `smoke_audio_silent_build.gd` does.
+
+### 10.3 Can the override leak into a shipped build?
+
+Every route was checked. **Today: no. One route exists that a single committed line could open,
+and it is worth naming.**
+
+| Route | Finding |
+|---|---|
+| `allow_unverified_music` default | `false`. `_ready()` only ever sets it from `MusicLicenceOverride.is_armed()`. |
+| Anything assigning it `true` | Only `game/tests/` (three files). Nothing in `game/scripts/`. |
+| A scene or resource carrying a property override | None. No `.tscn`/`.tres` in the project references `audio_director.gd`; the autoload is registered as a bare script path, which has nowhere to store one. |
+| `project.godot` | No setting reaches it. No `use_custom_user_dir`, no run arguments. |
+| The marker file being committed | Impossible — it lives in `user://`, outside the repository. Verified absent on this machine. |
+| A tool or CI script arming it | None. `tools/` and `.claude/` contain no reference. |
+| **Android: embedded command line** | ⚠️ **A real route, clean today.** Godot writes `command_line/extra_args` into `assets/_cl_` in the APK and merges it into `OS.get_cmdline_args()`, which `has_cli_flag()` reads. The preset holds `command_line/extra_args=""`; the shipped APK's `_cl_` decodes to six engine arguments (`--xr_mode_regular`, `--xr-mode off`, `--fullscreen`, `--background_color #000000`) and **none is the flag**. But one line added to a *committed* file would arm unverified music in a distributed Android build, with only a `push_warning` nobody reads on a device to say so. |
+| iOS: embedded command line | No such facility. No `_cl_` in `LittleBuddy.pck`, and the iOS preset has no command-line option. |
+| iOS: launch arguments | Only via an Xcode scheme, which applies to a debug run from a developer's Mac and never to an installed or TestFlight build. The generated scheme's `<CommandLineArguments>` is empty. |
+| iOS: a user creating the marker | Blocked by the preset: `user_data/accessible_from_files_app=false` and `user_data/accessible_from_itunes_sharing=false`, so the app's Documents directory is not exposed to Files.app or Finder sharing. |
+| Android: a user creating the marker | `user://` is app-private internal storage. Creating it needs `adb`/`run-as` against a debuggable build — a deliberate act with the device plugged in, not something a parent or child can do. |
+
+So the docstring's claim that "nothing in `project.godot`, `export_presets.cfg` or any committed
+file turns it on" is **true as written today, and one edit away from being false** on Android.
+Two cheap ways to make it structurally true, neither applied here:
+
+1. Narrow `has_cli_flag()` to `OS.get_cmdline_user_args()` only. The documented form is
+   `-- --allow-unverified-music`, which is exactly a user argument; `_cl_` arguments are engine
+   arguments and would stop being honoured. This closes the export route outright.
+2. Add a test that reads `game/export_presets.cfg` and fails if any `command_line/extra_args`
+   mentions the flag.
+
+### 10.4 The `.ogg` files DO ship, muted — and that is a rights question, not an engineering one
+
+The audio is inside both distributable artifacts. Verified by extracting the Android payload and
+finding the identical bytes inside the iOS pack:
+
+```
+build/android/LittleDays-debug.apk
+  1026889  assets/.godot/imported/hungry_bunny.ogg-71669c06af296d13b93520e87ac8c769.oggvorbisstr
+  1454181  assets/.godot/imported/little_days_theme.ogg-973cc9cc74c11adbaf4d31c744aa80ae.oggvorbisstr
+
+build/ios/LittleBuddy.pck   (8 176 864 bytes total)
+  hungry_bunny…oggvorbisstr       1026889 bytes, byte-identical, at offset 3 477 136
+  little_days_theme…oggvorbisstr  1454181 bytes, byte-identical, at offset 4 504 224
+```
+
+About 2.37 MiB of audio whose rights are not established, inside binaries intended for other
+people's devices, which will never make a sound. That is correct engineering — they are game
+assets and the licence gate is what keeps them quiet — but **distributing a copy of a work and
+performing it are different acts**, and the first may carry its own obligations.
+
+Engineering has deliberately **not** decided this. It is flagged in
+`docs/MUSIC_RIGHTS_CHECKLIST.md` for the owner, with both options laid out: accept it for a
+closed preview to invited families, or exclude `audio/music/*` from the export presets, which
+costs the game nothing because a missing file is a state the audio system is built to survive.
+
+### 10.5 Plainly, for the release owner
+
+**A normal Founder Preview build plays no music.** Not quietly, not intermittently — none, in
+every scene, on every platform, by design and now by proof. Nothing about that will change by
+rebuilding, re-exporting, or installing on a different device.
+
+To change it, one thing has to happen, and it is not a code change: fill in
+`docs/MUSIC_RIGHTS_CHECKLIST.md`, put the evidence in `docs/licences/music/<trackId>/`, and set
+those two rows to `"verified"` with a real `licenseEvidence` string. The most important question
+on that sheet is **which plan was active at the moment each track was generated**, because that
+is the fact that decides commercial rights and the one fact that cannot be recovered later.

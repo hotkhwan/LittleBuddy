@@ -59,14 +59,28 @@ func _run() -> void:
 	# `[autoload]` does: one director, named, directly under /root, installed before
 	# any scene. Adding the line to project.godot makes the rest of this file the
 	# game's real boot path rather than a simulation of it.
-	var director_script: GDScript = load(DIRECTOR_SCRIPT) as GDScript
-	if director_script == null:
-		return _die("cannot load %s" % DIRECTOR_SCRIPT)
-	_director = director_script.new()
-	_director.name = "Audio"
-	root.add_child(_director)
-	await process_frame
-	print("0. installed /root/Audio (%s)" % _director.get_class())
+	# ADOPT the real autoload if it is there, and only install one if it is not.
+	#
+	# This file predates the `Audio` autoload existing. It always installed its
+	# own director named "Audio" -- and once project.godot registered the real
+	# one, `add_child()` found the name taken, renamed the copy to `@Node@2`, and
+	# TWO directors ran at once. With `-- --allow-unverified-music` the flag armed
+	# both and every track played doubled, so the command printed in the audio
+	# docs failed if you followed it literally. Without the flag only this
+	# script's copy was armed and the autoload stayed silent, which is exactly why
+	# it went unnoticed.
+	_director = root.get_node_or_null("Audio")
+	if _director != null:
+		print("0. adopted the real /root/Audio autoload (%s)" % _director.get_class())
+	else:
+		var director_script: GDScript = load(DIRECTOR_SCRIPT) as GDScript
+		if director_script == null:
+			return _die("cannot load %s" % DIRECTOR_SCRIPT)
+		_director = director_script.new()
+		_director.name = "Audio"
+		root.add_child(_director)
+		await process_frame
+		print("0. installed /root/Audio (%s) -- no autoload present" % _director.get_class())
 
 	var binder: Node = _director.binder()
 	_check(binder != null,

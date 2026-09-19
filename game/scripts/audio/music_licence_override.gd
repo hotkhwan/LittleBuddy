@@ -83,14 +83,22 @@ static func is_armed() -> bool:
 	return has_cli_flag() or has_marker_file()
 
 
-## The `-- --allow-unverified-music` form. Both the user-args list (what comes
-## after `--`) and the raw args are checked, so it works whether the flag was
-## forwarded or passed directly to a stripped export.
+## The `-- --allow-unverified-music` form. USER ARGS ONLY -- everything after the
+## `--` separator -- and that restriction is the security boundary, not a detail.
+##
+## This used to fall back to `OS.get_cmdline_args()` as well, "so it works with a
+## stripped export". That was a hole. Godot writes an Android preset's
+## `command_line/extra_args` into `assets/_cl_` inside the APK and merges it into
+## `get_cmdline_args()` at startup -- and `export_presets.cfg` is a COMMITTED
+## file. One line there would have armed unverified music in a DISTRIBUTED build,
+## with nothing but a device-side `push_warning` to say so. The shipped APK's
+## `_cl_` was checked and holds only harmless engine args, so nothing leaked; the
+## route simply should not exist.
+##
+## Nothing is lost: the documented form is `-- --allow-unverified-music`, which
+## is exactly a user arg. A developer previewing on this machine is unaffected.
 static func has_cli_flag() -> bool:
 	for argument: String in OS.get_cmdline_user_args():
-		if argument.strip_edges() == CLI_FLAG:
-			return true
-	for argument: String in OS.get_cmdline_args():
 		if argument.strip_edges() == CLI_FLAG:
 			return true
 	return false

@@ -118,6 +118,8 @@ signal status_changed(message: String)
 @export var auto_validate_content: bool = true
 
 var _built: bool = false
+## True only while `build_world()` is part-way through. See the guard there.
+var _building: bool = false
 var _progression_mode: int = ProgressionMode.STORY
 ## Room ids Free Play may start in. Empty means "every room in the house", which
 ## is what an unplayed profile (`unlockedRooms: []`) must mean -- a child locked
@@ -255,6 +257,25 @@ func _notification(what: int) -> void:
 func build_world() -> void:
 	if _built:
 		return
+	# RE-ENTRANCY GUARD, and it is a shipping-path fix rather than tidiness.
+	#
+	# Almost every getter here begins `build_world()` so the world assembles
+	# itself on first use. That is fine until something calls one DURING tree
+	# construction: `child_actor.gd::_ready()` asked for the caregiver, which
+	# called `get_character()`, which started building the world while the
+	# bedroom node was still setting up its own children. Godot refuses
+	# `add_child()` in that state, so `room.gd` had BOTH of its calls rejected,
+	# marked itself built, and left its Geometry parented to nothing -- THE
+	# BEDROOM RENDERED AS AN EMPTY CREAM VOID with the characters floating in it.
+	#
+	# `_built` alone could not catch it, because the re-entrant call IS the first
+	# one. This flag is about being INSIDE the build, not about having finished.
+	# A caller that arrives mid-build gets whatever exists so far and the build
+	# it interrupted carries on correctly, which is the right answer for a lazy
+	# getter: "not ready yet" rather than a half-constructed room.
+	if _building:
+		return
+	_building = true
 	_built = true
 	_resolve_nodes()
 
@@ -269,6 +290,7 @@ func build_world() -> void:
 		_world_state.call("get_room_id"), _world_state.call("get_spawn_id")
 	)
 	place_in_room(String(start["roomId"]), String(start["spawnId"]))
+	_building = false
 
 
 ## `@onready` does not run in the headless `--script` runner, so every node is
