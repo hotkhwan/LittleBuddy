@@ -14,6 +14,7 @@ const GameVersion := preload("res://scripts/content_packs/game_version.gd")
 const Joystick := preload("res://scripts/input/virtual_joystick.gd")
 const GestureHint := preload("res://scripts/onboarding/gesture_hint.gd")
 const IconGlyph := preload("res://scripts/progression/icon_glyph.gd")
+const AffordanceLayer := preload("res://scripts/interaction/affordance_layer.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 
 ## Every viewport the game ships at, plus the reference.
@@ -68,6 +69,7 @@ func run():
 	failures.append_array(_test_home_asks_the_world_to_leave())
 	failures.append_array(_test_home_without_a_hook_is_not_a_dead_end())
 	failures.append_array(_test_pause_holds_the_world_and_gives_it_back())
+	failures.append_array(_test_hud_adopts_the_world_layer_and_forwards_its_rules())
 	failures.append_array(_test_gesture_hint_is_an_arrow_in_the_palette())
 	failures.append_array(_test_icon_backing_is_opt_in())
 	return failures
@@ -368,4 +370,68 @@ func _test_icon_backing_is_opt_in():
 	if (glyph.get("backing_color") as Color) != Palette.MINT:
 		failures.append("interaction_ux: backing_color did not take")
 	glyph.free()
+	return failures
+
+
+## The world mounts "AffordanceLayer" itself (house_world.gd). The HUD must
+## then drive THAT layer -- chrome, narration cover, pause, keep-outs -- and
+## not a private copy nobody can see.
+func _test_hud_adopts_the_world_layer_and_forwards_its_rules():
+	var failures: Array = []
+	var world: FakeWorld = FakeWorld.new()
+	var character: FakeCharacter = FakeCharacter.new()
+	world.character = character
+	world.add_child(character)
+	var ui: CanvasLayer = CanvasLayer.new()
+	ui.name = "UI"
+	world.add_child(ui)
+	var world_layer: Control = AffordanceLayer.new()
+	ui.add_child(world_layer)
+	world_layer.call("build")
+	world_layer.call("bind", world)
+	var hud: Control = HouseHud.new()
+	ui.add_child(hud)
+	hud.call("build")
+	hud.call("refresh_presentation")
+
+	if hud.call("get_affordance_layer") != world_layer:
+		failures.append("interaction_ux: the HUD did not adopt the world's AffordanceLayer")
+	var own: int = 0
+	for child: Node in hud.get_children():
+		if child.name == "AffordanceLayer" or child is AffordanceLayer:
+			own += 1
+	if own != 0:
+		failures.append("interaction_ux: the HUD kept %d private affordance layer(s) beside the world's" % own)
+
+	if not bool(world_layer.call("is_enabled")):
+		failures.append("interaction_ux: precondition -- the world layer should start enabled")
+	hud.call("set_narration_covered", true)
+	if bool(world_layer.call("is_enabled")):
+		failures.append("interaction_ux: narration cover did not reach the world's layer")
+	hud.call("set_narration_covered", false)
+	if not bool(world_layer.call("is_enabled")):
+		failures.append("interaction_ux: the world's layer did not come back after the close-up")
+	hud.call("set_play_chrome_visible", false)
+	if bool(world_layer.call("is_enabled")):
+		failures.append("interaction_ux: chrome-off did not reach the world's layer")
+	hud.call("set_play_chrome_visible", true)
+	hud.call("open_pause_menu")
+	if bool(world_layer.call("is_enabled")):
+		failures.append("interaction_ux: the pause card did not reach the world's layer")
+	hud.call("close_pause_menu")
+	if not bool(world_layer.call("is_enabled")):
+		failures.append("interaction_ux: Continue did not re-enable the world's layer")
+
+	# Keep-outs: Home and the stars always; Next only while it is up.
+	var rects: Array = world_layer.call("get_keep_out_rects")
+	if rects.size() < 3:
+		failures.append("interaction_ux: the HUD pushed only %d keep-out rect(s); expected Home, stars and version at least" % rects.size())
+	var before: int = rects.size()
+	hud.call("set_skip_visible", true)
+	if (world_layer.call("get_keep_out_rects") as Array).size() != before + 1:
+		failures.append("interaction_ux: showing Next did not add its keep-out")
+	hud.call("set_skip_visible", false)
+	if (world_layer.call("get_keep_out_rects") as Array).size() != before:
+		failures.append("interaction_ux: hiding Next did not remove its keep-out")
+	world.free()
 	return failures

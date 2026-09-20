@@ -97,6 +97,8 @@ func run():
 	failures.append_array(_test_layer_stands_down_when_input_is_off())
 	failures.append_array(_test_default_context_reads_the_kitchen())
 	failures.append_array(_test_a_character_is_never_taken())
+	failures.append_array(_test_badge_placement_avoids_keep_outs())
+	failures.append_array(_test_a_visible_care_overlay_silences_the_layer())
 	return failures
 
 
@@ -552,4 +554,91 @@ func _test_a_character_is_never_taken():
 		failures.append("affordance: holding the bottle of milk near Bunny should offer FEED (got %s)"
 				% str(layer.call("get_current_verb")))
 	world.free()
+	return failures
+
+
+## `place_badge()` is pure: the stick, Home and Next are rects, the object is a
+## point, and the answer must never cover any of them.
+func _test_badge_placement_avoids_keep_outs():
+	var failures: Array = []
+	var view: Vector2 = Vector2(1334.0, 750.0)
+	var stick: Rect2 = Rect2(24.0, 300.0, 453.0, 434.0)
+	var home: Rect2 = Rect2(1194.0, 26.0, 104.0, 104.0)
+	var next: Rect2 = Rect2(1074.0, 624.0, 224.0, 92.0)
+	var keep_outs: Array = [stick, home, next]
+
+	# Room above: the badge goes above, and clears everything.
+	var mid: Dictionary = LayerScript.place_badge(Vector2(667.0, 500.0), 60.0, view, 0.0, 600.0, keep_outs)
+	if String(mid["placement"]) != "above":
+		failures.append("affordance: with room above, the badge went %s" % str(mid["placement"]))
+	failures.append_array(_clear_of(LayerScript.badge_footprint(mid["centre"]), keep_outs, "mid-room"))
+
+	# The toy box, low-left, inside the stick's zone: above would sit in the
+	# zone, so the badge must end up clear of it, on the side away from the edge.
+	var toy_box: Dictionary = LayerScript.place_badge(Vector2(300.0, 520.0), 70.0, view, 0.0, 420.0, keep_outs)
+	var toy_rect: Rect2 = LayerScript.badge_footprint(toy_box["centre"])
+	failures.append_array(_clear_of(toy_rect, keep_outs, "toy box"))
+	if toy_rect.position.x < stick.end.x and toy_rect.intersects(stick.grow(1.0)):
+		failures.append("affordance: the toy box badge %s is inside the thumbstick zone %s" % [str(toy_rect), str(stick)])
+
+	# A fridge high in the frame with the prompt band above it steps beside,
+	# away from Aliz (who stands to its right).
+	var fridge: Dictionary = LayerScript.place_badge(Vector2(880.0, 150.0), 60.0, view, 244.0, 900.0, keep_outs)
+	if String(fridge["placement"]) != "left":
+		failures.append("affordance: the fridge badge should step LEFT, away from Aliz (got %s)" % str(fridge["placement"]))
+	if (fridge["centre"] as Vector2).y - LayerScript.BADGE_RADIUS < 244.0 - 0.01:
+		failures.append("affordance: the fridge badge %s rises into the prompt band" % str(fridge["centre"]))
+
+	# Bottom-right, under Next: the badge must not cover Next or Home.
+	var stool: Dictionary = LayerScript.place_badge(Vector2(1200.0, 600.0), 50.0, view, 0.0, 1100.0, keep_outs)
+	failures.append_array(_clear_of(LayerScript.badge_footprint(stool["centre"]), keep_outs, "stool"))
+
+	# Everything on screen, always.
+	for placed: Dictionary in [mid, toy_box, fridge, stool]:
+		var rect: Rect2 = LayerScript.badge_footprint(placed["centre"])
+		if not Rect2(Vector2.ZERO, view).encloses(rect):
+			failures.append("affordance: badge %s leaves the %s screen" % [str(rect), str(view)])
+	return failures
+
+
+func _clear_of(rect: Rect2, keep_outs: Array, label: String):
+	var failures: Array = []
+	for blocked: Rect2 in keep_outs:
+		if rect.intersects(blocked):
+			failures.append("affordance: the %s badge %s covers keep-out %s" % [label, str(rect), str(blocked)])
+	return failures
+
+
+## The world may mount the layer itself; a visible care close-up beside it
+## must silence it with no HUD in the loop at all.
+func _test_a_visible_care_overlay_silences_the_layer():
+	var failures: Array = []
+	var ui: CanvasLayer = CanvasLayer.new()
+	var layer: Control = LayerScript.new()
+	ui.add_child(layer)
+	layer.call("build")
+	var actor: FakeActor = FakeActor.new()
+	layer.call("set_actor", actor)
+	var fridge: FakeAffordable = _fake("kitchen.fridge", "OPEN", Vector3(0.5, 0.0, 0.0), 2.0, 2)
+	layer.call("set_candidate_sources", [fridge])
+	var care: Control = Control.new()
+	care.name = "CareOverlay"
+	care.visible = false
+	ui.add_child(care)
+
+	layer.call("step", 0.016)
+	if not bool(layer.call("is_showing")):
+		failures.append("affordance: precondition -- a hidden CareOverlay should not silence the layer")
+	care.visible = true
+	layer.call("step", 0.016)
+	if bool(layer.call("is_showing")):
+		failures.append("affordance: the badge stays up under a visible CareOverlay")
+	care.visible = false
+	layer.call("step", 0.016)
+	if not bool(layer.call("is_showing")):
+		failures.append("affordance: the badge did not come back once the close-up closed")
+
+	ui.free()
+	fridge.free()
+	actor.free()
 	return failures

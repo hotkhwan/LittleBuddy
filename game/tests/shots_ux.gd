@@ -60,6 +60,9 @@ func _run() -> void:
 	if args.size() > 3 and String(args[3]) == "story":
 		await _run_story()
 		return
+	if args.size() > 3 and String(args[3]) == "toybox":
+		await _run_toy_box()
+		return
 	# Free Play: the objective-free house, which is where a child meets the
 	# fridge without a mission steering the camera.
 	_world.call("set_progression_mode", 1)
@@ -157,6 +160,42 @@ func _run_story() -> void:
 		_fail.append("story_hug: the HUD did not raise the keep-out under its prompt (%.0f)"
 				% float(_layer.call("get_top_keep_out")))
 	await _shot("%s_story_hug" % _prefix)
+	_finish()
+
+
+## Free Play, the bedroom, Aliz at the toy box -- the object that sits inside
+## the thumbstick's corner of the screen. The badge must show OPEN and its hit
+## box must be clear of the stick, Home and Next.
+func _run_toy_box() -> void:
+	_world.call("set_progression_mode", 1)
+	_viewport.add_child(_world)
+	await _settle(0.8)
+	_director = _world.call("get_free_play_director")
+	_hud = _director.call("get_hud") if _director != null else null
+	_layer = _hud.call("get_affordance_layer") if _hud != null else null
+	if _layer == null:
+		_fail.append("the HUD has no affordance layer")
+		return _finish()
+	if _world.has_method("get_affordance_layer") and _world.call("get_affordance_layer") != null \
+			and _world.call("get_affordance_layer") != _layer:
+		_fail.append("the HUD drives a different layer from the one the world mounted")
+	_world.call("place_in_room", "bedroom", "")
+	await _settle(0.6)
+	_quiet()
+	_stand_at("bedroom.toyBox")
+	await _settle(0.7)
+	_quiet()
+	_expect("OPEN", "bedroom.toyBox", "toybox_open")
+	var hit: Rect2 = _layer.call("get_hit_rect")
+	for blocked: Rect2 in (_layer.call("get_keep_out_rects") as Array):
+		if hit.intersects(blocked):
+			_fail.append("toybox_open: the badge hit box %s covers keep-out %s" % [str(hit), str(blocked)])
+	var stick: Control = _world.call("get_joystick")
+	if stick != null and hit.intersects(stick.call("get_activation_rect")):
+		_fail.append("toybox_open: the badge %s is inside the thumbstick zone %s"
+				% [str(hit), str(stick.call("get_activation_rect"))])
+	print("  toybox_open: placement %s, hit %s" % [str(_layer.call("get_placement")), str(hit)])
+	await _shot("%s_toybox_open" % _prefix)
 	_finish()
 
 

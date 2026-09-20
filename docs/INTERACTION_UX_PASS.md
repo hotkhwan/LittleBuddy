@@ -79,6 +79,20 @@ before each frame and the PNG size asserted after. `ux_story_feed*.png` (from
 the care close-up. Tests: `test_affordance.gd`, `test_interaction_ux.gd`
 (suite 124). Smokes `imHungry` and `snackTime` pass.
 
+## Follow-up (integration 8fe4d62)
+
+The world now mounts "AffordanceLayer" itself; the HUD ADOPTS that layer
+(frees its own copy) so chrome-off, narration cover, pause and the prompt
+keep-out all reach it, and the layer also silences itself while a sibling
+`CareOverlay` is visible. Badge placement is the pure
+`AffordanceLayer.place_badge()`: above, then beside away from Aliz, then the
+other side, then below; the first spot clear of every keep-out wins, sliding
+outward along its own side to clear one if needed. Keep-outs: the stick's live
+activation rect (`HouseWorld.get_joystick()`), plus Home, stars, version and
+Next/Speak (while up) pushed by the HUD. Evidence: `ux2_feed*.png` (no badge
+under the bottle close-up), `ux_{ipad,iphone}_toybox_open.png` (badge clear of
+the stick; hit box asserted against every keep-out in the harness).
+
 ## For the lead
 
 `docs/patches/agentB_house_world.gd.diff` (optional): mount the layer from the

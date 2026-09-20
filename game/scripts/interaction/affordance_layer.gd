@@ -61,13 +61,16 @@ const EDGE_MARGIN: float = 26.0
 ## counter and the Home button live there. `set_top_keep_out()` raises it while
 ## a prompt is on screen.
 const TOP_MARGIN: float = 40.0
-## The corners are taken (stars top-left, Home top-right): a badge that would
-## land this close to the top is pushed under them at the sides.
-const CORNER_BAND: float = 132.0
-const CORNER_LEFT: float = 280.0
-const CORNER_RIGHT: float = 160.0
 ## Gap between the highlight ring and a badge placed beside it.
 const SIDE_GAP: float = 28.0
+## Breathing room around every keep-out rect (the stick, Home, Next ...).
+const KEEP_OUT_PAD: float = 6.0
+## How far a badge may slide off its preferred spot to clear a keep-out before
+## it stops being "beside the object" and becomes a badge for nothing.
+const MAX_SLIDE_PX: float = 260.0
+## The care close-up's node name. While it is visible the room is not being
+## played and no badge may show, whoever mounted this layer.
+const CARE_OVERLAY_NAME: String = "CareOverlay"
 
 ## The word under the picture. 28 pt clears the §8 floor of 27.
 const LABEL_FONT_SIZE: int = 28
@@ -106,7 +109,12 @@ var _candidate_sources: Array = []
 var _preferred_ids: Array = []
 var _auto_preferred: bool = true
 var _top_keep_out: float = TOP_MARGIN
-## Where the badge ended up relative to the ring: "above", "left" or "right".
+## Screen rects the badge must never cover, by name: the HUD pushes its Home,
+## Next, Speak, stars and version rects; the thumbstick's zone is read live
+## from the world's joystick. See `place_badge()`.
+var _keep_outs: Dictionary = {}
+## Where the badge ended up relative to the ring: "above", "left", "right"
+## or "below".
 var _placement: String = "above"
 ## Instance ids of targets this layer has already given its context provider.
 var _provided: Dictionary = {}
@@ -225,6 +233,39 @@ func get_top_keep_out() -> float:
 	return _top_keep_out
 
 
+## A screen rect the badge must stay out of. An empty rect removes the entry.
+func set_keep_out(key: String, rect: Rect2) -> void:
+	build()
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		_keep_outs.erase(key)
+	else:
+		_keep_outs[key] = rect
+
+
+func clear_keep_outs() -> void:
+	build()
+	_keep_outs.clear()
+
+
+## Every keep-out in force right now: the pushed rects plus the thumbstick's
+## live activation zone.
+func get_keep_out_rects() -> Array:
+	var rects: Array = _keep_outs.values()
+	var stick: Rect2 = _joystick_rect()
+	if stick.size.x > 0.0 and stick.size.y > 0.0:
+		rects.append(stick)
+	return rects
+
+
+func _joystick_rect() -> Rect2:
+	if _world == null or not is_instance_valid(_world) or not _world.has_method("get_joystick"):
+		return Rect2()
+	var stick: Variant = _world.call("get_joystick")
+	if not (stick is Object) or not is_instance_valid(stick) or not stick.has_method("get_activation_rect"):
+		return Rect2()
+	return stick.call("get_activation_rect")
+
+
 ## Off while a menu, a summary or a close-up owns the screen.
 func set_enabled(value: bool) -> void:
 	build()
@@ -268,8 +309,21 @@ func evaluate() -> Dictionary:
 		return {}
 	if _actor.has_method("get_state_name") and String(_actor.call("get_state_name")) == "disabled":
 		return {}
+	if is_care_overlay_visible():
+		return {}
 	var here: Vector3 = SpatialUtil.world_position(_actor)
 	return AffordanceRules.pick(_candidates(), here, _preferred_now())
+
+
+## True while a `CareOverlay` beside this layer is showing. Checked here as
+## well as through the HUD's `set_enabled()`, because the world may mount this
+## layer itself and a close-up must silence it whoever built it.
+func is_care_overlay_visible() -> bool:
+	var host: Node = get_parent()
+	if host == null:
+		return false
+	var care: Node = host.get_node_or_null(CARE_OVERLAY_NAME)
+	return care is CanvasItem and (care as CanvasItem).visible
 
 
 func _candidates() -> Array:
@@ -455,36 +509,129 @@ func _layout() -> void:
 	var view: Vector2 = get_viewport_rect().size
 	if view.x <= 0.0 or view.y <= 0.0:
 		view = size
-	var min_x: float = EDGE_MARGIN + BADGE_RADIUS + OUTLINE_PX
-	var max_x: float = view.x - min_x
-	var min_y: float = _top_keep_out + BADGE_RADIUS
-	var max_y: float = view.y - (EDGE_MARGIN + BADGE_RADIUS + LABEL_GAP + LABEL_HEIGHT)
-
-	# Above the thing, by preference. When the top of the screen is spoken for
-	# -- the prompt band, or the object is simply high in the frame, as a fridge
-	# is -- the badge steps BESIDE the ring instead of dropping onto whatever is
-	# in front of the object, which is Aliz's face more often than not. The
-	# side is the one away from her.
-	var wanted: Vector2 = _screen + Vector2(0.0, -(_ring_px + BADGE_LIFT + BADGE_RADIUS))
-	_placement = "above"
-	if wanted.y < min_y:
-		var side: float = -1.0 if _screen.x > view.x * 0.5 else 1.0
-		var actor_x: float = _actor_screen_x(camera)
-		if actor_x > _screen.x + 8.0:
-			side = -1.0
-		elif actor_x < _screen.x - 8.0:
-			side = 1.0
-		wanted = _screen + Vector2(side * (_ring_px + SIDE_GAP + BADGE_RADIUS), -BADGE_RADIUS * 0.4)
-		_placement = "left" if side < 0.0 else "right"
-	_badge = Vector2(clampf(wanted.x, min_x, maxf(min_x, max_x)),
-			clampf(wanted.y, min_y, maxf(min_y, max_y)))
-	# The corners are taken: stars top-left, Home top-right.
-	if _badge.y - BADGE_RADIUS < CORNER_BAND \
-			and (_badge.x - BADGE_RADIUS < CORNER_LEFT or _badge.x + BADGE_RADIUS > view.x - CORNER_RIGHT):
-		_badge.y = minf(CORNER_BAND + BADGE_RADIUS, maxf(min_y, max_y))
+	var placed: Dictionary = place_badge(
+		_screen, _ring_px, view, _top_keep_out, _actor_screen_x(camera), get_keep_out_rects())
+	_badge = placed["centre"]
+	_placement = String(placed["placement"])
 	_hit.position = _badge - Vector2(HIT_SIZE, HIT_SIZE) * 0.5
 	_hit.visible = true
 	_laid_out = true
+
+
+## The badge's on-screen footprint -- disc, outline and the word pill -- for a
+## badge centred at `centre`. What the keep-outs are tested against.
+static func badge_footprint(centre: Vector2) -> Rect2:
+	var half: float = BADGE_RADIUS + OUTLINE_PX
+	var width: float = maxf(half * 2.0, LABEL_WIDTH)
+	return Rect2(
+		Vector2(centre.x - width * 0.5, centre.y - half),
+		Vector2(width, half + BADGE_RADIUS + LABEL_GAP + LABEL_HEIGHT)
+	)
+
+
+## Where the badge goes. Pure, so `test_affordance.gd` can prove every rule
+## without a camera.
+##
+##   `screen`       -- the object's anchor, viewport px
+##   `ring_px`      -- the highlight ring's radius
+##   `view`         -- viewport size
+##   `top_keep_out` -- nothing above this line (the HUD's prompt band)
+##   `actor_x`      -- Aliz's screen x, so a side placement steps AWAY from her
+##   `keep_outs`    -- rects the badge may not cover: the stick, Home, Next ...
+##
+## Order of preference: above the ring; beside it on the side away from Aliz;
+## beside it on the other side; below it. The first spot that fits the screen
+## and covers no keep-out wins. When every spot covers something, the one that
+## covers least does -- a badge the child can still see beats none at all.
+## Returns `{"centre": Vector2, "placement": String}`.
+static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep_out: float,
+		actor_x: float, keep_outs: Array) -> Dictionary:
+	var min_x: float = EDGE_MARGIN + BADGE_RADIUS + OUTLINE_PX
+	var max_x: float = maxf(min_x, view.x - min_x)
+	var min_y: float = maxf(top_keep_out, TOP_MARGIN) + BADGE_RADIUS
+	var max_y: float = maxf(min_y, view.y - (EDGE_MARGIN + BADGE_RADIUS + LABEL_GAP + LABEL_HEIGHT))
+
+	# The side away from Aliz, and failing a clear answer, away from the
+	# nearer screen edge -- which is also the side with room on it.
+	var away_from_edge: float = -1.0 if screen.x > view.x * 0.5 else 1.0
+	var away_from_actor: float = away_from_edge
+	if actor_x > screen.x + 8.0:
+		away_from_actor = -1.0
+	elif actor_x < screen.x - 8.0:
+		away_from_actor = 1.0
+	var side_offset: float = ring_px + SIDE_GAP + BADGE_RADIUS
+	var vertical_offset: float = ring_px + BADGE_LIFT + BADGE_RADIUS
+
+	var candidates: Array = [
+		{"placement": "above", "centre": screen + Vector2(0.0, -vertical_offset)},
+		{"placement": "left" if away_from_actor < 0.0 else "right",
+			"centre": screen + Vector2(away_from_actor * side_offset, -BADGE_RADIUS * 0.4)},
+		{"placement": "left" if away_from_actor > 0.0 else "right",
+			"centre": screen + Vector2(-away_from_actor * side_offset, -BADGE_RADIUS * 0.4)},
+		{"placement": "below", "centre": screen + Vector2(0.0, vertical_offset + LABEL_HEIGHT)},
+	]
+
+	var best: Dictionary = {}
+	var best_overlap: float = INF
+	for candidate: Dictionary in candidates:
+		var wanted: Vector2 = candidate["centre"]
+		var placement: String = String(candidate["placement"])
+		# "Above" only counts when it really is above: clamped down onto the
+		# object it would sit on whatever stands in front of it.
+		if placement == "above" and wanted.y < min_y:
+			continue
+		var centre: Vector2 = Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y))
+		# Two goes: where the candidate wants to be, then slid outward along its
+		# own direction until it clears whatever it landed on -- a toy box in
+		# the stick's corner gets its badge just past the stick's edge, still
+		# beside the box, rather than a badge that half-covers the stick.
+		for attempt: int in range(2):
+			var footprint: Rect2 = badge_footprint(centre)
+			var overlap: float = 0.0
+			var first_block: Rect2 = Rect2()
+			for entry: Variant in keep_outs:
+				if not (entry is Rect2):
+					continue
+				var blocked: Rect2 = (entry as Rect2).grow(KEEP_OUT_PAD)
+				if footprint.intersects(blocked):
+					var hit: Rect2 = footprint.intersection(blocked)
+					overlap += hit.size.x * hit.size.y
+					if first_block.size == Vector2.ZERO:
+						first_block = blocked
+			if overlap <= 0.0:
+				return {"centre": centre, "placement": placement}
+			if overlap < best_overlap:
+				best_overlap = overlap
+				best = {"centre": centre, "placement": placement}
+			if attempt == 1:
+				break
+			var slid: Vector2 = _slid_clear(placement, centre, footprint, first_block)
+			slid = Vector2(clampf(slid.x, min_x, max_x), clampf(slid.y, min_y, max_y))
+			if slid.distance_to(centre) > MAX_SLIDE_PX or slid.is_equal_approx(centre):
+				break
+			centre = slid
+	if best.is_empty():
+		# Every candidate was ruled out before overlap was even measured (an
+		# absurdly tall keep-out); fall back to the first side, clamped.
+		var side: Dictionary = candidates[1]
+		var wanted: Vector2 = side["centre"]
+		best = {"centre": Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y)),
+				"placement": String(side["placement"])}
+	return best
+
+
+## The centre that puts `footprint` just past `blocked`, moving only along the
+## candidate's own direction (a side badge slides sideways, a top badge up).
+static func _slid_clear(placement: String, centre: Vector2, footprint: Rect2, blocked: Rect2) -> Vector2:
+	match placement:
+		"right":
+			return Vector2(centre.x + (blocked.end.x - footprint.position.x) + 1.0, centre.y)
+		"left":
+			return Vector2(centre.x - (footprint.end.x - blocked.position.x) - 1.0, centre.y)
+		"above":
+			return Vector2(centre.x, centre.y - (footprint.end.y - blocked.position.y) - 1.0)
+		_:
+			return Vector2(centre.x, centre.y + (blocked.end.y - footprint.position.y) + 1.0)
 
 
 func _actor_screen_x(camera: Camera3D) -> float:
@@ -624,6 +771,8 @@ func _draw() -> void:
 		towards = Vector2(1.0, 0.0)
 	elif _placement == "right":
 		towards = Vector2(-1.0, 0.0)
+	elif _placement == "below":
+		towards = Vector2(0.0, -1.0)
 	var across: Vector2 = Vector2(-towards.y, towards.x)
 	var tail_tip: Vector2 = centre + towards * (radius + 22.0)
 	var tail: PackedVector2Array = PackedVector2Array([

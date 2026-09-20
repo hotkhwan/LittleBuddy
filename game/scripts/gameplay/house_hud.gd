@@ -606,6 +606,7 @@ func _refresh_visibility() -> void:
 	if _prompt.visible and String(l["promptAnchor"]) == "topWide":
 		keep_out = Presentation.top_stack_height(_mode) + 12.0
 	_affordance.call("set_top_keep_out", keep_out)
+	_push_keep_outs()
 
 
 ## Hides the HUD's own narration while a full-screen close-up is doing the
@@ -836,6 +837,7 @@ func get_star_text() -> String:
 func set_skip_visible(value: bool) -> void:
 	build()
 	_next_button.visible = value
+	_push_keep_outs()
 
 
 func is_skip_visible() -> bool:
@@ -846,6 +848,7 @@ func is_skip_visible() -> bool:
 func set_speak_visible(value: bool) -> void:
 	build()
 	_speak_button.visible = value
+	_push_keep_outs()
 
 
 func is_speak_visible() -> bool:
@@ -1079,24 +1082,65 @@ func _flush_save() -> void:
 		save.call("save_profile")
 
 
-## Joins the affordance layer to the world once there is one to join. If the
-## world already mounts a layer of its own (the lead's `house_world.gd` patch),
-## this HUD's copy stands down so the child never sees two badges.
+## Joins the affordance layer to the world once there is one to join.
+##
+## When the world already mounts a layer of its own (`house_world.gd`'s
+## `_build_affordance_layer()`), this HUD ADOPTS it: its own copy is freed and
+## every rule below -- chrome off, narration covered, pause, prompt keep-out,
+## the button keep-outs -- is applied to the world's layer from then on. The
+## first version merely switched its own copy off, which left the world's copy
+## deaf to all of them: the toy box's OPEN badge sat under the bottle close-up
+## (`docs/shots/copy_ipad_feed.png`).
 func _bind_affordance() -> void:
-	if _affordance_bound or not is_inside_tree():
+	if _affordance_bound:
 		return
 	var world: Node = get_world()
 	if world == null:
 		return
 	_affordance_bound = true
 	var host: Node = get_parent()
+	var adopted: Control = null
 	if host != null:
 		for sibling: Node in host.get_children():
-			if sibling != self and sibling.name == "AffordanceLayer":
-				_affordance.call("set_enabled", false)
-				_affordance.visible = false
-				return
-	_affordance.call("bind", world)
+			if sibling != self and sibling != _affordance and sibling.name == "AffordanceLayer" \
+					and sibling is Control and sibling.has_method("set_enabled"):
+				adopted = sibling
+				break
+	if adopted != null:
+		var mine: Control = _affordance
+		_affordance = adopted
+		if mine != null and is_instance_valid(mine):
+			remove_child(mine)
+			mine.queue_free()
+	else:
+		_affordance.call("bind", world)
+	# The layer may have been live for frames before this HUD arrived: push
+	# the current state at it now rather than waiting for the next change.
+	_refresh_visibility()
+
+
+## The screen rects the badge must never cover, from this HUD's own layout:
+## Home, the star counter, the version label, and Next / Speak while they are
+## up. The thumbstick's zone the layer reads from the world itself.
+func _push_keep_outs() -> void:
+	if _affordance == null or not is_instance_valid(_affordance) \
+			or not _affordance.has_method("set_keep_out"):
+		return
+	var view: Vector2 = Vector2(1366.0, 1024.0)
+	if is_inside_tree():
+		var rect_size: Vector2 = get_viewport_rect().size
+		if rect_size.x > 0.0 and rect_size.y > 0.0:
+			view = rect_size
+	var buttons: Dictionary = button_rects(view)
+	_affordance.call("set_keep_out", "home", home_button_rect(view) if _home_button.visible else Rect2())
+	_affordance.call("set_keep_out", "next", buttons["next"] if _next_button.visible else Rect2())
+	_affordance.call("set_keep_out", "speak", buttons["speak"] if _speak_button.visible else Rect2())
+	_affordance.call("set_keep_out", "stars",
+			Rect2(_stars.offset_left, _stars.offset_top,
+				_stars.offset_right - _stars.offset_left, _stars.offset_bottom - _stars.offset_top)
+			if _stars.visible else Rect2())
+	_affordance.call("set_keep_out", "version",
+			version_label_rect(view, SafeAreaScript.insets_for(view)))
 
 
 func _place_version() -> void:
