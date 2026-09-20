@@ -43,6 +43,7 @@ func run():
 	failures += _test_corrupt_values_fall_back()
 	failures += _test_without_service()
 	failures += _test_reset()
+	failures += _test_session_reminder_and_character_voices()
 	return failures
 
 
@@ -90,7 +91,8 @@ func _test_keys_written():
 	# selector underneath, so turning it off also records helperLanguage="off" and
 	# teachingLanguage="en". Still nothing outside the parent settings' own keys.
 	var allowed: Array = ["thaiHints", "speechEnabled", "ttsSpeed",
-			"helperLanguage", "teachingLanguage", "musicVolume", "voiceVolume"]
+			"helperLanguage", "teachingLanguage", "musicVolume", "voiceVolume",
+			"alizVoiceVolume", "bunnyVoiceVolume", "sessionReminderMinutes"]
 	for key: Variant in service.settings.keys():
 		if not allowed.has(String(key)):
 			failures.append("the model wrote an unexpected key %s: %s" % [str(key), service.settings])
@@ -182,4 +184,53 @@ func _test_reset():
 	if model.get_stars() != 0:
 		failures.append("stars should read as 0 after a reset")
 
+	return failures
+
+
+## The play-session reminder (0 / 5 / 10 / 15, default 5, only those stored) and
+## the two per-character voice levels (default 0.85, beside `voiceVolume`).
+func _test_session_reminder_and_character_voices():
+	var failures: Array = []
+	var service := FakeSaveService.new()
+	var model: Object = ModelScript.new(service)
+
+	if ModelScript.KEY_SESSION_REMINDER_MINUTES != "sessionReminderMinutes":
+		failures.append("the reminder key must be \"sessionReminderMinutes\"")
+	if model.get_session_reminder_minutes() != 5:
+		failures.append("the reminder should default to 5 minutes, got %d" % model.get_session_reminder_minutes())
+	if not service.settings.is_empty():
+		failures.append("reading the reminder default must not write anything")
+	for minutes: int in [0, 5, 10, 15]:
+		model.set_session_reminder_minutes(minutes)
+		if service.settings.get("sessionReminderMinutes", -1) != minutes:
+			failures.append("sessionReminderMinutes=%d was not persisted: %s" % [minutes, str(service.settings)])
+		if model.get_session_reminder_minutes() != minutes:
+			failures.append("sessionReminderMinutes=%d did not read back" % minutes)
+	model.set_session_reminder_minutes(7)
+	if service.settings.get("sessionReminderMinutes", -1) != 15:
+		failures.append("an unoffered reminder value was persisted: %s" % str(service.settings))
+	for corrupt: Variant in ["five", 7, 2.5, null, true]:
+		service.settings["sessionReminderMinutes"] = corrupt
+		if model.get_session_reminder_minutes() != 5:
+			failures.append("a corrupt reminder value %s did not fall back to 5" % str(corrupt))
+	service.settings["sessionReminderMinutes"] = 10.0
+	if model.get_session_reminder_minutes() != 10:
+		failures.append("a whole float (10.0) should read as 10 minutes")
+
+	if ModelScript.KEY_ALIZ_VOICE_VOLUME != "alizVoiceVolume" \
+			or ModelScript.KEY_BUNNY_VOICE_VOLUME != "bunnyVoiceVolume":
+		failures.append("the character voice keys drifted")
+	if absf(model.get_aliz_voice_volume() - 0.85) > 0.001 or absf(model.get_bunny_voice_volume() - 0.85) > 0.001:
+		failures.append("the character voices should default to 0.85")
+	model.set_aliz_voice_volume(0.4)
+	model.set_bunny_voice_volume(1.7)
+	if absf(float(service.settings.get("alizVoiceVolume", -1.0)) - 0.4) > 0.001:
+		failures.append("alizVoiceVolume 0.4 was not persisted: %s" % str(service.settings))
+	if absf(float(service.settings.get("bunnyVoiceVolume", -1.0)) - 1.0) > 0.001:
+		failures.append("bunnyVoiceVolume must clamp to 1.0: %s" % str(service.settings))
+	# The single TTS level is untouched by either.
+	if service.settings.has("voiceVolume"):
+		failures.append("a character slider wrote voiceVolume")
+	if absf(model.get_voice_volume() - 0.85) > 0.001:
+		failures.append("voiceVolume no longer reads its own default beside the character levels")
 	return failures

@@ -19,7 +19,8 @@ extends RefCounted
 ##   sink       alone: hands up for a second; with Bunny: the WASH close-up
 ##   bath       alone: bubbles; with Bunny: he is in the tub and the close-up opens
 ##   Bunny      FEED with a feedable item in hand satisfies his hunger
-##   locked door refused, kind word, nobody moved
+##   every door  opens in V1 (Little Days is free); the gate SEAM still
+##              refuses, says a kind word and moves nobody when it is switched on
 ##
 ## `run()` and every `_test_*` helper are untyped on purpose (runner contract).
 
@@ -195,7 +196,8 @@ func _test_acts_on_the_real_house():
 	failures.append_array(_wardrobe(world, director, aliz))
 	failures.append_array(_toy_box(world, director, aliz))
 	failures.append_array(_bed_and_bunny(world, director, aliz, bunny))
-	failures.append_array(_locked_door(world, director, aliz, tts))
+	failures.append_array(_every_room_opens(world, director, aliz, tts))
+	failures.append_array(_gate_seam_when_switched_on(world, director, aliz, tts))
 	failures.append_array(_kitchen(world, director, aliz, bunny))
 	# Open the house for the rooms behind the gate.
 	entitlements.active = ["familyClub"]
@@ -326,8 +328,45 @@ func _bed_and_bunny(world, director, aliz, bunny):
 	return failures
 
 
-func _locked_door(world, director, aliz, tts):
+## Little Days V1 is FREE (owner decision, 2026-09-20): with no entitlement at
+## all, every room opens, every door says ENTER, and walking through one simply
+## changes the room. Nothing a child can reach says "ask a grown-up".
+func _every_room_opens(world, director, aliz, tts):
 	var failures: Array = []
+	if not bool(director.get("ROOMS_FREE_IN_V1")):
+		failures.append("free: ROOMS_FREE_IN_V1 is off; V1 ships with every room open")
+	for room_id: Variant in world.call("get_room_ids"):
+		if not bool(director.call("is_room_open", String(room_id))):
+			failures.append("free: '%s' is not open on a free-starter profile" % room_id)
+	world.call("place_in_room", "bedroom", "")
+	var layer: Control = world.call("get_affordance_layer")
+	var door: Node = world.call("get_target_by_semantic_id", "bedroom.doorToBathroom")
+	if layer != null and door != null:
+		# The first live frame hands every target the layer's context provider
+		# through the `affordable` group; nothing added to the root is "inside
+		# the tree" in the headless runner, so the door is handed it here.
+		door.call("set_affordance_context_provider", Callable(layer, "context_for"))
+		var offer: Dictionary = door.call("get_affordance", aliz)
+		if String(offer.get("verb", "")) != "ENTER":
+			failures.append("free: the bathroom door offers '%s', not ENTER" % offer.get("verb"))
+	tts.lines.clear()
+	_arrive(aliz, "bedroom.doorToBathroom")
+	if String(world.call("get_current_room_id")) != "bathroom":
+		failures.append("free: the bathroom door did not open (still in %s)" % world.call("get_current_room_id"))
+	for line: Variant in tts.lines:
+		if String(line).find("grown-up") >= 0 or String(line).find("Soon") >= 0:
+			failures.append("free: an open door said '%s'" % line)
+	if String(aliz.call("get_state_name")) == "disabled":
+		failures.append("free: the child is left disabled after a door")
+	return failures
+
+
+## The gate seam is kept whole for a later product, so it is driven here with
+## the constant switched OFF: the bathroom is refused without the family
+## entitlement, the door says SOON kindly, arriving says so and nobody moves.
+func _gate_seam_when_switched_on(world, director, aliz, tts):
+	var failures: Array = []
+	director.call("set_rooms_free_for_test", false)
 	world.call("place_in_room", "bedroom", "")
 	if bool(director.call("is_room_open", "bathroom")):
 		failures.append("gate: the bathroom is open with no family entitlement")
@@ -336,9 +375,6 @@ func _locked_door(world, director, aliz, tts):
 	var layer: Control = world.call("get_affordance_layer")
 	var door: Node = world.call("get_target_by_semantic_id", "bedroom.doorToBathroom")
 	if layer != null and door != null:
-		# The first live frame hands every target the layer's context provider
-		# through the `affordable` group; nothing added to the root is "inside
-		# the tree" in the headless runner, so the two doors are handed it here.
 		door.call("set_affordance_context_provider", Callable(layer, "context_for"))
 		world.call("get_target_by_semantic_id", "bedroom.doorToKitchen").call(
 				"set_affordance_context_provider", Callable(layer, "context_for"))
@@ -357,6 +393,9 @@ func _locked_door(world, director, aliz, tts):
 		failures.append("gate: the locked door did not say 'Soon! Ask a grown-up' (%s)" % str(tts.lines))
 	if String(aliz.call("get_state_name")) == "disabled":
 		failures.append("gate: the child is left disabled at a locked door")
+	director.call("set_rooms_free_for_test", null)
+	if not bool(director.call("is_room_open", "bathroom")):
+		failures.append("gate: putting the constant back in charge did not reopen the bathroom")
 	return failures
 
 

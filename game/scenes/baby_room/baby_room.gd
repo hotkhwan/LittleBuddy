@@ -49,6 +49,10 @@ const StarRulesScript := preload("res://scripts/progression/star_rules.gd")
 ## The highchair minigame. Pure rules preloaded; the scene loaded on first use so
 ## a room that never plays a feeding task never builds the stage.
 const FeedingRulesScript := preload("res://scripts/feeding/feeding_rules.gd")
+## The play-session clock and the break card it shows at a safe point. See
+## "The break card" below.
+const PlaySessionScript := preload("res://scripts/session/play_session.gd")
+const BreakCardScript := preload("res://scripts/ui/break_card.gd")
 const FEEDING_TABLE_SCENE: String = "res://scenes/feeding/feeding_table.tscn"
 ## Where the highchair stage sits in the room's world: far enough from the
 ## nursery that neither camera ever sees the other set, under the same single
@@ -193,6 +197,22 @@ var _feeding_open: bool = false
 ## half stars the summary shows. Paid as 0 stars; see `feeding_rules.gd`.
 var _mission_half_stars: Array = []
 
+## -- The break card ----------------------------------------------------------------
+## `play_session.gd` counts active play and says when; this room says WHERE:
+## after a task's completion (or skip) is acknowledged and before the next
+## task starts -- the runner is held meanwhile -- and after the summary is put
+## away, before the next mission. Never while the highchair has a food in the
+## child's hand: `_try_show_break()` waits for the hand to be empty.
+var _session: Node = null
+var _break_card: Control = null
+var _break_open: bool = false
+## Bumped so a retry queued for one seam cannot fire at a later one.
+var _break_generation: int = 0
+## The mission Keep Playing should start, when the card came after a summary.
+var _break_next_mission: Variant = null
+const BREAK_ACK_SEC: float = 1.6
+const BREAK_RETRY_SEC: float = 0.5
+
 
 ## Shows the Meshy baby instead of the procedural one, when it is switched on.
 ##
@@ -266,6 +286,7 @@ func _ready() -> void:
 
 	_set_star_count(_get_initial_stars())
 	_setup_parent_settings()
+	_setup_play_session()
 
 	_library = ContentLibraryScript.create()
 	if _has_playable_mission():
@@ -803,6 +824,7 @@ func _on_task_completed(task_id: String, stars: int) -> void:
 	# `RewardLedger`, so a re-fired signal, a retry or a reloaded scene cannot
 	# make the same task pay twice.
 	_reward_manager.award(task_id, stars)
+	_hold_for_break_if_due()
 
 
 func _on_task_skipped(_task_id: String) -> void:
@@ -810,6 +832,7 @@ func _on_task_skipped(_task_id: String) -> void:
 	# progress, never a mark against them.
 	_progress_dots.call("mark_current_done")
 	_next_button.visible = false
+	_hold_for_break_if_due()
 
 
 func _on_mission_completed(_mission_id: String, _stars_earned: int) -> void:
@@ -1030,6 +1053,8 @@ func _on_summary_play_again() -> void:
 	_hide_summary()
 	var replay_id: String = _last_mission_id
 	_forced_next_mission_id = ""
+	if _break_at_summary_seam(replay_id):
+		return
 	_start_next_mission(replay_id)
 
 
@@ -1040,6 +1065,8 @@ func _on_summary_next_level() -> void:
 	_hide_summary()
 	var next_id: String = _forced_next_mission_id
 	_forced_next_mission_id = ""
+	if _break_at_summary_seam(next_id):
+		return
 	_start_next_mission(next_id)
 
 
@@ -1048,6 +1075,8 @@ func _on_summary_next_level() -> void:
 func _on_summary_closed() -> void:
 	_hide_summary()
 	_forced_next_mission_id = ""
+	if _break_at_summary_seam(""):
+		return
 	_start_next_mission()
 
 
@@ -1091,11 +1120,15 @@ func _setup_parent_settings() -> void:
 
 func _on_parent_settings_opened() -> void:
 	_parent_settings_open = true
+	if _session != null and is_instance_valid(_session):
+		_session.call("set_held", "menu", true)
 	_refresh_input_blocking()
 
 
 func _on_parent_settings_closed() -> void:
 	_parent_settings_open = false
+	if _session != null and is_instance_valid(_session):
+		_session.call("set_held", "menu", false)
 	# Thai hints / voice practice may have just changed.
 	_update_mic_visual()
 	_refresh_input_blocking()
@@ -1128,7 +1161,7 @@ func _instance_overlay(path: String, visible_now: bool = false) -> Control:
 
 
 func _is_overlay_open() -> bool:
-	if _parent_settings_open:
+	if _parent_settings_open or _break_open:
 		return true
 	if _summary != null and is_instance_valid(_summary) and _summary.visible:
 		return true
@@ -1171,6 +1204,135 @@ func _refresh_input_blocking() -> void:
 		_next_button.visible = _mode == Mode.MISSION and _runner != null \
 				and bool(_runner.call("is_running"))
 		_update_mic_visual()
+
+
+## -- The break card ------------------------------------------------------------------
+
+func _setup_play_session() -> void:
+	_session = PlaySessionScript.get_or_create(Engine.get_main_loop() as SceneTree)
+	if _session != null:
+		_session.call("attach", self)
+
+
+func get_play_session() -> Node:
+	return _session
+
+
+func get_break_card() -> Control:
+	return _break_card
+
+
+func is_break_open() -> bool:
+	return _break_open
+
+
+func _break_due() -> bool:
+	return not _break_open and _session != null and is_instance_valid(_session) \
+			and bool(_session.call("is_due"))
+
+
+## At a task seam: hold the runner, then show the card once the reaction has
+## had a moment. Nothing happens when the clock has not spoken.
+func _hold_for_break_if_due() -> void:
+	if not _break_due() or _runner == null or not _runner.has_method("set_advance_held"):
+		return
+	_runner.call("set_advance_held", true)
+	_break_generation += 1
+	_after(BREAK_ACK_SEC, Callable(self, "_try_show_break").bind(_break_generation))
+
+
+## The seam after the summary: park the chosen mission and show the card.
+func _break_at_summary_seam(mission_id: String) -> bool:
+	if not _break_due():
+		return false
+	_break_next_mission = mission_id
+	_break_generation += 1
+	_try_show_break(_break_generation)
+	return true
+
+
+## Shows the card unless a food is in the child's hand on the highchair, in
+## which case it looks again shortly. A hand is never emptied for a card.
+func _try_show_break(generation: int) -> void:
+	if generation != _break_generation or _break_open:
+		return
+	if _feeding_open and _feeding_table != null and is_instance_valid(_feeding_table) \
+			and _feeding_table.has_method("is_dragging") and bool(_feeding_table.call("is_dragging")):
+		_after(BREAK_RETRY_SEC, Callable(self, "_try_show_break").bind(generation))
+		return
+	var card: Control = _ensure_break_card()
+	if card == null:
+		_release_break_hold()
+		return
+	_break_open = true
+	_refresh_input_blocking()
+	_ui_layer.move_child(card, -1)
+	card.call("open")
+
+
+func is_break_seam_waiting() -> bool:
+	return _runner != null and _runner.has_method("is_advance_held") \
+			and bool(_runner.call("is_advance_held"))
+
+
+func _ensure_break_card() -> Control:
+	if _break_card != null and is_instance_valid(_break_card):
+		return _break_card
+	if _ui_layer == null:
+		return null
+	var card: Control = BreakCardScript.new()
+	card.call("build")
+	card.connect("keep_playing_pressed", _on_break_keep_playing)
+	card.connect("home_pressed", _on_break_home)
+	_ui_layer.add_child(card)
+	_break_card = card
+	return card
+
+
+## Keep Playing: the card closes, the clock snoozes, and whatever was parked
+## -- the next task, or the next mission -- goes ahead.
+func _on_break_keep_playing() -> void:
+	if not _break_open:
+		return
+	_break_open = false
+	_refresh_input_blocking()
+	if _session != null and is_instance_valid(_session):
+		_session.call("keep_playing")
+	_release_break_hold()
+	if _break_next_mission != null:
+		var mission_id: String = String(_break_next_mission)
+		_break_next_mission = null
+		_start_next_mission(mission_id)
+
+
+## Home: save, then the same way out the highchair's Home takes. The runner is
+## left held; the scene is going away.
+func _on_break_home() -> void:
+	var save_service: Node = _autoload("SaveService")
+	if save_service != null and save_service.has_method("save_profile"):
+		save_service.call("save_profile")
+	if _session != null and is_instance_valid(_session):
+		_session.call("mark_break_taken")
+	if _runner != null and _runner.has_method("cancel"):
+		_runner.call("cancel")
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree != null and tree.get_script() == null and ResourceLoader.exists(MAIN_MENU_SCENE):
+		tree.call_deferred("change_scene_to_file", MAIN_MENU_SCENE)
+
+
+func _release_break_hold() -> void:
+	if _runner != null and _runner.has_method("set_advance_held"):
+		_runner.call("set_advance_held", false)
+
+
+## Runs `callable` after `seconds` in a live tree, and at once where there are
+## no frames (the headless runner), exactly as `MissionRunner._delay()` does.
+func _after(seconds: float, callable: Callable) -> void:
+	var tree: SceneTree = get_tree() if is_inside_tree() else null
+	if tree == null:
+		callable.call()
+		return
+	tree.create_timer(seconds).timeout.connect(callable, CONNECT_ONE_SHOT)
 
 
 ## Autoload lookup that also works before the room is in the tree (absolute node

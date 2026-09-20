@@ -101,6 +101,15 @@ var _advancing: bool = false
 ## silently skipped the next mission's first task.
 var _delay_generation: int = 0
 
+## The break card (`break_host.gd`) holds the runner between one task and the
+## next: a completion is acknowledged, the gap timer fires, and instead of
+## starting the next task the advance waits here until `set_advance_held(false)`.
+## The mission is neither cancelled nor restarted, the current handler is
+## already done, and nothing is lost -- the next task simply begins when the
+## child says Keep Playing. Home never releases it; the scene goes away instead.
+var _advance_held: bool = false
+var _advance_pending: bool = false
+
 var _library: Object = null
 var _context: Dictionary = {}
 var _handlers: Dictionary = {}
@@ -156,6 +165,7 @@ func start_mission(mission_id: String, library: Object, context: Dictionary = {}
 func cancel() -> void:
 	_running = false
 	_advancing = false
+	_advance_pending = false
 	_delay_generation += 1
 	if _handler != null and _handler.has_method("cancel"):
 		_handler.call("cancel")
@@ -210,6 +220,25 @@ func skip_current_task() -> void:
 	task_skipped.emit(task_id)
 	_advancing = true
 	_delay(SKIP_GAP_SEC, _advance)
+
+
+## Holds the next task back (true) or lets it start (false). Releasing a hold
+## that parked an advance runs that advance at once. See `_advance_held`.
+func set_advance_held(held: bool) -> void:
+	_advance_held = held
+	if held or not _advance_pending:
+		return
+	_advance_pending = false
+	_advance()
+
+
+func is_advance_held() -> bool:
+	return _advance_held
+
+
+## True while a held runner has a task waiting to start.
+func is_advance_pending() -> bool:
+	return _advance_pending
 
 
 ## -- Queries ---------------------------------------------------------------------
@@ -342,6 +371,10 @@ func _get_picker() -> Object:
 
 
 func _advance() -> void:
+	if _advance_held:
+		# Parked, not dropped: released by `set_advance_held(false)`.
+		_advance_pending = true
+		return
 	_advancing = false
 	if not _running:
 		return

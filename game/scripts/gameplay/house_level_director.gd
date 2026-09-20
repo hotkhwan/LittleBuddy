@@ -81,6 +81,8 @@ const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 ## Pure maths. Decides WHICH box the close-up frames; `room_camera.gd` decides
 ## where the camera has to stand to frame it.
 const CameraFocus := preload("res://scripts/camera/camera_focus.gd")
+## The break card's host (`break_host.gd`). See "The break card" below.
+const BreakHostScript := preload("res://scripts/session/break_host.gd")
 
 const SESSION_SUMMARY_SCENE: String = "res://scenes/progression/session_summary.tscn"
 
@@ -174,6 +176,25 @@ var _focus_anchor: Variant = null
 var _portrait_on: bool = false
 var _focus_point: Vector3 = Vector3.ZERO
 var _focus_radius: float = 0.0
+
+## -- The break card ----------------------------------------------------------------
+## The play-session clock says when; this file says WHERE, and the only places
+## are the seams between things: after a task's completion (or skip) has been
+## acknowledged and before the next task starts, and after the summary is put
+## away and before the next level begins. Never over a close-up (a care task
+## completes only after its overlay closes, so the seam is behind it by
+## construction), never while a beat is waiting for the child.
+##
+## At a task seam the runner is HELD (`MissionRunner.set_advance_held()`): the
+## gap timer fires, the next task parks, the card shows once the reaction has
+## had `BREAK_ACK_SEC` to play, and Keep Playing releases the hold. At the
+## summary seam the next level's id is parked in `_break_next_mission` instead.
+var _break: Node = null
+## Seconds left of the acknowledgement before the card; < 0 = not waiting.
+var _break_ack_left: float = -1.0
+## The level Keep Playing should start, when the card came after a summary.
+var _break_next_mission: Variant = null
+const BREAK_ACK_SEC: float = 1.6
 
 
 ## Stands in for `SaveService` where there is no tree to find it in -- a scene
@@ -290,6 +311,12 @@ func bind(world: Node) -> void:
 		_transition.connect("transition_completed", _on_transition_completed)
 		_transition.connect("transition_refused", _on_transition_refused)
 
+	_break = BreakHostScript.new()
+	_break.name = "BreakHost"
+	add_child(_break)
+	_break.call("bind", _world, _hud)
+	_break.connect("kept_playing", _on_break_kept_playing)
+
 
 func _process(delta: float) -> void:
 	step(delta)
@@ -297,13 +324,14 @@ func _process(delta: float) -> void:
 
 ## The per-frame work, callable by hand. `_process()` does nothing else, so a
 ## headless test drives exactly the same code a device does.
-func step(_delta: float = 0.0) -> void:
+func step(delta: float = 0.0) -> void:
 	if _stage != null:
 		_stage.call("update_zones")
 	_flush_pending_complete()
 	_watch_awaited_action()
 	_reconcile_objects()
 	_track_focus()
+	_step_break(delta)
 
 
 ## -- Session -------------------------------------------------------------------
@@ -965,6 +993,7 @@ func _on_task_completed(task_id: String, stars: int) -> void:
 		# `goAndDo` already played its action on arrival; everything else plays it
 		# now, as the reaction to what the child just did.
 		_play_task_action()
+	_hold_for_break_if_due()
 
 
 ## A skip fills its dot exactly like a completion and pays nothing at all. It
@@ -984,6 +1013,7 @@ func _on_task_skipped(_task_id: String) -> void:
 	if _character != null:
 		_character.call("stop")
 		_character.call("set_disabled", false)
+	_hold_for_break_if_due()
 
 
 func _on_mission_completed(mission_id: String, _stars_earned: int) -> void:
@@ -1465,7 +1495,63 @@ func _start_next_level(preferred_mission_id: String) -> void:
 		mission_id = _pick_story_mission_id()
 	if mission_id.is_empty():
 		mission_id = _last_mission_id
+	# The seam after the summary: the level the child chose is parked, the card
+	# shows, and Keep Playing starts it. Home leaves with the choice unspent.
+	if _break != null and bool(_break.call("is_due")) and bool(_break.call("show")):
+		_break_next_mission = mission_id
+		return
 	_start_level(mission_id)
+
+
+## -- The break card, at its seams -------------------------------------------------------
+
+## At a task seam: when the clock says so, hold the runner and start the short
+## acknowledgement after which the card appears. Otherwise nothing.
+func _hold_for_break_if_due() -> void:
+	if _break == null or _runner == null or not bool(_break.call("is_due")):
+		return
+	if _runner.has_method("set_advance_held"):
+		_runner.call("set_advance_held", true)
+	_break_ack_left = BREAK_ACK_SEC
+
+
+func _step_break(delta: float) -> void:
+	if _break == null:
+		return
+	_break.call("step", delta)
+	if _break_ack_left < 0.0:
+		return
+	_break_ack_left -= maxf(delta, 0.0)
+	if _break_ack_left > 0.0:
+		return
+	_break_ack_left = -1.0
+	if not bool(_break.call("show")):
+		# Nowhere to show it (no UI, or already up): never leave the day parked.
+		_release_break_hold()
+
+
+func _on_break_kept_playing() -> void:
+	_release_break_hold()
+	if _break_next_mission != null:
+		var mission_id: String = String(_break_next_mission)
+		_break_next_mission = null
+		_start_level(mission_id)
+
+
+func _release_break_hold() -> void:
+	if _runner != null and _runner.has_method("set_advance_held"):
+		_runner.call("set_advance_held", false)
+
+
+func get_break_host() -> Node:
+	return _break
+
+
+## True while a seam is waiting on the card (acknowledging, or the card is up).
+func is_break_pending() -> bool:
+	if _break == null:
+		return false
+	return _break_ack_left >= 0.0 or bool(_break.call("is_open"))
 
 
 ## While the summary is up, nothing in the room may be tapped and the child may

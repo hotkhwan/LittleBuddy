@@ -18,6 +18,8 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_voice"]
 
+[sub_resource type="ButtonGroup" id="ButtonGroup_session"]
+
 [node name="ParentSettings" type="Control"]
 layout_mode = 3
 anchor_right = 1.0
@@ -348,6 +350,122 @@ horizontal_alignment = 2
 theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
 text = "100%"
+
+[node name="AlizVoiceRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="AlizVoiceText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/AlizVoiceRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="AlizVoiceTitle" type="Label" parent="SafeArea/Center/Panel/Margin/Content/AlizVoiceRow/AlizVoiceText"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.29, 0.22, 0.12, 1)
+text = "Aliz's voice"
+
+[node name="AlizVoiceHelp" type="Label" parent="SafeArea/Center/Panel/Margin/Content/AlizVoiceRow/AlizVoiceText"]
+layout_mode = 2
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
+text = "How loud Aliz speaks."
+
+[node name="AlizVoiceHelper" type="Label" parent="SafeArea/Center/Panel/Margin/Content/AlizVoiceRow/AlizVoiceText"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
+text = ""
+
+[node name="AlizVoiceSliderBox" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/AlizVoiceRow"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 16
+
+[node name="AlizVoiceSlider" type="HSlider" parent="SafeArea/Center/Panel/Margin/Content/AlizVoiceRow/AlizVoiceSliderBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 78)
+layout_mode = 2
+size_flags_vertical = 4
+focus_mode = 0
+max_value = 1.0
+step = 0.01
+value = 0.85
+scrollable = false
+
+[node name="AlizVoiceValue" type="Label" parent="SafeArea/Center/Panel/Margin/Content/AlizVoiceRow/AlizVoiceSliderBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+size_flags_vertical = 4
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+text = "85%"
+
+[node name="BunnyVoiceRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="BunnyVoiceText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="BunnyVoiceTitle" type="Label" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow/BunnyVoiceText"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.29, 0.22, 0.12, 1)
+text = "Bunny's voice"
+
+[node name="BunnyVoiceHelp" type="Label" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow/BunnyVoiceText"]
+layout_mode = 2
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
+text = "How loud Bunny speaks."
+
+[node name="BunnyVoiceHelper" type="Label" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow/BunnyVoiceText"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
+text = ""
+
+[node name="BunnyVoiceSliderBox" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 16
+
+[node name="BunnyVoiceSlider" type="HSlider" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow/BunnyVoiceSliderBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 78)
+layout_mode = 2
+size_flags_vertical = 4
+focus_mode = 0
+max_value = 1.0
+step = 0.01
+value = 0.85
+scrollable = false
+
+[node name="BunnyVoiceValue" type="Label" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow/BunnyVoiceSliderBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+size_flags_vertical = 4
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+text = "85%"
 
 [node name="VoiceRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
@@ -690,6 +808,116 @@ theme_override_styles/hover = ExtResource("9")
 theme_override_styles/pressed = ExtResource("9")
 theme_override_styles/focus = ExtResource("9")
 text = "English"
+
+[node name="SessionRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="SessionText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/SessionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="SessionTitle" type="Label" parent="SafeArea/Center/Panel/Margin/Content/SessionRow/SessionText"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.29, 0.22, 0.12, 1)
+text = "Play Session Reminder"
+
+[node name="SessionHelp" type="Label" parent="SafeArea/Center/Panel/Margin/Content/SessionRow/SessionText"]
+layout_mode = 2
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
+text = "After this much play, a friendly card suggests a little break. It waits for a calm moment and Keep Playing is always there. Only real play counts."
+
+[node name="SessionHelper" type="Label" parent="SafeArea/Center/Panel/Margin/Content/SessionRow/SessionText"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 23
+theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
+text = ""
+
+[node name="SessionButtons" type="HFlowContainer" parent="SafeArea/Center/Panel/Margin/Content/SessionRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+
+[node name="SessionOffButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/SessionRow/SessionButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 78)
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+button_group = SubResource("ButtonGroup_session")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
+text = "Off"
+[node name="Session5Button" type="Button" parent="SafeArea/Center/Panel/Margin/Content/SessionRow/SessionButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 78)
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+button_pressed = true
+button_group = SubResource("ButtonGroup_session")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
+text = "5 min"
+[node name="Session10Button" type="Button" parent="SafeArea/Center/Panel/Margin/Content/SessionRow/SessionButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 78)
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+button_group = SubResource("ButtonGroup_session")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
+text = "10 min"
+[node name="Session15Button" type="Button" parent="SafeArea/Center/Panel/Margin/Content/SessionRow/SessionButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 78)
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+button_group = SubResource("ButtonGroup_session")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_hover_color = Color(0.36, 0.29, 0.19, 1)
+theme_override_colors/font_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.11, 0.22, 0.35, 1)
+theme_override_styles/normal = ExtResource("8")
+theme_override_styles/hover = ExtResource("8")
+theme_override_styles/pressed = ExtResource("9")
+theme_override_styles/focus = ExtResource("8")
+text = "15 min"
 
 [node name="Divider2" type="HSeparator" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2

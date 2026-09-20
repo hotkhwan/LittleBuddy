@@ -76,10 +76,21 @@ const HELPER_BUTTONS: Dictionary = {
 const ROW_HELPER_KEYS: Dictionary = {
 	"Music": "music_volume",
 	"VoiceVolume": "voice_volume",
+	"AlizVoice": "aliz_voice",
+	"BunnyVoice": "bunny_voice",
 	"Voice": "voice_practice",
 	"Speed": "speaking_speed",
 	"Helper": "helper_language",
 	"Teaching": "teaching_language",
+	"Session": "play_session_reminder",
+}
+
+## The play-session reminder buttons, by node name -> minutes (0 = Off).
+const SESSION_BUTTONS: Dictionary = {
+	"SessionOffButton": 0,
+	"Session5Button": 5,
+	"Session10Button": 10,
+	"Session15Button": 15,
 }
 
 ## Emitted when the grown-up taps Done (or the settings panel is closed).
@@ -118,6 +129,11 @@ var _card_requested: bool = false
 @onready var _music_value: Label = %MusicValue
 @onready var _voice_volume_slider: HSlider = %VoiceVolumeSlider
 @onready var _voice_volume_value: Label = %VoiceVolumeValue
+@onready var _aliz_voice_slider: HSlider = %AlizVoiceSlider
+@onready var _aliz_voice_value: Label = %AlizVoiceValue
+@onready var _bunny_voice_slider: HSlider = %BunnyVoiceSlider
+@onready var _bunny_voice_value: Label = %BunnyVoiceValue
+@onready var _session_buttons: Control = %SessionButtons
 @onready var _helper_buttons: Control = %HelperButtons
 @onready var _teaching_en: Button = %TeachingEnButton
 @onready var _voice_on: Button = %VoiceOnButton
@@ -170,6 +186,12 @@ func _ready() -> void:
 	_cancel_reset_button.pressed.connect(_hide_reset_confirmation)
 	_music_slider.value_changed.connect(_on_music_volume_changed)
 	_voice_volume_slider.value_changed.connect(_on_voice_volume_changed)
+	_aliz_voice_slider.value_changed.connect(_on_aliz_voice_volume_changed)
+	_bunny_voice_slider.value_changed.connect(_on_bunny_voice_volume_changed)
+	for node_name: String in SESSION_BUTTONS.keys():
+		var session_button: Button = _session_buttons.get_node_or_null(NodePath(node_name)) as Button
+		if session_button != null:
+			session_button.pressed.connect(_on_session_reminder_chosen.bind(int(SESSION_BUTTONS[node_name])))
 	for node_name: String in HELPER_BUTTONS.keys():
 		var button: Button = _helper_buttons.get_node_or_null(NodePath(node_name)) as Button
 		if button != null:
@@ -696,6 +718,15 @@ func _sync_from_model() -> void:
 	_music_value.text = _percent(_model.get_music_volume())
 	_voice_volume_slider.set_value_no_signal(_model.get_voice_volume())
 	_voice_volume_value.text = _percent(_model.get_voice_volume())
+	_aliz_voice_slider.set_value_no_signal(_model.get_aliz_voice_volume())
+	_aliz_voice_value.text = _percent(_model.get_aliz_voice_volume())
+	_bunny_voice_slider.set_value_no_signal(_model.get_bunny_voice_volume())
+	_bunny_voice_value.text = _percent(_model.get_bunny_voice_volume())
+	var reminder: int = _model.get_session_reminder_minutes()
+	for node_name: String in SESSION_BUTTONS.keys():
+		var session_button: Button = _session_buttons.get_node_or_null(NodePath(node_name)) as Button
+		if session_button != null:
+			session_button.set_pressed_no_signal(int(SESSION_BUTTONS[node_name]) == reminder)
 	_refresh_row_helpers()
 	var voice: bool = _model.get_speech_enabled()
 	_voice_on.button_pressed = voice
@@ -765,6 +796,55 @@ func _on_voice_volume_changed(value: float) -> void:
 	var tts: Node = _autoload("TtsService")
 	if tts != null and tts.has_method("set_voice_volume"):
 		tts.call("set_voice_volume", value)
+
+
+## Aliz's own level: the voice director when there is one
+## (`/root/Voice.set_character_volume("aliz", v)`), and until then the single
+## TTS level, so the slider always does something audible.
+func _on_aliz_voice_volume_changed(value: float) -> void:
+	if _syncing:
+		return
+	_model.set_aliz_voice_volume(value)
+	_aliz_voice_value.text = _percent(value)
+	if _apply_character_volume("aliz", value):
+		return
+	var tts: Node = _autoload("TtsService")
+	if tts != null and tts.has_method("set_voice_volume"):
+		tts.call("set_voice_volume", value)
+
+
+## Bunny's own level: the voice director when there is one; persisted either way.
+func _on_bunny_voice_volume_changed(value: float) -> void:
+	if _syncing:
+		return
+	_model.set_bunny_voice_volume(value)
+	_bunny_voice_value.text = _percent(value)
+	_apply_character_volume("bunny", value)
+
+
+## True when a voice director took the level.
+func _apply_character_volume(character: String, value: float) -> bool:
+	var voice: Node = _autoload("Voice")
+	if voice == null or not voice.has_method("set_character_volume"):
+		return false
+	voice.call("set_character_volume", character, value)
+	return true
+
+
+## The play-session reminder: persisted, and applied to the running clock at
+## once (it re-reads the setting anyway; this makes the change immediate).
+func _on_session_reminder_chosen(minutes: int) -> void:
+	if _syncing:
+		return
+	_model.set_session_reminder_minutes(minutes)
+	var session: Node = _autoload("PlaySession")
+	if session != null and session.has_method("set_threshold_minutes"):
+		session.call("set_threshold_minutes", minutes)
+
+
+## The reminder buttons' minutes, by node name. Tests.
+func session_button_minutes() -> Dictionary:
+	return SESSION_BUTTONS.duplicate()
 
 
 static func _percent(value: float) -> String:

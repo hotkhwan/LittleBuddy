@@ -21,6 +21,14 @@ const KEY_VOICE_VOLUME := "voiceVolume"
 ## kept in step so every existing reader of the boolean keeps working.
 const KEY_HELPER_LANGUAGE := "helperLanguage"
 const KEY_TEACHING_LANGUAGE := "teachingLanguage"
+## Per-character voice levels, 0..1, for the voice director (`/root/Voice`,
+## `set_character_volume("aliz" | "bunny", v)`). `voiceVolume` above stays the
+## single TTS level and keeps working beside them.
+const KEY_ALIZ_VOICE_VOLUME := "alizVoiceVolume"
+const KEY_BUNNY_VOICE_VOLUME := "bunnyVoiceVolume"
+## The play-session reminder (`play_session.gd`): minutes of ACTIVE play before
+## the break card, 0 = off. Only the offered values are ever stored.
+const KEY_SESSION_REMINDER_MINUTES := "sessionReminderMinutes"
 
 const DEFAULT_THAI_HINTS := true
 const DEFAULT_SPEECH_ENABLED := true
@@ -31,6 +39,10 @@ const DEFAULT_MUSIC_VOLUME := 1.0
 const DEFAULT_VOICE_VOLUME := 0.85
 const DEFAULT_HELPER_LANGUAGE := "th"
 const TEACHING_LANGUAGE := "en"
+const DEFAULT_ALIZ_VOICE_VOLUME := 0.85
+const DEFAULT_BUNNY_VOICE_VOLUME := 0.85
+const DEFAULT_SESSION_REMINDER_MINUTES := 5
+const SESSION_REMINDER_CHOICES: Array[int] = [0, 5, 10, 15]
 
 const TTS_SPEED_SLOW := "slow"
 const TTS_SPEED_NORMAL := "normal"
@@ -109,6 +121,41 @@ func get_voice_volume() -> float:
 
 func set_voice_volume(value: float) -> void:
 	_write(KEY_VOICE_VOLUME, _unit(value))
+
+
+func get_aliz_voice_volume() -> float:
+	return _read_unit(KEY_ALIZ_VOICE_VOLUME, DEFAULT_ALIZ_VOICE_VOLUME)
+
+
+func set_aliz_voice_volume(value: float) -> void:
+	_write(KEY_ALIZ_VOICE_VOLUME, _unit(value))
+
+
+func get_bunny_voice_volume() -> float:
+	return _read_unit(KEY_BUNNY_VOICE_VOLUME, DEFAULT_BUNNY_VOICE_VOLUME)
+
+
+func set_bunny_voice_volume(value: float) -> void:
+	_write(KEY_BUNNY_VOICE_VOLUME, _unit(value))
+
+
+## -- play session reminder -----------------------------------------------------
+
+## 0 (off), 5, 10 or 15. Anything else stored reads as the default.
+func get_session_reminder_minutes() -> int:
+	var value: Variant = _read(KEY_SESSION_REMINDER_MINUTES, DEFAULT_SESSION_REMINDER_MINUTES)
+	if typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT:
+		var minutes: int = int(value)
+		if float(value) == float(minutes) and SESSION_REMINDER_CHOICES.has(minutes):
+			return minutes
+	return DEFAULT_SESSION_REMINDER_MINUTES
+
+
+## Only the offered values are persisted; anything else is ignored.
+func set_session_reminder_minutes(minutes: int) -> void:
+	if not SESSION_REMINDER_CHOICES.has(minutes):
+		return
+	_write(KEY_SESSION_REMINDER_MINUTES, minutes)
 
 
 func get_speech_enabled() -> bool:

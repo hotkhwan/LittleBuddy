@@ -83,6 +83,9 @@ const HouseStageScript := preload("res://scripts/gameplay/house_stage.gd")
 const PoseModifierScript := preload("res://scripts/interaction/pose_modifier.gd")
 const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
 const HouseActs := preload("res://scripts/gameplay/house_freeplay_acts.gd")
+## The break card's host (`break_host.gd`): holds the room, shows the card,
+## gives the room back. See "The break card" below.
+const BreakHostScript := preload("res://scripts/session/break_host.gd")
 
 ## The care close-up (`care_overlay.gd`) is the lead's and is CALLED, never
 ## edited: Free Play mounts its own instance under the world's `UI` layer.
@@ -188,6 +191,10 @@ var _sparkles: Array = []
 ## Rooms the entitlement says are open; empty means "all of them".
 var _entitlements: Object = null
 var _entitlements_resolved: bool = false
+## The break card's host, and how long Aliz has been calm since the clock said
+## it was time. See "The break card".
+var _break: Node = null
+var _calm_seconds: float = 0.0
 
 
 ## -- Wiring --------------------------------------------------------------------
@@ -240,6 +247,10 @@ func bind(world: Node) -> void:
 	if _world.has_signal("room_entered"):
 		_world.connect("room_entered", _on_room_entered)
 	_install_room_gate()
+	_break = BreakHostScript.new()
+	_break.name = "BreakHost"
+	add_child(_break)
+	_break.call("bind", _world, _hud)
 	if _character != null and _character.has_method("get_carry_controller"):
 		var carry: Node = _character.call("get_carry_controller")
 		if carry != null:
@@ -342,6 +353,12 @@ func step(delta: float) -> void:
 		_stage.call("update_zones")
 	_step_returns(delta)
 	_step_acts(delta)
+	_step_break(delta)
+	if _break != null and bool(_break.call("is_open")):
+		# A pointing hand over the break card would ask for a tap the card is
+		# there to take a break from.
+		_idle = 0.0
+		return
 	_idle += maxf(delta, 0.0)
 	if _hint != null and _hint.visible:
 		_hint.call("step", delta)
@@ -1055,15 +1072,30 @@ func _step_acts(delta: float) -> void:
 
 ## -- Doors this session keeps for later ---------------------------------------------
 
-## Which rooms Free Play may enter today, from the entitlement service (read
-## only): the bedroom, the kitchen and the feeding loop are always open; the
-## bathroom and the living room open with the family entitlement. No service,
-## or a broken one, opens everything -- a missing file must never lock a child
-## out of her own house.
+## **Little Days V1 is FREE (owner decision, 2026-09-20).** Every room opens in
+## Free Play whatever the entitlement says: no subscription lock, no blocked
+## activity, no payment between a child and a finished room. `is_room_open()`
+## answers true for every room while this is true. The seam underneath -- the
+## entitlement read, the gate installed on the affordance layer and the
+## transition controller, the SOON badge in `affordance_rules.gd`, the kind
+## "Soon! Ask a grown-up" -- is kept whole and comes back the day this flips,
+## which is why `test_freeplay_acts.gd` still drives it with the constant off.
+const ROOMS_FREE_IN_V1: bool = true
+
+## Which rooms Free Play may enter with the gate ON, from the entitlement service
+## (read only): the bedroom, the kitchen and the feeding loop are always open;
+## the bathroom and the living room open with the family entitlement. No
+## service, or a broken one, opens everything -- a missing file must never lock
+## a child out of her own house.
 const ALWAYS_OPEN_ROOMS: Array[String] = ["bedroom", "kitchen"]
+
+## A test seam for the gate's own logic: null follows `ROOMS_FREE_IN_V1`.
+var _rooms_free_override: Variant = null
 
 
 func is_room_open(room_id: String) -> bool:
+	if _rooms_free():
+		return true
 	if ALWAYS_OPEN_ROOMS.has(room_id):
 		return true
 	var service: Object = _entitlement_service()
@@ -1073,6 +1105,18 @@ func is_room_open(room_id: String) -> bool:
 	if ids == null:
 		return true
 	return bool(service.call("is_active", ids.FAMILY_CLUB))
+
+
+func _rooms_free() -> bool:
+	if _rooms_free_override != null:
+		return bool(_rooms_free_override)
+	return ROOMS_FREE_IN_V1
+
+
+## Tests only: drives the gate seam as if `ROOMS_FREE_IN_V1` were `free_rooms`.
+## Null puts the constant back in charge.
+func set_rooms_free_for_test(free_rooms: Variant) -> void:
+	_rooms_free_override = free_rooms
 
 
 ## A test seam, and the hook a parent-side unlock would use: hand in the
@@ -1139,6 +1183,72 @@ func _say_soon_if_locked(target_id: String) -> void:
 	if _hud != null:
 		_hud.call("show_encouragement", "Soon!")
 	_speak("Soon! Ask a grown-up.", true)
+
+
+## -- The break card ----------------------------------------------------------------------
+##
+## The play-session clock (`play_session.gd`) says when; this says WHERE: only
+## when Aliz is calm -- standing still, holding nobody, no close-up, no finger
+## on a pickup, no door in flight, not sat on the sofa -- and has been for
+## `BREAK_CALM_SEC`. Bunny in her arms means wait: the card never drops him.
+## `break_host.gd` then holds the room, shows the card and gives the room back.
+const BREAK_CALM_SEC: float = 2.0
+
+
+func _step_break(delta: float) -> void:
+	if _break == null:
+		return
+	_break.call("step", delta)
+	if not bool(_break.call("is_due")):
+		_calm_seconds = 0.0
+		return
+	if not is_calm():
+		_calm_seconds = 0.0
+		return
+	_calm_seconds += maxf(delta, 0.0)
+	if _calm_seconds >= BREAK_CALM_SEC:
+		_calm_seconds = 0.0
+		if bool(_break.call("show")):
+			# The pointing hand goes away with the room; it would otherwise sit
+			# under the card and come back pointing at the scrim.
+			_quieten_nudge()
+
+
+## True when nothing is mid-way: a safe moment to put a card over the room.
+func is_calm() -> bool:
+	if is_care_open() or is_seated() or is_washing_hands() or not _pending_landing.is_empty():
+		return false
+	if _press_started_msec != 0:
+		return false
+	if _character != null and is_instance_valid(_character):
+		if AffordanceLayerScript.carrying_kind(_character) == "child":
+			return false
+		if _character.has_method("get_state_name"):
+			var state: String = String(_character.call("get_state_name"))
+			if state == "walking" or state == "disabled":
+				return false
+			if state == "interacting" and _character.has_method("get_held_action") \
+					and String(_character.call("get_held_action")).is_empty():
+				return false
+	var transition: Node = _world.call("get_transition_controller") \
+			if _world != null and _world.has_method("get_transition_controller") else null
+	if transition != null and transition.has_method("is_transitioning") \
+			and bool(transition.call("is_transitioning")):
+		return false
+	for node: Variant in _draggables:
+		if node is Node and is_instance_valid(node as Node) \
+				and (node as Node).has_method("is_interaction_active") \
+				and bool((node as Node).call("is_interaction_active")):
+			return false
+	return true
+
+
+func get_break_host() -> Node:
+	return _break
+
+
+func get_calm_seconds() -> float:
+	return _calm_seconds
 
 
 ## -- Opening, storing, placing -----------------------------------------------------

@@ -322,17 +322,18 @@ func _test_arriving_is_play():
 	character.emit_signal("interaction_ready", "bedroom.doorToKitchen")
 	if tts.lines != before:
 		failures.append("arriving at a door spoke a reaction into the room the child is leaving")
-	# ...unless the door is one this session keeps for later: then nothing
-	# changes room and the kind word IS the event.
-	if bool(director.call("is_room_open", "bathroom")):
-		failures.append("the bathroom is open on the free starter; Free Play should keep it for later")
+	# Little Days V1 is free (owner decision, 2026-09-20): every door, the
+	# bathroom's included, is simply a door on a free-starter profile. Nothing a
+	# child reaches says "ask a grown-up".
+	if not bool(director.call("is_room_open", "bathroom")):
+		failures.append("the bathroom is closed on the free starter; V1 opens every room")
 	world.call("place_in_room", "bedroom", "")
 	before = tts.lines.duplicate()
 	character.emit_signal("interaction_ready", "bedroom.doorToBathroom")
-	if tts.lines.size() != before.size() + 1 or String(tts.lines[-1]).find("grown-up") < 0:
-		failures.append("arriving at a locked door did not say 'Soon! Ask a grown-up' (got %s)" % str(tts.lines))
-	if String(world.call("get_current_room_id")) != "bedroom":
-		failures.append("a locked door moved the child out of the bedroom")
+	if tts.lines != before:
+		failures.append("arriving at the bathroom door spoke into the room the child is leaving (got %s)" % str(tts.lines))
+	if String(world.call("get_current_room_id")) != "bathroom":
+		failures.append("the bathroom door did not open (the child is in %s)" % world.call("get_current_room_id"))
 
 	_release(world)
 	return failures

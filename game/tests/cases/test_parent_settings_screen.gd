@@ -46,6 +46,8 @@ func run():
 	failures.append_array(_test_sliders_and_language(tree))
 	failures.append_array(_test_slider_db_mapping())
 	failures.append_array(_test_selector_matches_localization())
+	failures.append_array(_test_session_reminder_row(tree))
+	failures.append_array(_test_character_voice_sliders(tree))
 	L10n.set_helper_language(L10n.DEFAULT_HELPER_LANGUAGE)
 	return failures
 
@@ -331,4 +333,145 @@ func _test_selector_matches_localization():
 		if code != "off" and button.text != L10n.native_name(code):
 			failures.append("%s reads '%s', expected the native name '%s'" % [node_name, button.text, L10n.native_name(code)])
 	panel.free()
+	return failures
+
+
+class FakeVoiceDirector extends Node:
+	var levels: Dictionary = {}
+	func set_character_volume(character: String, value: float) -> void:
+		levels[character] = value
+
+
+class FakeTtsService extends Node:
+	var volume: float = -1.0
+	func set_voice_volume(value: float) -> void:
+		volume = value
+
+
+## "Play Session Reminder": Off / 5 / 10 / 15 minutes, default 5, persisted as
+## `sessionReminderMinutes` and applied to the running clock at once.
+func _test_session_reminder_row(tree: SceneTree):
+	var failures: Array = []
+	var save := FakeSaveService.new()
+	save.name = "SaveService"
+	tree.root.add_child(save)
+	# The one clock per tree (another case may already have made it).
+	var session_script: GDScript = load("res://scripts/session/play_session.gd")
+	var session_was_there: bool = session_script.find(tree) != null
+	var session: Node = session_script.get_or_create(tree)
+	session.call("reset")
+
+	var panel: Control = _instantiate(tree, false)
+	if panel == null:
+		failures.append("cannot instantiate %s" % PARENT_SCENE)
+	else:
+		panel.call("open_settings")
+		var title: Label = panel.find_child("SessionTitle", true, false) as Label
+		if title == null or title.text != "Play Session Reminder":
+			failures.append("the reminder row is missing or mis-titled")
+		var buttons: Dictionary = panel.call("session_button_minutes")
+		if buttons.values() != [0, 5, 10, 15] and buttons.size() != 4:
+			failures.append("the reminder offers %s" % str(buttons))
+		var five: Button = panel.find_child("Session5Button", true, false) as Button
+		if five == null or not five.button_pressed:
+			failures.append("5 minutes is not the selected default")
+		for node_name: String in buttons.keys():
+			var button: Button = panel.find_child(node_name, true, false) as Button
+			if button == null:
+				failures.append("reminder button %s is missing" % node_name)
+				continue
+			if button.custom_minimum_size.y < 78.0:
+				failures.append("reminder button %s is under the grown-up touch height" % node_name)
+			button.pressed.emit()
+			var minutes: int = int(buttons[node_name])
+			if save.settings.get("sessionReminderMinutes", -1) != minutes:
+				failures.append("%s did not persist sessionReminderMinutes=%d: %s" % [node_name, minutes, str(save.settings)])
+			if int(session.call("get_threshold_minutes")) != minutes:
+				failures.append("%s did not apply %d minutes to the running clock" % [node_name, minutes])
+		# Reopening reads the profile back.
+		var ten: Button = panel.find_child("Session10Button", true, false) as Button
+		ten.pressed.emit()
+		panel.call("close_settings")
+		panel.call("open_settings")
+		if not ten.button_pressed:
+			failures.append("reopening must show the persisted reminder selected")
+		_teardown(panel)
+
+	if not session_was_there:
+		tree.root.remove_child(session)
+		session.free()
+	tree.root.remove_child(save)
+	save.free()
+	return failures
+
+
+## "Aliz's voice" / "Bunny's voice": the voice director by name when it exists;
+## until then Aliz's slider drives the single TTS level. Both persist.
+func _test_character_voice_sliders(tree: SceneTree):
+	var failures: Array = []
+	var save := FakeSaveService.new()
+	save.name = "SaveService"
+	tree.root.add_child(save)
+	var tts := FakeTtsService.new()
+	tts.name = "TtsService"
+	tree.root.add_child(tts)
+
+	# Without a voice director.
+	var panel: Control = _instantiate(tree, false)
+	if panel == null:
+		failures.append("cannot instantiate %s" % PARENT_SCENE)
+	else:
+		panel.call("open_settings")
+		var aliz: HSlider = panel.find_child("AlizVoiceSlider", true, false) as HSlider
+		var bunny: HSlider = panel.find_child("BunnyVoiceSlider", true, false) as HSlider
+		var legacy: HSlider = panel.find_child("VoiceVolumeSlider", true, false) as HSlider
+		if aliz == null or bunny == null or legacy == null:
+			failures.append("a voice slider is missing")
+		else:
+			if absf(aliz.value - 0.85) > 0.001 or absf(bunny.value - 0.85) > 0.001:
+				failures.append("the character sliders should start at 0.85")
+			_drag(aliz, 0.3)
+			if absf(float(save.settings.get("alizVoiceVolume", -1.0)) - 0.3) > 0.001:
+				failures.append("alizVoiceVolume 0.3 was not persisted: %s" % str(save.settings))
+			if absf(tts.volume - 0.3) > 0.001:
+				failures.append("with no voice director, Aliz's slider must drive TtsService (got %.2f)" % tts.volume)
+			var value_label: Label = panel.find_child("AlizVoiceValue", true, false) as Label
+			if value_label != null and value_label.text != "30%":
+				failures.append("Aliz's value label reads '%s'" % value_label.text)
+			_drag(bunny, 0.6)
+			if absf(float(save.settings.get("bunnyVoiceVolume", -1.0)) - 0.6) > 0.001:
+				failures.append("bunnyVoiceVolume 0.6 was not persisted: %s" % str(save.settings))
+			if absf(tts.volume - 0.3) > 0.001:
+				failures.append("Bunny's slider changed the TTS level")
+			# The existing single row still works beside them.
+			_drag(legacy, 0.5)
+			if absf(float(save.settings.get("voiceVolume", -1.0)) - 0.5) > 0.001 or absf(tts.volume - 0.5) > 0.001:
+				failures.append("the single voiceVolume row stopped working")
+		_teardown(panel)
+
+	# With a voice director: both sliders go to it by name, TTS is left alone.
+	var voice := FakeVoiceDirector.new()
+	voice.name = "Voice"
+	tree.root.add_child(voice)
+	tts.volume = -1.0
+	panel = _instantiate(tree, false)
+	if panel != null:
+		panel.call("open_settings")
+		var aliz: HSlider = panel.find_child("AlizVoiceSlider", true, false) as HSlider
+		var bunny: HSlider = panel.find_child("BunnyVoiceSlider", true, false) as HSlider
+		_drag(aliz, 0.2)
+		_drag(bunny, 0.9)
+		if absf(float(voice.levels.get("aliz", -1.0)) - 0.2) > 0.001:
+			failures.append("Aliz's slider did not reach Voice.set_character_volume(\"aliz\"): %s" % str(voice.levels))
+		if absf(float(voice.levels.get("bunny", -1.0)) - 0.9) > 0.001:
+			failures.append("Bunny's slider did not reach Voice.set_character_volume(\"bunny\"): %s" % str(voice.levels))
+		if tts.volume != -1.0:
+			failures.append("with a voice director, Aliz's slider must not also drive TtsService")
+		_teardown(panel)
+	tree.root.remove_child(voice)
+	voice.free()
+	tree.root.remove_child(tts)
+	tts.free()
+	tree.root.remove_child(save)
+	save.free()
 	return failures
