@@ -30,8 +30,9 @@ extends RefCounted
 ##
 ##   nod    0.9 s   two dips of the head, 12 degrees, the neck carrying a third
 ##   tilt   1.2 s   12 degrees of roll (9 head + 3 neck) held, then back
-##   point  1.4 s   the right arm out to her right (camera-right, where the
-##                  flashcard board sits), forearm straight, head turned 10
+##   point  1.4 s   the right arm forward and ACROSS toward camera-right (she
+##                  faces the child, so camera-right is her left, where the
+##                  flashcard board sits), forearm straight, head turned 12
 ##                  degrees the same way; held, then lowered
 ##   clap   1.1 s   both arms forward and bent up, hands pulsing inward twice
 ##   wave   1.3 s   the right arm up and out, forearm and hand swinging four
@@ -81,8 +82,15 @@ const DURATIONS: Dictionary = {
 ## Degrees.
 const NOD_DEG: float = 12.0
 const TILT_DEG: float = 12.0
-const POINT_OUT_DEG: float = 72.0
-const WAVE_UP_DEG: float = 100.0
+## Forward and across for the point. For the wave the upper arm goes forward
+## AND out (a hand raised in class) and the forearm up to vertical, so the
+## hand is at face height in front of the shoulder -- beside the head it
+## vanishes behind her hair, which is most of her silhouette from the front.
+const POINT_FORWARD_DEG: float = 82.0
+const POINT_ACROSS_DEG: float = 58.0
+const WAVE_FORWARD_DEG: float = 60.0
+const WAVE_OUT_DEG: float = 45.0
+const WAVE_ELBOW_DEG: float = 75.0
 
 ## The listening lean-in, applied by the layer as a held posture (not a clip):
 ## bone -> [[axis, degrees], ...]. The head counter-nods so the eyes stay on
@@ -159,14 +167,15 @@ static func _tilt(skeleton: Skeleton3D, prefix: String) -> Animation:
 
 static func _point(skeleton: Skeleton3D, prefix: String) -> Animation:
 	var animation: Animation = _one_shot(duration_of(GESTURE_POINT))
-	# Out to HER right (-1 is out for the right arm), a little forward, held.
+	# Forward to shoulder height, then swung across toward her left (TURN +
+	# once the arm points forward), held.
 	var beats: Array = [[0.0, 0.0], [0.35, 1.0], [1.1, 1.0], [1.4, 0.0]]
 	_bone(animation, skeleton, prefix, ARM_R,
-			_scaled2(beats, TILT, -POINT_OUT_DEG, NOD, -22.0))
+			_scaled2(beats, NOD, -POINT_FORWARD_DEG, TURN, POINT_ACROSS_DEG))
 	_bone(animation, skeleton, prefix, FOREARM_R, _scaled(beats, NOD, -6.0))
 	_bone(animation, skeleton, prefix, HAND_R, _scaled(beats, NOD, -12.0))
-	# The head follows the hand: to her right is TURN negative.
-	_bone(animation, skeleton, prefix, HEAD, _scaled(beats, TURN, -10.0))
+	# The head follows the hand: to her left is TURN positive.
+	_bone(animation, skeleton, prefix, HEAD, _scaled(beats, TURN, 12.0))
 	return animation
 
 
@@ -187,9 +196,9 @@ static func _clap(skeleton: Skeleton3D, prefix: String) -> Animation:
 		# the hands moved 1.8 cm.
 		var inward: float = -float(side)
 		_bone(animation, skeleton, prefix, arm, _combine(
-				_scaled(raise, NOD, -58.0), _scaled(pulse, TURN, inward * 18.0)))
+				_scaled(raise, NOD, -58.0), _scaled(pulse, TURN, inward * 34.0)))
 		_bone(animation, skeleton, prefix, forearm, _combine(
-				_scaled(raise, NOD, -62.0), _scaled(pulse, TILT, inward * 12.0)))
+				_scaled(raise, NOD, -62.0), _scaled(pulse, TILT, inward * 22.0)))
 		_bone(animation, skeleton, prefix, hand, _scaled(pulse, TILT, inward * 12.0))
 	return animation
 
@@ -200,10 +209,17 @@ static func _wave(skeleton: Skeleton3D, prefix: String) -> Animation:
 	# Four swings while the arm is up.
 	var swing: Array = [[0.0, 0.0], [0.3, 0.0], [0.42, 1.0], [0.56, -1.0], [0.70, 1.0],
 			[0.84, -1.0], [0.98, 0.5], [1.1, 0.0], [1.3, 0.0]]
-	_bone(animation, skeleton, prefix, ARM_R, _scaled2(raise, TILT, -WAVE_UP_DEG, NOD, -12.0))
+	# Upper arm forward and out, forearm bent up (the elbow bend of a forward
+	# arm is NOD). Turn axes are expressed in the PARENT'S rest frame, so on
+	# the raised arm the swing axis that sweeps the hand sideways is TURN
+	# (measured: 9 cm of sweep; TILT there only twisted the forearm).
+	# Turns apply in order about FIXED skeleton axes: out first, then forward,
+	# because a forward-pointing arm turned about the forward axis only twists.
+	_bone(animation, skeleton, prefix, ARM_R,
+			_scaled2(raise, TILT, -WAVE_OUT_DEG, NOD, -WAVE_FORWARD_DEG))
 	_bone(animation, skeleton, prefix, FOREARM_R, _combine(
-			_scaled(raise, NOD, -45.0), _scaled(swing, TILT, 22.0)))
-	_bone(animation, skeleton, prefix, HAND_R, _scaled(swing, TILT, 16.0))
+			_scaled(raise, NOD, -WAVE_ELBOW_DEG), _scaled(swing, NOD, 24.0)))
+	_bone(animation, skeleton, prefix, HAND_R, _scaled(swing, TILT, 18.0))
 	return animation
 
 

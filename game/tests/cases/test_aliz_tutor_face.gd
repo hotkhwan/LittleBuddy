@@ -516,8 +516,8 @@ func _test_gestures(buddy: Node3D):
 		hand_lift = _global(skeleton, hand_r).origin.y - hand_rest.y
 		hand_l_lift = _global(skeleton, hand_l).origin.y - hand_l_rest.y
 		var hand_out: float = _global(skeleton, hand_r).origin.x - hand_rest.x
-		print("        %-5s t=%.2fs  head pitch %+.1f roll %+.1f  right hand lift %+.1f cm out %+.1f cm  left hand lift %+.1f cm  weight %.2f"
-				% [name, t, head_pitch, head_roll, hand_lift, -hand_out, hand_l_lift, float(layer.call("weight"))])
+		print("        %-5s t=%.2fs  head pitch %+.1f roll %+.1f  right hand lift %+.1f cm, toward her left %+.1f cm  left hand lift %+.1f cm  weight %.2f"
+				% [name, t, head_pitch, head_roll, hand_lift, hand_out, hand_l_lift, float(layer.call("weight"))])
 		match name:
 			"nod":
 				if absf(head_pitch) < 6.0 or absf(head_pitch) > 16.0:
@@ -530,8 +530,8 @@ func _test_gestures(buddy: Node3D):
 			"point":
 				if hand_lift < 15.0:
 					failures.append("point: the right hand rose only %.1f cm; it should reach shoulder height" % hand_lift)
-				if -hand_out < 15.0:
-					failures.append("point: the right hand moved %.1f cm outward; it should point to her right" % -hand_out)
+				if hand_out < 10.0:
+					failures.append("point: the right hand moved %.1f cm across toward her left (camera-right); expected 10+" % hand_out)
 				if absf(hand_l_lift) > 0.5:
 					failures.append("point moved the LEFT hand %.1f cm" % hand_l_lift)
 			"clap":

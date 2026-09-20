@@ -295,7 +295,11 @@ def op_eyes_glance(face, sampler, opening, dx, dy):
                             edge_acc[k] += rgb[k]
                         edge_n += 1
         edge_tone = tuple(v // max(edge_n, 1) for v in edge_acc) if edge_n else darkest
-        eyes.append((side, cx, cy, rx, ry, darkest, edge_tone))
+        # The moved outline is drawn a step lighter than the darkest rim texel:
+        # at 4 mm texels a near-black ring stair-steps, a mid-dark one reads
+        # as an edge.
+        rim = blend(darkest, edge_tone, 0.45)
+        eyes.append((side, cx, cy, rx, ry, rim, edge_tone))
 
     def f(x, y, rgb):
         if y > EYE_TOP_LIMIT:
@@ -307,15 +311,22 @@ def op_eyes_glance(face, sampler, opening, dx, dy):
                 return None
             old = math.hypot((x - cx) / rx, (y - cy) / ry)
             new = math.hypot((x - cx - dx) / rx, (y - cy - dy) / ry)
-            band = 0.0025 / min(rx, ry)
-            if new >= 1.0:
-                # Outside the moved iris: sclera wherever the old iris was.
-                return (opening.sclera[side], 1.0) if old < 1.0 + 0.6 * band else None
+            r = min(rx, ry)
+            d_new = (new - 1.0) * r          # metres outside the moved iris
+            d_old = (old - 1.0) * r
+            if d_new > -0.0008:
+                # Outside (or on the edge of) the moved iris: sclera wherever
+                # the old iris reached, feathered at both edges.
+                a = edge(-d_new - 0.0008, 0.0012) * edge(d_old - 0.0015, 0.0015)
+                return (opening.sclera[side], a) if a > 0.0 else None
             if is_white(rgb):
                 return None            # a highlight stays where it is
-            if new >= 1.0 - band:
-                return rim, 1.0        # the moved outline, all the way round
-            if old >= 1.0 - 1.6 * band:
+            band = 0.0025
+            if d_new > -band - 0.001:
+                # The moved outline, feathered on its inner side.
+                a = edge(-band - d_new, 0.0010)
+                return (rim, a) if a > 0.0 else None
+            if d_old > -1.6 * band:
                 return tone, 1.0       # the old outline, now interior: edge tone
             return None                # iris paint stays where it is
         return None
