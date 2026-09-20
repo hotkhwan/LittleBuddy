@@ -36,9 +36,18 @@ const ALLOWLIST_PATH: String = "res://content/tutor/assets_allowlist.json"
 const EMOTIONS: Array[String] = ["neutral", "listening", "thinking", "happy", "encouraging", "smile"]
 const GESTURES: Array[String] = ["none", "nod", "tilt", "point", "clap", "wave"]
 const VISUAL_TYPES: Array[String] = ["none", "flashcard", "model"]
-const LESSON_ACTIONS: Array[String] = ["next_question", "retry", "give_hint", "complete", "end_session"]
+## `switch_lesson` and `jump_step` (addendum 2026-09-20 evening): the engine
+## routed the child elsewhere (a choose step, a barge-in "I want a dog!").
+const LESSON_ACTIONS: Array[String] = ["next_question", "retry", "give_hint", "complete", "end_session", "switch_lesson", "jump_step"]
 
-const OUTPUT_KEYS: Array[String] = ["speech", "subtitle", "emotion", "gesture", "visual", "lessonAction", "nextQuestion"]
+const OUTPUT_KEYS: Array[String] = ["speech", "subtitle", "emotion", "gesture", "visual", "lessonAction", "nextQuestion",
+	"nextLessonId", "nextStepId", "wantsSfx"]
+## CLIENT-ONLY optional passthroughs (the server never emits them and drops
+## them if sent): lesson routing targets for `switch_lesson` / `jump_step`
+## and the reaction sound effect a step asks for. Each must be a short safe
+## identifier or it is dropped -- never a reason to fall back.
+const IDENTIFIER_KEYS: Array[String] = ["nextLessonId", "nextStepId", "wantsSfx"]
+const MAX_IDENTIFIER: int = 48
 
 ## The contract's approved list; `assets_allowlist.json` overrides it when
 ## present so the validator still works in a build that ships without the file.
@@ -175,6 +184,9 @@ static func validate(candidate: Variant, allowlist: Array = []) -> Dictionary:
 	}
 	if typeof(t.get("nextQuestion", null)) == TYPE_STRING and not String(t["nextQuestion"]).strip_edges().is_empty():
 		turn["nextQuestion"] = String(t["nextQuestion"]).strip_edges()
+	for key: String in IDENTIFIER_KEYS:
+		if typeof(t.get(key, null)) == TYPE_STRING and is_safe_identifier(String(t[key])):
+			turn[key] = String(t[key])
 	return _report(true, [], turn)
 
 
@@ -234,6 +246,19 @@ static func make(speech: String, emotion: String, gesture: String, lesson_action
 	if not next_question.is_empty():
 		turn["nextQuestion"] = sanitize_text(next_question, MAX_NEXT_QUESTION)
 	return turn
+
+
+## `[a-z0-9_]{1,48}`, case-insensitive: a lesson id, a step id, an sfx name.
+static func is_safe_identifier(value: String) -> bool:
+	if value.is_empty() or value.length() > MAX_IDENTIFIER:
+		return false
+	for i: int in range(value.length()):
+		var code: int = value.unicode_at(i)
+		var ok: bool = (code >= 0x30 and code <= 0x39) or (code >= 0x41 and code <= 0x5A) \
+				or (code >= 0x61 and code <= 0x7A) or code == 0x5F
+		if not ok:
+			return false
+	return true
 
 
 ## Lesson text on its way into `make()`: typographic punctuation becomes its

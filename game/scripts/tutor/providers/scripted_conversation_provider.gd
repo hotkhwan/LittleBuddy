@@ -22,6 +22,17 @@ extends "res://scripts/tutor/providers/conversation_provider.gd"
 ## answer -- the engine counts attempts). `turn_for_verdict(step, verdict,
 ## phase)` builds the turn for a verdict already obtained, which is how the
 ## backend provider falls back for ONE turn without judging the child twice.
+##
+## ## Reactions, routing, barge-in (addendum)
+##
+## A matched `sound` step's verdict carries `reaction {gesture, sfx, alizSound}`:
+## the gesture becomes the turn's gesture, the sfx name rides along as
+## `wantsSfx` (client-only key; the scene may ignore it) and `alizSound` is
+## said first unless the line already starts with it ("Meow! You're amazing!"
+## is not doubled). A `switch_lesson` / `jump_step` verdict keeps its action
+## and adds `nextLessonId` / `nextStepId`; `lesson_routed` fires first. A
+## barge-in (`PHASE_INTERJECTION`) goes through `handle_interjection()` when
+## the engine has it, else the step is simply asked again.
 
 const VARIANTS: int = 3
 
@@ -96,6 +107,8 @@ func build_turn(transcript: String, phase: String) -> Dictionary:
 			return together_turn(step)
 		PHASE_TIMEOUT:
 			return turn_for_verdict(step, _engine.call("evaluate", ""), PHASE_TIMEOUT)
+		PHASE_INTERJECTION:
+			return interjection_turn(step, transcript)
 		_:
 			return turn_for_verdict(step, _engine.call("evaluate", transcript), PHASE_ANSWER)
 
@@ -110,7 +123,34 @@ func open_turn(step: Dictionary) -> Dictionary:
 	if kind == "celebrate":
 		return TurnValidator.make(_non_empty(String(step.get("teachText", "")), COMPLETE_LINE), "happy", "clap", "complete", asset)
 	var question: String = _non_empty(String(step.get("questionText", "")), "What is this?")
-	return TurnValidator.make(question, "smile", "point", "retry", asset, question)
+	var gesture: String = "point" if not asset.is_empty() else "tilt"
+	return TurnValidator.make(question, "smile", gesture, "retry", asset, question)
+
+
+## Barge-in: the child spoke over Aliz. Topic change -> honoured; an answer ->
+## judged; anything else -> the step is asked again (a restart of the step,
+## which is also the whole behaviour when the engine has no interjection API).
+func interjection_turn(step: Dictionary, transcript: String) -> Dictionary:
+	if _engine.has_method("handle_interjection"):
+		var result: Dictionary = _engine.call("handle_interjection", transcript)
+		if bool(result.get("handled", false)):
+			var action: String = String(result.get("lessonAction", ""))
+			var target: String = String(result.get("nextStepId", result.get("nextLessonId", "")))
+			lesson_routed.emit(action, target)
+			var landed: Dictionary = _engine.call("current_step") if action == "jump_step" else step
+			var line: String = _non_empty(String(result.get("line", "")), "Okay!")
+			var gesture: String = "wave" if action == "end_session" else "point"
+			var turn: Dictionary = TurnValidator.make(line, "happy", gesture, action, String(landed.get("visualAssetId", "")))
+			if action == "switch_lesson" and not String(result.get("nextLessonId", "")).is_empty():
+				turn["nextLessonId"] = String(result["nextLessonId"])
+			if action == "jump_step" and not String(result.get("nextStepId", "")).is_empty():
+				turn["nextStepId"] = String(result["nextStepId"])
+			return turn
+		if bool(result.get("isAnswer", false)):
+			return turn_for_verdict(step, _engine.call("evaluate", transcript), PHASE_ANSWER)
+	var again: Dictionary = open_turn(step)
+	again["emotion"] = "listening"
+	return again
 
 
 ## No recognition on this device: say the word with the child and move on.
@@ -128,16 +168,38 @@ func turn_for_verdict(step: Dictionary, verdict: Dictionary, phase: String) -> D
 	var attempt: int = int(verdict.get("attempt", 0))
 	var word: String = _non_empty(String(verdict.get("expected", "")), answer_word(step))
 	var kind: String = String(step.get("kind", "ask"))
-	if kind != "ask":
+	if not QUESTION_KINDS.has(kind):
 		# Nothing to judge on a teach/celebrate step: present it and move on.
 		var passive: Dictionary = open_turn(step)
 		passive["lessonAction"] = action if TurnValidator.LESSON_ACTIONS.has(action) else "next_question"
 		return passive
 	var line: String = String(verdict.get("line", ""))
+	if action == "switch_lesson":
+		# A choose step routed the child (a match, or the default after misses).
+		var routed: String = _non_empty(line, "Okay! Let's start!")
+		var target: String = String(verdict.get("nextLessonId", ""))
+		lesson_routed.emit(action, target)
+		var route_turn: Dictionary = TurnValidator.make(routed, "happy", "clap", action, asset)
+		if not target.is_empty():
+			route_turn["nextLessonId"] = target
+		return route_turn
 	if outcome == "correct":
 		var success: String = _non_empty(line, "Great job! %s!" % word.capitalize())
+		var reaction: Dictionary = verdict.get("reaction", {}) if typeof(verdict.get("reaction", {})) == TYPE_DICTIONARY else {}
+		var aliz_sound: String = String(reaction.get("alizSound", "")).strip_edges()
+		if not aliz_sound.is_empty() and not _starts_with_sound(success, aliz_sound):
+			success = "%s %s" % [aliz_sound, success]
 		var speech: String = _pick(OPENERS_CORRECT, step, attempt).replace("{line}", success)
-		return TurnValidator.make(speech, "happy", "clap", action if action != "retry" else "next_question", asset)
+		if not aliz_sound.is_empty():
+			speech = success  # the sound IS the opener; no "Yes! Meow!" on top
+		var gesture: String = String(reaction.get("gesture", "clap"))
+		if not TurnValidator.GESTURES.has(gesture):
+			gesture = "clap"
+		var turn: Dictionary = TurnValidator.make(speech, "happy", gesture, action if action != "retry" else "next_question", asset)
+		var sfx: String = String(reaction.get("sfx", ""))
+		if TurnValidator.is_safe_identifier(sfx):
+			turn["wantsSfx"] = sfx
+		return turn
 	var timed_out: bool = phase == PHASE_TIMEOUT
 	match action:
 		"give_hint":
@@ -184,3 +246,19 @@ static func answer_word(step: Dictionary) -> String:
 
 static func _non_empty(value: String, fallback: String) -> String:
 	return value if not value.strip_edges().is_empty() else fallback
+
+
+## "Meow! You're amazing!" already begins with "Meow!" -- compare letters only.
+static func _starts_with_sound(line: String, sound: String) -> bool:
+	var a: String = _letters(line)
+	var b: String = _letters(sound)
+	return not b.is_empty() and a.begins_with(b)
+
+
+static func _letters(text: String) -> String:
+	var out: String = ""
+	for i: int in range(text.length()):
+		var code: int = text.to_lower().unicode_at(i)
+		if code >= 0x61 and code <= 0x7A:
+			out += text.to_lower()[i]
+	return out

@@ -173,6 +173,7 @@ func run():
 	failures.append_array(_test_recognition_continuous_rearm())
 	failures.append_array(_test_scripted_turns_valid_and_deterministic())
 	failures.append_array(_test_scripted_variety())
+	failures.append_array(_test_scripted_addendum_dialogue())
 	failures.append_array(_test_backend_refuses_when_flag_off())
 	failures.append_array(_test_backend_url_parsing_and_error_codes())
 	failures.append_array(_test_backend_live_round_trip())
@@ -225,7 +226,7 @@ func _check_one_ending(failures: Array, h: Dictionary, label: String, terminal: 
 	# The service's own session may outlive ours by its cap (a manual stop with
 	# nothing to hand over); run it out and prove nothing leaks back in.
 	var finals_before: int = tally.finals.size()
-	_tick(h, 6.0)
+	_tick(h, 8.0)  # past the service's 6 s after-partial cap + grace
 	if bool((h["service"] as Node).call("is_listening")):
 		failures.append("%s: SpeechService still listening after the ending" % label)
 	if tally.finals.size() != finals_before or tally.terminals() != 1:
@@ -630,6 +631,95 @@ func _test_scripted_variety():
 		failures.append("seed 1 + attempt 1 picks variant 2 (Wonderful!) every time: %s" % first["speech"])
 	if ScriptedScript.OPENERS_CORRECT.size() != 3 or ScriptedScript.OPENERS_HINT.size() != 3 or ScriptedScript.OPENERS_RETRY.size() != 3:
 		failures.append("three variants per outcome")
+	return failures
+
+
+## The owner's acceptance dialogue at the provider level: choose -> animals,
+## cat, the cat sound with its reaction, and a barge-in to the dog.
+func _test_scripted_addendum_dialogue():
+	var failures: Array = []
+	var engine: RefCounted = LessonEngineScript.new()
+	var entry: String = String(LessonEngineScript.entry_lesson_id())
+	if not engine.load_lesson(entry):
+		return ["entry lesson %s did not load" % entry]
+	var provider: RefCounted = ScriptedScript.new()
+	provider.set_engine(engine)
+	var tally := ConvTally.new()
+	tally.attach(provider)
+	var routes: Array = []
+	provider.lesson_routed.connect(func(action: String, target: String) -> void: routes.append([action, target]))
+	provider.begin_session(entry)
+	var log: Array = []
+	var say: Callable = func(transcript: String, phase: String) -> Dictionary:
+		provider.submit_turn(transcript, {"phase": phase})
+		var turn: Dictionary = tally.turns.back()
+		log.append("%s%s -> Aliz: %s" % ["child: " + transcript + " | " if not transcript.is_empty() else "", phase, turn["speech"]])
+		return turn
+
+	var ask: Dictionary = say.call("", "open")
+	if not String(ask["speech"]).begins_with("Hi! What would you like to learn"):
+		failures.append("the entry step asks what to learn: %s" % ask["speech"])
+	var choice: Dictionary = say.call("I want to learn about animals!", "answer")
+	if String(choice.get("lessonAction", "")) != "switch_lesson" or String(choice.get("nextLessonId", "")) != "animals_cat_dog":
+		failures.append("'animals' routes with switch_lesson + nextLessonId: %s" % str(choice))
+	if routes != [["switch_lesson", "animals_cat_dog"]]:
+		failures.append("lesson_routed fires for the choice: %s" % str(routes))
+	if not TurnValidator.is_valid(choice):
+		failures.append("the routing turn must survive the validator: %s" % str(choice))
+	engine.switch_lesson(String(choice["nextLessonId"]))
+	var hello: Dictionary = say.call("", "open")
+	if String(hello["speech"]) != "Yay! Let's learn about animals!" or hello["visual"] != {"type": "flashcard", "assetId": "cat"}:
+		failures.append("the animals lesson opens with its teach line and the cat card: %s" % str(hello))
+	engine.advance()
+	var q1: Dictionary = say.call("", "open")
+	if String(q1["speech"]) != "What animal is this?":
+		failures.append("first question: %s" % q1["speech"])
+	var a1: Dictionary = say.call("It's a cat!", "answer")
+	if String(a1["emotion"]) != "happy" or not String(a1["speech"]).contains("It's a cat!"):
+		failures.append("'It's a cat!' is praised with the lesson's success line: %s" % str(a1))
+	engine.advance()
+	var q2: Dictionary = say.call("", "open")
+	if String(q2["speech"]) != "Can you make a cat sound?":
+		failures.append("the sound step asks for the cat sound: %s" % q2["speech"])
+	var a2: Dictionary = say.call("Meow!", "answer")
+	if String(a2["speech"]) != "Meow! You're amazing!":
+		failures.append("the reaction sound is not doubled and the line is kept: '%s'" % a2["speech"])
+	if String(a2["gesture"]) != "clap" or String(a2.get("wantsSfx", "")) != "laugh" or String(a2["emotion"]) != "happy":
+		failures.append("the sound step's reaction becomes clap + wantsSfx laugh: %s" % str(a2))
+	if not TurnValidator.is_valid(a2) or not TurnValidator.coerce(a2).has("wantsSfx"):
+		failures.append("wantsSfx survives the client validator: %s" % str(TurnValidator.coerce(a2)))
+	# Barge-in while Aliz speaks: a topic change.
+	var barge: Dictionary = say.call("Wait! I want a dog!", "interjection")
+	if String(barge.get("lessonAction", "")) != "jump_step" or String(barge.get("nextStepId", "")) != "s04_dog":
+		failures.append("'Wait! I want a dog!' jumps to the dog: %s" % str(barge))
+	if barge["visual"] != {"type": "flashcard", "assetId": "dog"} or not String(barge["speech"]).to_lower().contains("dog"):
+		failures.append("the jump shows the dog and says so: %s" % str(barge))
+	if routes.size() != 2 or routes[1] != ["jump_step", "s04_dog"]:
+		failures.append("lesson_routed fires for the jump: %s" % str(routes))
+	var q3: Dictionary = say.call("", "open")
+	if String(q3["speech"]) != "What animal is this?" or q3["visual"] != {"type": "flashcard", "assetId": "dog"}:
+		failures.append("after the jump the dog question opens: %s" % str(q3))
+	# Barge-in that is an answer: judged, not repeated.
+	var answered: Dictionary = say.call("a dog", "interjection")
+	if String(answered["emotion"]) != "happy" or int(engine.attempts()) != 1:
+		failures.append("an interjection that answers is evaluated once: %s attempts=%d" % [str(answered), int(engine.attempts())])
+	engine.advance()
+	say.call("", "open")
+	# Barge-in that is neither: the step is asked again, no attempt counted.
+	var before: int = int(engine.attempts())
+	var again: Dictionary = say.call("look a bird outside", "interjection")
+	if String(again["lessonAction"]) != "retry" or not String(again["speech"]).contains("sound") or int(engine.attempts()) != before:
+		failures.append("an unrelated interjection re-asks without counting an attempt: %s" % str(again))
+	# "stop" ends the session.
+	var stop: Dictionary = say.call("stop", "interjection")
+	if String(stop.get("lessonAction", "")) != "end_session":
+		failures.append("'stop' ends the session: %s" % str(stop))
+	for turn: Dictionary in tally.turns:
+		if not TurnValidator.is_valid(turn):
+			failures.append("dialogue turn is invalid: %s" % str(turn))
+	print("    owner dialogue through the scripted provider:")
+	for line: String in log:
+		print("      %s" % line)
 	return failures
 
 

@@ -26,6 +26,12 @@ extends RefCounted
 ##              "Let's try together!";
 ##   "together" recognition is not available here: say the word with the child
 ##              and move on. Never a dead end.
+##   "interjection"  the child spoke WHILE Aliz was speaking (barge-in). Goes
+##              through `LessonEngine.handle_interjection()` first: a topic
+##              change ("Wait! I want a dog!") is honoured (`jump_step` /
+##              `switch_lesson` / `end_session`, with `nextStepId` /
+##              `nextLessonId` on the turn and `lesson_routed`); an answer is
+##              evaluated normally; anything else re-asks the step.
 ##
 ## The LessonEngine is the only owner of progression: a provider never calls
 ## `advance()`; the scene applies `lessonAction` after the turn is spoken.
@@ -34,6 +40,11 @@ extends RefCounted
 signal session_ready(session: Dictionary)
 signal turn_ready(turn: Dictionary)
 signal provider_failed(reason: String)
+## The engine moved the child: `action` is `jump_step` / `switch_lesson` /
+## `end_session`, `target_id` the step or lesson id (empty for end_session).
+## Emitted BEFORE the matching `turn_ready`, so the scene can route after the
+## turn is spoken.
+signal lesson_routed(action: String, target_id: String)
 
 const TurnValidator := preload("res://scripts/tutor/turn/tutor_turn.gd")
 
@@ -41,7 +52,10 @@ const PHASE_OPEN: String = "open"
 const PHASE_ANSWER: String = "answer"
 const PHASE_TIMEOUT: String = "timeout"
 const PHASE_TOGETHER: String = "together"
-const PHASES: Array[String] = [PHASE_OPEN, PHASE_ANSWER, PHASE_TIMEOUT, PHASE_TOGETHER]
+const PHASE_INTERJECTION: String = "interjection"
+const PHASES: Array[String] = [PHASE_OPEN, PHASE_ANSWER, PHASE_TIMEOUT, PHASE_TOGETHER, PHASE_INTERJECTION]
+## Step kinds that ask the child something (the engine's SCORED + choose).
+const QUESTION_KINDS: Array[String] = ["ask", "sound", "choose"]
 
 var _engine: Object = null
 var _lesson_id: String = ""

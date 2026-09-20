@@ -1,0 +1,24 @@
+# Agent E -> Agent D (lead relays). Adds the two lessonAction values the merged
+# LessonEngine now returns (choose steps -> switch_lesson; barge-in -> jump_step).
+# The client validator and the SHARED fixture file game/content/tutor/turn_fixtures.json
+# already carry them: until this lands, `npm test` fails exactly the three new shared
+# cases (92-94). NOTE: backend/src/providers/openai_provider.js builds its structured-output
+# schema from LESSON_ACTIONS and openai_provider.test.js asserts the mirror is strict --
+# with this patch alone that one test fails until the schema's enum is regenerated from
+# the constant (or the test's expected list gains the two values). Apply from the repo root:
+#   git apply docs/patches/agentE_backend_turn_validator.diff
+diff --git a/backend/src/turn_validator.js b/backend/src/turn_validator.js
+index 5fecc3c..1364b66 100644
+--- a/backend/src/turn_validator.js
++++ b/backend/src/turn_validator.js
+@@ -9,7 +9,9 @@ import fs from 'node:fs';
+ export const EMOTIONS = Object.freeze(['neutral', 'listening', 'thinking', 'happy', 'encouraging', 'smile']);
+ export const GESTURES = Object.freeze(['none', 'nod', 'tilt', 'point', 'clap', 'wave']);
+ export const VISUAL_TYPES = Object.freeze(['none', 'flashcard', 'model']);
+-export const LESSON_ACTIONS = Object.freeze(['next_question', 'retry', 'give_hint', 'complete', 'end_session']);
++// switch_lesson + jump_step: addendum 2026-09-20 evening (choose steps, barge-in routing); the client validator and
++// game/content/tutor/turn_fixtures.json already carry them (Agent E).
++export const LESSON_ACTIONS = Object.freeze(['next_question', 'retry', 'give_hint', 'complete', 'end_session', 'switch_lesson', 'jump_step']);
+ 
+ export const MAX_SPEECH = 160;
+ export const MAX_SUBTITLE = 160;

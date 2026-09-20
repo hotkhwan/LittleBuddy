@@ -1,5 +1,5 @@
 {
-  "$comment": "SHARED TutorTurn validator truth table (docs/ALIZ_TUTOR_CONTRACTS.md). Run by BOTH suites: game/tests/cases/test_tutor_turn.gd (client, game/scripts/tutor/turn/tutor_turn.gd) and backend/test/validator.test.js (server, backend/src/turn_validator.js). Format: cases[].input is the candidate turn; expect is 'valid' or 'fallback'; for 'valid' cases the optional `normalized` object lists fields the validator must output exactly; for 'fallback' cases `reasonPrefix` names the rule that must appear in the reasons list. Rules: ASCII printable 0x20..0x7E only (no typographic punctuation), extra fields dropped, visual required, missing/invalid anything -> the safe fallback turn.",
+  "$comment": "SHARED TutorTurn validator truth table (docs/ALIZ_TUTOR_CONTRACTS.md). Run by BOTH suites: game/tests/cases/test_tutor_turn.gd (client, game/scripts/tutor/turn/tutor_turn.gd) and backend/test/validator.test.js (server, backend/src/turn_validator.js). Format: cases[].input is the candidate turn; expect is 'valid' or 'fallback'; for 'valid' cases the optional `normalized` object lists fields the validator must output exactly; for 'fallback' cases `reasonPrefix` names the rule that must appear in the reasons list. lessonAction enum: next_question, retry, give_hint, complete, end_session, switch_lesson, jump_step (the last two added 2026-09-20 evening for choose steps and barge-in routing). Rules: ASCII printable 0x20..0x7E only (no typographic punctuation), extra fields dropped, visual required, missing/invalid anything -> the safe fallback turn.",
   "version": 2,
   "fallback": {
     "speech": "Let's try together!",
@@ -542,6 +542,58 @@
         "speech": "Great job!",
         "subtitle": "Great job!",
         "nextQuestion": "What is this?"
+      }
+    },
+    {
+      "name": "switch_lesson is a valid lessonAction (choose step routed the child)",
+      "input": {
+        "speech": "Yay! Let's learn about animals!",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "cat"
+        },
+        "lessonAction": "switch_lesson"
+      },
+      "expect": "valid",
+      "normalized": {
+        "lessonAction": "switch_lesson"
+      }
+    },
+    {
+      "name": "jump_step is a valid lessonAction (barge-in moved to another item)",
+      "input": {
+        "speech": "Okay! Let's see the dog!",
+        "emotion": "smile",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "dog"
+        },
+        "lessonAction": "jump_step"
+      },
+      "expect": "valid",
+      "normalized": {
+        "lessonAction": "jump_step"
+      }
+    },
+    {
+      "name": "client-only routing keys never make a turn invalid (server drops them)",
+      "input": {
+        "speech": "Okay! Let's see the dog!",
+        "emotion": "smile",
+        "gesture": "point",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "jump_step",
+        "nextStepId": "s04_dog",
+        "wantsSfx": "laugh"
+      },
+      "expect": "valid",
+      "normalized": {
+        "speech": "Okay! Let's see the dog!"
       }
     }
   ]

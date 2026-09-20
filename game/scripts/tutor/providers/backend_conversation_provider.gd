@@ -33,9 +33,10 @@ extends "res://scripts/tutor/providers/conversation_provider.gd"
 ##
 ## ## Which turns go to the cloud
 ##
-## Only `PHASE_ANSWER` and `PHASE_TIMEOUT` (there IS an outcome to discuss).
-## `PHASE_OPEN` and `PHASE_TOGETHER` present lesson data and are built locally
-## by the embedded scripted provider -- no quota spent on reading a question.
+## Only `PHASE_ANSWER` and `PHASE_TIMEOUT` on a scored step (there IS an
+## outcome to discuss). `PHASE_OPEN`, `PHASE_TOGETHER`, `PHASE_INTERJECTION`
+## and choose-step routing are built locally by the embedded scripted provider
+## -- no quota spent on reading a question or honouring a topic change.
 ## The LessonEngine judges the answer ONCE, here, and both the request and the
 ## fallback turn are built from that one verdict.
 ##
@@ -112,6 +113,12 @@ func is_available() -> bool:
 func set_engine(engine: Object) -> void:
 	super.set_engine(engine)
 	_scripted.set_engine(engine)
+	if not _scripted.lesson_routed.is_connected(_on_scripted_routed):
+		_scripted.lesson_routed.connect(_on_scripted_routed)
+
+
+func _on_scripted_routed(action: String, target_id: String) -> void:
+	lesson_routed.emit(action, target_id)
 
 
 ## The parent-approval token from the parental gate flow. For a DEV_MODE server
@@ -202,8 +209,10 @@ func submit_turn(transcript: String, lesson_context: Dictionary) -> void:
 		provider_failed.emit(REASON_NO_ENGINE)
 		return
 	var step: Dictionary = _engine.call("current_step")
-	if phase == PHASE_OPEN or phase == PHASE_TOGETHER or step.is_empty() or bool(_engine.call("is_complete")):
-		# Lesson data, presented locally: no quota spent on reading a question.
+	if phase != PHASE_ANSWER and phase != PHASE_TIMEOUT or step.is_empty() or bool(_engine.call("is_complete")) \
+			or String(step.get("kind", "")) == "choose":
+		# Lesson data, routing and barge-in are local: no quota spent on
+		# reading a question or honouring "I want a dog!".
 		turn_ready.emit(TurnValidator.coerce(_scripted.build_turn(transcript, phase)))
 		return
 	var said: String = "" if phase == PHASE_TIMEOUT else transcript.strip_edges().left(MAX_TRANSCRIPT_CHARS)

@@ -59,9 +59,12 @@ const NETWORK_ALLOWLIST: Array[String] = [
 	# Agent F -- server-authoritative quota/entitlement client (cloud only):
 	"res://scripts/tutor/quota/cloud_quota_client.gd",
 	# Agent E -- cloud conversation provider (POST turns to the backend):
-	# "res://scripts/tutor/providers/backend_conversation_provider.gd",
+	"res://scripts/tutor/providers/backend_conversation_provider.gd",
 	# Agent E -- cloud synthesis provider (backend TTS bytes, flag-gated):
-	# "res://scripts/tutor/providers/backend_synthesis_provider.gd",
+	"res://scripts/tutor/providers/backend_synthesis_provider.gd",
+	# Agent E -- realtime voice transport (WebSocket to the URL the backend's
+	# token endpoint hands out; ephemeral secret; flag-gated):
+	"res://scripts/tutor/voice/transports/cloud_realtime_transport.gd",
 ]
 
 ## Files that may construct `AudioStreamMicrophone`. EMPTY BY DESIGN: the game
