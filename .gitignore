@@ -95,3 +95,10 @@ tools/__pycache__/
 *.p12
 *.pepk
 keystore.properties
+
+# --- Aliz Tutor backend (Agent D) ------------------------------------------
+# Runtime data: sessions, usage, entitlements, idempotency keys. Never commit.
+backend/data/
+backend/.env
+backend/node_modules/
+!backend/.env.example

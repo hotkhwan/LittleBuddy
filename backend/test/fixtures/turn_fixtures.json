@@ -1,0 +1,305 @@
+{
+  "$comment": "TutorTurn validator fixtures (Agent D's local copy). Format: cases[].input is the candidate turn, expect is 'valid' or 'fallback'. For 'valid' cases an optional `normalized` object lists fields the validator must output. For 'fallback' cases `reasonPrefix` names the field/rule that must appear in the reasons list. The shared file game/content/tutor/turn_fixtures.json (Agent B) uses the same format; when it exists both suites run it.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "minimal valid turn with no visual",
+      "input": {
+        "speech": "Great! What color is the apple?",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "What color is the apple?"
+      },
+      "expect": "valid",
+      "normalized": {
+        "subtitle": "Great! What color is the apple?"
+      }
+    },
+    {
+      "name": "valid flashcard with allowlisted asset",
+      "input": {
+        "speech": "This is an apple.",
+        "subtitle": "This is an apple.",
+        "emotion": "smile",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "apple_red"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid"
+    },
+    {
+      "name": "the safe fallback turn itself is valid",
+      "input": {
+        "speech": "Let's try together!",
+        "emotion": "encouraging",
+        "gesture": "tilt",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid"
+    },
+    {
+      "name": "speech at exactly 160 chars is valid",
+      "input": {
+        "speech": "Nice! The banana is yellow. Bananas grow in warm places and monkeys love them. Can you say yellow banana with me one more time please, my dear friend? Yes, yes!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid"
+    },
+    {
+      "name": "speech over 160 chars falls back",
+      "input": {
+        "speech": "Nice! The banana is yellow. Bananas grow in warm places and monkeys love them. Can you say yellow banana with me one more time please, my dear friend? Yes, yes!!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:too_long"
+    },
+    {
+      "name": "unknown emotion falls back",
+      "input": {
+        "speech": "Hello!",
+        "emotion": "angry",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "emotion:invalid"
+    },
+    {
+      "name": "unknown gesture falls back",
+      "input": {
+        "speech": "Hello!",
+        "emotion": "happy",
+        "gesture": "backflip",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "gesture:invalid"
+    },
+    {
+      "name": "asset not on the allowlist falls back",
+      "input": {
+        "speech": "Look!",
+        "emotion": "happy",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "dinosaur_green"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "visual.assetId:not_allowed"
+    },
+    {
+      "name": "flashcard without an assetId falls back",
+      "input": {
+        "speech": "Look!",
+        "emotion": "happy",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "visual.assetId:required"
+    },
+    {
+      "name": "unknown lessonAction falls back",
+      "input": {
+        "speech": "Bye!",
+        "emotion": "happy",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "skip_lesson"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "lessonAction:invalid"
+    },
+    {
+      "name": "URL in speech falls back",
+      "input": {
+        "speech": "Visit https://example.com for more!",
+        "emotion": "happy",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:url"
+    },
+    {
+      "name": "non-ASCII (emoji) in speech falls back",
+      "input": {
+        "speech": "Great job 🍎",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:non_ascii"
+    },
+    {
+      "name": "banned word falls back",
+      "input": {
+        "speech": "That was stupid, try again.",
+        "emotion": "encouraging",
+        "gesture": "tilt",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:banned_word"
+    },
+    {
+      "name": "personal-data prompt falls back",
+      "input": {
+        "speech": "Tell me your home address and phone number.",
+        "emotion": "neutral",
+        "gesture": "none",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:banned_word"
+    },
+    {
+      "name": "digit run longer than 20 falls back",
+      "input": {
+        "speech": "Count: 123456789012345678901",
+        "emotion": "neutral",
+        "gesture": "none",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:long_number"
+    },
+    {
+      "name": "nextQuestion over 120 chars falls back",
+      "input": {
+        "speech": "Good!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "Can you tell me what color the banana is and also what color the apple is and also what color the grapes are today please?"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "nextQuestion:too_long"
+    },
+    {
+      "name": "missing speech falls back",
+      "input": {
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:required"
+    },
+    {
+      "name": "missing visual falls back",
+      "input": {
+        "speech": "Hi!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "visual:missing"
+    },
+    {
+      "name": "not an object falls back",
+      "input": "Great job!",
+      "expect": "fallback",
+      "reasonPrefix": "turn:not_object"
+    },
+    {
+      "name": "extra unknown fields are dropped, turn stays valid",
+      "input": {
+        "speech": "Nice!",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "complete",
+        "debug": {
+          "tokens": 12
+        },
+        "score": 0.93
+      },
+      "expect": "valid",
+      "normalized": {
+        "lessonAction": "complete"
+      }
+    },
+    {
+      "name": "model visual with allowlisted asset is valid",
+      "input": {
+        "speech": "Here is a cat.",
+        "emotion": "smile",
+        "gesture": "point",
+        "visual": {
+          "type": "model",
+          "assetId": "cat"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "What does a cat say?"
+      },
+      "expect": "valid",
+      "normalized": {
+        "visual": {
+          "type": "model",
+          "assetId": "cat"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "_source": {
+    "url": "https://developers.openai.com/api/docs/pricing",
+    "fetchedOn": "2026-09-20",
+    "note": "Fetched on the date above (platform.openai.com/docs/pricing now 301-redirects here). Prices are list prices in USD as shown on that page on that day; re-check before any launch. Fields left null were not published on the page in a directly usable unit; never invent a number.",
+    "currency": "USD"
+  },
+  "llm": {
+    "gpt-4o-mini": { "inputPer1MTokens": 0.15, "cachedInputPer1MTokens": 0.075, "outputPer1MTokens": 0.60 },
+    "gpt-4.1-mini": { "inputPer1MTokens": 0.40, "cachedInputPer1MTokens": 0.10, "outputPer1MTokens": 1.60 },
+    "gpt-4.1-nano": { "inputPer1MTokens": 0.10, "cachedInputPer1MTokens": 0.025, "outputPer1MTokens": 0.40 },
+    "gpt-5-mini": { "inputPer1MTokens": 0.25, "cachedInputPer1MTokens": 0.025, "outputPer1MTokens": 2.00 },
+    "gpt-5-nano": { "inputPer1MTokens": 0.05, "cachedInputPer1MTokens": 0.005, "outputPer1MTokens": 0.40 }
+  },
+  "stt": {
+    "whisper-1": { "perMinute": 0.006 },
+    "gpt-4o-mini-transcribe": { "perMinute": 0.003 },
+    "gpt-4o-transcribe": { "perMinute": 0.006 }
+  },
+  "tts": {
+    "tts-1": { "per1MChars": 15.00 },
+    "tts-1-hd": { "per1MChars": 30.00 },
+    "gpt-4o-mini-tts": {
+      "per1MChars": null,
+      "note": "Page lists this model per token ($0.60 input / $12.00 output per 1M tokens), not per character. No per-character conversion is assumed here."
+    }
+  }
+}
