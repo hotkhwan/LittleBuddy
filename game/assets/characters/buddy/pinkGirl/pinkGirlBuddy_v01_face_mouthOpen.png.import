@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dc2dvtn7yh5eo"
-path="res://.godot/imported/pinkGirlBuddy_v01_texture_0.png-69d83655d0fd91aaf6738867b7f1a801.ctex"
+uid="uid://cmwkdw7mdwnh1"
+path="res://.godot/imported/pinkGirlBuddy_v01_face_mouthOpen.png-59e42d2fb2d8ffa44e4150cd585e14e5.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "a46920c1705558a39dcabf7a7524ab27"
 }
 
 [deps]
 
-source_file="res://assets/characters/buddy/pinkGirl/pinkGirlBuddy_v01_texture_0.png"
-dest_files=["res://.godot/imported/pinkGirlBuddy_v01_texture_0.png-69d83655d0fd91aaf6738867b7f1a801.ctex"]
+source_file="res://assets/characters/buddy/pinkGirl/pinkGirlBuddy_v01_face_mouthOpen.png"
+dest_files=["res://.godot/imported/pinkGirlBuddy_v01_face_mouthOpen.png-59e42d2fb2d8ffa44e4150cd585e14e5.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
@@ -34,10 +31,10 @@ process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2
 process/channel_remap/alpha=3
-process/fix_alpha_border=true
+process/fix_alpha_border=false
 process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

@@ -5,18 +5,33 @@ extends SceneTree
 ## it does not touch any scene file another agent owns.
 ##
 ##   Godot --path game --script ../tools/aliz_shots.gd -- <prefix> [W H]
+##       writes docs/shots/<prefix>_front.png, _threeq.png, _back.png
 ##
-## Writes docs/shots/<prefix>_front.png, _threeq.png, _back.png.
+##   Godot --path game --script ../tools/aliz_shots.gd -- <prefix> mood
+##       every face mood plus the blink frame, twice each: a head close-up
+##       (`<prefix>_mood_<name>_close.png`) and the gameplay-distance front view
+##       (`<prefix>_mood_<name>_far.png`); `tools/aliz_face_strip.py` tiles them.
+##
+##   Godot --path game --script ../tools/aliz_shots.gd -- <prefix> idle
+##       three front frames of the authored idle 1.5 s apart
+##       (`<prefix>_idle_<n>.png`), with the hair sway running.
+##
+## Blinking is switched OFF for the still shots (a 120 ms blink landing on the
+## capture frame would be a lie about the mood) and forced ON for the blink
+## frame.
 
 var _prefix: String = "aliz_view"
 var _size: Vector2i = Vector2i(1334, 750)
+var _job: String = "views"
 
 
 func _init() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	if args.size() > 0:
 		_prefix = String(args[0])
-	if args.size() > 2:
+	if args.size() > 1 and not String(args[1]).is_valid_int():
+		_job = String(args[1])
+	elif args.size() > 2:
 		_size = Vector2i(int(args[1]), int(args[2]))
 	call_deferred("_run")
 
@@ -60,6 +75,8 @@ func _run() -> void:
 	root.add_child(girl)
 	if girl.has_method("build"):
 		girl.call("build")
+	if girl.has_method("set_blinking"):
+		girl.call("set_blinking", false)
 
 	var cam := Camera3D.new()
 	root.add_child(cam)
@@ -71,17 +88,87 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 
+	match _job:
+		"mood":
+			await _moods(girl, cam)
+		"idle":
+			await _idle(girl, cam)
+		_:
+			await _views(girl, cam)
+	quit()
+
+
+func _far(cam: Camera3D) -> void:
+	cam.fov = 50.0
+	cam.position = Vector3(0.0, 2.35, -3.6)
+	cam.look_at(Vector3(0.0, 0.95, 0.0), Vector3.UP)
+
+
+func _close(cam: Camera3D) -> void:
+	cam.fov = 34.0
+	cam.position = Vector3(0.0, 1.24, -1.05)
+	cam.look_at(Vector3(0.0, 1.24, 0.0), Vector3.UP)
+
+
+func _views(girl: Node3D, cam: Camera3D) -> void:
 	# Yaw 0 faces -Z, and this camera sits on -Z, so 0 is face-on, 180 is her
 	# back. (The menu's 180/200 is because ITS camera sits on +Z.)
 	for view: Array in [["front", 0.0], ["threeq", 40.0], ["back", 180.0]]:
 		girl.rotation = Vector3(0.0, deg_to_rad(float(view[1])), 0.0)
-		cam.position = Vector3(0.0, 2.35, -3.6)
-		cam.look_at(Vector3(0.0, 0.95, 0.0), Vector3.UP)
-		await process_frame
-		await process_frame
-		await process_frame
-		var img: Image = get_root().get_texture().get_image()
-		var path := "res://../docs/shots/%s_%s.png" % [_prefix, String(view[0])]
-		var err := img.save_png(path)
-		print("  %s  %s" % ["ok " if err == OK else "ERR", ProjectSettings.globalize_path(path)])
-	quit()
+		_far(cam)
+		await _shot("%s_%s" % [_prefix, String(view[0])])
+
+
+func _moods(girl: Node3D, cam: Camera3D) -> void:
+	girl.rotation = Vector3.ZERO
+	# Hold the idle at a fixed frame so every tile is the same pose.
+	var player: AnimationPlayer = girl.call("get_animation_player")
+	if player != null and player.has_animation("idle"):
+		player.play("idle")
+		player.seek(0.2, true)
+		player.pause()
+	var moods: Array = girl.call("available_faces") if girl.has_method("available_faces") else []
+	print("  moods: %s" % str(moods))
+	var cells: Array = []
+	for mood: String in moods:
+		cells.append([mood, mood, false])
+	cells.append(["blink", "content", true])
+	for cell: Array in cells:
+		girl.call("set_face", String(cell[1]))
+		if bool(cell[2]):
+			girl.call("set_blinking", true)
+			girl.call("blink_now")
+		else:
+			girl.call("set_blinking", false)
+		_close(cam)
+		await _shot("%s_mood_%s_close" % [_prefix, String(cell[0])])
+		_far(cam)
+		await _shot("%s_mood_%s_far" % [_prefix, String(cell[0])])
+		if bool(cell[2]):
+			girl.call("set_blinking", false)
+	girl.call("set_face", "content")
+
+
+func _idle(girl: Node3D, cam: Camera3D) -> void:
+	girl.rotation = Vector3.ZERO
+	_far(cam)
+	if girl.has_method("play_action"):
+		girl.call("play_action", "idle")
+	var player: AnimationPlayer = girl.call("get_animation_player")
+	if player == null or not player.has_animation("idle"):
+		print("  no idle clip")
+		return
+	print("  current: %s" % player.current_animation)
+	for n: int in range(3):
+		player.seek(0.3 + 1.5 * float(n), true)
+		await _shot("%s_idle_%d" % [_prefix, n])
+
+
+func _shot(name: String) -> void:
+	await process_frame
+	await process_frame
+	await process_frame
+	var img: Image = get_root().get_texture().get_image()
+	var path := "res://../docs/shots/%s.png" % name
+	var err := img.save_png(path)
+	print("  %s  %s" % ["ok " if err == OK else "ERR", ProjectSettings.globalize_path(path)])

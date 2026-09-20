@@ -19,6 +19,37 @@ extends Node3D
 ## `toddler_view.gd`. This model is the adult caregiver only.
 ##
 ## ---------------------------------------------------------------------------
+## ## Public API added 2026-09-20 (face, blink, idle, hair) -- callers use
+## ## `has_method()` guards; every method is safe without the model
+## ---------------------------------------------------------------------------
+##
+## **Face moods** (texture patches, see `buddy_face.gd`; nothing per frame):
+##   `set_face(mood) -> bool`     "content" | "happy" | "surprised" | "sleepy".
+##                                 Sets the RESTING face; an action's face (below)
+##                                 shows over it and hands back when it ends.
+##   `get_face() -> String`        the resting mood asked for (default "content").
+##   `get_shown_face() -> String`  what is on the atlas right now.
+##   `available_faces() -> Array`  [] when this build's atlas has no moods.
+##   `has_face_moods() -> bool`
+##   Actions carry a face: `celebrate`/`clap`/`wave`/`hug`/`give` -> happy,
+##   `wake` -> surprised, `sleep` (held) -> sleepy. `ACTION_FACES` is the table.
+##
+## **Blink** (the `eyesClosed` layer for 120 ms every 3-6 s, randomised, driven
+## by a one-shot `Timer` child -- no `_process`; paused while the shown face
+## already closes the eyes, i.e. `sleepy`):
+##   `set_blinking(enabled)`, `is_blinking_enabled() -> bool`,
+##   `are_eyes_closed() -> bool`, `blink_now()` (closes; a second call reopens --
+##   for tests and cutscenes).
+##
+## **Idle**: `play_action("idle")` plays an authored `idle` clip
+## (`buddy_life_clips.gd`: breath, +-0.6 degree head bob, a weight shift every
+## 3.8 s). `set_locomotion(0)` returns to it, so she never freezes at rest.
+##
+## **Hair**: the rig has no hair bones, so `buddy_hair_sway.gd` -- a
+## `SkeletonModifier3D` on the head bone, +-0.4 degrees on two slow sines --
+## makes the long hair read as swaying over any clip. `get_hair_sway()`.
+##
+## ---------------------------------------------------------------------------
 ## ## Why it is OFF by default -- measured, not an opinion
 ## ---------------------------------------------------------------------------
 ##
@@ -155,6 +186,9 @@ const ActionDriverScript := preload("res://scripts/character/character_action_dr
 const AnimationDriverScript := preload("res://scripts/character/animation_player_action_driver.gd")
 const LocomotionScript := preload("res://scripts/character/locomotion.gd")
 const CarryPoseScript := preload("res://scripts/characters/buddy/buddy_carry_pose.gd")
+const LifeClipsScript := preload("res://scripts/characters/buddy/buddy_life_clips.gd")
+const HairSwayScript := preload("res://scripts/characters/buddy/buddy_hair_sway.gd")
+const FaceScript := preload("res://scripts/characters/buddy/buddy_face.gd")
 
 ## Where the bone-name adapter lives. The ONLY file that may name one of her
 ## bones; everything above `get_socket()` speaks `LB_Rig_v1` and nothing else.
@@ -164,6 +198,32 @@ const RIG_PROFILE_PATH: String = "res://content/rig_profiles/pink_girl_v01.json"
 ## Seconds the carry arms take to wrap and to let go (the modifier's `influence`
 ## is eased rather than switched, so picking up reads as a gesture).
 const CARRY_POSE_BLEND_SEC: float = 0.35
+
+## The mood manifest `tools/aliz_face_pass.py` writes next to the atlas. Absent
+## or mismatched (a re-export), the face system stands down and every face
+## method answers honestly that there are no moods.
+const FACE_MANIFEST_PATH: String = "res://assets/characters/buddy/pinkGirl/pinkGirlBuddy_v01_faces.json"
+
+const FACE_CONTENT: String = "content"
+const FACE_HAPPY: String = "happy"
+const FACE_SURPRISED: String = "surprised"
+const FACE_SLEEPY: String = "sleepy"
+
+## The face an action wears while it runs. Derived from the action, the way
+## Bunny's face is derived from his clip, so the mouth cannot disagree with what
+## she was asked to do. Anything not listed keeps the resting face.
+const ACTION_FACES: Dictionary = {
+	"celebrate": FACE_HAPPY, "clap": FACE_HAPPY, "wave": FACE_HAPPY,
+	"hug": FACE_HAPPY, "give": FACE_HAPPY,
+	"wake": FACE_SURPRISED,
+	"sleep": FACE_SLEEPY,
+}
+
+## A blink: eyes shut for this long, every so often. Randomised so two Alizes
+## in two menus would not blink in step, and so a child cannot count it.
+const BLINK_CLOSED_SEC: float = 0.12
+const BLINK_GAP_MIN_SEC: float = 3.0
+const BLINK_GAP_MAX_SEC: float = 6.0
 
 ## Emitted when a requested action begins. Emitted even though nothing is shown,
 ## so a caller's await is symmetric with `LittleBuddyCharacter`'s.
@@ -255,10 +315,24 @@ var _sockets: Array = []
 ## The carry arm pose, a `SkeletonModifier3D` under the skeleton. Null without a rig.
 var _carry_pose: SkeletonModifier3D = null
 var _carry_pose_wanted: bool = false
+## The head-bone sway modifier. Null without a rig.
+var _hair_sway: SkeletonModifier3D = null
+## The face compositor (`buddy_face.gd`); `null` until `_prepare_face()` binds.
+var _face: RefCounted = null
+## The resting mood a caller asked for, and the mood the running action wears.
+var _face_mood: String = FACE_CONTENT
+var _action_face: String = ""
+var _blink_timer: Timer = null
+var _blink_enabled: bool = true
+## True between the shut and the reopen of one blink.
+var _blink_shut: bool = false
+var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
 	build()
+	_rng.randomize()
+	_schedule_blink()
 
 
 ## Idempotent, and callable before `_ready()` -- the headless `--script` runner
@@ -327,6 +401,10 @@ func play_action(action_name: String, seconds: float = -1.0) -> bool:
 		# Best effort, exactly as `LittleBuddyCharacter` does it: a `false` here is
 		# the expected answer for an unauthored action and is not an error.
 		_driver.call("play", action_name)
+	# The face follows the action even when the body cannot: a "celebrate" she
+	# has no clip for still gets the smile, which is the honest half of it.
+	_action_face = String(ACTION_FACES.get(action_name, ""))
+	_show_face()
 
 	action_started.emit(action_name)
 	_finish_after(action_name, _action_seconds(action_name, seconds))
@@ -337,8 +415,14 @@ func play_action(action_name: String, seconds: float = -1.0) -> bool:
 ## With no rig there is no posture to leave, so this is "" until one exists.
 func release_action() -> String:
 	build()
+	# The face is handed back whether or not the posture could be SHOWN: a
+	# `sleep` she has no clip for still wore the sleepy face while it was held.
+	_action_face = ""
+	_show_face()
 	var held: String = get_held_action()
 	if held.is_empty():
+		if ActionDriverScript.is_hold_action(_pending_action):
+			_pending_action = ""
 		return ""
 	_pending_action = ""
 	if _driver != null:
@@ -585,11 +669,14 @@ func _build_model() -> void:
 
 	_mesh = _find_mesh(instance)
 	_apply_art_bible_material()
+	_prepare_face()
 	_normalise(instance as Node3D)
-	_merge_clips(instance)
 	_skeleton = _find_skeleton(instance)
+	_merge_clips(instance)
 	_sockets = _build_sockets()
 	_build_carry_pose()
+	_build_hair_sway()
+	_build_blink_timer()
 
 
 ## Merges the locomotion clips onto the model's own `AnimationPlayer`.
@@ -622,6 +709,13 @@ func _merge_clips(instance: Node) -> void:
 					library.add_animation(action, copy)
 					break
 		clip_root.free()
+	# The idle she does not ship with, authored on her real skeleton and addressed
+	# the way the imported clips address it. A library that already has an
+	# `idle` (an animator's) keeps it; see `buddy_life_clips.gd`.
+	if _skeleton != null:
+		var root: Node = player.get_node_or_null(player.root_node)
+		if root != null:
+			LifeClipsScript.merge_into(library, _skeleton, String(root.get_path_to(_skeleton)))
 
 
 ## Drives the legs from the actual ground speed.
@@ -637,7 +731,18 @@ func set_locomotion(speed: float) -> void:
 	var described: Dictionary = LocomotionScript.describe(speed)
 	var clip: String = String(described["clip"])
 	if clip.is_empty():
-		if player.is_playing():
+		# At rest. A locomotion clip hands over to the idle rather than freezing
+		# on its last frame; anything else that is playing (an action, the idle
+		# itself) is left alone -- this is called every frame she stands still.
+		var current: String = player.current_animation
+		var was_moving: bool = CLIP_SOURCES.has(current)
+		if player.is_playing() and not was_moving:
+			return
+		if player.has_animation(LifeClipsScript.CLIP_IDLE):
+			if current != LifeClipsScript.CLIP_IDLE or not player.is_playing():
+				player.speed_scale = 1.0
+				player.play(LifeClipsScript.CLIP_IDLE, AnimationDriverScript.ACTION_BLEND_SEC)
+		elif player.is_playing():
 			player.stop()
 		return
 	if not player.has_animation(clip):
@@ -873,6 +978,179 @@ func get_carry_pose() -> SkeletonModifier3D:
 
 
 # ---------------------------------------------------------------------------
+# Hair sway -- the head bone, a fraction of a degree, so the long hair moves
+# ---------------------------------------------------------------------------
+
+func _build_hair_sway() -> void:
+	if _skeleton == null:
+		return
+	_hair_sway = HairSwayScript.new()
+	_hair_sway.name = "HairSway"
+	_skeleton.add_child(_hair_sway)
+
+
+## The head-bone sway modifier, or null without a rig. Its `angles_at()` is the
+## envelope; `active` switches it off.
+func get_hair_sway() -> SkeletonModifier3D:
+	build()
+	return _hair_sway
+
+
+# ---------------------------------------------------------------------------
+# The face -- moods and blinks as texture patches (see buddy_face.gd)
+# ---------------------------------------------------------------------------
+
+## Binds the compositor to the surface override's albedo. Silent when the
+## manifest is missing or the atlas is not the one it was painted for: the
+## face system stands down and `available_faces()` says so.
+func _prepare_face() -> void:
+	if _mesh == null:
+		return
+	var material: StandardMaterial3D = _mesh.get_surface_override_material(0) as StandardMaterial3D
+	if material == null:
+		return
+	var face: RefCounted = FaceScript.new()
+	if bool(face.call("setup", material, FACE_MANIFEST_PATH)):
+		_face = face
+
+
+## True when this build's atlas carries mood patches the compositor trusts.
+func has_face_moods() -> bool:
+	build()
+	return _face != null
+
+
+## Every mood `set_face()` accepts; empty when the feature stood down.
+func available_faces() -> Array:
+	build()
+	return (_face.call("moods") as Array) if _face != null else []
+
+
+## **Sets the resting face.** Returns false for a mood outside the vocabulary
+## or when this build has no moods, and changes nothing in either case. A
+## running action's face shows over it and hands back when the action ends.
+func set_face(mood: String) -> bool:
+	build()
+	if _face == null or not (_face.call("moods") as Array).has(mood):
+		return false
+	_face_mood = mood
+	_show_face()
+	_schedule_blink()
+	return true
+
+
+## The resting mood asked for, whether or not it could be shown.
+func get_face() -> String:
+	return _face_mood
+
+
+## The mood on the atlas right now: the action's face while one runs, else the
+## resting one. `content` on a build without moods, which is literally true.
+func get_shown_face() -> String:
+	build()
+	if _face == null:
+		return FACE_CONTENT
+	return String(_face.call("current_mood"))
+
+
+func are_eyes_closed() -> bool:
+	build()
+	return _face != null and bool(_face.call("eyes_closed"))
+
+
+## Switches the blink on or off. Off also reopens the eyes if a blink was
+## mid-way, so a cutscene can freeze her face and get exactly the face it set.
+func set_blinking(enabled: bool) -> void:
+	build()
+	_blink_enabled = enabled
+	if not enabled:
+		if _blink_timer != null:
+			_blink_timer.stop()
+		_blink_shut = false
+		_show_face()
+		return
+	_schedule_blink()
+
+
+func is_blinking_enabled() -> bool:
+	return _blink_enabled
+
+
+## Closes the eyes now if they are open, opens them if they are shut, and
+## restarts the ordinary cadence from there. For tests and cutscenes; the
+## timer does the same thing on its own schedule.
+func blink_now() -> void:
+	build()
+	if _face == null:
+		return
+	_on_blink_timeout()
+
+
+## The mood that should be on the atlas: the action's face wins while it runs.
+func _wanted_face() -> String:
+	return _action_face if not _action_face.is_empty() else _face_mood
+
+
+## Does the wanted mood itself shut the eyes (`sleepy`)? Then a blink would be
+## invisible and the timer is left idle.
+func _mood_closes_eyes() -> bool:
+	return _face != null and bool(_face.call("mood_closes_eyes", _wanted_face()))
+
+
+## Composes the wanted face, keeping a blink that is mid-way shut.
+func _show_face() -> void:
+	if _face == null:
+		return
+	_face.call("show", _wanted_face(), _blink_shut and not _mood_closes_eyes())
+
+
+func _build_blink_timer() -> void:
+	if _face == null or _blink_timer != null:
+		return
+	_blink_timer = Timer.new()
+	_blink_timer.name = "BlinkTimer"
+	_blink_timer.one_shot = true
+	_blink_timer.timeout.connect(_on_blink_timeout)
+	# Under the wrapper's own `Model` node, not beside it: the wrapper's direct
+	# children are exactly [`Model`] by contract (`test_buddy_avatar.gd`).
+	_model_root.add_child(_blink_timer)
+
+
+## Arms the next blink. Out of the tree a `Timer` cannot run (the headless
+## runner), and a mood that already shuts the eyes needs no blink; both leave
+## the timer stopped rather than erroring.
+func _schedule_blink() -> void:
+	if _blink_timer == null or not _blink_enabled or _face == null:
+		return
+	if not _blink_timer.is_inside_tree():
+		return
+	if _mood_closes_eyes():
+		_blink_timer.stop()
+		return
+	if _blink_shut:
+		return
+	if _blink_timer.is_stopped():
+		_blink_timer.start(_rng.randf_range(BLINK_GAP_MIN_SEC, BLINK_GAP_MAX_SEC))
+
+
+func _on_blink_timeout() -> void:
+	if _face == null or not _blink_enabled:
+		return
+	if _blink_shut:
+		# Reopen, and arm the next one.
+		_blink_shut = false
+		_show_face()
+		_schedule_blink()
+		return
+	if _mood_closes_eyes():
+		return
+	_blink_shut = true
+	_show_face()
+	if _blink_timer != null and _blink_timer.is_inside_tree():
+		_blink_timer.start(BLINK_CLOSED_SEC)
+
+
+# ---------------------------------------------------------------------------
 # THE RIG SEAM
 # ---------------------------------------------------------------------------
 
@@ -941,6 +1219,10 @@ func _on_action_due(action_name: String) -> void:
 		return
 	if not ActionDriverScript.is_hold_action(action_name):
 		_pending_action = ""
+		# A one-shot hands the face back; a held posture keeps its face until
+		# `release_action()`.
+		_action_face = ""
+		_show_face()
 	action_finished.emit(action_name)
 
 
