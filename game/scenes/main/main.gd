@@ -209,6 +209,10 @@ const UI_FADE_SEC: float = 0.25
 @onready var _free_play_button: Button = %FreePlayButton
 @onready var _dress_button: Button = %DressUpButton
 @onready var _parent_button: Button = %ParentButton
+## "Learn with Aliz" -- the tutor classroom. Shown only while a grown-up has
+## the local tutor switched on (`aiTutorEnabled`, default on) and the scene
+## is in this build; never a dead button.
+@onready var _tutor_button: Button = %LearnWithAlizButton
 @onready var _coming_soon_label: Label = %ComingSoonLabel
 
 ## Set once the menu has handed off, so the first-launch timer can never fire
@@ -228,8 +232,9 @@ static var _welcomed_this_launch: bool = false
 const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
 const VoiceCues := preload("res://scripts/voice/voice_cues.gd")
 const SubtitleStripScript := preload("res://scripts/voice/subtitle_strip.gd")
-## The subtitle pill sits above the button row (buttons end 292 px up).
-const SUBTITLE_BOTTOM_MARGIN: float = 308.0
+## The subtitle pill sits above the Learn with Aliz banner (which ends 404 px
+## up; the button row ends at 292).
+const SUBTITLE_BOTTOM_MARGIN: float = 420.0
 var _skip_catcher: Control = null
 
 
@@ -248,6 +253,8 @@ func _ready() -> void:
 	_coming_soon_label.visible = false
 	_play_button.pressed.connect(_on_play_pressed)
 	_free_play_button.pressed.connect(_on_free_play_pressed)
+	_tutor_button.pressed.connect(_on_learn_with_aliz_pressed)
+	_tutor_button.visible = tutor_available()
 	_dress_button.pressed.connect(_on_dress_up_pressed)
 	_parent_button.pressed.connect(_on_parent_pressed)
 	_label_play_button()
@@ -342,6 +349,12 @@ func _has_progress() -> bool:
 ## one thing a title-screen button must never do.
 const DRESS_UP_SCENE: String = "res://scenes/dress_up/dress_up.tscn"
 const PARENT_SCENE: String = "res://scenes/parent/parent_settings.tscn"
+## Aliz Tutor Mode's classroom (`scripts/tutor/tutor_scene.gd`). Opened in
+## FREE_PLAY mode: a lesson is no chapter and grants its own stars through the
+## LessonEngine, never story progress.
+const TUTOR_SCENE: String = "res://scenes/tutor/classroom.tscn"
+const TutorFlagsScript := preload("res://scripts/tutor/tutor_flags.gd")
+const AI_TUTOR_ENABLED_SETTING: String = "aiTutorEnabled"
 
 const SHADOW_SIZE: int = 22
 const SHADOW_OFFSET: Vector2 = Vector2(0.0, 12.0)
@@ -356,7 +369,7 @@ const Palette := preload("res://scripts/ui/palette.gd")
 
 func _menu_buttons() -> Array:
 	var buttons: Array = []
-	for button: Button in [_play_button, _free_play_button, _dress_button, _parent_button]:
+	for button: Button in [_play_button, _free_play_button, _dress_button, _parent_button, _tutor_button]:
 		if button != null:
 			buttons.append(button)
 	return buttons
@@ -429,6 +442,24 @@ func _on_dress_up_pressed() -> void:
 func _on_parent_pressed() -> void:
 	if not _enter_scene(PARENT_SCENE, ProgressionMode.FREE_PLAY):
 		_show_unavailable()
+
+
+## Learn with Aliz. The classroom starts the hands-free voice session itself,
+## after this hand-off -- the microphone is never opened from the title screen.
+func _on_learn_with_aliz_pressed() -> void:
+	if not tutor_available() or not _enter_scene(TUTOR_SCENE, ProgressionMode.FREE_PLAY):
+		_show_unavailable()
+
+
+## The local scripted tutor is always allowed by the flag; a grown-up may still
+## switch "Learn with Aliz" off in Grown-ups, and a build may ship without it.
+func tutor_available() -> bool:
+	if not TutorFlagsScript.local_tutor_enabled() or not ResourceLoader.exists(TUTOR_SCENE):
+		return false
+	var save_service: Node = _autoload("SaveService")
+	if save_service != null and save_service.has_method("get_setting"):
+		return bool(save_service.call("get_setting", AI_TUTOR_ENABLED_SETTING, true))
+	return true
 
 
 # ---------------------------------------------------------------------------

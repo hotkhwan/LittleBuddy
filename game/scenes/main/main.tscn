@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scenes/main/main.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/safe_area.gd" id="2"]
@@ -28,6 +28,44 @@
 ; outdoor scene with its own framing, and its shadow is cast on one large open
 ; plane rather than across pastel walls, which is what the section 7 amendment
 ; of 2026-09-18 was about. Only the colour is shared.
+; "Learn with Aliz": a wide sky-blue banner above the four-button row (a
+; fifth square would crowd the row on a phone). DUSTY_BLUE (#9AC0D9) from
+; ART_BIBLE section 3, cream rim, the same corner radius family as the row.
+; Numbers, from the bottom-anchored SafeArea edge: 700 x 96, from -404 to
+; -308 (16 px above the row, which ends at -292). At 1334x750 that is
+; x 317..1017, y 330..426; at 2340x1080, x 820..1520, y 660..756.
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tutor"]
+content_margin_top = 104.0
+content_margin_bottom = 14.0
+content_margin_left = 34.0
+content_margin_right = 34.0
+bg_color = Color(0.604, 0.753, 0.851, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(1, 0.965, 0.898, 1)
+corner_radius_top_left = 44
+corner_radius_top_right = 44
+corner_radius_bottom_right = 44
+corner_radius_bottom_left = 44
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tutor_down"]
+content_margin_top = 104.0
+content_margin_bottom = 14.0
+content_margin_left = 34.0
+content_margin_right = 34.0
+bg_color = Color(0.548, 0.644, 0.701, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(1, 0.965, 0.898, 1)
+corner_radius_top_left = 44
+corner_radius_top_right = 44
+corner_radius_bottom_right = 44
+corner_radius_bottom_left = 44
+
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
 background_color = Color(0.782, 0.848, 0.918, 1)
@@ -319,6 +357,43 @@ text = "Grown-ups"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="LearnWithAlizButton" type="Button" parent="UI/SafeArea"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 240.0
+offset_bottom = 240.0
+focus_mode = 0
+theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_colors/font_hover_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_colors/font_pressed_color = Color(0.349, 0.259, 0.169, 1)
+theme_override_font_sizes/font_size = 32
+theme_override_styles/normal = SubResource("StyleBoxFlat_tutor")
+theme_override_styles/hover = SubResource("StyleBoxFlat_tutor")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_tutor_down")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_tutor")
+theme_override_styles/focus = SubResource("StyleBoxFlat_tutor")
+text = "Learn with
+Aliz"
+alignment = 1
+
+[node name="LearnIcon" type="TextureRect" parent="UI/SafeArea/LearnWithAlizButton"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -44.0
+offset_top = 18.0
+offset_right = 44.0
+offset_bottom = 106.0
+grow_horizontal = 2
+mouse_filter = 2
+script = ExtResource("3")
+glyph = 4
+tint = Color(0.349, 0.259, 0.169, 1)
+
 [node name="ComingSoonLabel" type="Label" parent="UI/SafeArea"]
 unique_name_in_owner = true
 visible = false
@@ -329,9 +404,9 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -180.0
-offset_top = -400.0
+offset_top = -520.0
 offset_right = 180.0
-offset_bottom = -300.0
+offset_bottom = -420.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2

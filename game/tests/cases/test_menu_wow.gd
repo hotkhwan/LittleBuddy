@@ -319,9 +319,20 @@ func _test_four_buttons_dressed():
 	var host: Node = menu.get_node_or_null("UI/SafeArea")
 	var buttons: Array = []
 	_collect(menu, "Button", buttons)
-	if buttons.size() != BUTTONS.size():
-		failures.append("the title screen has %d buttons; it has four: Start, Free Play, Dress Up, Grown-ups"
+	# Four in the row plus the wide "Learn with Aliz" banner above it (the tutor
+	# entry, agentB_tutor_entry patch). The banner is not part of the row maths.
+	var expected_buttons: int = BUTTONS.size() + (1 if host != null and host.get_node_or_null("LearnWithAlizButton") != null else 0)
+	if buttons.size() != expected_buttons:
+		failures.append("the title screen has %d buttons; it has four in the row (Start, Free Play, Dress Up, Grown-ups) plus Learn with Aliz"
 				% buttons.size())
+	var learn: Button = (host.get_node_or_null("LearnWithAlizButton") if host != null else null) as Button
+	if learn == null:
+		failures.append("there is no LearnWithAlizButton (the tutor entry)")
+	else:
+		if learn.size.x + 0.5 < 240.0 or learn.size.y + 0.5 < 240.0:
+			failures.append("Learn with Aliz is %s; ART_BIBLE section 8 asks 240x240 for a child-facing control" % str(learn.size))
+		if learn.pressed.get_connections().is_empty():
+			failures.append("Learn with Aliz does nothing when pressed")
 
 	var last_top: float = -1.0
 	var last_height: float = -1.0
