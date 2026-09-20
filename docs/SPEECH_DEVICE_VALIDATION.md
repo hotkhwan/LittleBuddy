@@ -102,3 +102,52 @@ tooling installs the build and never launches or terminates it.
 - A real interruption (Siri / incoming call) mid-listen has not been triggered on device; the
   `AVAudioSessionInterruptionNotification` handling is code-reviewed, not observed.
 - Only one device and one locale (en-US) have been exercised.
+
+
+---
+
+## 2026-09-20 — voice pass (Agent E, branch `wt/voice`). NOT device-validated.
+
+Everything below was done on the MacBook only. **No iPhone/iPad run happened in this pass**,
+so the "PROVEN WORKING ON DEVICE" status above still refers to the 2026-09-17 build, and the
+changes here must be re-checked on the device before that status is claimed for them.
+
+### What changed in the speech stack
+
+- Native plugin (`ios/speech_plugin/src/little_buddy_speech.mm/.h`): new `partial_result(text)`
+  signal for interim hypotheses; `stop_listening()` now reports the last hypothesis as
+  `recognized` instead of cancelling it away (same policy as the existing 5 s timeout).
+  Rebuilt on this Mac: macOS frameworks (`build_macos_framework.sh`) and iOS xcframeworks
+  (`build_xcframeworks.sh`, Xcode 26.6, godot-cpp 4.5, exit 0; `partial_result` present in the
+  `ios-arm64` archive). Outputs are in the worktree's `game/ios/speech_plugin/bin` (gitignored);
+  the lead rebuilds in the main checkout for the export.
+- `SpeechService.start_listening()` stops TTS before the microphone opens.
+- `SpeechFeedbackBinder` ends listening as soon as a hypothesis matches the prompt; the
+  backend's final for that hypothesis then completes the task.
+- `TtsService`: voice preference chain (premium/enhanced Zoe/Nicky/Ava/Allison/Samantha before
+  compact Samantha), pitch 1.15, rate 0.92, `react()` for encouragement, and completion by
+  polling `tts_is_speaking()` after start.
+
+### Facts measured on the Mac
+
+- Voice list: the only natural en-US voice installed is `com.apple.voice.compact.en-US.Samantha`
+  (full list in `docs/VOICE_HONESTY_PASS.md`). Chosen voice: Samantha (compact).
+- A windowed `tts_service.gd` run: the macOS synthesiser reported itself speaking for each of
+  "Great!" / "I'm hungry, Aliz!" / "Let's make some milk!" (1.28 s / 1.5 s / 1.4 s). The
+  utterance ENDED callback did not arrive in that run; the poll resolved each line.
+- With the plugin loaded in the editor: `Engine.has_singleton("LittleBuddySpeech") = true`,
+  `is_available = true`, `has_permission = false` (macOS has not been asked yet). The Mac
+  playtest therefore runs the REAL recogniser, not the mock.
+- Suite: 122 cases, 0 failures. Both mission smokes (`imHungry`, `snackTime`) pass.
+
+### To verify on the iPhone 14 Pro Max / iPad (not done)
+
+1. Pull `user://speech_diag.json` after a session; `recognizedCount` should rise once per
+   understood attempt and `lastFailureReason` should not be `timeout` for a spoken word.
+2. Say "milk" at a `sayIt` prompt: the panel should show "I hear: milk" within ~0.5 s and
+   "Great!" without waiting for the 5 s window. NOTE: in the house the task will only
+   complete by speech once `docs/patches/agentE_house_level_director.diff` is applied —
+   the transcript is not wired to the runner there today.
+3. Confirm TTS is still on the loudspeaker after the first mic session (the 09-17 fix).
+4. If a parent downloads Zoe (Premium) or Samantha (Enhanced) in Settings > Accessibility >
+   Spoken Content > Voices, the parent diagnostic's "Voice name" row should show it within 10 s.

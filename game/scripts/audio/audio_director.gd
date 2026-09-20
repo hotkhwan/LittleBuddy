@@ -116,8 +116,13 @@ const VOICE_COUNT: int = 2
 const DEFAULT_DUCK_DB: float = -10.0
 ## Ducking down is quick, because the prompt has already started. Coming back is
 ## slower, because the child is still thinking about the word they just heard.
+## Release lengthened 0.55 -> 0.8 s in the voice pass: encouragement ("Great!")
+## is now spoken after every beat, so the duck opens and closes far more often,
+## and a quick return reads as pumping. `TtsService` also releases the queue the
+## moment the platform stops speaking, so the duck no longer lingers after a
+## line -- the slower ramp is the whole of what the ear notices.
 const DUCK_ATTACK_SECONDS: float = 0.18
-const DUCK_RELEASE_SECONDS: float = 0.55
+const DUCK_RELEASE_SECONDS: float = 0.8
 
 ## Profile setting consulted before music plays, mirroring `SfxPlayer`'s use of
 ## `soundEnabled`. A parent turning sound off must silence music too.
