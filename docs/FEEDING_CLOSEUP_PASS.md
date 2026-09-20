@@ -38,8 +38,11 @@ Mission 02 walkthroughs pass; suite 122/122.
 |---|---|
 | `docs/shots/feed_portrait_ipad.png` | 1334×750, opening frame |
 | `docs/shots/feed_portrait_iphone.png` | 2340×1080, opening frame |
-| `docs/shots/feed_portrait_mid_ipad.png` | half fed: arc filling on his face, drops, bar at 50% |
-| `docs/shots/feed_portrait_done_ipad.png` | finished: overlay gone, Bunny celebrating, star +1, need line gone |
+| `docs/shots/feed_portrait_mid_{ipad,iphone}.png` | half fed: arc filling on his face, drops, bar at 50% |
+| `docs/shots/feed_portrait_done_{ipad,iphone}.png` | finished: overlay gone, Bunny celebrating, star +1, need line gone |
+
+All six were re-taken after the bubble pass merged, so Bunny's need line is
+suppressed behind the overlay in every frame.
 
 Camera at the beat, iPad: distance **1.40 m**, binding `vertical` on the near
 floor corner, focus at his mouth (0.48, 0.52, 1.02).
@@ -50,7 +53,8 @@ floor corner, focus at his mouth (0.48, 0.52, 1.02).
   clip (hands up, head tipped) and the ring on his face are the reaction.
 - Aliz is cropped at the left edge of the portrait. She is behind the camera
   in the fiction; her hair and dress edge are what is visible.
-- The "I'm hungry!" 3D line overprints the title until the actor's
-  `set_bubble_suppressed()` (bubble pass) is merged; the director already calls it.
+- Bunny's need line is hidden while any care overlay is open
+  (`set_bubble_suppressed()`, from the bubble pass) and returns with the need
+  rule the moment the overlay closes.
 - The joystick ring is faintly visible through the bottom band, as it was
   through the old full scrim.
