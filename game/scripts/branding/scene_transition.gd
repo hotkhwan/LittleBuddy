@@ -146,7 +146,7 @@ func _build() -> void:
 	_heart = HeartMark.new()
 	_heart.name = "Heart"
 	_heart.set_anchors_preset(Control.PRESET_CENTER)
-	_heart.size = Vector2(72, 72)
+	_heart.size = Vector2(96, 96)
 	_heart.position = -_heart.size * 0.5
 	_heart.pivot_offset = _heart.size * 0.5
 	_heart.mouse_filter = Control.MOUSE_FILTER_IGNORE

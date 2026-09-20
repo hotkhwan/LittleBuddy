@@ -1,0 +1,36 @@
+# Agent A (branding and shell) -- the project.godot change for the lead.
+#
+# Four things, all in [application]:
+#
+#   1. run/main_scene -> the splash. It starts a threaded load of main.tscn,
+#      holds the logo 1.2 s (any tap skips), and hands over under the cream
+#      curtain by 2.6 s at the latest. Every test still loads main.tscn by path.
+#   2. config/icon -> the real app icon (512 px PNG cut from the approved
+#      render). game/icon.svg is the old milk-bottle and is no longer
+#      referenced once this lands; it can be deleted in a later pass.
+#   3. boot_splash/image -> assets/branding/bootSplash.png (2048x1536, opaque,
+#      597 KB), shown fullsize with filtering. The engine letterboxes it
+#      against bg_color, which is the SAME cream as the image, so a 16:9 phone
+#      sees no seam. show_image was explicitly false; it goes back to true.
+#   4. bg_color unchanged (Palette.CREAM, #FFF6E5). Listed so the intent is
+#      visible: the boot image, the splash scene and the curtain all share it.
+#
+# Verified live on macOS with the splash as the current scene: Splash at 19 ms,
+# curtain up at 1.2 s, Main current at ~1.67 s, curtain lifted by ~2.0 s.
+# Suite: PASS - 131 case(s) on wt2/brand with these keys applied locally.
+
+--- a/game/project.godot
++++ b/game/project.godot
+@@ [application]
+ config/name="Little Days"
+-run/main_scene="res://scenes/main/main.tscn"
++run/main_scene="res://scenes/splash/splash.tscn"
+ config/features=PackedStringArray("4.7", "Mobile")
+-config/icon="res://icon.svg"
++config/icon="res://assets/icon/app_icon_512.png"
++boot_splash/image="res://assets/branding/bootSplash.png"
++boot_splash/show_image=true
++boot_splash/fullsize=true
++boot_splash/use_filter=true
+ boot_splash/bg_color=Color(1, 0.964706, 0.878431, 1)
+-boot_splash/show_image=false

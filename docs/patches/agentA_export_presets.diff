@@ -1,0 +1,31 @@
+# Agent A (branding and shell) -- export_presets.cfg, for the lead. OPTIONAL
+# but recommended; the icons in the preset's own slots are already replaced
+# in place under res://assets/icon/ios/ and res://assets/icons/android/, so the
+# iOS and Android exports pick up the new art with NO change here.
+#
+# Two loose ends the slots do not cover:
+#
+#   1. [preset.0] icons/icon_1024x1024 still points at the OLD root
+#      res://icon_1024.png (the milk bottle). Point it at the new App Store
+#      icon so every slot is the same picture.
+#   2. The iOS launch storyboard shows a flat cream before Godot's own boot
+#      splash. Handing it the same bootSplash.png (Scale to Fit, same cream
+#      behind) makes launch -> boot splash -> splash scene one continuous
+#      picture. Untested on a device tonight: apply only if there is time to
+#      look at it once on the iPad; the plain cream storyboard is a safe
+#      fallback and is what ships if this hunk is skipped.
+
+--- a/game/export_presets.cfg
++++ b/game/export_presets.cfg
+@@ [preset.0.options]
+-icons/icon_1024x1024="res://icon_1024.png"
++icons/icon_1024x1024="res://assets/icon/ios/icon_1024.png"
+ storyboard/use_launch_screen_storyboard=true
+-storyboard/image_scale_mode=0
+-storyboard/custom_image@2x=""
+-storyboard/custom_image@3x=""
++storyboard/image_scale_mode=2
++storyboard/custom_image@2x="res://assets/branding/bootSplash.png"
++storyboard/custom_image@3x="res://assets/branding/bootSplash.png"
+ storyboard/use_custom_bg_color=true
+ storyboard/custom_bg_color=Color(1, 0.964706, 0.878431, 1)
