@@ -53,6 +53,61 @@ extends Node3D
 ## her feet at alpha 0.18, because the game runs no shadows. `get_contact_hint()`.
 ##
 ## ---------------------------------------------------------------------------
+## ## TutorFace (docs/ALIZ_TUTOR_CONTRACTS.md), added 2026-09-20 for Aliz Tutor
+## ## Mode -- callers use `has_method()` guards; every method is safe without
+## ## the model, the rig or the mood atlas (it then records the wish and shows
+## ## nothing, which is the honest degradation)
+## ---------------------------------------------------------------------------
+##
+## **Expressions** -- more texture moods on the SAME channel as `set_face()`
+## (`tools/aliz_expression_pass.py` paints them; `docs/ALIZ_TUTOR_FACE.md`):
+##   `set_expression(name) -> bool`  "neutral" | "listening" | "thinking" |
+##                                   "happy" | "encouraging" | "smile".
+##                                   Sets the resting face, exactly as
+##                                   `set_face()` does; the two vocabularies are
+##                                   one manifest and `available_faces()` lists
+##                                   both. An action's face still shows over it.
+##   `get_expression() -> String`    (= `get_face()`), `EXPRESSIONS` the list.
+##   The blink overlays every expression.
+##
+## **Mouth for speech** -- four texture mouth frames (closed = the expression's
+## own mouth, small, mid, open) chosen from a SMOOTHED amount by
+## `buddy_mouth.gd` (attack 40 ms, release 90 ms, no frame held under 40 ms
+## except a close):
+##   `set_speaking(active)`          false closes the mouth now and restores the
+##                                   expression's own mouth; true just marks her
+##                                   speaking (the amount is the driver's).
+##   `set_mouth_open(amount)`        0..1, the TARGET; the smoothing is inside.
+##                                   Any amount > 0 counts as speaking.
+##   `is_speaking() -> bool`, `get_mouth_open() -> float` (smoothed),
+##   `get_mouth_frame() -> int` (0..3), `step_mouth(seconds)` (headless: advance
+##   the smoothing by hand), `get_mouth() -> Node` (the smoother).
+##   `get_lip_sync() -> Node`        a `buddy_lip_sync.gd` LipSyncSource under
+##                                   `Model`, made on first use, already aimed at
+##                                   this character: `attach(player)`,
+##                                   `attach_bus(name)`, `attach_tts()`.
+##
+## **Head and hands** -- authored clips (`buddy_gesture_clips.gd`) on an
+## upper-body `SkeletonModifier3D` layer (`buddy_gesture_layer.gd`) that
+## composes with the idle, the seated pose and the carry arms, and never with
+## the walk:
+##   `play_gesture(name) -> float`   "nod" (0.9 s) | "tilt" (1.2 s) | "point"
+##                                   (1.4 s) | "clap" (1.1 s) | "wave" (1.3 s).
+##                                   Returns the duration, or 0.0 when refused:
+##                                   unknown name, no rig, locomotion above
+##                                   `GESTURE_MAX_SPEED_MPS` (0.1 m/s), or an arm
+##                                   gesture while the carry pose holds the arms.
+##                                   Fades in over 0.12 s, out over 0.2 s.
+##                                   `set_locomotion()` above the limit fades a
+##                                   running gesture out.
+##   `stop_gesture()`, `get_current_gesture() -> String`,
+##   `available_gestures() -> Array`, `get_gesture_layer() -> SkeletonModifier3D`.
+##   `set_listening_pose(active)`    a slight lean-in (spine 6 degrees over three
+##                                   bones, head counter-nodded), eased 0.35 s;
+##                                   the idle breath keeps running underneath.
+##   `is_listening_pose() -> bool`.
+##
+## ---------------------------------------------------------------------------
 ## ## Why it is OFF by default -- measured, not an opinion
 ## ---------------------------------------------------------------------------
 ##
@@ -192,6 +247,10 @@ const CarryPoseScript := preload("res://scripts/characters/buddy/buddy_carry_pos
 const LifeClipsScript := preload("res://scripts/characters/buddy/buddy_life_clips.gd")
 const HairSwayScript := preload("res://scripts/characters/buddy/buddy_hair_sway.gd")
 const FaceScript := preload("res://scripts/characters/buddy/buddy_face.gd")
+const MouthScript := preload("res://scripts/characters/buddy/buddy_mouth.gd")
+const LipSyncScript := preload("res://scripts/characters/buddy/buddy_lip_sync.gd")
+const GestureClipsScript := preload("res://scripts/characters/buddy/buddy_gesture_clips.gd")
+const GestureLayerScript := preload("res://scripts/characters/buddy/buddy_gesture_layer.gd")
 const ContactHintScript := preload("res://scripts/characters/contact_shadow.gd")
 
 ## Where the bone-name adapter lives. The ONLY file that may name one of her
@@ -222,6 +281,17 @@ const ACTION_FACES: Dictionary = {
 	"wake": FACE_SURPRISED,
 	"sleep": FACE_SLEEPY,
 }
+
+## The TutorTurn emotion vocabulary (docs/ALIZ_TUTOR_CONTRACTS.md). Each is a
+## mood in the face manifest; `set_expression()` is `set_face()` with this
+## list's name on it.
+const EXPRESSIONS: Array[String] = [
+	"neutral", "listening", "thinking", "happy", "encouraging", "smile",
+]
+
+## Above this ground speed a gesture is refused and a running one fades out:
+## the arms belong to the walk and run clips while she travels.
+const GESTURE_MAX_SPEED_MPS: float = 0.1
 
 ## A blink: eyes shut for this long, every so often. Randomised so two Alizes
 ## in two menus would not blink in step, and so a child cannot count it.
@@ -328,6 +398,19 @@ var _face_mood: String = FACE_CONTENT
 var _action_face: String = ""
 var _blink_timer: Timer = null
 var _blink_enabled: bool = true
+## The mouth smoother (`buddy_mouth.gd`), under `Model`; null without a face.
+var _mouth: Node = null
+## The talk frame on the atlas right now (0 = the expression's own mouth).
+var _mouth_frame: int = 0
+## Recorded wishes for a build without the face system.
+var _speaking_wanted: bool = false
+## The lip sync source, made by `get_lip_sync()` on first use.
+var _lip_sync: Node = null
+## The upper-body gesture layer, a `SkeletonModifier3D` under the skeleton.
+var _gesture_layer: SkeletonModifier3D = null
+var _listening_wanted: bool = false
+## The last ground speed `set_locomotion()` was given, m/s.
+var _locomotion_speed: float = 0.0
 ## True between the shut and the reopen of one blink.
 var _blink_shut: bool = false
 var _rng := RandomNumberGenerator.new()
@@ -679,8 +762,10 @@ func _build_model() -> void:
 	_merge_clips(instance)
 	_sockets = _build_sockets()
 	_build_carry_pose()
+	_build_gesture_layer()
 	_build_hair_sway()
 	_build_blink_timer()
+	_build_mouth()
 	_build_contact_hint()
 
 
@@ -730,6 +815,10 @@ func _merge_clips(instance: Node) -> void:
 ## at the previous clip's rate.
 func set_locomotion(speed: float) -> void:
 	build()
+	_locomotion_speed = absf(speed)
+	if _locomotion_speed > GESTURE_MAX_SPEED_MPS and _gesture_layer != null \
+			and bool(_gesture_layer.call("is_playing")):
+		_gesture_layer.call("stop")
 	var player: AnimationPlayer = get_animation_player()
 	if player == null:
 		return
@@ -1137,7 +1226,7 @@ func _mood_closes_eyes() -> bool:
 func _show_face() -> void:
 	if _face == null:
 		return
-	_face.call("show", _wanted_face(), _blink_shut and not _mood_closes_eyes())
+	_face.call("show", _wanted_face(), _blink_shut and not _mood_closes_eyes(), _mouth_frame)
 
 
 func _build_blink_timer() -> void:
@@ -1184,6 +1273,192 @@ func _on_blink_timeout() -> void:
 	_show_face()
 	if _blink_timer != null and _blink_timer.is_inside_tree():
 		_blink_timer.start(BLINK_CLOSED_SEC)
+
+
+# ---------------------------------------------------------------------------
+# TutorFace: expressions (the same channel as the moods)
+# ---------------------------------------------------------------------------
+
+## **Sets the resting expression.** The TutorTurn vocabulary is a set of moods
+## in the same manifest, so this IS `set_face()`; it exists so a tutor caller
+## reads as the contract does. False for a name outside `EXPRESSIONS`, or one
+## this build's atlas lacks.
+func set_expression(name: String) -> bool:
+	if not EXPRESSIONS.has(name):
+		return false
+	return set_face(name)
+
+
+func get_expression() -> String:
+	return get_face()
+
+
+## The expressions this build's atlas actually carries (a subset of
+## `EXPRESSIONS`; empty when the face system stood down).
+func available_expressions() -> Array:
+	var out: Array = []
+	var moods: Array = available_faces()
+	for name: String in EXPRESSIONS:
+		if moods.has(name):
+			out.append(name)
+	return out
+
+
+# ---------------------------------------------------------------------------
+# TutorFace: the mouth for speech
+# ---------------------------------------------------------------------------
+
+func _build_mouth() -> void:
+	if _model_root == null or _mouth != null:
+		return
+	_mouth = MouthScript.new()
+	_mouth.name = "Mouth"
+	var frames: int = 1
+	if _face != null:
+		frames = int(_face.call("mouth_frame_count"))
+	_mouth.call("set_frame_count", frames)
+	_mouth.connect("frame_changed", _on_mouth_frame_changed)
+	# Under `Model`, like the blink timer: the wrapper's direct children are
+	# exactly [`Model`] by contract.
+	_model_root.add_child(_mouth)
+
+
+## `false` closes the mouth now and puts the expression's own mouth back;
+## `true` marks her speaking (the amount comes from `set_mouth_open()`).
+func set_speaking(active: bool) -> void:
+	build()
+	_speaking_wanted = active
+	if _mouth != null:
+		_mouth.call("set_speaking", active)
+
+
+func is_speaking() -> bool:
+	if _mouth != null:
+		return bool(_mouth.call("is_speaking"))
+	return _speaking_wanted
+
+
+## The target openness, 0..1. Smoothed inside (`buddy_mouth.gd`); the frame
+## follows the smoothed value. 0 (held) closes the mouth within the release.
+func set_mouth_open(amount: float) -> void:
+	build()
+	if _mouth != null:
+		_mouth.call("set_target", amount)
+
+
+## The smoothed openness right now, 0..1 (0 without a face).
+func get_mouth_open() -> float:
+	return float(_mouth.call("amount")) if _mouth != null else 0.0
+
+
+## The talk frame on the atlas: 0 closed (the expression's mouth), 1 small,
+## 2 mid, 3 open.
+func get_mouth_frame() -> int:
+	return _mouth_frame
+
+
+## Advances the mouth smoothing by `seconds` without a frame -- for the
+## headless tests and for `buddy_lip_sync.gd`'s envelope replay.
+func step_mouth(seconds: float) -> void:
+	if _mouth != null:
+		_mouth.call("step", seconds)
+
+
+func get_mouth() -> Node:
+	build()
+	return _mouth
+
+
+## The LipSyncSource for this character, made on first use under `Model` and
+## aimed at this node. Null without the model.
+func get_lip_sync() -> Node:
+	build()
+	if _model_root == null:
+		return null
+	if _lip_sync == null:
+		_lip_sync = LipSyncScript.new()
+		_lip_sync.name = "LipSyncSource"
+		_lip_sync.call("set_target", self)
+		_model_root.add_child(_lip_sync)
+	return _lip_sync
+
+
+func _on_mouth_frame_changed(frame: int) -> void:
+	_mouth_frame = frame
+	_show_face()
+
+
+# ---------------------------------------------------------------------------
+# TutorFace: head and hands -- the upper-body gesture layer
+# ---------------------------------------------------------------------------
+
+func _build_gesture_layer() -> void:
+	if _skeleton == null:
+		return
+	_gesture_layer = GestureLayerScript.new()
+	_gesture_layer.name = "GestureLayer"
+	_gesture_layer.call("prepare", _skeleton, ".")
+	# After the carry pose (whose arms it must not fight while carrying -- arm
+	# gestures are refused then) and before the hair sway, which rides on top.
+	_skeleton.add_child(_gesture_layer)
+
+
+## Plays a gesture on the upper body and returns its length in seconds.
+## Returns 0.0, and shows nothing, when refused: not a gesture, no rig,
+## travelling faster than `GESTURE_MAX_SPEED_MPS`, or an arm gesture while the
+## carry pose holds the arms. Nothing is emitted for a refusal, so a caller
+## awaiting a duration of 0.0 is never left waiting.
+func play_gesture(name: String) -> float:
+	build()
+	if not GestureClipsScript.is_gesture(name):
+		return 0.0
+	if _gesture_layer == null:
+		return 0.0
+	if _locomotion_speed > GESTURE_MAX_SPEED_MPS:
+		return 0.0
+	if _carry_pose_wanted and GestureClipsScript.ARM_GESTURES.has(name):
+		return 0.0
+	return float(_gesture_layer.call("play", name))
+
+
+## Fades a running gesture out over 0.2 s. Safe when none is running.
+func stop_gesture() -> void:
+	if _gesture_layer != null:
+		_gesture_layer.call("stop")
+
+
+func get_current_gesture() -> String:
+	if _gesture_layer == null:
+		return ""
+	return String(_gesture_layer.call("current_gesture"))
+
+
+func available_gestures() -> Array:
+	build()
+	if _gesture_layer == null:
+		return []
+	return _gesture_layer.call("available_gestures")
+
+
+func get_gesture_layer() -> SkeletonModifier3D:
+	build()
+	return _gesture_layer
+
+
+## Leans in a little (true) or straightens (false); eased in the skeleton's
+## modification pass, so out of the tree it is settled at once.
+func set_listening_pose(active: bool) -> void:
+	build()
+	_listening_wanted = active
+	if _gesture_layer == null:
+		return
+	_gesture_layer.call("set_listening", active)
+	if not is_inside_tree():
+		_gesture_layer.call("settle")
+
+
+func is_listening_pose() -> bool:
+	return _listening_wanted
 
 
 # ---------------------------------------------------------------------------

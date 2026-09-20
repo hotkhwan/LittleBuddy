@@ -35,16 +35,34 @@ extends RefCounted
 ## textures are never bound to a surface -- they are read once into RAM and
 ## composited on the CPU.
 ##
+## ## The talking mouth (2026-09-20, tutor mode)
+##
+## `tools/aliz_expression_pass.py` adds the tutor expressions as more moods
+## (neutral, listening, thinking, encouraging, smile) and a `mouthFrames`
+## list: index 0 is "the expression's own mouth", 1..3 are the talk frames
+## (small / mid / open), each a patch that carries alpha over the WHOLE mouth
+## footprint so it replaces any expression's mouth completely. `show()` takes
+## the frame as its third argument and composes: base, the mood's layers, the
+## frame, the blink. Expressions and the older moods are one vocabulary and
+## one channel; the frame and the blink are overlays on it.
+##
+## Layers may also carry `rects`, per-island sub-rectangles of their patch;
+## when present only those are blended, so a mouth frame costs a few thousand
+## texel writes rather than a pass over the atlas.
+##
 ## ## Public surface (used by `pink_girl_buddy.gd`, never directly by gameplay)
 ##
 ##   `setup(material, manifest_path) -> bool`  bind to a material's albedo
 ##   `is_ready() -> bool`
 ##   `moods() -> Array[String]`                 the manifest's mood names
 ##   `blink_layer() -> String`
-##   `show(mood, eyes_closed) -> bool`          compose and upload
+##   `show(mood, eyes_closed, mouth_frame = 0) -> bool`  compose and upload
 ##   `current_mood() -> String`, `eyes_closed() -> bool`
+##   `current_mouth_frame() -> int`, `mouth_frame_count() -> int` (1 = no talk frames)
+##   `mouth_frame_layer(index) -> String`
 ##   `mood_closes_eyes(mood) -> bool`       the mood itself shuts the eyes
 ##   `layer_rect(name) -> Rect2i`              for tests: where a layer writes
+##   `layer_rects(name) -> Array[Rect2i]`      the island rects (or [rect])
 ##   `canvas() -> Image`                        for tests: the atlas as shown
 
 const MOOD_CONTENT: String = "content"
@@ -63,6 +81,7 @@ var _texture: ImageTexture = null
 var _layers: Dictionary = {}
 var _mood: String = MOOD_CONTENT
 var _eyes_closed: bool = false
+var _mouth_frame: int = 0
 var _composed_once: bool = false
 
 
@@ -97,6 +116,7 @@ func setup(material: StandardMaterial3D, manifest_path: String) -> bool:
 	material.albedo_texture = _texture
 	_mood = MOOD_CONTENT
 	_eyes_closed = false
+	_mouth_frame = 0
 	return true
 
 
@@ -121,6 +141,25 @@ func current_mood() -> String:
 	return _mood
 
 
+func current_mouth_frame() -> int:
+	return _mouth_frame
+
+
+## How many mouth frames the manifest offers, counting index 0 (the
+## expression's own mouth). 1 on an atlas without talk frames.
+func mouth_frame_count() -> int:
+	var frames: Array = _manifest.get("mouthFrames", [])
+	return maxi(1, frames.size())
+
+
+## The layer a frame index composes, "" for index 0 or an index out of range.
+func mouth_frame_layer(index: int) -> String:
+	var frames: Array = _manifest.get("mouthFrames", [])
+	if index <= 0 or index >= frames.size():
+		return ""
+	return String(frames[index])
+
+
 ## Does `mood` itself include the blink layer (eyes shut as part of the mood)?
 func mood_closes_eyes(mood: String) -> bool:
 	var layers: Array = (_manifest.get("moods", {}) as Dictionary).get(mood, [])
@@ -134,17 +173,23 @@ func eyes_closed() -> bool:
 	return _eyes_closed or mood_closes_eyes(_mood)
 
 
-## Composes `mood` (plus the blink layer when `eyes_closed`) onto the base and
-## uploads it. Idempotent: the same request twice does no work the second time.
-func show(mood: String, closed: bool) -> bool:
+## Composes `mood`, then the talk frame `mouth_frame` (0 = the mood's own
+## mouth), then the blink layer when `closed`, onto the base and uploads it.
+## Idempotent: the same request twice does no work the second time.
+func show(mood: String, closed: bool, mouth_frame: int = 0) -> bool:
 	if _texture == null:
 		return false
 	var moods_table: Dictionary = _manifest.get("moods", {})
 	if not moods_table.has(mood):
 		return false
-	if mood == _mood and closed == _eyes_closed and _canvas != null and _composed_once:
+	var frame: int = clampi(mouth_frame, 0, mouth_frame_count() - 1)
+	if mood == _mood and closed == _eyes_closed and frame == _mouth_frame \
+			and _canvas != null and _composed_once:
 		return true
 	var names: Array = (moods_table[mood] as Array).duplicate()
+	var talk: String = mouth_frame_layer(frame)
+	if not talk.is_empty():
+		names.append(talk)
 	var blink: String = blink_layer()
 	if closed and not blink.is_empty() and not names.has(blink):
 		names.append(blink)
@@ -154,12 +199,15 @@ func show(mood: String, closed: bool) -> bool:
 		if layer == null:
 			continue
 		var rect: Rect2i = layer_rect(String(name))
-		_canvas.blend_rect(layer, Rect2i(Vector2i.ZERO, layer.get_size()), rect.position)
+		for island: Rect2i in layer_rects(String(name)):
+			_canvas.blend_rect(layer, Rect2i(island.position - rect.position, island.size),
+					island.position)
 	if _canvas.has_mipmaps():
 		_canvas.generate_mipmaps()
 	_texture.update(_canvas)
 	_mood = mood
 	_eyes_closed = closed
+	_mouth_frame = frame
 	_composed_once = true
 	return true
 
@@ -171,6 +219,23 @@ func layer_rect(name: String) -> Rect2i:
 	if rect.size() != 4:
 		return Rect2i()
 	return Rect2i(int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+
+
+## The island sub-rectangles of a layer's patch in atlas coordinates, or the
+## whole patch rect when the manifest predates them.
+func layer_rects(name: String) -> Array:
+	var whole: Rect2i = layer_rect(name)
+	var spec: Dictionary = (_manifest.get("layers", {}) as Dictionary).get(name, {})
+	var out: Array = []
+	for entry: Variant in spec.get("rects", []):
+		if entry is Array and (entry as Array).size() == 4:
+			var r := Rect2i(int(entry[0]), int(entry[1]), int(entry[2]), int(entry[3]))
+			# Never outside the patch: a hand-edited manifest cannot make
+			# blend_rect read past the layer image.
+			out.append(r.intersection(whole))
+	if out.is_empty():
+		out.append(whole)
+	return out
 
 
 func canvas() -> Image:
