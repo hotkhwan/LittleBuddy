@@ -43,6 +43,7 @@ const PARENT_SCRIPT: String = "res://scenes/parent/parent_settings.gd"
 const ParentSettingsScript := preload("res://scenes/parent/parent_settings.gd")
 const GateScript := preload("res://scripts/parent_settings/parental_gate.gd")
 const EntitlementIds := preload("res://scripts/entitlement/entitlement_ids.gd")
+const QuotaConfig := preload("res://scripts/tutor/quota/quota_config.gd")
 
 ## Every directory of this project's own source. `ios/` is outside `res://` and is
 ## read through a relative path, like `test_speech_privacy_guard.gd` does.
@@ -184,7 +185,49 @@ func _test_no_billing_anywhere():
 		failures.append("the default service grants familyClub; nothing in this build may")
 	if not service.is_active(EntitlementIds.FREE_STARTER):
 		failures.append("the default service does not grant Free Starter")
+
+	# The store provider STUB never claims a purchase: it cannot grant familyClub
+	# and its validation always answers "pending server validation".
+	var store: Object = load("res://scripts/entitlement/store_entitlement_provider.gd").new()
+	if store.is_active(EntitlementIds.FAMILY_CLUB):
+		failures.append("the store stub grants familyClub with no server verdict")
+	if bool(store.call("billing_available")):
+		failures.append("the store stub says billing is available; it is not")
+	var verdict: Dictionary = store.call("validate_purchase", "apple", {"signedTransaction": "x"})
+	if String(verdict.get("status", "")) != "pending_server_validation" \
+			or not String(verdict.get("entitlement", "?")).is_empty():
+		failures.append("the store stub's validate_purchase() answered %s; it may only answer pending"
+				% str(verdict))
+
+	# The Learn with Aliz section is grown-up information: no purchase control.
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree != null:
+		var packed: PackedScene = load(PARENT_SCENE) as PackedScene
+		var panel: Node = packed.instantiate()
+		tree.root.add_child(panel)
+		panel.call("_ready")
+		panel.call("open_settings")
+		var aliz_box: Node = panel.find_child("LearnWithAlizBox", true, false)
+		if aliz_box == null:
+			failures.append("the Learn with Aliz section is missing")
+		else:
+			for child: Node in _descendants(aliz_box):
+				if child is Button:
+					var label: String = (child as Button).text.to_lower()
+					for word: String in ["buy", "subscribe", "upgrade", "purchase", "pay", "trial"]:
+						if label.contains(word):
+							failures.append("Learn with Aliz has a button saying '%s'" % (child as Button).text)
+		tree.root.remove_child(panel)
+		panel.free()
 	return failures
+
+
+static func _descendants(node: Node) -> Array:
+	var out: Array = []
+	for child: Node in node.get_children():
+		out.append(child)
+		out.append_array(_descendants(child))
+	return out
 
 
 # -- 2. no browser --------------------------------------------------------------
@@ -284,10 +327,27 @@ func _test_the_child_facing_source_is_clean():
 func _test_the_copy_does_not_pressure_anybody():
 	var failures: Array = []
 	var lines: Array = []
-	for line: String in ParentSettingsScript.FAMILY_CLUB_LINES:
+	for line: String in ParentSettingsScript.family_club_lines():
 		lines.append(line)
 	lines.append(ParentSettingsScript.SONGS_FOR_FUN_BLURB)
+	for line: String in ParentSettingsScript.ALIZ_PRIVACY_LINES:
+		lines.append(line)
+	lines.append(ParentSettingsScript.ALIZ_BILLING_TEXT)
+	lines.append(ParentSettingsScript.ALIZ_TUTOR_HELP)
 	var joined: String = " ".join(PackedStringArray(lines)).to_lower()
+
+	# The Thai monthly price is read from ONE config file and is always
+	# labelled "proposed"; the screen never invents a number of its own.
+	var pricing: Dictionary = QuotaConfig.pricing_proposed()
+	if String(pricing.get("currency", "")) != "THB" or int(pricing.get("monthly", 0)) != 99:
+		failures.append("quota_config.json pricingProposed is %s; the proposed Thai price is THB 99 / month"
+				% str(pricing))
+	if String(pricing.get("status", "")) != "proposed":
+		failures.append("the configured price is not marked 'proposed'")
+	if not joined.contains("thb 99 / month (proposed)"):
+		failures.append("the Family Club copy does not print the configured Thai price as proposed")
+	if not QuotaConfig.pricing_line().to_lower().contains("proposed"):
+		failures.append("QuotaConfig.pricing_line() dropped the word 'proposed'")
 
 	for phrase: String in FORBIDDEN_PRESSURE:
 		if joined.contains(phrase):

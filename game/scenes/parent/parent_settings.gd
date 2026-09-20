@@ -53,6 +53,9 @@ const FreeStarter := preload("res://scripts/entitlement/free_starter.gd")
 const EntitlementServiceScript := preload("res://scripts/entitlement/entitlement_service.gd")
 const Localization := preload("res://scripts/localization/localization.gd")
 const HelperFont := preload("res://scripts/localization/helper_font.gd")
+const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
+const QuotaConfig := preload("res://scripts/tutor/quota/quota_config.gd")
+const TutorQuotaScript := preload("res://scripts/tutor/quota/tutor_quota.gd")
 
 ## Where a standalone panel goes when it is done.
 const HOME_SCENE: String = "res://scenes/main/main.tscn"
@@ -217,6 +220,7 @@ func _ready() -> void:
 
 	_build_speech_check()
 	_build_qa_replay()
+	_build_learn_with_aliz()
 	_build_family_club()
 
 	if show_gate:
@@ -393,20 +397,28 @@ func qa_replay_level_id() -> String:
 ## no number at all. Two monthly prices are listed because Thailand is the launch
 ## market and USD 2.99 is not what that should cost there.
 const PRICE_MONTHLY_USD: String = "USD 2.99 / month"
-const PRICE_MONTHLY_THB: String = "THB 99 / month"
 
 ## Every line the section prints, in order. Plain, factual, grown-up copy: no
-## urgency, no scarcity, no "unlock", nothing addressed to a child.
-const FAMILY_CLUB_LINES: Array[String] = [
-	"Free Starter -- free forever, no account needed.",
-	"Family Club (proposed) -- " + PRICE_MONTHLY_USD,
-	"Thailand (proposed) -- " + PRICE_MONTHLY_THB,
-	"Annual pricing is not decided yet, so there is none to show.",
-	"Nothing can be bought in this app. This build has no payment of any kind; "
-			+ "these prices are information only.",
-	"Your child's game is never interrupted to ask for money, and Buddy is never "
-			+ "sad about a subscription.",
-]
+## urgency, no scarcity, no "unlock", nothing addressed to a child. The Thai
+## monthly price is NOT written here: it is read from the one config file
+## (`content/tutor/quota_config.json`, `pricingProposed`) so gameplay code and
+## this screen can never quote two different numbers.
+static func family_club_lines() -> PackedStringArray:
+	var thai: String = QuotaConfig.pricing_line()
+	var lines: PackedStringArray = PackedStringArray([
+		"Free Starter -- free forever, no account needed.",
+		"Family Club (proposed) -- " + PRICE_MONTHLY_USD,
+	])
+	if not thai.is_empty():
+		lines.append("Thailand -- " + thai)
+	lines.append_array(PackedStringArray([
+		"Annual pricing is not decided yet, so there is none to show.",
+		"Nothing can be bought in this app. This build has no payment of any kind; "
+				+ "these prices are information only.",
+		"Your child's game is never interrupted to ask for money, and Buddy is never "
+				+ "sad about a subscription.",
+	]))
+	return lines
 
 ## The one external link in the product. A free YouTube channel, for a parent, on
 ## a parent's own terms:
@@ -472,7 +484,8 @@ func _build_family_club() -> void:
 	if parent == null:
 		return
 
-	_entitlements = EntitlementServiceScript.new()
+	if _entitlements == null:
+		_entitlements = EntitlementServiceScript.new()
 
 	_family_club_box = VBoxContainer.new()
 	_family_club_box.name = "FamilyClubBox"
@@ -495,7 +508,7 @@ func _build_family_club() -> void:
 	_style_body(included)
 	_family_club_box.add_child(included)
 
-	for line: String in FAMILY_CLUB_LINES:
+	for line: String in family_club_lines():
 		var label := Label.new()
 		label.text = line
 		_style_body(label)
@@ -581,14 +594,6 @@ func _collapse_songs_for_fun() -> void:
 
 ## -- read-only accessors, for the tests ------------------------------------
 
-## The pricing/disclosure copy, exactly as printed.
-func family_club_lines() -> PackedStringArray:
-	var out: PackedStringArray = PackedStringArray()
-	for line: String in FAMILY_CLUB_LINES:
-		out.append(line)
-	return out
-
-
 func songs_for_fun_url() -> String:
 	return SONGS_FOR_FUN_URL
 
@@ -625,6 +630,7 @@ func open_settings() -> void:
 	_scroll.scroll_vertical = 0
 	_hide_reset_confirmation()
 	_collapse_songs_for_fun()
+	_collapse_learn_with_aliz()
 	_set_status("")
 	_sync_from_model()
 	opened.emit()
@@ -655,6 +661,7 @@ func _show_locked() -> void:
 	_hide_reset_confirmation()
 	# The external link never survives a close: locking the panel puts it away.
 	_collapse_songs_for_fun()
+	_collapse_learn_with_aliz()
 
 
 func _on_gate_unlocked() -> void:
@@ -736,6 +743,7 @@ func _sync_from_model() -> void:
 	_speed_normal.button_pressed = not slow
 	var stars: int = _model.get_stars()
 	_stars_label.text = "%d star earned" % stars if stars == 1 else "%d stars earned" % stars
+	_refresh_learn_with_aliz()
 	_syncing = false
 
 
@@ -921,3 +929,372 @@ func _on_reset_confirmed() -> void:
 func _set_status(text: String) -> void:
 	_status_label.text = text
 	_status_label.visible = not text.is_empty()
+
+
+## ---------------------------------------------------------------------------
+## Learn with Aliz -- the AI tutor's grown-up controls. Behind the gate.
+## ---------------------------------------------------------------------------
+##
+## Built in code, like the Family Club section, so the copy and the rules live in
+## one reviewable file. Everything here is information or a grown-up switch:
+## there is no purchase, no link, no upload. The cloud tutor is gated by
+## `TutorFlags.cloud_enabled()`, which no row on this screen can turn on.
+
+const ALIZ_SECTION_TITLE: String = "Learn with Aliz"
+const ALIZ_TUTOR_HELP: String = ("Short English lessons with Aliz, on this device. "
+		+ "Off hides Learn with Aliz from the title screen.")
+const ALIZ_CLOUD_OFF_TEXT: String = "Cloud tutor: not available in this build."
+const ALIZ_CLOUD_ON_TEXT: String = "Cloud tutor: enabled for this developer run."
+const ALIZ_ALLOWANCE_HELP: String = "Aliz's lesson time counts only while a lesson is running."
+const ALIZ_MIC_NOT_CHECKED: String = "Not checked"
+const ALIZ_MIC_ALLOWED: String = "Allowed"
+const ALIZ_MIC_NOT_ALLOWED: String = "Not allowed (tapping always works)"
+const ALIZ_LANGUAGE_FIXED: String = "English"
+const ALIZ_LANGUAGE_HELP: String = "Fixed to English in this version."
+const ALIZ_VOICE_NOTE: String = ("Aliz's loudness is the Voice volume and Aliz voice sliders above; "
+		+ "they apply to lessons too.")
+const ALIZ_PRIVACY_TITLE: String = "Privacy"
+const ALIZ_PRIVACY_LINES: Array[String] = [
+	"On this device: the lessons, Aliz's voice lines and your child's lesson progress stay "
+			+ "on this device. Your child's voice is recognised on the device and is never "
+			+ "recorded, saved or sent anywhere.",
+	"Cloud tutor: it is off in this build. If a future version enables it, only the words "
+			+ "recognised from your child's answer and the current lesson step would be sent to "
+			+ "the Little Days server so Aliz can compose her next sentence. Never audio, never "
+			+ "a name, never an account.",
+	"Nothing leaves this device in this version.",
+]
+const ALIZ_DELETE_TITLE: String = "Delete learning history"
+const ALIZ_DELETE_ARMED: String = "Tap again to delete"
+const ALIZ_DELETE_HELP: String = "Clears Aliz's lesson progress and today's lesson time. Stars are never touched."
+const ALIZ_DELETE_DONE: String = "Learning history deleted. Stars and stickers are untouched."
+const ALIZ_BILLING_TEXT: String = "Billing is not available yet."
+
+const ALIZ_TOGGLE_PRESSED: StyleBox = preload("res://assets/ui/styles/small/btn_blue.tres")
+const ALIZ_TOGGLE_INK_PRESSED: Color = Color(0.11, 0.22, 0.35, 1)
+const ALIZ_ROW_TITLE_INK: Color = Color(0.29, 0.22, 0.12, 1)
+const ALIZ_ROW_HELP_INK: Color = Color(0.43, 0.35, 0.24, 1)
+
+var _aliz_box: VBoxContainer = null
+var _aliz_on: Button = null
+var _aliz_off: Button = null
+var _aliz_cloud_label: Label = null
+var _aliz_allowance_label: Label = null
+var _aliz_mic_label: Label = null
+var _aliz_language_button: Button = null
+var _aliz_privacy_button: Button = null
+var _aliz_privacy_box: VBoxContainer = null
+var _aliz_delete_button: Button = null
+var _aliz_delete_armed: bool = false
+var _aliz_subscription_label: Label = null
+var _aliz_pricing_label: Label = null
+## The read-only meter this screen displays. Local mirror in every public
+## build; it shares the panel's entitlement service so "Family Club" here and
+## the allowance agree.
+var _aliz_quota: TutorQuotaScript = null
+
+
+func _build_learn_with_aliz() -> void:
+	if _status_label == null:
+		return
+	var parent: Node = _status_label.get_parent()
+	if parent == null:
+		return
+	if _entitlements == null:
+		_entitlements = EntitlementServiceScript.new()
+	_aliz_quota = TutorQuotaScript.new(_save_service(), _entitlements)
+
+	_aliz_box = VBoxContainer.new()
+	_aliz_box.name = "LearnWithAlizBox"
+	_aliz_box.add_theme_constant_override("separation", 14)
+	parent.add_child(_aliz_box)
+	parent.move_child(_aliz_box, _status_label.get_index())
+
+	_aliz_box.add_child(HSeparator.new())
+	var title := Label.new()
+	title.name = "LearnWithAlizTitle"
+	title.text = ALIZ_SECTION_TITLE
+	title.add_theme_font_size_override("font_size", SECTION_TITLE_FONT_SIZE)
+	title.add_theme_color_override("font_color", Palette.INK)
+	_aliz_box.add_child(title)
+
+	# -- AI Tutor on / off ---------------------------------------------------
+	var tutor_row: HBoxContainer = _aliz_row("AiTutor", "AI Tutor", ALIZ_TUTOR_HELP)
+	var toggles := HBoxContainer.new()
+	toggles.name = "AiTutorButtons"
+	toggles.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	toggles.add_theme_constant_override("separation", 12)
+	tutor_row.add_child(toggles)
+	var group := ButtonGroup.new()
+	_aliz_on = _aliz_toggle("AiTutorOnButton", "On", group)
+	_aliz_off = _aliz_toggle("AiTutorOffButton", "Off", group)
+	toggles.add_child(_aliz_on)
+	toggles.add_child(_aliz_off)
+	_aliz_on.pressed.connect(_on_ai_tutor_chosen.bind(true))
+	_aliz_off.pressed.connect(_on_ai_tutor_chosen.bind(false))
+	_aliz_cloud_label = _aliz_help_label("AiTutorCloudLabel", "")
+	_aliz_box.add_child(_aliz_cloud_label)
+
+	# -- Daily allowance (read-only) ----------------------------------------
+	var allowance_row: HBoxContainer = _aliz_row("AlizAllowance", "Daily AI allowance", ALIZ_ALLOWANCE_HELP)
+	_aliz_allowance_label = _aliz_value_label("AlizAllowanceValue")
+	allowance_row.add_child(_aliz_allowance_label)
+
+	# -- Microphone permission (read-only) ----------------------------------
+	var mic_row: HBoxContainer = _aliz_row("AlizMicrophone", "Microphone permission",
+			"Voice answers need the microphone. Tapping always works without it.")
+	_aliz_mic_label = _aliz_value_label("AlizMicrophoneValue")
+	mic_row.add_child(_aliz_mic_label)
+
+	# -- Learning language (fixed) ------------------------------------------
+	var language_row: HBoxContainer = _aliz_row("AlizLanguage", "Learning language", ALIZ_LANGUAGE_HELP)
+	_aliz_language_button = _aliz_toggle("AlizLanguageEnButton", ALIZ_LANGUAGE_FIXED, null)
+	_aliz_language_button.set_pressed_no_signal(true)
+	_aliz_language_button.disabled = true
+	_aliz_language_button.tooltip_text = ALIZ_LANGUAGE_HELP
+	language_row.add_child(_aliz_language_button)
+
+	# -- Voice volume: the existing sliders, pointed at, not duplicated ------
+	_aliz_box.add_child(_aliz_help_label("AlizVoiceNote", ALIZ_VOICE_NOTE))
+
+	# -- Privacy ------------------------------------------------------------
+	_aliz_privacy_button = Button.new()
+	_aliz_privacy_button.name = "AlizPrivacyButton"
+	_aliz_privacy_button.text = ALIZ_PRIVACY_TITLE
+	_style_secondary_button(_aliz_privacy_button)
+	_aliz_privacy_button.pressed.connect(_on_aliz_privacy_toggled)
+	_aliz_box.add_child(_aliz_privacy_button)
+	_aliz_privacy_box = VBoxContainer.new()
+	_aliz_privacy_box.name = "AlizPrivacyBox"
+	_aliz_privacy_box.visible = false
+	_aliz_privacy_box.add_theme_constant_override("separation", 8)
+	_aliz_box.add_child(_aliz_privacy_box)
+	for index: int in range(ALIZ_PRIVACY_LINES.size()):
+		var line := Label.new()
+		line.name = "AlizPrivacyLine%d" % index
+		line.text = ALIZ_PRIVACY_LINES[index]
+		_style_body(line)
+		_aliz_privacy_box.add_child(line)
+
+	# -- Delete learning history (two taps) ---------------------------------
+	_aliz_box.add_child(_aliz_help_label("AlizDeleteHelp", ALIZ_DELETE_HELP))
+	_aliz_delete_button = Button.new()
+	_aliz_delete_button.name = "AlizDeleteHistoryButton"
+	_aliz_delete_button.text = ALIZ_DELETE_TITLE
+	_style_secondary_button(_aliz_delete_button)
+	_aliz_delete_button.pressed.connect(_on_aliz_delete_pressed)
+	_aliz_box.add_child(_aliz_delete_button)
+
+	# -- Subscription status (information) ----------------------------------
+	var subscription_row: HBoxContainer = _aliz_row("AlizSubscription", "Subscription", "")
+	_aliz_subscription_label = _aliz_value_label("AlizSubscriptionValue")
+	subscription_row.add_child(_aliz_subscription_label)
+	_aliz_pricing_label = _aliz_help_label("AlizPricingLabel", "")
+	_aliz_box.add_child(_aliz_pricing_label)
+
+	_refresh_learn_with_aliz()
+
+
+## A settings row shaped like the scene's own: title + help on the left, the
+## control on the right.
+func _aliz_row(row_name: String, title_text: String, help_text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = row_name + "Row"
+	row.add_theme_constant_override("separation", 24)
+	_aliz_box.add_child(row)
+	var text := VBoxContainer.new()
+	text.name = row_name + "Text"
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	text.add_theme_constant_override("separation", 2)
+	row.add_child(text)
+	var title := Label.new()
+	title.name = row_name + "Title"
+	title.text = title_text
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", ALIZ_ROW_TITLE_INK)
+	text.add_child(title)
+	if not help_text.is_empty():
+		var help: Label = _aliz_help_label(row_name + "Help", help_text)
+		text.add_child(help)
+	return row
+
+
+func _aliz_help_label(label_name: String, text: String) -> Label:
+	var label := Label.new()
+	label.name = label_name
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 23)
+	label.add_theme_color_override("font_color", ALIZ_ROW_HELP_INK)
+	label.visible = not text.is_empty()
+	return label
+
+
+## The right-hand read-only value of a row.
+func _aliz_value_label(label_name: String) -> Label:
+	var label := Label.new()
+	label.name = label_name
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.custom_minimum_size = Vector2(300.0, 0.0)
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	label.add_theme_font_size_override("font_size", 26)
+	label.add_theme_color_override("font_color", Palette.INK)
+	return label
+
+
+## The scene's On/Off toggle, rebuilt in code with the same frames and inks.
+func _aliz_toggle(button_name: String, text: String, group: ButtonGroup) -> Button:
+	var button := Button.new()
+	button.name = button_name
+	button.text = text
+	button.toggle_mode = true
+	button.focus_mode = Control.FOCUS_NONE
+	button.custom_minimum_size = Vector2(148.0, 78.0)
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if group != null:
+		button.button_group = group
+	button.add_theme_font_size_override("font_size", 28)
+	button.add_theme_color_override("font_color", SECONDARY_BUTTON_INK)
+	button.add_theme_color_override("font_hover_color", SECONDARY_BUTTON_INK)
+	button.add_theme_color_override("font_pressed_color", ALIZ_TOGGLE_INK_PRESSED)
+	button.add_theme_color_override("font_hover_pressed_color", ALIZ_TOGGLE_INK_PRESSED)
+	button.add_theme_color_override("font_disabled_color", ALIZ_TOGGLE_INK_PRESSED)
+	for state: String in ["normal", "hover", "focus", "disabled"]:
+		button.add_theme_stylebox_override(state, SECONDARY_BUTTON_PRESSED)
+	button.add_theme_stylebox_override("pressed", ALIZ_TOGGLE_PRESSED)
+	return button
+
+
+## Re-reads every value in the section. Called from `_sync_from_model()`.
+func _refresh_learn_with_aliz() -> void:
+	if _aliz_box == null:
+		return
+	var enabled: bool = _model.get_ai_tutor_enabled()
+	_aliz_on.set_pressed_no_signal(enabled)
+	_aliz_off.set_pressed_no_signal(not enabled)
+	_aliz_cloud_label.text = ALIZ_CLOUD_ON_TEXT if TutorFlags.cloud_enabled() else ALIZ_CLOUD_OFF_TEXT
+	_aliz_cloud_label.visible = true
+
+	if _aliz_quota != null:
+		_aliz_quota.refresh()
+		var quota: Dictionary = _aliz_quota.state()
+		_aliz_allowance_label.text = "Used %s of %s today\n%s" % [
+			TutorQuotaScript.format_clock(float(quota["usedSeconds"])),
+			TutorQuotaScript.format_clock(float(quota["dailyAllowanceSeconds"])),
+			String(quota["resetAtLocalText"]),
+		]
+		var club: bool = String(quota["entitlement"]) == QuotaConfig.ENTITLEMENT_FAMILY_CLUB
+		_aliz_subscription_label.text = "Family Club" if club else "Free"
+
+	_aliz_mic_label.text = _microphone_permission_text()
+
+	var pricing: String = QuotaConfig.pricing_line()
+	_aliz_pricing_label.text = ALIZ_BILLING_TEXT if pricing.is_empty() \
+			else "Family Club -- %s. %s" % [pricing, ALIZ_BILLING_TEXT]
+	_aliz_pricing_label.visible = true
+	_disarm_aliz_delete()
+
+
+## From the speech service's own diagnostics when the autoload is up; the
+## screen never asks for the permission itself.
+func _microphone_permission_text() -> String:
+	var speech: Node = _autoload("SpeechService")
+	if speech == null or not speech.has_method("describe_diagnostics"):
+		return ALIZ_MIC_NOT_CHECKED
+	var diagnostics: Variant = speech.call("describe_diagnostics")
+	if typeof(diagnostics) != TYPE_DICTIONARY or not (diagnostics as Dictionary).has("hasPermission"):
+		return ALIZ_MIC_NOT_CHECKED
+	return ALIZ_MIC_ALLOWED if bool((diagnostics as Dictionary)["hasPermission"]) else ALIZ_MIC_NOT_ALLOWED
+
+
+func _on_ai_tutor_chosen(enabled: bool) -> void:
+	if _syncing:
+		return
+	_model.set_ai_tutor_enabled(enabled)
+
+
+func _on_aliz_privacy_toggled() -> void:
+	if _aliz_privacy_box == null:
+		return
+	_aliz_privacy_box.visible = not _aliz_privacy_box.visible
+	_aliz_privacy_button.text = ("Hide " + ALIZ_PRIVACY_TITLE.to_lower()) if _aliz_privacy_box.visible \
+			else ALIZ_PRIVACY_TITLE
+
+
+## Two taps: arm, then delete. Closing the panel disarms.
+func _on_aliz_delete_pressed() -> void:
+	if not _aliz_delete_armed:
+		_aliz_delete_armed = true
+		_aliz_delete_button.text = ALIZ_DELETE_ARMED
+		_set_status("")
+		return
+	_model.delete_learning_history()
+	_disarm_aliz_delete()
+	if _aliz_quota != null:
+		_aliz_quota.ledger().load_from_save()
+	_refresh_learn_with_aliz()
+	_set_status(ALIZ_DELETE_DONE)
+
+
+func _disarm_aliz_delete() -> void:
+	_aliz_delete_armed = false
+	if _aliz_delete_button != null:
+		_aliz_delete_button.text = ALIZ_DELETE_TITLE
+
+
+func _collapse_learn_with_aliz() -> void:
+	if _aliz_privacy_box != null:
+		_aliz_privacy_box.visible = false
+	if _aliz_privacy_button != null:
+		_aliz_privacy_button.text = ALIZ_PRIVACY_TITLE
+	_disarm_aliz_delete()
+
+
+## -- read-only accessors, for the tests and the shots --------------------------
+
+func is_learn_with_aliz_visible() -> bool:
+	if _aliz_box == null or not _aliz_box.visible:
+		return false
+	return _panel != null and _panel.visible
+
+
+func is_aliz_privacy_visible() -> bool:
+	return _aliz_privacy_box != null and _aliz_privacy_box.visible and is_learn_with_aliz_visible()
+
+
+func aliz_allowance_text() -> String:
+	return _aliz_allowance_label.text if _aliz_allowance_label != null else ""
+
+
+func aliz_subscription_text() -> String:
+	return _aliz_subscription_label.text if _aliz_subscription_label != null else ""
+
+
+func aliz_pricing_text() -> String:
+	return _aliz_pricing_label.text if _aliz_pricing_label != null else ""
+
+
+func aliz_cloud_text() -> String:
+	return _aliz_cloud_label.text if _aliz_cloud_label != null else ""
+
+
+func aliz_microphone_text() -> String:
+	return _aliz_mic_label.text if _aliz_mic_label != null else ""
+
+
+func aliz_privacy_lines() -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	for line: String in ALIZ_PRIVACY_LINES:
+		out.append(line)
+	return out
+
+
+func is_aliz_delete_armed() -> bool:
+	return _aliz_delete_armed
+
+
+## The meter the section reads. Tests.
+func tutor_quota() -> RefCounted:
+	return _aliz_quota

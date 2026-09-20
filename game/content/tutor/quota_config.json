@@ -1,0 +1,11 @@
+{
+  "freeDailySeconds": 300,
+  "familyClubDailySeconds": 1800,
+  "warnAtSeconds": 60,
+  "cloudTimeoutSeconds": 10,
+  "pricingProposed": {
+    "currency": "THB",
+    "monthly": 99,
+    "status": "proposed"
+  }
+}

@@ -49,6 +49,7 @@ extends RefCounted
 
 const EntitlementIds := preload("res://scripts/entitlement/entitlement_ids.gd")
 const LocalProviderScript := preload("res://scripts/entitlement/local_entitlement_provider.gd")
+const DevProviderScript := preload("res://scripts/entitlement/dev_entitlement_provider.gd")
 
 ## Where the cache lives inside the profile's `settings` block. A single
 ## JSON-safe Dictionary, so `ProfileStore` carries it through untouched.
@@ -83,8 +84,18 @@ func _init(provider: Object = null) -> void:
 ## The cache is dropped on a swap: it was tagged with the previous provider and is
 ## no longer about anybody.
 func set_provider(provider: Object = null) -> void:
-	_provider = provider if provider != null else LocalProviderScript.new()
+	_provider = provider if provider != null else default_provider()
 	_cache = _empty_state()
+
+
+## The provider a bare `new()` gets: the offline Free-Starter-only one -- unless
+## the game was started with `-- --dev-entitlements`, in which case the in-memory
+## developer provider (`dev_entitlement_provider.gd`), which can be told to grant
+## `familyClub` for that run so the Family Club paths can be exercised. No
+## exported build passes that arg, and no test run does either.
+static func default_provider() -> Object:
+	var dev: Object = DevProviderScript.from_environment()
+	return dev if dev != null else LocalProviderScript.new()
 
 
 func provider_id() -> String:

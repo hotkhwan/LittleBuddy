@@ -10,6 +10,7 @@ extends RefCounted
 ## network, and no key outside the ones below is ever written.
 
 const Localization := preload("res://scripts/localization/localization.gd")
+const QuotaLedger := preload("res://scripts/tutor/quota/quota_ledger.gd")
 
 const KEY_THAI_HINTS := "thaiHints"
 const KEY_SPEECH_ENABLED := "speechEnabled"
@@ -29,6 +30,14 @@ const KEY_BUNNY_VOICE_VOLUME := "bunnyVoiceVolume"
 ## The play-session reminder (`play_session.gd`): minutes of ACTIVE play before
 ## the break card, 0 = off. Only the offered values are ever stored.
 const KEY_SESSION_REMINDER_MINUTES := "sessionReminderMinutes"
+## "Learn with Aliz" (the local scripted tutor) on or off. The CLOUD tutor is
+## gated separately by `TutorFlags.cloud_enabled()`, which no setting can turn on.
+const KEY_AI_TUTOR_ENABLED := "aiTutorEnabled"
+## The two tutor keys a grown-up's "Delete learning history" clears. Both are
+## owned by the tutor layer (`lesson_engine.gd`, `quota_ledger.gd`); the model
+## only knows their names so the delete touches exactly these and nothing else.
+const KEY_TUTOR_PROGRESS := "tutorProgress"
+const KEY_TUTOR_QUOTA := QuotaLedger.SETTING_KEY
 
 const DEFAULT_THAI_HINTS := true
 const DEFAULT_SPEECH_ENABLED := true
@@ -43,6 +52,7 @@ const DEFAULT_ALIZ_VOICE_VOLUME := 0.85
 const DEFAULT_BUNNY_VOICE_VOLUME := 0.85
 const DEFAULT_SESSION_REMINDER_MINUTES := 5
 const SESSION_REMINDER_CHOICES: Array[int] = [0, 5, 10, 15]
+const DEFAULT_AI_TUTOR_ENABLED := true
 
 const TTS_SPEED_SLOW := "slow"
 const TTS_SPEED_NORMAL := "normal"
@@ -156,6 +166,28 @@ func set_session_reminder_minutes(minutes: int) -> void:
 	if not SESSION_REMINDER_CHOICES.has(minutes):
 		return
 	_write(KEY_SESSION_REMINDER_MINUTES, minutes)
+
+
+## -- Learn with Aliz -----------------------------------------------------------
+
+func get_ai_tutor_enabled() -> bool:
+	return _read_bool(KEY_AI_TUTOR_ENABLED, DEFAULT_AI_TUTOR_ENABLED)
+
+
+func set_ai_tutor_enabled(enabled: bool) -> void:
+	_write(KEY_AI_TUTOR_ENABLED, enabled)
+
+
+## Clears the child's tutor lesson progress and today's local tutor-time usage.
+## Touches exactly `tutorProgress` and `tutorQuota`: never stars, stickers,
+## levels or any other setting. Returns true when a real service was written.
+func delete_learning_history() -> bool:
+	_write(KEY_TUTOR_PROGRESS, {})
+	# The ledger keeps its day and its monotonic clock mark; only the count goes.
+	var ledger: QuotaLedger = QuotaLedger.new(_service)
+	ledger.clear_usage()
+	_cache[KEY_TUTOR_QUOTA] = ledger.to_dict()
+	return _service != null and _service.has_method("set_setting")
 
 
 func get_speech_enabled() -> bool:

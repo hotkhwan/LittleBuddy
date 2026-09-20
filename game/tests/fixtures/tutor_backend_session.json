@@ -1,0 +1,124 @@
+{
+  "source": "docs/ALIZ_TUTOR_API.md (Aliz Tutor backend v1), recorded shapes for the game's cloud client tests",
+  "baseUrl": "http://127.0.0.1:8787",
+  "exchanges": [
+    {
+      "name": "session_created",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions",
+        "body": {"lessonId": "fruits_1", "parentApprovalToken": "dev-parent-approval", "clientId": "ipad-demo"}},
+      "status": 201,
+      "body": {
+        "sessionId": "3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42",
+        "entitlement": "free",
+        "lessonId": "fruits_1",
+        "quota": {"entitlement": "free", "dailyAllowanceSeconds": 300, "usedSeconds": 0, "remainingSeconds": 300, "resetAtUtc": "2026-09-21T00:00:00.000Z"}
+      }
+    },
+    {
+      "name": "turn_ok",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions/3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42/turns",
+        "headers": {"Idempotency-Key": "t1"},
+        "body": {"transcript": "apple", "audioSeconds": 3.2,
+          "lessonContext": {"stepId": "s1", "outcome": "correct", "expectedAnswers": ["apple"], "nextQuestionText": "What color is the banana?", "visualAssetId": "apple_red"}}},
+      "status": 200,
+      "body": {
+        "turn": {"speech": "Great! Apple! What color is the banana?", "subtitle": "Great! Apple! What color is the banana?",
+          "emotion": "happy", "gesture": "clap", "visual": {"type": "flashcard", "assetId": "apple_red"},
+          "lessonAction": "next_question", "nextQuestion": "What color is the banana?"},
+        "quota": {"entitlement": "free", "dailyAllowanceSeconds": 300, "usedSeconds": 120.5, "remainingSeconds": 179.5, "resetAtUtc": "2026-09-21T00:00:00.000Z"},
+        "endAtBoundary": false,
+        "turnIndex": 1,
+        "chargedSeconds": 12,
+        "provider": "mock",
+        "cached": false,
+        "fallback": null,
+        "usage": {"sttSeconds": 3.2, "llmInputTokens": 0, "llmOutputTokens": 0, "ttsChars": 43, "latencyMs": 2, "costUsd": 0}
+      }
+    },
+    {
+      "name": "turn_last_of_the_day",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions/3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42/turns",
+        "headers": {"Idempotency-Key": "t2"},
+        "body": {"transcript": "yellow", "lessonContext": {"stepId": "s2", "outcome": "correct", "expectedAnswers": ["yellow"]}}},
+      "status": 200,
+      "body": {
+        "turn": {"speech": "Yellow! Well done. Let's finish here for today.", "subtitle": "Yellow! Well done. Let's finish here for today.",
+          "emotion": "smile", "gesture": "wave", "visual": {"type": "none"}, "lessonAction": "end_session"},
+        "quota": {"entitlement": "free", "dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0, "resetAtUtc": "2026-09-21T00:00:00.000Z"},
+        "endAtBoundary": true,
+        "turnIndex": 2,
+        "chargedSeconds": 179.5,
+        "provider": "mock",
+        "cached": false,
+        "fallback": null,
+        "usage": {"sttSeconds": 0, "llmInputTokens": 0, "llmOutputTokens": 0, "ttsChars": 47, "latencyMs": 1, "costUsd": 0}
+      }
+    },
+    {
+      "name": "session_ended",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions/3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42/end", "body": {"reason": "home_button"}},
+      "status": 200,
+      "body": {
+        "sessionId": "3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42",
+        "endedAt": "2026-09-20T15:19:21.676Z",
+        "quota": {"entitlement": "free", "dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0, "resetAtUtc": "2026-09-21T00:00:00.000Z"},
+        "usage": {"turns": 2, "sttSeconds": 3.2, "llmInputTokens": 0, "llmOutputTokens": 0, "cachedInputTokens": 0, "ttsChars": 90, "latencyMs": 3, "cachedTurns": 0, "costUsd": 0}
+      }
+    },
+    {
+      "name": "entitlement_family_club",
+      "request": {"method": "GET", "path": "/api/v1/tutor/entitlement?clientId=ipad-demo"},
+      "status": 200,
+      "body": {
+        "clientId": "ipad-demo",
+        "entitlement": "family_club",
+        "quota": {"entitlement": "family_club", "dailyAllowanceSeconds": 1800, "usedSeconds": 300, "remainingSeconds": 1500, "resetAtUtc": "2026-09-21T00:00:00.000Z"},
+        "products": ["little_days.family_club.monthly", "little_days.family_club.yearly"]
+      }
+    },
+    {
+      "name": "error_quota_exhausted",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions", "body": {"lessonId": "fruits_1", "parentApprovalToken": "dev-parent-approval", "clientId": "ipad-demo"}},
+      "status": 429,
+      "body": {"error": {"code": "quota_exhausted", "message": "Today's tutor time is used up.", "reason": "daily_quota",
+        "quota": {"entitlement": "free", "dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0, "resetAtUtc": "2026-09-21T00:00:00.000Z"}}}
+    },
+    {
+      "name": "error_not_approved",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions", "body": {"lessonId": "fruits_1", "parentApprovalToken": "", "clientId": "ipad-demo"}},
+      "status": 403,
+      "body": {"error": {"code": "not_approved", "message": "A parent approval token is required."}}
+    },
+    {
+      "name": "error_provider_unavailable",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions/3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42/turns", "body": {"transcript": "apple", "lessonContext": {"stepId": "s1", "outcome": "correct"}}},
+      "status": 503,
+      "body": {"error": {"code": "provider_unavailable", "message": "The conversation provider is unavailable."}}
+    },
+    {
+      "name": "error_rate_limited",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions/3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42/turns", "body": {"transcript": "apple", "lessonContext": {"stepId": "s1", "outcome": "correct"}}},
+      "status": 429,
+      "headers": {"Retry-After": "3"},
+      "body": {"error": {"code": "rate_limited", "message": "Too many turns; slow down.", "retryAfterSeconds": 3}}
+    },
+    {
+      "name": "error_timeout",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions/3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42/turns", "body": {"transcript": "apple", "lessonContext": {"stepId": "s1", "outcome": "correct"}}},
+      "status": 504,
+      "body": {"error": {"code": "timeout", "message": "The request took too long."}}
+    },
+    {
+      "name": "error_session_ended",
+      "request": {"method": "POST", "path": "/api/v1/tutor/sessions/3d3b93a9-6b1e-4d8f-9a1c-2f6f0c1e7b42/turns", "body": {"transcript": "apple", "lessonContext": {"stepId": "s1", "outcome": "correct"}}},
+      "status": 409,
+      "body": {"error": {"code": "session_ended", "message": "This session has ended."}}
+    },
+    {
+      "name": "billing_validate_not_implemented",
+      "request": {"method": "POST", "path": "/api/v1/tutor/billing/validate", "body": {"clientId": "ipad-demo", "platform": "apple", "receipt": {"signedTransaction": "..."}}},
+      "status": 501,
+      "body": {"error": {"code": "not_implemented", "message": "Apple receipt validation is not wired yet."}}
+    }
+  ]
+}
