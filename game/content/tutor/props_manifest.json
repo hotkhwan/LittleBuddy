@@ -1,0 +1,60 @@
+{
+  "manifestVersion": 1,
+  "source": "Meshy text-to-3D, Smart Topology tier (ai_model meshy-t2), preview + refine, 2026-09-20",
+  "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids",
+  "notes": "Every model is normalised by Meshy to a 1.0 m X extent centred on the origin. scaleToMetres converts to real size; baseY is the model-space floor (multiply by scaleToMetres and subtract to rest the prop on Y=0). Raw masters in assets_source/meshy/tutor (not exported).",
+  "props": [
+    {
+      "propId": "table_set",
+      "word": "table",
+      "file": "res://assets/tutor/props/table_set.glb",
+      "scaleToMetres": 1.25,
+      "yawDegrees": 0,
+      "baseY": -0.2217,
+      "meshyTaskIds": ["01a0bf5c-ef29-7008-90d4-e7de13bda01f", "01a0bf5d-ba03-7253-99d1-5e4fa89e71bd"],
+      "creditsSpent": 15,
+      "triangles": 2853,
+      "textureSize": 512,
+      "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids"
+    },
+    {
+      "propId": "fruit_set",
+      "word": "apple",
+      "file": "res://assets/tutor/props/fruit_set.glb",
+      "scaleToMetres": 0.26,
+      "yawDegrees": 0,
+      "baseY": -0.4297,
+      "meshyTaskIds": ["01a0bf62-ee3f-76db-84c7-3ae636d45f97", "01a0bf63-9030-7760-adcc-5e5d31b43d5d"],
+      "creditsSpent": 15,
+      "triangles": 2998,
+      "textureSize": 512,
+      "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids"
+    },
+    {
+      "propId": "cat_dog",
+      "word": "cat",
+      "file": "res://assets/tutor/props/cat_dog.glb",
+      "scaleToMetres": 0.55,
+      "yawDegrees": 0,
+      "baseY": -0.3496,
+      "meshyTaskIds": ["01a0bf63-e681-701d-bdff-a38d0a186dbc", "01a0bf64-61ff-7081-a154-3dbaf04849d9"],
+      "creditsSpent": 15,
+      "triangles": 2809,
+      "textureSize": 512,
+      "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids"
+    },
+    {
+      "propId": "number_blocks",
+      "word": "one",
+      "file": "res://assets/tutor/props/number_blocks.glb",
+      "scaleToMetres": 0.27,
+      "yawDegrees": 0,
+      "baseY": -0.2266,
+      "meshyTaskIds": ["01a0bf64-9d67-774f-8c81-7d1df655c930", "01a0bf65-28bb-7381-a687-705b4994647d"],
+      "creditsSpent": 15,
+      "triangles": 2547,
+      "textureSize": 512,
+      "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids"
+    }
+  ]
+}

@@ -288,8 +288,21 @@ retries. Balance at plan time: **3184** (`GET /openapi/v1/balance`, HTTP 200,
 | T1a | 2026-09-20 15:08:55Z | `table_set` | Text-to-3D **preview**, smart-topology `meshy-t2`, 2800 tris | `POST /openapi/v2/text-to-3d` | 5 | **5** | 3184 → 3179 | `01a0bf5c-ef29-7008-90d4-e7de13bda01f` | **SUCCEEDED** 19s, 2,853 tris, 1 primitive; thumbnail reviewed: round table, chunky legs, two chairs — usable, refine approved |
 | T1b | 2026-09-20 15:09:47Z | `table_set` | Text-to-3D **refine**, 2k texture, no PBR, on T1a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3179 → 3169 | `01a0bf5d-ba03-7253-99d1-5e4fa89e71bd` | **SUCCEEDED** ~5 min; 2,853 tris, 1 material, JPEG 2048² base colour; thumbnail: mint top, wood legs, yellow + pink chairs — **accepted**. T1 total 15. |
 | T2a | 2026-09-20 15:15:29Z | `fruit_set` | Text-to-3D **preview**, smart-topology `meshy-t2`, 2800 tris | `POST /openapi/v2/text-to-3d` | 5 | **5** | 3169 → 3164 | `01a0bf62-ee3f-76db-84c7-3ae636d45f97` | **SUCCEEDED** 11s, 3,038 tris (38 over the gate — fixed locally, no credits); thumbnail: apple with stem + leaf, banana in front — usable, refine approved |
-| T2b | 2026-09-20 15:16:10Z | `fruit_set` | Text-to-3D **refine**, 2k texture, no PBR, on T2a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3164 → 3154 | `01a0bf63-9030-7760-adcc-5e5d31b43d5d` | task created; awaiting result |
+| T2b | 2026-09-20 15:16:10Z | `fruit_set` | Text-to-3D **refine**, 2k texture, no PBR, on T2a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3164 → 3154 | `01a0bf63-9030-7760-adcc-5e5d31b43d5d` | **SUCCEEDED** ~3 min; JPEG 2048² base colour; thumbnail: red apple with green leaf, yellow banana — **accepted**. Trimmed locally 3,038 → 2,998 tris (`tools/meshy_tutor_trim.py`, 0 credits). T2 total 15. |
 | T3a | 2026-09-20 15:16:32Z | `cat_dog` | Text-to-3D **preview**, smart-topology `meshy-t2`, 2600 tris | `POST /openapi/v2/text-to-3d` | 5 | **5** | 3154 → 3149 | `01a0bf63-e681-701d-bdff-a38d0a186dbc` | **SUCCEEDED** 12s, 2,809 tris; thumbnail: sitting cat (ears, whiskers) beside sitting floppy-eared dog, clear gap — usable, refine approved |
-| T3b | 2026-09-20 15:17:04Z | `cat_dog` | Text-to-3D **refine**, 2k texture, no PBR, on T3a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3149 → 3139 | `01a0bf64-61ff-7081-a154-3dbaf04849d9` | task created; awaiting result |
+| T3b | 2026-09-20 15:17:04Z | `cat_dog` | Text-to-3D **refine**, 2k texture, no PBR, on T3a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3149 → 3139 | `01a0bf64-61ff-7081-a154-3dbaf04849d9` | **SUCCEEDED** ~3 min; thumbnail: orange tabby with white muzzle + beagle-style tan/white puppy — **accepted** (cat's eyes slightly narrow; still unmistakably a cat). T3 total 15. |
 | T4a | 2026-09-20 15:17:18Z | `number_blocks` | Text-to-3D **preview**, smart-topology `meshy-t2`, 2600 tris | `POST /openapi/v2/text-to-3d` | 5 | **5** | 3139 → 3134 | `01a0bf64-9d67-774f-8c81-7d1df655c930` | **SUCCEEDED** 18s, 2,547 tris; thumbnail: three touching rounded cubes with bold raised 1, 2, 3 — usable, refine approved |
-| T4b | 2026-09-20 15:18:01Z | `number_blocks` | Text-to-3D **refine**, 2k texture, no PBR, on T4a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3134 → 3124 | `01a0bf65-28bb-7381-a687-705b4994647d` | task created; awaiting result |
+| T4b | 2026-09-20 15:18:01Z | `number_blocks` | Text-to-3D **refine**, 2k texture, no PBR, on T4a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3134 → 3124 | `01a0bf65-28bb-7381-a687-705b4994647d` | **SUCCEEDED** ~3 min; thumbnail: blue 1, pink 2, yellow 3 in white raised numerals — **accepted**. T4 total 15. |
+
+**Tutor props — final accounting (2026-09-20, 15:18Z).**
+
+| | |
+|---|---|
+| Paid calls | 8 (4 previews at 5, 4 refines at 10) |
+| Spent | **60** — table_set 15, fruit_set 15, cat_dog 15, number_blocks 15 |
+| Rejected / written off | none; every preview passed its look-at-it review |
+| Balance | 3184 → 3179 → 3169 → 3164 → 3154 → 3149 → 3139 → 3134 → **3124**; every delta matched the task's `consumed_credits` |
+| Sprint ceiling | 100 authorised, **60 spent, 40 unspent** |
+
+Runtime derivatives: `game/assets/tutor/props/*.glb`; raw masters:
+`game/assets_source/meshy/tutor/` (gitignored). Details: `docs/TUTOR_MESHY_ASSETS.md`.
