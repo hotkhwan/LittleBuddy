@@ -16,22 +16,36 @@ relative to the repo root `/Users/hotkhwan/Projects/little-buddy`.
 
 ## The Android artefact, as verified
 
+Two machines have built it; the manifest facts are identical, the file hashes
+and the signing key are not. **Use the row for the machine you are installing
+from.** The lead's rebuild from the integrated HEAD will replace the MacBook
+row — re-run `shasum -a 256` on whatever you install.
+
+| | Mac Mini, 2026-09-19 | MacBook, 2026-09-20 (`wt/android`, game content `cca0198`) |
+|---|---|---|
+| File | `build/android/LittleDays-debug.apk` | same path, in `/Users/hotkhwan/Projects/LittleBuddy-latest/.worktrees/android/` |
+| Size | 36,501,904 bytes (34.8 MiB) | 36,647,845 bytes (34.9 MiB) |
+| SHA-256 | `26ff1ea29d78c5c79819705b8841b35ee8691c4932d1020507d81f7d281168d7` | `1a8f7f7bc7cf9369cb530c32c59116b38d8fd31c42c052ecbf47f737bce754e2` |
+| Built | 2026-09-19 23:30:44 | 2026-09-20 12:23 |
+| Cert SHA-256 (debug key) | `2b63458c5cec82fe043531a0309db64b7efb1b6d18200864a2590f9da8dcd35c` | `fbdbc7471ab8aa9268e2f6e114434d15fe8b3554e7a855263bcc81c0f81233ac` |
+
+Common to both:
+
 | | |
 |---|---|
-| File | `build/android/LittleDays-debug.apk` |
-| Size | 36,501,904 bytes (34.8 MiB) |
-| SHA-256 | `26ff1ea29d78c5c79819705b8841b35ee8691c4932d1020507d81f7d281168d7` |
-| Built | 2026-09-19 23:30:44 |
 | Package | `com.pointit.littlebuddy` |
 | Launcher label | **Little Days** |
 | Version | `0.1.0` (versionCode 1) |
 | Signature | Verified, APK Signature Scheme v2 + v3. Signer `CN=Android Debug, O=Android, C=US`, RSA 2048 |
-| Cert SHA-256 | `2b63458c5cec82fe043531a0309db64b7efb1b6d18200864a2590f9da8dcd35c` |
 | Declared permissions | **none — zero `uses-permission` entries** |
-| Native code | `arm64-v8a` only |
+| Native code | `arm64-v8a` only; 16 KB page-size aligned |
 | minSdk / targetSdk | 24 (Android 7.0) / 36 |
 | Orientation | sensor-landscape, immersive |
 | Debuggable | yes (`android:debuggable=true`) |
+
+Because the two debug keys differ, a phone that has the Mac Mini build must
+`adb uninstall com.pointit.littlebuddy` (this deletes the save) before it will
+accept the MacBook build, and vice versa.
 
 Two consequences of that permission list worth knowing before you test:
 
@@ -140,7 +154,8 @@ ID does not have. Use the default **Debug** configuration that ⌘R uses.
 
 ```sh
 /Users/hotkhwan/Library/Android/sdk/platform-tools/adb install -r \
-  /Users/hotkhwan/Projects/little-buddy/build/android/LittleDays-debug.apk
+  /Users/hotkhwan/Projects/LittleBuddy-latest/build/android/LittleDays-debug.apk
+# (Mac Mini checkout: /Users/hotkhwan/Projects/little-buddy/build/android/LittleDays-debug.apk)
 ```
 
 Expect `Performing Streamed Install` then `Success`. Launch **Little Days**
@@ -154,7 +169,7 @@ from the app drawer, or from the Mac:
 One command does export + install together, if you would rather not copy paths:
 
 ```sh
-/Users/hotkhwan/Projects/little-buddy/tools/export_android.sh debug --install
+/Users/hotkhwan/Projects/LittleBuddy-latest/tools/export_android.sh debug --install
 ```
 
 ### When the phone refuses the APK
@@ -277,16 +292,15 @@ bug**, not a result.
 
 ## Is the APK still current?
 
-The APK verified above was built at 23:30:44 and contains every game change up
-to and including `2f0cea3` (the HUD, kitchen and music work); `90afbfa` is
-documentation only. It is current as of `90afbfa`.
-
-Work was still in flight when this was written, so check before you install —
-this lists any game file newer than the APK:
+The Mac Mini APK contains every game change up to and including `2f0cea3`
+(`90afbfa` is documentation only). The MacBook APK contains game content as of
+`cca0198`. Several worktrees were in flight on 2026-09-20, so the lead's rebuild
+from the integrated HEAD is the one to install; until then, check before you
+install — this lists any game file newer than the APK:
 
 ```sh
-cd /Users/hotkhwan/Projects/little-buddy
-find game -type f -newer build/android/LittleDays-debug.apk -not -path '*/.godot/*'
+cd /Users/hotkhwan/Projects/LittleBuddy-latest      # or /Users/hotkhwan/Projects/little-buddy on the Mac Mini
+find game -type f -newer build/android/LittleDays-debug.apk -not -path '*/.godot/*' -not -path 'game/android/*'
 ```
 
 Nothing, or only files under `game/tests/`, means the APK is current. Anything
@@ -310,7 +324,13 @@ tools/export_ios.sh debug           # -> build/ios/LittleBuddy.xcodeproj
 Temurin 17, Android SDK + build-tools 36.1.0 with `apksigner`, debug keystore,
 and the `Android` preset) and prints copy-pasteable fixes for anything missing.
 The NDK warning is not a blocker for this plain-template export. Full list in
-`docs/ANDROID_READINESS.md`.
+`docs/ANDROID_READINESS.md` (section 7 is the exact sudo-free install
+transcript; it was reproduced on the MacBook on 2026-09-20).
+
+Google Play needs an `.aab`, not this APK: `tools/export_android.sh --aab`
+(NDK + build template required; `release --aab` additionally needs the owner's
+upload keystore via environment variables). `docs/GOOGLE_PLAY_RELEASE_READINESS.md`
+has the whole path.
 
 **`tools/export_ios.sh` does `rm -rf build/ios` first.** Any change you made
 inside Xcode — including a different signing team — is destroyed by a

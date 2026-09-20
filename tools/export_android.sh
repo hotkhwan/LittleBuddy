@@ -258,25 +258,31 @@ fi
 #
 # The Gradle build compiles Godot's Android Java/Kotlin project from source. That
 # source ships inside the export templates as android_source.zip and has to be
-# unpacked into res://android/build with a .build_version stamp matching the
-# editor. The editor's Project > Install Android Build Template does exactly
-# this; the headless --install-android-build-template flag hangs in 4.7.2 (it
-# waits for an editor dialog), so the unzip is spelled out.
+# unpacked into res://android/build, with a version stamp at
+# res://android/.build_version (NEXT TO build/, not inside it -- that is where
+# Godot 4 reads it) and an empty res://android/build/.gdignore so the editor
+# does not import the template's own assets. Project > Install Android Build
+# Template does exactly this; the headless --install-android-build-template
+# flag hangs in 4.7.2 (it waits for an editor dialog), so the steps are spelled
+# out. game/android/ is git-ignored, so this is per-checkout.
 
 BUILD_TEMPLATE_DIR="$GAME_DIR/android/build"
+BUILD_VERSION_FILE="$GAME_DIR/android/.build_version"
 if [ "$AAB" -eq 1 ]; then
 	TEMPLATE_STAMP=""
-	[ -f "$BUILD_TEMPLATE_DIR/.build_version" ] && TEMPLATE_STAMP="$(head -1 "$BUILD_TEMPLATE_DIR/.build_version" | tr -d '\r')"
-	if [ -n "$TEMPLATE_STAMP" ] && [ "$TEMPLATE_STAMP" = "${TEMPLATE_VERSION:-}" ] && [ -x "$BUILD_TEMPLATE_DIR/gradlew" ]; then
-		ok "Android build template: $BUILD_TEMPLATE_DIR ($TEMPLATE_STAMP)"
+	[ -f "$BUILD_VERSION_FILE" ] && TEMPLATE_STAMP="$(head -1 "$BUILD_VERSION_FILE" | tr -d '\r')"
+	if [ -n "$TEMPLATE_STAMP" ] && [ "$TEMPLATE_STAMP" = "${TEMPLATE_VERSION:-}" ] \
+			&& [ -x "$BUILD_TEMPLATE_DIR/gradlew" ] && [ -f "$BUILD_TEMPLATE_DIR/.gdignore" ]; then
+		ok "Android build template: $BUILD_TEMPLATE_DIR (stamp $TEMPLATE_STAMP)"
 	else
-		bad "Android build template in game/android/build (found stamp \"${TEMPLATE_STAMP:-none}\", need \"${TEMPLATE_VERSION:-?}\")"
-		blocker "The Android build template is not installed in the project (or is for a
-     different Godot version). game/android/ is git-ignored, so this is
-     per-checkout. Unpack it from the export templates:
+		bad "Android build template (stamp \"${TEMPLATE_STAMP:-none}\" at game/android/.build_version, need \"${TEMPLATE_VERSION:-?}\"; gradlew + build/.gdignore present?)"
+		blocker "The Android build template is not installed in the project, is for a
+     different Godot version, or is missing its .gdignore. Unpack it from the
+     export templates (no sudo, ~220 MB, git-ignored):
          mkdir -p \"$BUILD_TEMPLATE_DIR\"
          unzip -q -o \"${TEMPLATE_DIR:-<editor data dir>/export_templates/<ver>}/android_source.zip\" -d \"$BUILD_TEMPLATE_DIR\"
-         printf '%s\\n' '${TEMPLATE_VERSION:-<ver>}' > \"$BUILD_TEMPLATE_DIR/.build_version\"
+         printf '%s\\n' '${TEMPLATE_VERSION:-<ver>}' > \"$BUILD_VERSION_FILE\"
+         printf '\\n' > \"$BUILD_TEMPLATE_DIR/.gdignore\"
          printf 'build/\\n' > \"$GAME_DIR/android/.gitignore\""
 	fi
 fi
@@ -546,15 +552,54 @@ echo ""
 echo "==> Built $OUT_APK ($(du -h "$OUT_APK" | cut -f1))"
 
 if [ "$AAB" -eq 1 ]; then
-	# An .aab is JAR-signed (v1); apksigner does not apply. jarsigner ships with
-	# the JDK found above.
+	# An .aab is JAR-signed (v1 only); apksigner does not apply. jarsigner ships
+	# with the JDK found above.
+	#
+	# MEASURED 2026-09-20: Godot 4.7.2 passes -Pperform_signing=true and the
+	# keystore to Gradle, Gradle runs :signStandardDebugBundle, and the bundle
+	# that comes out is STILL unsigned (no META-INF/*.SF, no signing block;
+	# `jarsigner -verify` says "jar is unsigned"). Godot does not sign the
+	# bundle itself after Gradle either (export_plugin.cpp returns right after
+	# copyAndRenameBinary). Play rejects an unsigned bundle. So: verify, and if
+	# it is unsigned, sign it here with jarsigner -- the same tool Google's own
+	# docs name for signing a bundle. The password reaches jarsigner through
+	# -storepass:env, never on the command line.
 	JARSIGNER="$(dirname "$JAVA_BIN")/jarsigner"
-	if [ -x "$JARSIGNER" ]; then
-		echo ""
-		echo "==> Bundle signature:"
-		"$JARSIGNER" -verify -verbose:summary -certs "$OUT_APK" 2>&1 | grep -E "jar verified|X.509|CN=|not signed|error" | sed 's/^/    /' | head -6
+	if [ ! -x "$JARSIGNER" ]; then
+		echo "jarsigner not found next to $JAVA_BIN; cannot verify or sign the bundle." >&2
+		exit 1
+	fi
+	if "$JARSIGNER" -verify "$OUT_APK" 2>&1 | grep -q "jar verified"; then
+		echo "    bundle already signed by Gradle"
+	else
+		echo "    Gradle left the bundle UNSIGNED -- signing with jarsigner ($MODE key)"
+		if [ "$MODE" = "debug" ]; then
+			SIGN_KS="$KEYSTORE"
+			SIGN_ALIAS="$(sed -n 's|^export/android/debug_keystore_user = "\(.*\)"$|\1|p' "${EDITOR_SETTINGS:-/dev/null}" | tail -1)"
+			SIGN_ALIAS="${SIGN_ALIAS:-androiddebugkey}"
+			LB_STOREPASS="$(sed -n 's|^export/android/debug_keystore_pass = "\(.*\)"$|\1|p' "${EDITOR_SETTINGS:-/dev/null}" | tail -1)"
+			LB_STOREPASS="${LB_STOREPASS:-android}"
+		else
+			SIGN_KS="$GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
+			SIGN_ALIAS="$GODOT_ANDROID_KEYSTORE_RELEASE_USER"
+			LB_STOREPASS="$GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD"
+		fi
+		export LB_STOREPASS
+		if ! "$JARSIGNER" -keystore "$SIGN_KS" -storepass:env LB_STOREPASS \
+				-sigalg SHA256withRSA -digestalg SHA-256 "$OUT_APK" "$SIGN_ALIAS" 2>&1 \
+				| grep -v -i "self-signed\|^Warning:\|^$" | sed 's/^/    /'; then :; fi
+		unset LB_STOREPASS
+	fi
+	echo ""
+	echo "==> Bundle signature (jarsigner -verify):"
+	VERIFY_OUT="$("$JARSIGNER" -verify -verbose:summary -certs "$OUT_APK" 2>&1)"
+	printf '%s\n' "$VERIFY_OUT" | grep -E "jar verified|Signed by|unsigned|error" | sort -u | sed 's/^/    /' | head -4
+	if ! printf '%s\n' "$VERIFY_OUT" | grep -q "jar verified"; then
+		echo "Bundle is not signed after all attempts; do not upload it." >&2
+		exit 1
 	fi
 	echo "    SHA-256: $(shasum -a 256 "$OUT_APK" | cut -d' ' -f1)"
+	echo "    size:    $(stat -f %z "$OUT_APK") bytes"
 	if [ "$MODE" = "debug" ]; then
 		echo ""
 		echo "    NOTE: this .aab is DEBUG-signed. It proves the Gradle/AAB pipeline"

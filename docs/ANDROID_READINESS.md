@@ -1,5 +1,34 @@
 # Android Readiness
 
+## STATUS (2026-09-20, MacBook): TOOLCHAIN REPRODUCED, APK REBUILT, AAB PIPELINE INSTALLED. STILL NEVER RUN ON A DEVICE.
+
+```
+build/android/LittleDays-debug.apk   36,647,845 bytes   signed (v2 + v3)   sha256 1a8f7f7b…54e2
+```
+
+The 2026-09-19 work below was done on the Mac Mini. On 2026-09-20 the same
+sudo-free toolchain was installed on the MacBook by following section 7
+verbatim, and section 7 was then corrected where the MacBook disagreed with it
+(three places: a settings-file race, a hanging headless flag, and the build
+template layout). What is new today:
+
+| Item | 2026-09-20 result |
+| --- | --- |
+| Temurin 17.0.20.1, cmdline-tools 19.0, platform-tools 37.0.1, platforms;android-36, build-tools;36.1.0 | installed user-locally, checksums matched the published ones (JDK sha256 `196d13ba…f0e8`, cmdline-tools sha1 `c3e06a19…1d24`); 309 MB + 521 MB |
+| Debug keystore | absent on this machine → generated (cert sha256 `fbdbc747…33ac`); **different key from the Mac Mini's**, so a phone that had the Mac Mini APK needs `adb uninstall` first |
+| Debug APK | rebuilt from `cca0198` game content; manifest facts identical to the 09-19 build (0 permissions, arm64-v8a, minSdk 24 / targetSdk 36, sensorLandscape, adaptive icon, v2+v3) |
+| 16 KB page size | both `.so` `p_align 0x4000` — Play-compliant |
+| **NDK 29.0.14206865** | installed (1.05 GB download, 3.1 GB on disk, no sudo) — needed only for the Gradle/AAB build |
+| **Android build template** | unpacked into `game/android/build` (git-ignored) with `game/android/.build_version` = `4.7.2.stable` |
+| `tools/export_android.sh --aab` | new; see section 7 step 9 and `docs/GOOGLE_PLAY_RELEASE_READINESS.md` §8 |
+| Release keystore | **not created, deliberately** — owner-held, supplied via environment variables only |
+| Test suite in the worktree | `PASS - 122 case(s), 0 failure(s)` |
+| Android device | **still absent** |
+
+Play Store readiness (Families, Data Safety, content rating, listing assets,
+the 12-tester closed-testing rule) is now written up separately in
+`docs/GOOGLE_PLAY_RELEASE_READINESS.md`.
+
 ## STATUS (2026-09-19): AN APK EXISTS. IT HAS NEVER RUN ON A DEVICE.
 
 ```
@@ -1066,6 +1095,9 @@ Apple Silicon / zsh. **None of it needs sudo.** Steps 1-4 are one-time.
 Setting `ANDROID_HOME` / `JAVA_HOME` in the shell is convenient but is NOT what
 makes the export work — Godot reads its own Editor Settings (step 5).
 
+**Reproduced on the MacBook on 2026-09-20.** The commands are unchanged; the
+three corrections found while reproducing are marked **MacBook 2026-09-20**.
+
 ### Step 1 — JDK 17, user-local, no admin password
 
 Godot 4.7.2's build template pins `javaVersion JavaVersion.VERSION_17`
@@ -1183,6 +1215,17 @@ re-serialises this file and drops settings left at their default, so
 `debug_keystore_user` may vanish after the editor next runs; that is harmless,
 because the value it dropped *is* the default.
 
+**MacBook 2026-09-20 — the settings-file race.** *Every* Godot process that
+loads the editor — including `godot --headless --import` and the headless test
+runner — reads this file at start and **rewrites it from memory on exit**. If
+any such process was already running when you edited the file, your edit is
+silently reverted the moment it exits. This happened here: `java_sdk_path` was
+set, and a headless import another agent had started earlier put `""` back.
+So: edit the file when no Godot process is running (`pgrep -fl MacOS/Godot`),
+and always run `tools/export_android.sh --check` immediately before an export —
+it reads the file, not your memory of it. Back the file up first
+(`cp -p editor_settings-4.7.tres editor_settings-4.7.tres.bak`).
+
 ### Step 6 — The export preset
 
 Already applied — `[preset.1]` in `game/export_presets.cfg` (section 1).
@@ -1206,6 +1249,103 @@ adb devices                               # must list the device as "device"
 tools/export_android.sh debug --install
 ```
 
+### Step 9 — The Gradle build and the .aab (MacBook 2026-09-20)
+
+Google Play only accepts an **Android App Bundle**, and Godot only produces one
+through the Gradle build (`gradle_build/use_gradle_build=true`,
+`gradle_build/export_format=1`). That needs two things the plain APK path does
+not, both sudo-free:
+
+```bash
+# 1. the NDK Godot 4.7.2 pins (config.gradle) -- 1.05 GB download, 3.1 GB installed
+yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'ndk;29.0.14206865'
+
+# 2. the Android build template, unpacked INTO THE PROJECT (game/android/ is git-ignored)
+GAME=/Users/hotkhwan/Projects/LittleBuddy-latest/game     # or your worktree's game/
+TPL=~/Library/Application\ Support/Godot/export_templates/4.7.2.stable
+mkdir -p "$GAME/android/build"
+unzip -q -o "$TPL/android_source.zip" -d "$GAME/android/build"
+printf '4.7.2.stable\n' > "$GAME/android/.build_version"   # NEXT TO build/, not inside it
+printf '\n'             > "$GAME/android/build/.gdignore"   # stop the editor importing the template's assets
+printf 'build/\n'       > "$GAME/android/.gitignore"
+```
+
+Two things learned the hard way:
+
+- `godot --headless --install-android-build-template` **hangs** in 4.7.2 (it
+  waits on an editor dialog that never appears). Kill it and unpack by hand as
+  above; that is all the menu item does.
+- `.build_version` must be at `android/.build_version`. Putting it inside
+  `android/build/` produces *"Trying to build from a gradle built template, but
+  no version info for it exists"*. And without `android/build/.gdignore` the
+  editor warns *"Detected another project.godot at
+  res://android/build/src/instrumented/assets"* and imports the template's
+  test assets into `.godot/`.
+
+The **committed preset stays a plain-template APK preset** on purpose — the
+APK path needs neither of the above. `tools/export_android.sh --aab` patches
+the two `gradle_build` keys into a *temporary copy* of `export_presets.cfg`
+for the one export and restores the file on every exit path (verified: the
+file's sha256 is identical before and after, including after a failed build).
+Gradle itself (8.11.1, from the wrapper) and its dependency cache land in
+`~/.gradle` on the first build.
+
+```bash
+tools/export_android.sh --check --aab      # NDK + build template + everything above
+tools/export_android.sh debug --aab        # debug-signed .aab: proves the pipeline, NOT uploadable
+tools/export_android.sh release --aab      # the Play artefact; refused without the owner's key:
+#   export GODOT_ANDROID_KEYSTORE_RELEASE_PATH=...   (outside the repo)
+#   export GODOT_ANDROID_KEYSTORE_RELEASE_USER=...
+#   export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=... (read -s; never on disk, never in git)
+```
+
+Godot 4.7 reads those three variables whenever the preset's
+`keystore/release`, `keystore/release_user`, `keystore/release_password` are
+empty — they were added to the preset as empty strings so that this fallback is
+explicit and the editor GUI shows the fields. The script refuses a release
+build if the variables are missing, if the path ends in `debug.keystore`, if
+the keystore is inside the working tree, or if a path has been written into
+the preset. See `docs/GOOGLE_PLAY_RELEASE_READINESS.md` §8 for the owner's
+one-time key creation.
+
+**Result of the debug `--aab` runs on the MacBook, measured:**
+
+| | |
+| --- | --- |
+| First run (cold `~/.gradle`) | 3 min 08 s, of which almost all was Gradle 8.11.1 + AGP 8.6.1 + Kotlin 2.1.21 downloads → `~/.gradle` = **1.2 GB** |
+| Warm run | **56 s** end to end |
+| Output | `build/android/LittleDays-debug.aab`, 36,495,426 bytes, sha256 `bd7cc54aa1c1f47a1457f352ac3a633777e2fc6b372fe1ae490524cda25cc5c9` |
+| Preset after the run | sha256 identical to before (`98a19fd9…b239`), on success and on the earlier failed run alike |
+| Bundle manifest (bundletool 1.18.3, run from a scratch dir, not installed) | package `com.pointit.littlebuddy`, versionCode 1 / 0.1.0, targetSdk 36, **zero `uses-permission`**, `debuggable=true` (debug build), `allowBackup=false`, `isGame=true`, `screenOrientation=11`, `extractNativeLibs=false`, `base/lib/arm64-v8a/` only |
+
+Two findings that are **not** in the Godot docs:
+
+1. **The bundle comes out of Gradle unsigned.** Godot passes
+   `-Pperform_signing=true` plus the debug keystore (verified in
+   `export_plugin.cpp` 4.7.2-stable, and by re-running Gradle by hand with the
+   same properties); Gradle runs `:signStandardDebugBundle`; and the resulting
+   `.aab` has no `META-INF/*.SF` and no signing block — `jarsigner -verify`
+   says *jar is unsigned*. Godot does not sign the bundle after Gradle either.
+   I did not find the cause inside AGP 8.6.1 in the time available. The script
+   now **verifies every bundle and, if unsigned, signs it with `jarsigner`**
+   (debug key for `debug`, the `GODOT_ANDROID_KEYSTORE_RELEASE_*` key for
+   `release`, password via `-storepass:env`), then re-verifies and refuses to
+   finish unless `jar verified` — `jarsigner` is the tool Google's own Play App
+   Signing page names for this. `bundletool validate` passes on the re-signed
+   bundle. **Check the release bundle's signature yourself before uploading**
+   (`jarsigner -verify -verbose:summary -certs LittleDays-release.aab`).
+2. **The Gradle build sets `minSdkVersion 29`, not 24.** The prebuilt-template
+   APK says 24 because its manifest is fixed. For a Gradle build Godot 4.7.2
+   computes the default min SDK as `VULKAN_MIN_SDK_VERSION = 29` whenever the
+   mobile renderer runs on Vulkan (`_uses_vulkan()`: `rendering_method.mobile`
+   is `mobile` and `driver.android` is `vulkan` — both true for this project),
+   and `gradle_build/min_sdk` is empty. So **the Play artefact will require
+   Android 10+**. That is Godot's recommendation for Vulkan 1.1, not an
+   accident; it is left as is. Setting `gradle_build/min_sdk="24"` would
+   override it (with an editor warning unless
+   `rendering/rendering_device/fallback_to_opengl3` is on), and is a product
+   decision for the owner, not something to change silently.
+
 ---
 
 ## 8. Status list
@@ -1226,7 +1366,20 @@ tools/export_android.sh debug --install
 8. ~~App name "Little Days" appears nowhere in the repo~~ — the rename landed;
    `config/name="Little Days"` and the APK label matches. (section 1)
 
-### Still open
+### Still open (2026-09-20 additions first)
+
+- **No release keystore** — owner must create it; the script refuses to sign a
+  release with anything else. (step 9)
+- **No Play Console app / privacy policy / store graphics / Android
+  screenshots** — `docs/GOOGLE_PLAY_RELEASE_READINESS.md` §§4-6, 10.
+- **`test_version.gd` does not cover the Android preset.** It pins
+  `application/short_version` and `application/version` (iOS) against
+  `VERSION`; the Android `version/name` (and the `version/code` that Play needs
+  bumped on every upload) is unguarded. Not fixed here — tests are outside this
+  worktree's ownership.
+- The **debug keystore differs per machine** (Mac Mini vs MacBook). A phone
+  that has one machine's build must `adb uninstall com.pointit.littlebuddy`
+  before it accepts the other's (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`).
 
 9. **No Android device.** Nothing in section 9 has been verified. This is now
    *the* blocker, and it is not a software one — it needs hardware. Everything
