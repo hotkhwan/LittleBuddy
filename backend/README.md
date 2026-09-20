@@ -54,6 +54,10 @@ this directory contains a secret and no key may ever be committed.**
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | For proxies / gateways. |
 | `TUTOR_MODEL` | `gpt-4o-mini` | Small model by default. Must exist in `config/prices.json` for cost estimates. |
 | `OPENAI_EXTRA_HEADERS` | `{}` | JSON object of extra request headers (data-retention / project hooks). `authorization`, `content-type`, `host` are dropped. |
+| `REALTIME_MODEL` | `gpt-realtime-mini` | Model in the ephemeral client secret's session config (needs an entry in `config/prices.json` for cost). |
+| `REALTIME_VOICE` | `marin` | One of the documented realtime voices. |
+| `REALTIME_TURN_DETECTION` | `semantic_vad` | `semantic_vad` (eagerness low) or `server_vad`. |
+| `REALTIME_GRACE_SECONDS` | `30` | Token lifetime = remaining quota + this grace (max 7200 s). |
 | `PROVIDER_TIMEOUT_MS` | `6000` | Provider call timeout; on expiry the deterministic mock answers instead. |
 | `HANDLER_TIMEOUT_MS` | `10000` | Whole-request timeout -> `504 timeout`. |
 | `MAX_BODY_BYTES` | `32768` | Request size limit -> `413`. |
@@ -84,6 +88,7 @@ backend/
   src/retention.js         purge job + per-client delete
   src/providers/mock_provider.js    deterministic; full lesson offline
   src/providers/openai_provider.js  strict JSON schema, store:false, fake-fetch tested
+  src/providers/openai_realtime.js  ephemeral client-secret minting (client_secrets), fake-fetch tested
   config/prices.json       OpenAI list prices with source URL + fetch date
   test/                    node:test suites + test/fixtures/turn_fixtures.json
   data/                    runtime files (gitignored)
@@ -118,7 +123,7 @@ $ curl -s localhost:8787/healthz
 
 $ curl -s -X POST localhost:8787/api/v1/tutor/sessions -H "content-type: application/json" \
     -d '{"lessonId":"colors_red_blue","clientId":"ipad-demo","parentApprovalToken":"dev-parent-approval"}'
-{"sessionId":"255d6e02-9149-466f-838f-7aa7330eebce","entitlement":"free","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0,"remainingSeconds":300,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":0},"lessonId":"colors_red_blue","lessonKnown":true}
+{"sessionId":"ebf7f420-0063-4938-8545-5ccb1ddd56ba","entitlement":"free","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0,"remainingSeconds":300,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":0},"lessonId":"colors_red_blue","lessonKnown":true}
 
 $ T="X-Parent-Approval: dev-parent-approval"   # the token that created the session, on every session call
 $ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/turns -H "content-type: application/json" -H "$T" -H "Idempotency-Key: t1" \
@@ -137,25 +142,28 @@ $ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/end
 {"error":{"code":"not_approved","message":"This session belongs to another approval."}}
 
 $ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/end -H "$T"
-{"sessionId":"255d6e02-9149-466f-838f-7aa7330eebce","endedAt":"2026-09-20T15:59:19.797Z","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":2},"usage":{"turns":2,"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"cachedInputTokens":0,"ttsChars":101,"latencyMs":2,"cachedTurns":0,"costUsd":0}}
+{"sessionId":"ebf7f420-0063-4938-8545-5ccb1ddd56ba","endedAt":"2026-09-20T16:09:19.723Z","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":2},"usage":{"turns":2,"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"cachedInputTokens":0,"ttsChars":101,"latencyMs":2,"cachedTurns":0,"costUsd":0}}
 
 $ curl -s "localhost:8787/api/v1/tutor/entitlement?clientId=ipad-demo"
 {"clientId":"ipad-demo","entitlement":"free","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":2},"products":["little_days.family_club.monthly","little_days.family_club.yearly"]}
 
 $ curl -s -X POST localhost:8787/api/v1/dev/billing/mock-purchase -H "content-type: application/json" -d '{"clientId":"ipad-demo","productId":"little_days.family_club.monthly"}'
-{"clientId":"ipad-demo","platform":"mock","receipt":{"receiptId":"97c4733e-6137-47ee-8d3e-8a3e43f0b1d3","clientId":"ipad-demo","productId":"little_days.family_club.monthly","purchasedAt":"2026-09-20T15:59:19.813Z","expiresAt":"2026-10-20T15:59:19.813Z","platform":"mock","signature":"98b1f44d135ee6e819f4efe8bf2be28678aa6e1678ac24a00a5407a8b2a277f5"},"next":"POST /api/v1/tutor/billing/validate with {clientId, platform, receipt}"}
+{"clientId":"ipad-demo","platform":"mock","receipt":{"receiptId":"1beb5729-1c3a-4626-8cdd-49c07510f2c8","clientId":"ipad-demo","productId":"little_days.family_club.monthly","purchasedAt":"2026-09-20T16:09:19.738Z","expiresAt":"2026-10-20T16:09:19.738Z","platform":"mock","signature":"0f5193c436a741c284e4f7e8e8433b841f0a479b02affd6b3e6d620f1169576a"},"next":"POST /api/v1/tutor/billing/validate with {clientId, platform, receipt}"}
 
 $ # the client forwards the receipt; the SERVER validates it and grants family_club
 $ curl -s -X POST localhost:8787/api/v1/tutor/billing/validate -H "content-type: application/json" -d '{"clientId":"ipad-demo","platform":"mock","receipt":<receipt from above>}'
-{"clientId":"ipad-demo","entitlement":"family_club","expiresAt":"2026-10-20T15:59:19.813Z","receiptId":"97c4733e-6137-47ee-8d3e-8a3e43f0b1d3","quota":{"entitlement":"family_club","dailyAllowanceSeconds":1800,"usedSeconds":0.1,"remainingSeconds":1799.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":360,"usedTurns":2}}
+{"clientId":"ipad-demo","entitlement":"family_club","expiresAt":"2026-10-20T16:09:19.738Z","receiptId":"1beb5729-1c3a-4626-8cdd-49c07510f2c8","quota":{"entitlement":"family_club","dailyAllowanceSeconds":1800,"usedSeconds":0.1,"remainingSeconds":1799.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":360,"usedTurns":2}}
+
+$ curl -s -X POST localhost:8787/api/v1/tutor/realtime/token -H "content-type: application/json" -H "$T" -d '{"lessonId":"colors_red_blue","clientId":"ipad-demo"}'
+{"sessionId":"dc7f50de-7524-4975-affe-fa1b53e61796","token":{"value":"dev-realtime-token","expiresAt":"2026-09-20T16:39:48.772Z"},"realtime":{"model":"mock","turnDetection":"semantic_vad","mock":true,"transport":"websocket_or_webrtc","note":"Send only this ephemeral value to OpenAI; it expires with your quota."},"quota":{"entitlement":"family_club","dailyAllowanceSeconds":1800,"usedSeconds":0.1,"remainingSeconds":1799.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":360,"usedTurns":3},"lessonKnown":true}
 
 $ curl -s -X DELETE localhost:8787/api/v1/tutor/clients/ipad-demo -H "$T"
-{"clientId":"ipad-demo","deleted":{"sessions":1,"turns":2,"usage":1,"idempotency":1}}
+{"clientId":"ipad-demo","deleted":{"sessions":2,"turns":2,"usage":1,"idempotency":1}}
 
 $ tail -3 server.log   # access log: route pattern only, no ids or query strings
-[tutor-backend] POST /api/v1/dev/billing/mock-purchase -> 200 1ms
 [tutor-backend] POST /api/v1/tutor/billing/validate -> 200 1ms
-[tutor-backend] DELETE /api/v1/tutor/clients/{clientId} -> 200 0ms
+[tutor-backend] POST /api/v1/tutor/realtime/token -> 201 0ms
+[tutor-backend] DELETE /api/v1/tutor/clients/{clientId} -> 200 1ms
 ```
 
 ## Tests

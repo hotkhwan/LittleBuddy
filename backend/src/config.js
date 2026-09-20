@@ -63,6 +63,10 @@ export function loadConfig(env = process.env) {
     openaiBaseUrl: env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
     openaiExtraHeaders: safeExtraHeaders(parseJsonObject(env.OPENAI_EXTRA_HEADERS)),
     model: env.TUTOR_MODEL || 'gpt-4o-mini',
+    realtimeModel: env.REALTIME_MODEL || 'gpt-realtime-mini',
+    realtimeVoice: env.REALTIME_VOICE || 'marin',
+    realtimeTurnDetection: env.REALTIME_TURN_DETECTION === 'server_vad' ? 'server_vad' : 'semantic_vad',
+    realtimeGraceSeconds: num('REALTIME_GRACE_SECONDS', 30),
     // cost model
     // Always on (finding H4): default USD 25/month; env can raise it, never disable it.
     monthlyBudgetUsd: positiveOr(num('MONTHLY_BUDGET_USD', DEFAULT_MONTHLY_BUDGET_USD), DEFAULT_MONTHLY_BUDGET_USD),

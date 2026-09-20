@@ -95,6 +95,23 @@ export function createQuota({ store, config, now }) {
   }
 
   /**
+   * Charge elapsed seconds WITHOUT the per-turn cap (realtime sessions, whose
+   * bound is the ephemeral token expiry instead). Never charges past the
+   * allowance plus `graceSeconds`.
+   * @param {string} userKey
+   * @param {'free'|'family_club'} entitlement
+   * @param {number} seconds
+   * @param {number} graceSeconds
+   */
+  function chargeUncapped(userKey, entitlement, seconds, graceSeconds) {
+    const rec = record(userKey);
+    const ceiling = allowanceFor(entitlement) + Math.max(0, graceSeconds);
+    rec.usedSeconds = Math.min(ceiling, rec.usedSeconds + Math.max(0, seconds));
+    store.usage.set(userKey, rec);
+    return state(userKey, entitlement);
+  }
+
+  /**
    * Seconds to charge for the gap between two server timestamps.
    * @param {number} fromMs
    * @param {number} toMs
@@ -112,7 +129,7 @@ export function createQuota({ store, config, now }) {
     return state(userKey, entitlement).remainingSeconds <= 0;
   }
 
-  return { allowanceFor, turnAllowanceFor, state, charge, gapSeconds, isExhausted, turnCapReached, countTurn };
+  return { allowanceFor, turnAllowanceFor, state, charge, chargeUncapped, gapSeconds, isExhausted, turnCapReached, countTurn };
 }
 
 /** @param {number} n */

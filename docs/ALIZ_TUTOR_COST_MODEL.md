@@ -124,6 +124,15 @@ deterministic mock at zero provider cost.
   `costBreakdown` and `priceMissing` so a null price is visible, not silent.
 - Provider-side: set a hard spend limit in the OpenAI project as the last line.
 
+## Realtime API alternative
+
+`config/prices.json` also carries today's Realtime API prices (gpt-realtime,
+gpt-realtime-2, gpt-realtime-mini). A 5-minute realtime session is estimated at
+$0.054 (mini) to $0.173 (full) under the assumptions in
+`docs/ALIZ_TUTOR_REALTIME_EVALUATION.md`, versus $0.00106 (device speech) or
+$0.01606 (all-cloud speech) for the pipeline above; the audio-tokens-per-minute
+rate is not published on the page and is a labelled assumption there.
+
 ## Reproduce the numbers
 
 ```sh

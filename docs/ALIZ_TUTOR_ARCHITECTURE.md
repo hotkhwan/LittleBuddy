@@ -114,6 +114,16 @@ the scripted provider remains the fallback for `provider_unavailable`,
   headers only for `CORS_ORIGINS`; `/healthz` is `{ok, apiVersion}` outside
   DEV_MODE.
 
+## Realtime option (server side only, not used by the client)
+
+`POST /api/v1/tutor/realtime/token` mints an OpenAI ephemeral client secret
+bound to a quota session; its expiry is `remaining quota + 30 s`, so the token
+itself ends the conversation. Audio would then flow device <-> OpenAI directly
+(the backend never sees it); `POST /sessions/{id}/usage` collects provider
+usage events for cost only, while seconds are charged from the server clock
+bounded by the token expiry. See `docs/ALIZ_TUTOR_REALTIME_EVALUATION.md` for
+why this is not the V1 path.
+
 ## Persistence
 
 `backend/src/store.js`: one JSON file per collection under `DATA_DIR`

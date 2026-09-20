@@ -14,6 +14,8 @@ Run locally: `DEV_MODE=1 node backend/src/server.js` (see `backend/README.md`).
 | `POST` | `/api/v1/tutor/sessions/{id}/turns` | One conversational turn. Needs the session's parent token. Supports `Idempotency-Key`. |
 | `POST` | `/api/v1/tutor/sessions/{id}/end` | End the session; returns usage totals. Needs the session's parent token. Idempotent. |
 | `GET` | `/api/v1/tutor/entitlement?clientId=` | Current entitlement + quota for a client. |
+| `POST` | `/api/v1/tutor/realtime/token` | Mint an ephemeral OpenAI Realtime client secret bound to a quota session (needs parent token + open quota). Mock token in DEV_MODE without a key; `503` without a key otherwise. |
+| `POST` | `/api/v1/tutor/sessions/{id}/usage` | Realtime only: report provider usage events (tokens, audio seconds) for cost accounting. Not a quota authority. |
 | `DELETE` | `/api/v1/tutor/clients/{clientId}` | "Delete learning history": removes that client's sessions, per-turn usage, quota-day rows and idempotency rows. Needs a valid parent token for that clientId. |
 | `POST` | `/api/v1/tutor/billing/validate` | Server-side receipt validation (mock in DEV_MODE; Google Play / Apple are `501` TODOs). |
 | `POST` | `/api/v1/dev/entitlement` | DEV_MODE only: grant/revoke `free` / `family_club`. |
@@ -142,6 +144,69 @@ Calling it twice is safe; the second call charges nothing.
 {"clientId":"ipad-demo","entitlement":"free","quota":{...},"products":["little_days.family_club.monthly","little_days.family_club.yearly"]}
 ```
 
+## `POST /api/v1/tutor/realtime/token`
+Header `X-Parent-Approval` (or body `parentApprovalToken`). Body either
+`{"lessonId":"colors_red_blue","clientId":"ipad-demo"}` (creates and binds a new
+quota session, same checks as `POST /sessions`) or `{"sessionId":"..."}` (links
+an existing open session you own). Response `201`:
+```json
+{"sessionId":"...",
+ "token":{"value":"ek_...","expiresAt":"2026-09-20T10:05:30.000Z"},
+ "realtime":{"model":"gpt-realtime-mini","turnDetection":"semantic_vad","mock":false,"transport":"websocket_or_webrtc","note":"..."},
+ "quota":{...,"usedTurns":1},
+ "lessonKnown":true}
+```
+- The server calls OpenAI `POST /v1/realtime/client_secrets` (reference fetched
+  2026-09-20: https://developers.openai.com/api/reference/resources/realtime/subresources/client_secrets/methods/create)
+  with `expires_after: {anchor:"created_at", seconds}` where
+  `seconds = min(remainingSeconds + 30, 7200)` (API range 10-7200, default 600),
+  and a `session` of `type: "realtime"`, `model` (`REALTIME_MODEL`, default
+  `gpt-realtime-mini`), server-built `instructions` from the lesson file,
+  `output_modalities: ["audio"]`, `max_output_tokens: 400`, `tool_choice: "none"`,
+  `audio.input.noise_reduction {type:"near_field"}`,
+  `audio.input.transcription {model, language:"en"}`,
+  `audio.input.turn_detection` = `{type:"semantic_vad", eagerness:"low", create_response:true, interrupt_response:true}`
+  or, with `REALTIME_TURN_DETECTION=server_vad`,
+  `{type:"server_vad", threshold:0.6, prefix_padding_ms:300, silence_duration_ms:700, create_response:true, interrupt_response:true}`,
+  and `audio.output {voice, speed:0.9}`. The response's `value` (`ek_...`) and
+  `expires_at` are returned; **the permanent key never leaves the server**.
+- The token's expiry is the hard bound on the conversation: it is at most the
+  remaining daily allowance plus 30 s of grace, so even a client that never
+  reports usage cannot exceed the quota by more than the grace.
+- A mint counts as one turn toward the daily turn cap.
+- DEV_MODE without `OPENAI_API_KEY`: `{"token":{"value":"dev-realtime-token",...},"realtime":{"mock":true}}`.
+- Without a key outside DEV_MODE: `503 provider_unavailable`. Provider failure: `503`.
+- Other errors as for `POST /sessions` (`403 not_approved`, `400 unknown_lesson`, `429 quota_exhausted`, `409 session_ended`).
+
+Connecting from the game (not implemented client-side; see
+`docs/ALIZ_TUTOR_REALTIME_EVALUATION.md`): `wss://api.openai.com/v1/realtime?model=<model>`
+with the ephemeral value as `Authorization: Bearer ek_...` (or the subprotocols
+`realtime`, `openai-insecure-api-key.<ek_...>`), PCM16 24 kHz base64 audio via
+`input_audio_buffer.append`.
+
+## `POST /api/v1/tutor/sessions/{id}/usage`
+Realtime sessions only. Header `X-Parent-Approval` (the session's token). Body is
+a summary of the provider's server events (e.g. each `response.done` ->
+`response.usage`) relayed by the client:
+```json
+{"responses":3,"inputAudioTokens":600,"cachedInputAudioTokens":0,"outputAudioTokens":1200,
+ "inputTextTokens":900,"cachedInputTextTokens":800,"outputTextTokens":120,
+ "inputAudioSeconds":20,"outputAudioSeconds":30}
+```
+Response `200`:
+```json
+{"sessionId":"...","recorded":{"turnIndex":1,"costUsd":0.03,"priceMissing":[]},"quota":{...},"endAtBoundary":false,"tokenExpiresAt":"..."}
+```
+- Feeds **cost accounting only** (`config/prices.json` realtime prices). It is
+  never the quota authority: seconds are charged from the server clock between
+  server events, bounded by the token expiry (not by the 45 s per-turn cap,
+  because a realtime session may have no turns), and each report counts as one
+  turn toward the daily turn cap. A body containing `usedSeconds`,
+  `remainingSeconds` or `quota` is rejected with `400 bad_request`.
+- Numbers are clamped (tokens <= 5,000,000, seconds <= 7200). `400 bad_request`
+  for a non-realtime session, `409 session_ended`, `429 quota_exhausted`
+  (`daily_turns`) when the cap is reached.
+
 ## `DELETE /api/v1/tutor/clients/{clientId}`
 Header `X-Parent-Approval` with a valid token for that `clientId`. Response `200`:
 ```json
@@ -167,7 +232,7 @@ server decides. `mock` works only in DEV_MODE; `google_play` and `apple` return
 | 429 | `quota_exhausted` | Break screen: "Great job today! Come back tomorrow." Body carries `quota.resetAtUtc`; `reason` is `daily_quota`, `daily_turns` or `monthly_budget`. |
 | 403 | `not_approved` | Return to the parental gate (also returned when a session is used with a token other than the one that created it). |
 | 400 | `unknown_lesson` | The server does not ship this lesson: use the scripted tutor. |
-| 503 | `provider_unavailable` | Fall back to the local scripted tutor. |
+| 503 | `provider_unavailable` | Fall back to the local scripted tutor (also: realtime not configured on this server). |
 | 429 | `rate_limited` | Wait `retryAfterSeconds` (also `Retry-After` header), keep listening state. |
 | 400 | `invalid_turn` | Client bug: the lessonContext was malformed. Use the scripted turn. |
 | 409 | `session_ended` | Start a new session. |

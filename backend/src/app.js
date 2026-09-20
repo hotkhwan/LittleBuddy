@@ -15,6 +15,7 @@ import { loadLessons, resolveLessonContext } from './lessons.js';
 import { fallbackTurn, loadAssetAllowlist, validateTurn } from './turn_validator.js';
 import { createMockProvider } from './providers/mock_provider.js';
 import { createOpenAIProvider } from './providers/openai_provider.js';
+import { createRealtimeTokenMinter, buildRealtimeInstructions, REALTIME_MAX_EXPIRY_SECONDS, REALTIME_MIN_EXPIRY_SECONDS } from './providers/openai_realtime.js';
 import { ApiError, errors } from './errors.js';
 
 export const API_VERSION = 'v1';
@@ -64,6 +65,11 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
       log(`provider: ${providerNote}`);
     }
   }
+
+  // Realtime ephemeral-token minter: only with a server-side key. Tests inject fetchImpl.
+  const realtimeMinter = config.openaiApiKey
+    ? createRealtimeTokenMinter({ apiKey: config.openaiApiKey, model: config.realtimeModel, baseUrl: config.openaiBaseUrl, fetchImpl, voice: config.realtimeVoice, transcriptionModel: config.sttModel, extraHeaders: config.openaiExtraHeaders })
+    : null;
 
   const router = createRouter();
   const startedAt = now();
@@ -225,7 +231,8 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
   function endSession(session, reason, t, chargedOverride) {
     if (session.endedAt) return quota.state(session.clientId, entitlements.get(session.clientId));
     const entitlement = entitlements.get(session.clientId);
-    const charged = chargedOverride ?? quota.gapSeconds(session.lastEventAt, t);
+    if (session.realtime) settleRealtime(session, t);
+    const charged = session.realtime ? 0 : (chargedOverride ?? quota.gapSeconds(session.lastEventAt, t));
     const q = quota.charge(session.clientId, entitlement, charged);
     session.endedAt = t;
     session.lastEventAt = t;
@@ -242,8 +249,36 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
       : { ok: true, apiVersion: API_VERSION },
   }));
 
-  router.add('POST', `/api/${API_VERSION}/tutor/sessions`, (ctx) => {
-    limitIp(ctx.ip);
+  /**
+   * Realtime sessions are not turn-based: the client streams audio to the
+   * provider directly with an ephemeral token. The server still owns the
+   * clock: elapsed time since the last server event is charged, bounded by
+   * the token's expiry (which was set to remaining quota + grace), NOT by the
+   * per-turn cap, because there may be no turns at all. Runs on every server
+   * event for the session and for all of a client's open realtime sessions
+   * whenever that client touches the quota again.
+   * @param {any} session @param {number} t
+   */
+  function settleRealtime(session, t) {
+    if (!session.realtime || session.endedAt) return 0;
+    const until = Math.min(t, Date.parse(session.realtime.expiresAt));
+    const seconds = Math.max(0, (until - session.lastEventAt) / 1000);
+    if (seconds > 0) quota.chargeUncapped(session.clientId, entitlements.get(session.clientId), seconds, config.realtimeGraceSeconds);
+    session.lastEventAt = Math.max(session.lastEventAt, until);
+    store.sessions.set(session.sessionId, session);
+    return seconds;
+  }
+
+  /** Settle every open realtime session of a client before reading its quota. */
+  function settleClient(clientId, t) {
+    for (const s of store.sessions.values()) if (s.clientId === clientId && s.realtime && !s.endedAt) settleRealtime(s, t);
+  }
+
+  /**
+   * Shared session creation for /sessions and /realtime/token.
+   * @param {import('./types.js').RequestContext} ctx
+   */
+  function createSessionRecord(ctx) {
     const lessonId = str(ctx.body, 'lessonId', { required: true, max: 80, re: ID_RE });
     const clientId = str(ctx.body, 'clientId', { required: true, max: 128, re: ID_RE });
     const token = tokenFrom(ctx);
@@ -251,13 +286,14 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
     if (!ok.ok) throw errors.notApproved();
     if (!lessonSet.lessons.has(lessonId) && !config.devMode) throw errors.unknownLesson();
 
+    const t = now();
+    settleClient(clientId, t);
     const entitlement = entitlements.get(clientId);
     requireBudget();
     const q = quota.state(clientId, entitlement);
     if (q.remainingSeconds <= 0) throw errors.quotaExhausted(q);
     if (quota.turnCapReached(clientId, entitlement)) throw errors.quotaExhausted(q, 'daily_turns');
 
-    const t = now();
     const session = {
       sessionId: crypto.randomUUID(),
       clientId,
@@ -272,7 +308,115 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
       endReason: null,
     };
     store.sessions.set(session.sessionId, session);
-    return { status: 201, body: { sessionId: session.sessionId, entitlement, quota: q, lessonId, lessonKnown: lessonSet.lessons.has(lessonId) } };
+    return { session, quota: q, entitlement };
+  }
+
+  router.add('POST', `/api/${API_VERSION}/tutor/sessions`, (ctx) => {
+    limitIp(ctx.ip);
+    const { session, quota: q, entitlement } = createSessionRecord(ctx);
+    return { status: 201, body: { sessionId: session.sessionId, entitlement, quota: q, lessonId: session.lessonId, lessonKnown: lessonSet.lessons.has(session.lessonId) } };
+  });
+
+  // Realtime: mint an ephemeral client secret bound to a quota session. The
+  // game never sees OPENAI_API_KEY. Expiry = min(remaining + grace, 7200 s),
+  // so the token itself ends the conversation when the allowance runs out
+  // even if the client never reports usage.
+  router.add('POST', `/api/${API_VERSION}/tutor/realtime/token`, async (ctx) => {
+    limitIp(ctx.ip);
+    if (!realtimeMinter && !config.devMode) throw errors.providerUnavailable('Realtime tutoring is not configured on this server.');
+    let session;
+    let q;
+    const existingId = str(ctx.body, 'sessionId', { max: 64 });
+    if (existingId) {
+      session = requireSession(existingId);
+      requireOwner(ctx, session);
+      if (session.endedAt) throw errors.sessionEnded();
+      settleRealtime(session, now());
+      requireBudget();
+      q = quota.state(session.clientId, entitlements.get(session.clientId));
+      if (q.remainingSeconds <= 0) throw errors.quotaExhausted(q);
+      if (quota.turnCapReached(session.clientId, session.entitlement)) throw errors.quotaExhausted(q, 'daily_turns');
+    } else {
+      ({ session, quota: q } = createSessionRecord(ctx));
+    }
+    const lesson = lessonSet.lessons.get(session.lessonId);
+    const expiresSeconds = Math.max(REALTIME_MIN_EXPIRY_SECONDS, Math.min(REALTIME_MAX_EXPIRY_SECONDS, Math.floor(q.remainingSeconds + config.realtimeGraceSeconds)));
+    const t = now();
+    let minted;
+    if (realtimeMinter) {
+      const instructions = lesson ? buildRealtimeInstructions(lesson) : buildRealtimeInstructions({ lessonId: session.lessonId, title: session.lessonId, steps: [] });
+      try {
+        minted = await realtimeMinter.mint({ instructions, expiresSeconds, turnDetection: config.realtimeTurnDetection, signal: ctx.signal });
+      } catch (err) {
+        log(`realtime mint failed: ${err?.status ?? err?.message ?? 'unknown'}`);
+        throw errors.providerUnavailable('Realtime tutoring is not available right now.');
+      }
+    } else {
+      minted = { value: 'dev-realtime-token', expiresAt: new Date(t + expiresSeconds * 1000).toISOString(), model: 'mock', turnDetection: config.realtimeTurnDetection };
+    }
+    // A mint is a provider call: count it toward the daily turn cap.
+    const usedTurns = quota.countTurn(session.clientId);
+    session.realtime = { mintedAt: t, expiresAt: minted.expiresAt, model: minted.model, mints: (session.realtime?.mints ?? 0) + 1 };
+    session.lastEventAt = t;
+    store.sessions.set(session.sessionId, session);
+    return {
+      status: 201,
+      body: {
+        sessionId: session.sessionId,
+        token: { value: minted.value, expiresAt: minted.expiresAt },
+        realtime: { model: minted.model, turnDetection: minted.turnDetection, mock: !realtimeMinter, transport: 'websocket_or_webrtc', note: 'Send only this ephemeral value to OpenAI; it expires with your quota.' },
+        quota: { ...quota.state(session.clientId, entitlements.get(session.clientId)), usedTurns },
+        lessonKnown: Boolean(lesson),
+      },
+    };
+  });
+
+  // Realtime usage reports: summaries of the provider's server events
+  // (response.done -> response.usage) relayed by the client. They feed COST
+  // accounting only. They are NOT the quota authority: seconds come from the
+  // server clock (settleRealtime), and each report counts as one turn toward
+  // the daily turn cap. Any client-supplied "usedSeconds"/"remainingSeconds"
+  // is ignored.
+  router.add('POST', `/api/${API_VERSION}/tutor/sessions/{id}/usage`, (ctx) => {
+    limitIp(ctx.ip);
+    const session = requireSession(ctx.params.id);
+    requireOwner(ctx, session);
+    if (session.endedAt) throw errors.sessionEnded();
+    if (!session.realtime) throw errors.badRequest('usage reports are only accepted for realtime sessions');
+    const sr = limiter.hit(`session:${session.sessionId}`, config.sessionTurnsPerMinute);
+    if (!sr.allowed) throw errors.rateLimited(sr.retryAfterSeconds);
+    const b = ctx.body ?? {};
+    if (b.usedSeconds !== undefined || b.remainingSeconds !== undefined || b.quota !== undefined) {
+      throw errors.badRequest('client timers are not accepted as quota authority; report provider usage events only');
+    }
+    const entitlement = entitlements.get(session.clientId);
+    if (quota.turnCapReached(session.clientId, entitlement)) {
+      endSession(session, 'daily_turns', now());
+      throw errors.quotaExhausted(quota.state(session.clientId, entitlement), 'daily_turns');
+    }
+    const t = now();
+    settleRealtime(session, t);
+    const usedTurns = quota.countTurn(session.clientId);
+    session.turnCount += 1;
+    session.lastEventAt = Math.max(session.lastEventAt, t);
+    store.sessions.set(session.sessionId, session);
+    const clampTok = (v) => Math.max(0, Math.min(5_000_000, Math.round(Number(v) || 0)));
+    const clampSec = (v) => Math.max(0, Math.min(7200, Number(v) || 0));
+    const realtime = {
+      realtimeAudioInputTokens: clampTok(b.inputAudioTokens),
+      realtimeCachedAudioInputTokens: clampTok(b.cachedInputAudioTokens),
+      realtimeAudioOutputTokens: clampTok(b.outputAudioTokens),
+      realtimeTextInputTokens: clampTok(b.inputTextTokens),
+      realtimeCachedTextInputTokens: clampTok(b.cachedInputTextTokens),
+      realtimeTextOutputTokens: clampTok(b.outputTextTokens),
+      reportedInputAudioSeconds: clampSec(b.inputAudioSeconds),
+      reportedOutputAudioSeconds: clampSec(b.outputAudioSeconds),
+      responses: clampTok(b.responses),
+    };
+    const entry = usage.recordTurn(session.sessionId, session.turnCount, { provider: `openai-realtime:${session.realtime.model}`, latencyMs: 0, realtime });
+    const q = quota.state(session.clientId, entitlement);
+    const endAtBoundary = q.remainingSeconds <= 0 || usedTurns >= quota.turnAllowanceFor(entitlement) || Date.parse(session.realtime.expiresAt) <= t;
+    return { status: 200, body: { sessionId: session.sessionId, recorded: { turnIndex: session.turnCount, costUsd: entry.costUsd, priceMissing: entry.priceMissing }, quota: { ...q, usedTurns }, endAtBoundary, tokenExpiresAt: session.realtime.expiresAt } };
   });
 
   router.add('POST', `/api/${API_VERSION}/tutor/sessions/{id}/turns`, async (ctx) => {
@@ -365,6 +509,7 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
     limitIp(ctx.ip);
     const clientId = ctx.url.searchParams.get('clientId') || '';
     if (!ID_RE.test(clientId)) throw errors.badRequest('clientId query parameter is required');
+    settleClient(clientId, now());
     const entitlement = entitlements.get(clientId);
     return { status: 200, body: { clientId, entitlement, quota: quota.state(clientId, entitlement), products: FAMILY_CLUB_PRODUCT_IDS } };
   });

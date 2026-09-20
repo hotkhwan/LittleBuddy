@@ -18,12 +18,28 @@ export function loadPrices(pricesPath) {
 
 /**
  * Pure per-turn cost arithmetic.
- * @param {{sttSeconds?: number, llmInputTokens?: number, llmOutputTokens?: number, cachedInputTokens?: number, ttsChars?: number}} u
- * @param {{prices: any, model: string, sttModel: string, ttsModel: string, sttMode: 'device'|'cloud', ttsMode: 'device'|'cloud'}} p
- * @returns {{costUsd: number, breakdown: {stt: number, llmInput: number, llmOutput: number, tts: number}, priceMissing: string[]}}
+ * @param {{sttSeconds?: number, llmInputTokens?: number, llmOutputTokens?: number, cachedInputTokens?: number, ttsChars?: number, realtimeAudioInputTokens?: number, realtimeCachedAudioInputTokens?: number, realtimeAudioOutputTokens?: number, realtimeTextInputTokens?: number, realtimeCachedTextInputTokens?: number, realtimeTextOutputTokens?: number}} u
+ * @param {{prices: any, model: string, sttModel?: string, ttsModel?: string, sttMode: 'device'|'cloud', ttsMode: 'device'|'cloud', realtimeModel?: string}} p
+ * @returns {{costUsd: number, breakdown: {stt: number, llmInput: number, llmOutput: number, tts: number, realtime: number}, priceMissing: string[]}}
  */
 export function estimateTurnCost(u, p) {
   const missing = [];
+  let realtime = 0;
+  const rtIn = num(u.realtimeAudioInputTokens), rtOut = num(u.realtimeAudioOutputTokens), rtTin = num(u.realtimeTextInputTokens), rtTout = num(u.realtimeTextOutputTokens);
+  if (rtIn || rtOut || rtTin || rtTout) {
+    const rt = p.prices?.realtime?.[p.realtimeModel ?? ''];
+    if (!rt || !isNum(rt.audioInputPer1MTokens) || !isNum(rt.audioOutputPer1MTokens)) missing.push(`realtime:${p.realtimeModel}`);
+    else {
+      const cachedIn = Math.min(num(u.realtimeCachedAudioInputTokens), rtIn);
+      const cachedTin = Math.min(num(u.realtimeCachedTextInputTokens), rtTin);
+      realtime = ((rtIn - cachedIn) / 1e6) * rt.audioInputPer1MTokens
+        + (cachedIn / 1e6) * (isNum(rt.cachedAudioInputPer1MTokens) ? rt.cachedAudioInputPer1MTokens : rt.audioInputPer1MTokens)
+        + (rtOut / 1e6) * rt.audioOutputPer1MTokens
+        + ((rtTin - cachedTin) / 1e6) * (isNum(rt.textInputPer1MTokens) ? rt.textInputPer1MTokens : 0)
+        + (cachedTin / 1e6) * (isNum(rt.cachedTextInputPer1MTokens) ? rt.cachedTextInputPer1MTokens : 0)
+        + (rtTout / 1e6) * (isNum(rt.textOutputPer1MTokens) ? rt.textOutputPer1MTokens : 0);
+    }
+  }
   const llm = p.prices?.llm?.[p.model];
   const stt = p.prices?.stt?.[p.sttModel];
   const tts = p.prices?.tts?.[p.ttsModel];
@@ -58,10 +74,10 @@ export function estimateTurnCost(u, p) {
     else ttsCost = (ttsChars / 1e6) * tts.per1MChars;
   }
 
-  const total = sttCost + llmInput + llmOutput + ttsCost;
+  const total = sttCost + llmInput + llmOutput + ttsCost + realtime;
   return {
     costUsd: round8(total),
-    breakdown: { stt: round8(sttCost), llmInput: round8(llmInput), llmOutput: round8(llmOutput), tts: round8(ttsCost) },
+    breakdown: { stt: round8(sttCost), llmInput: round8(llmInput), llmOutput: round8(llmOutput), tts: round8(ttsCost), realtime: round8(realtime) },
     priceMissing: missing,
   };
 }
@@ -76,18 +92,18 @@ export function utcMonthKey(nowMs) {
  */
 export function createUsage({ store, config, now, prices }) {
   const priceTable = prices ?? loadPrices(config.pricesPath);
-  const pricing = { prices: priceTable, model: config.model, sttModel: config.sttModel, ttsModel: config.ttsModel, sttMode: config.sttMode, ttsMode: config.ttsMode };
+  const pricing = { prices: priceTable, model: config.model, sttModel: config.sttModel, ttsModel: config.ttsModel, sttMode: config.sttMode, ttsMode: config.ttsMode, realtimeModel: config.realtimeModel };
 
   /**
    * Record one turn's usage against a session and the monthly spend ledger.
    * @param {string} sessionId
    * @param {number} turnIndex
-   * @param {{sttSeconds?: number, clientReportedAudioSeconds?: number, llmInputTokens?: number, llmOutputTokens?: number, cachedInputTokens?: number, ttsChars?: number, latencyMs?: number, cached?: boolean, provider?: string}} u
+   * @param {{sttSeconds?: number, clientReportedAudioSeconds?: number, llmInputTokens?: number, llmOutputTokens?: number, cachedInputTokens?: number, ttsChars?: number, latencyMs?: number, cached?: boolean, provider?: string, realtime?: Record<string, number>}} u
    * `sttSeconds` is only non-zero when the SERVER ran speech recognition (none
    * today); `clientReportedAudioSeconds` is informational and never costed (finding L4).
    */
   function recordTurn(sessionId, turnIndex, u) {
-    const cost = estimateTurnCost(u, pricing);
+    const cost = estimateTurnCost({ ...u, ...(u.realtime ?? {}) }, pricing);
     const entry = {
       sessionId,
       turnIndex,
@@ -104,6 +120,7 @@ export function createUsage({ store, config, now, prices }) {
       costUsd: cost.costUsd,
       costBreakdown: cost.breakdown,
       priceMissing: cost.priceMissing,
+      realtime: u.realtime ? Object.fromEntries(Object.entries(u.realtime).map(([k, v]) => [k, num(v)])) : undefined,
     };
     store.turns.set(`${sessionId}:${turnIndex}`, entry);
     addSpend(cost.costUsd);

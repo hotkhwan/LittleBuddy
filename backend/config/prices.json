@@ -6,23 +6,87 @@
     "currency": "USD"
   },
   "llm": {
-    "gpt-4o-mini": { "inputPer1MTokens": 0.15, "cachedInputPer1MTokens": 0.075, "outputPer1MTokens": 0.60 },
-    "gpt-4.1-mini": { "inputPer1MTokens": 0.40, "cachedInputPer1MTokens": 0.10, "outputPer1MTokens": 1.60 },
-    "gpt-4.1-nano": { "inputPer1MTokens": 0.10, "cachedInputPer1MTokens": 0.025, "outputPer1MTokens": 0.40 },
-    "gpt-5-mini": { "inputPer1MTokens": 0.25, "cachedInputPer1MTokens": 0.025, "outputPer1MTokens": 2.00 },
-    "gpt-5-nano": { "inputPer1MTokens": 0.05, "cachedInputPer1MTokens": 0.005, "outputPer1MTokens": 0.40 }
+    "gpt-4o-mini": {
+      "inputPer1MTokens": 0.15,
+      "cachedInputPer1MTokens": 0.075,
+      "outputPer1MTokens": 0.6
+    },
+    "gpt-4.1-mini": {
+      "inputPer1MTokens": 0.4,
+      "cachedInputPer1MTokens": 0.1,
+      "outputPer1MTokens": 1.6
+    },
+    "gpt-4.1-nano": {
+      "inputPer1MTokens": 0.1,
+      "cachedInputPer1MTokens": 0.025,
+      "outputPer1MTokens": 0.4
+    },
+    "gpt-5-mini": {
+      "inputPer1MTokens": 0.25,
+      "cachedInputPer1MTokens": 0.025,
+      "outputPer1MTokens": 2.0
+    },
+    "gpt-5-nano": {
+      "inputPer1MTokens": 0.05,
+      "cachedInputPer1MTokens": 0.005,
+      "outputPer1MTokens": 0.4
+    }
   },
   "stt": {
-    "whisper-1": { "perMinute": 0.006 },
-    "gpt-4o-mini-transcribe": { "perMinute": 0.003 },
-    "gpt-4o-transcribe": { "perMinute": 0.006 }
+    "whisper-1": {
+      "perMinute": 0.006
+    },
+    "gpt-4o-mini-transcribe": {
+      "perMinute": 0.003
+    },
+    "gpt-4o-transcribe": {
+      "perMinute": 0.006
+    }
   },
   "tts": {
-    "tts-1": { "per1MChars": 15.00 },
-    "tts-1-hd": { "per1MChars": 30.00 },
+    "tts-1": {
+      "per1MChars": 15.0
+    },
+    "tts-1-hd": {
+      "per1MChars": 30.0
+    },
     "gpt-4o-mini-tts": {
       "per1MChars": null,
       "note": "Page lists this model per token ($0.60 input / $12.00 output per 1M tokens), not per character. No per-character conversion is assumed here."
+    }
+  },
+  "realtime": {
+    "_note": "Realtime API per-1M-token prices from the same page/date. The page does not state how many audio tokens one minute of audio is; `audioTokensPerMinute` is therefore null here and any per-minute figure in docs is a labelled assumption, never a fetched price.",
+    "audioTokensPerMinute": null,
+    "gpt-realtime": {
+      "textInputPer1MTokens": 4.0,
+      "cachedTextInputPer1MTokens": 0.4,
+      "textOutputPer1MTokens": 16.0,
+      "audioInputPer1MTokens": 32.0,
+      "cachedAudioInputPer1MTokens": 0.4,
+      "audioOutputPer1MTokens": 64.0
+    },
+    "gpt-realtime-2": {
+      "textInputPer1MTokens": 4.0,
+      "cachedTextInputPer1MTokens": 0.4,
+      "textOutputPer1MTokens": 24.0,
+      "audioInputPer1MTokens": 32.0,
+      "cachedAudioInputPer1MTokens": 0.4,
+      "audioOutputPer1MTokens": 64.0
+    },
+    "gpt-realtime-mini": {
+      "textInputPer1MTokens": 0.6,
+      "cachedTextInputPer1MTokens": 0.06,
+      "textOutputPer1MTokens": 2.4,
+      "audioInputPer1MTokens": 10.0,
+      "cachedAudioInputPer1MTokens": 0.3,
+      "audioOutputPer1MTokens": 20.0
+    },
+    "gpt-4o-realtime-preview": {
+      "_note": "not listed on the page on 2026-09-20"
+    },
+    "gpt-4o-mini-realtime-preview": {
+      "_note": "not listed on the page on 2026-09-20"
     }
   }
 }
