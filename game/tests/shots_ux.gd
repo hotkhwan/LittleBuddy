@@ -21,6 +21,7 @@ extends SceneTree
 
 const OUT_DIR: String = "docs/shots/"
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+const NavMath := preload("res://scripts/navigation/nav_math.gd")
 
 var _prefix: String = "ux_ipad"
 var _frame := Vector2i(1334, 750)
@@ -278,9 +279,10 @@ func _stand_at(semantic_id: String) -> void:
 	var stand: Vector3 = target.call("get_stand_position", here)
 	SpatialUtil.set_world_position(character, stand)
 	var face: Vector3 = target.call("get_facing_position", stand)
-	var away: Vector3 = face - stand
-	if Vector2(away.x, away.z).length() > 0.001:
-		character.rotation.y = atan2(away.x, away.z)
+	# The project's own convention (`NavMath.yaw_towards`): the character faces
+	# -Z, so this is atan2(-dx, -dz). The first version had the signs the other
+	# way and stood her with her back to everything she was photographed at.
+	character.rotation.y = NavMath.yaw_towards(stand, face, character.rotation.y)
 
 
 func _first_door_id() -> String:

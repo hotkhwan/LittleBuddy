@@ -103,6 +103,8 @@ func run():
 	failures.append_array(_test_provider_verbs_are_normalised())
 	failures.append_array(_test_doors_outrank_loose_props())
 	failures.append_array(_test_a_character_badge_keeps_off_his_bubble())
+	failures.append_array(_test_badge_is_small_and_scales_with_the_screen())
+	failures.append_array(_test_the_thing_she_faces_wins())
 	return failures
 
 
@@ -167,8 +169,41 @@ func _test_verb_rules():
 	if Rules.verb_for_target(book) != Rules.VERB_TAKE:
 		failures.append("affordance: a pick-up-able prop does not offer TAKE")
 	var bed: Dictionary = {"isDoor": false, "supportedActions": ["sleep", "sit"], "enabled": true}
-	if not Rules.verb_for_target(bed).is_empty():
-		failures.append("affordance: a bed offers '%s'; nothing in the vocabulary fits it" % Rules.verb_for_target(bed))
+	if Rules.verb_for_target(bed) != Rules.VERB_SIT:
+		failures.append("affordance: a bed offers '%s'; a seat says SIT" % Rules.verb_for_target(bed))
+	# Bunny in her arms: every seat becomes a place to put HIM, and a basin a
+	# place to wash him; a wardrobe has nothing for him.
+	if Rules.verb_for_target(bed, {"carrying": "child"}) != Rules.VERB_PLACE:
+		failures.append("affordance: carrying Bunny to the bed does not offer PLACE")
+	var sink: Dictionary = {"isDoor": false, "supportedActions": ["wash", "brushTeeth"], "enabled": true}
+	if Rules.verb_for_target(sink) != Rules.VERB_WASH:
+		failures.append("affordance: a sink does not offer WASH")
+	if Rules.verb_for_target(sink, {"carrying": "child"}) != Rules.VERB_WASH:
+		failures.append("affordance: carrying Bunny to the sink does not offer WASH")
+	var wardrobe: Dictionary = {"isDoor": false, "supportedActions": ["open", "dress"], "enabled": true}
+	if not Rules.verb_for_target(wardrobe, {"carrying": "child"}).is_empty():
+		failures.append("affordance: a wardrobe offers '%s' to a caregiver with Bunny in her arms"
+				% Rules.verb_for_target(wardrobe, {"carrying": "child"}))
+	# A loose prop in hand: an open box takes it, a shut one opens first, and
+	# the table takes it too.
+	if Rules.verb_for_target(toy_box, {"carrying": "item", "storage": {"isOpen": true, "canPlace": true}}) != Rules.VERB_PLACE:
+		failures.append("affordance: carrying a toy to an open toy box does not offer PLACE")
+	if Rules.verb_for_target(toy_box, {"carrying": "item", "storage": {"isOpen": false}}) != Rules.VERB_OPEN:
+		failures.append("affordance: carrying a toy to a shut toy box does not offer OPEN first")
+	var table: Dictionary = {"isDoor": false, "supportedActions": ["eat", "sit"], "enabled": true}
+	if Rules.verb_for_target(table, {"carrying": "item", "station": {"opens": false, "isOpen": false, "inside": [], "on": "", "canPlace": false}}) != Rules.VERB_PLACE:
+		failures.append("affordance: carrying a toy to the table does not offer PLACE")
+	# Cooking: what is in the hand combines with what is on the counter.
+	var cook: Dictionary = {"held": "bowl", "station": {"opens": false, "isOpen": false, "inside": [], "on": "bottle", "canPlace": true, "canCook": true}}
+	if Rules.verb_for_target(counter, cook) != Rules.VERB_COOK:
+		failures.append("affordance: a combining item at the counter does not offer COOK")
+	# A locked door says SOON, kindly; an open one ENTER.
+	if Rules.verb_for_target(door, {"door": {"locked": true}}) != Rules.VERB_SOON:
+		failures.append("affordance: a locked door does not offer SOON")
+	if Rules.label_for(Rules.VERB_SOON).find("grown-up") < 0:
+		failures.append("affordance: SOON's label does not ask for a grown-up")
+	if Rules.label_for(Rules.VERB_SOON).to_lower().find("pay") >= 0:
+		failures.append("affordance: SOON's label talks about paying")
 
 	var bunny: Dictionary = {"isDoor": false, "supportedActions": [], "enabled": true}
 	if Rules.verb_for_target(bunny, {"character": {"canHug": true}}) != Rules.VERB_HUG:
@@ -269,8 +304,9 @@ func _test_activity_target_speaks_the_contract():
 	if Rules.PRIORITY_DOOR <= Rules.PRIORITY_PROP or Rules.PRIORITY_FURNITURE <= Rules.PRIORITY_PROP:
 		failures.append("affordance: fixed targets do not sit in a band above loose props")
 
-	if not (bed.call("get_affordance", actor) as Dictionary).is_empty():
-		failures.append("affordance: a bed offers something; it has no verb in the vocabulary")
+	if String((bed.call("get_affordance", actor) as Dictionary).get("verb", "")) != Rules.VERB_SIT:
+		failures.append("affordance: a bed target offers '%s'; a seat says SIT"
+				% str((bed.call("get_affordance", actor) as Dictionary).get("verb", "")))
 
 	fridge.call("set_target_enabled", false)
 	if not (fridge.call("get_affordance", actor) as Dictionary).is_empty():
@@ -757,4 +793,74 @@ func _test_a_character_badge_keeps_off_his_bubble():
 	if not LayerScript.is_character_target(owner_node):
 		failures.append("affordance: a node with get_need_bubble() was not treated as a character")
 	owner_node.free()
+	return failures
+
+
+## Owner feedback (2026-09-20): the badge hid the thing it pointed at. The disc
+## is 12.8 % of the viewport's height -- 96 px on the iPad frame -- the word is
+## 22 px there, and the invisible hit box stays at the 240 px floor regardless.
+func _test_badge_is_small_and_scales_with_the_screen():
+	var failures: Array = []
+	var ipad: float = LayerScript.badge_diameter(750.0)
+	if absf(ipad - 96.0) > 1.0:
+		failures.append("affordance: the disc is %.0f px on a 750 px tall frame; 96 px was asked for" % ipad)
+	var phone: float = LayerScript.badge_diameter(1080.0)
+	if absf(phone - 1080.0 * 0.128) > 1.5:
+		failures.append("affordance: the disc is %.0f px at 1080 px tall; it should scale with the height" % phone)
+	if phone <= ipad:
+		failures.append("affordance: the badge does not grow with the viewport")
+	if LayerScript.LABEL_FONT_SIZE != 22:
+		failures.append("affordance: the pill text is %d px at the reference; 22 was asked for" % LayerScript.LABEL_FONT_SIZE)
+	if LayerScript.HIT_SIZE < 200.0:
+		failures.append("affordance: the hit box floor is %.0f px; it must stay 200 px or more" % LayerScript.HIT_SIZE)
+	# The footprint at the reference is the picture plus the pill, no more.
+	var footprint: Rect2 = LayerScript.badge_footprint(Vector2(400.0, 300.0))
+	if footprint.size.x > 130.0 or footprint.size.y > 150.0:
+		failures.append("affordance: the drawn footprint %s is bigger than a 96 px disc and a 30 px pill" % str(footprint))
+	# A laid-out layer in a real viewport: the hit box covers the picture and is
+	# never under the 240 px floor.
+	var layer: Control = LayerScript.new()
+	layer.call("build")
+	layer.size = Vector2(1334.0, 750.0)
+	var actor: FakeActor = FakeActor.new()
+	layer.call("set_actor", actor)
+	var camera: Camera3D = Camera3D.new()
+	camera.position = Vector3(0.0, 2.0, 4.0)
+	camera.look_at_from_position(camera.position, Vector3.ZERO, Vector3.UP)
+	# A camera needs a viewport to unproject; without one the hit box hides and
+	# that path is covered elsewhere. This asserts the pure sizing only.
+	if absf(float(layer.call("current_scale")) - 1.0) > 0.01:
+		failures.append("affordance: a 750 px tall layer does not sit at scale 1.0 (%.2f)"
+				% float(layer.call("current_scale")))
+	layer.free()
+	actor.free()
+	camera.free()
+	return failures
+
+
+## Aliz at the toy box's stand point, facing it, with the kitchen door a metre
+## to her side and inside its own reach: the toy box she is looking at wins,
+## door band or no door band. The mission's own target still beats both.
+func _test_the_thing_she_faces_wins():
+	var failures: Array = []
+	var toy_box: Dictionary = {"verb": "OPEN", "anchor": Vector3(0.0, 0.2, -0.6), "radius": 1.5,
+			"priority": Rules.PRIORITY_FURNITURE, "targetId": "bedroom.toyBox"}
+	var door: Dictionary = {"verb": "ENTER", "anchor": Vector3(-1.2, 0.9, 0.4), "radius": 1.8,
+			"priority": Rules.PRIORITY_DOOR, "targetId": "bedroom.doorToKitchen"}
+	var facing_box: Vector3 = Vector3(0.0, 0.0, -1.0)
+	var picked: Dictionary = Rules.pick([door, toy_box], Vector3.ZERO, [], facing_box)
+	if String(picked.get("targetId", "")) != "bedroom.toyBox":
+		failures.append("affordance: facing the toy box, the side door still won (%s)" % str(picked.get("targetId")))
+	# Turned to face the door, the door wins again.
+	picked = Rules.pick([door, toy_box], Vector3.ZERO, [], Vector3(-1.0, 0.0, 0.0))
+	if String(picked.get("targetId", "")) != "bedroom.doorToKitchen":
+		failures.append("affordance: facing the door, the toy box behind her won (%s)" % str(picked.get("targetId")))
+	# No facing given: the bands decide, as before.
+	picked = Rules.pick([door, toy_box], Vector3.ZERO)
+	if String(picked.get("targetId", "")) != "bedroom.doorToKitchen":
+		failures.append("affordance: with no facing the door band no longer wins")
+	# The beat's target beats the facing bonus from any angle.
+	picked = Rules.pick([door, toy_box], Vector3.ZERO, ["bedroom.doorToKitchen"], facing_box)
+	if String(picked.get("targetId", "")) != "bedroom.doorToKitchen":
+		failures.append("affordance: the mission's door lost to a toy box she happened to face")
 	return failures

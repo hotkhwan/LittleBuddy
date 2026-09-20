@@ -9,9 +9,12 @@ extends RefCounted
 ##
 ## ## The vocabulary
 ##
-## Seven words, and only seven: OPEN, TAKE, PLACE, ENTER, HUG, CARRY, FEED.
-## Each is a picture first (drawn by the layer) and a word second, and each has
-## ONE colour from the locked palette so the same act always looks the same.
+## Eleven words: OPEN, TAKE, PLACE, ENTER, HUG, CARRY, FEED, SIT, WASH, COOK and
+## SOON. Each is a picture first (drawn by the layer) and a word second, and
+## each has ONE colour from the locked palette so the same act always looks the
+## same. The last four arrived with Free Play's furniture (2026-09-20): a sofa
+## you can sit on, a sink and a bath that wash, a counter that cooks, and a door
+## that is not open yet -- which says SOON, kindly, instead of ENTER.
 ##
 ## ## Who decides the verb
 ##
@@ -29,10 +32,27 @@ const VERB_ENTER: String = "ENTER"
 const VERB_HUG: String = "HUG"
 const VERB_CARRY: String = "CARRY"
 const VERB_FEED: String = "FEED"
+const VERB_SIT: String = "SIT"
+const VERB_WASH: String = "WASH"
+const VERB_COOK: String = "COOK"
+## A door the child may not go through yet. Never a lock, never a red X: a
+## small pastel sign that says so and asks for a grown-up.
+const VERB_SOON: String = "SOON"
 
 const VERBS: Array[String] = [
 	VERB_OPEN, VERB_TAKE, VERB_PLACE, VERB_ENTER, VERB_HUG, VERB_CARRY, VERB_FEED,
+	VERB_SIT, VERB_WASH, VERB_COOK, VERB_SOON,
 ]
+
+## What the word pill under the picture says. Every verb is its own label
+## except SOON, whose whole point is the sentence.
+const LABELS: Dictionary = {
+	VERB_SOON: "Soon! Ask a grown-up",
+}
+
+
+static func label_for(verb: String) -> String:
+	return String(LABELS.get(verb, verb))
 
 ## Nothing in the hand. `kitchen_items.gd` spells it `""`; older callers say
 ## `"none"`. `is_nothing()` accepts both so a context author cannot get it wrong.
@@ -59,6 +79,11 @@ const PRIORITY_DOOR: int = 3
 const PRIORITY_CHARACTER: int = 3
 ## Added on top when the target is what the current mission beat is about.
 const MISSION_BONUS: int = 10
+## Added when the target is in front of the actor (see `pick()`); enough to
+## lift furniture over a door she has her back to, never over the mission.
+const FACING_BONUS: int = 4
+## Half-angle of "in front": 55 degrees either side of where she faces.
+const FACING_COS: float = 0.5736
 
 ## The default activation radius, metres, when a target supplies none.
 const DEFAULT_RADIUS: float = 1.6
@@ -96,6 +121,14 @@ static func verb_color(verb: String) -> Color:
 			return Palette.VERB_CARRY
 		VERB_FEED:
 			return Palette.VERB_FEED
+		VERB_SIT:
+			return Palette.LAVENDER
+		VERB_WASH:
+			return Palette.light(Palette.DUSTY_BLUE)
+		VERB_COOK:
+			return Palette.light(Palette.PEACH)
+		VERB_SOON:
+			return Palette.light(Palette.LAVENDER)
 		_:
 			return Palette.CREAM
 
@@ -110,16 +143,35 @@ static func verb_color(verb: String) -> Color:
 ##   `station`   -- Dictionary for a kitchen station:
 ##                    `opens`, `isOpen`, `inside` (Array), `on` (String),
 ##                    `canPlace` (bool: the held item may be put down here).
-##   `storage`   -- Dictionary for a container with a lid: `isOpen`.
+##   `storage`   -- Dictionary for a container with a lid: `isOpen`, and
+##                  optionally `canPlace` (the carried thing may go in).
 ##   `character` -- Dictionary for a character target: `canHug`, `canCarry`,
 ##                  `canFeed`.
+##   `carrying`  -- String: `"child"` while Bunny is in the actor's arms,
+##                  `"item"` for a prop, `""`/absent for empty arms. A child in
+##                  her arms turns every seat into PLACE and every basin into
+##                  WASH, because the act applies to HIM.
+##   `door`      -- Dictionary for a door: `locked` (true shows SOON).
 static func verb_for_target(description: Dictionary, context: Dictionary = {}) -> String:
 	if not bool(description.get("enabled", true)):
 		return ""
 	if bool(description.get("isDoor", false)):
-		return VERB_ENTER
+		var door: Dictionary = context.get("door", {}) if context.get("door", null) is Dictionary else {}
+		return VERB_SOON if bool(door.get("locked", false)) else VERB_ENTER
 
 	var holding: bool = not is_nothing(context.get("held", NONE))
+	var carrying: String = String(context.get("carrying", ""))
+	var actions: Array = description.get("supportedActions", []) as Array
+
+	if carrying == "child":
+		# Bunny in her arms: he is what the furniture is for.
+		if context.has("character"):
+			return ""
+		if _is_seat(actions) or actions.has("sleep"):
+			return VERB_PLACE
+		if actions.has("wash"):
+			return VERB_WASH
+		return ""
 
 	if context.has("character"):
 		var who: Dictionary = context["character"]
@@ -138,6 +190,10 @@ static func verb_for_target(description: Dictionary, context: Dictionary = {}) -
 		if holding:
 			# Holding something: the only thing worth offering is a place to put
 			# it, and a shut fridge has to be opened before it can take anything.
+			# When what is in the hand COMBINES with what is already on the
+			# counter, putting it down is cooking, and the word says so.
+			if bool(station.get("canCook", false)) and (not opens or is_open):
+				return VERB_COOK
 			if bool(station.get("canPlace", false)) and (not opens or is_open):
 				return VERB_PLACE
 			if opens and not is_open:
@@ -150,21 +206,53 @@ static func verb_for_target(description: Dictionary, context: Dictionary = {}) -
 			return VERB_TAKE
 		if not inside.is_empty() and (is_open or not opens):
 			return VERB_TAKE
-		return ""
+		if carrying == "item":
+			# A loose prop (a teddy, a ball) is not kitchen stock; the one station
+			# it can be set down on is the table.
+			return VERB_PLACE if actions.has("eat") else ""
+		return _furniture_verb(actions)
 
 	if context.has("storage"):
+		var storage: Dictionary = context["storage"]
+		if carrying == "item":
+			# Something to put away: an open box takes it, a shut one has to be
+			# opened first -- the same order the fridge uses.
+			if bool(storage.get("isOpen", false)):
+				return VERB_PLACE if bool(storage.get("canPlace", true)) else ""
+			return VERB_OPEN
 		# A lid: opening and closing are the same gesture, and "OPEN" is the
 		# word a child knows for both.
 		return VERB_OPEN
 
-	var actions: Array = description.get("supportedActions", []) as Array
+	if carrying == "item":
+		# A loose prop can be set down on a table; anything else stays a walk.
+		if actions.has("eat"):
+			return VERB_PLACE
+		if actions.has("open"):
+			return VERB_OPEN
+		return ""
+
 	if actions.has("open"):
 		return VERB_OPEN
 	if actions.has("pickUp"):
 		return VERB_TAKE
 	if actions.has("goThrough"):
 		return VERB_ENTER
+	return _furniture_verb(actions)
+
+
+## The word for a piece of furniture with nothing in hand: a seat says SIT, a
+## basin says WASH. Nothing else in the house has a word yet.
+static func _furniture_verb(actions: Array) -> String:
+	if actions.has("wash"):
+		return VERB_WASH
+	if _is_seat(actions):
+		return VERB_SIT
 	return ""
+
+
+static func _is_seat(actions: Array) -> bool:
+	return actions.has("sit")
 
 
 ## Flat distance from `actor` to `anchor`: height is ignored, because a fridge
@@ -188,9 +276,25 @@ static func in_range(anchor: Vector3, actor: Vector3, radius: float) -> bool:
 ##   2. priority, higher first;
 ##   3. distance, nearer first.
 ##
+##   4. and, when the actor's `facing` (a flat unit vector) is supplied, the
+##      NEAREST fixed target (band 2 or above) in front of her gets
+##      `FACING_BONUS` before the bands are compared. She walked up to the toy
+##      box and turned to face it; the kitchen door a metre further on, in band
+##      3, must not shout over it. Loose props never take the bonus -- a banana
+##      at her feet stays a banana -- and the bonus is smaller than
+##      `MISSION_BONUS`, so a beat's own target still wins from any angle.
+##
 ## Deterministic: two equal entries keep their input order.
-static func pick(candidates: Array, actor: Vector3, preferred_ids: Array = []) -> Dictionary:
+static func pick(candidates: Array, actor: Vector3, preferred_ids: Array = [],
+		facing: Variant = null) -> Dictionary:
 	var ranked: Array = []
+	var forward: Vector3 = Vector3.ZERO
+	if facing is Vector3:
+		forward = Vector3((facing as Vector3).x, 0.0, (facing as Vector3).z)
+		if forward.length_squared() > 0.000001:
+			forward = forward.normalized()
+		else:
+			forward = Vector3.ZERO
 	for entry: Variant in candidates:
 		if not (entry is Dictionary):
 			continue
@@ -212,9 +316,22 @@ static func pick(candidates: Array, actor: Vector3, preferred_ids: Array = []) -
 		copy["verb"] = verb
 		copy["distance"] = distance
 		copy["score"] = score
+		copy["faced"] = false
+		if forward != Vector3.ZERO and distance > 0.05 \
+				and int(offer.get("priority", PRIORITY_FURNITURE)) >= PRIORITY_FURNITURE:
+			var towards: Vector3 = Vector3(anchor.x - actor.x, 0.0, anchor.z - actor.z).normalized()
+			copy["faced"] = towards.dot(forward) >= FACING_COS
 		ranked.append(copy)
 	if ranked.is_empty():
 		return {}
+	var nearest_faced: int = -1
+	for index: int in range(ranked.size()):
+		if not bool(ranked[index]["faced"]):
+			continue
+		if nearest_faced < 0 or float(ranked[index]["distance"]) < float(ranked[nearest_faced]["distance"]):
+			nearest_faced = index
+	if nearest_faced >= 0:
+		ranked[nearest_faced]["score"] = int(ranked[nearest_faced]["score"]) + FACING_BONUS
 	ranked.sort_custom(_better)
 	return ranked[0]
 

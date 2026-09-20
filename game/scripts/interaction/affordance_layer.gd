@@ -12,6 +12,12 @@ extends Control
 ## picture on it, placed by the game, and it only exists while the child is near
 ## enough for the action to make sense -- which is also how it teaches the word.
 ##
+## The PICTURE is small -- a disc 12.8 % of the screen's height, 96 px on an
+## iPad, so it never hides the thing it points at -- and the TAP TARGET is not:
+## the invisible hit box under it stays at least 240 px whatever the viewport.
+## A press on that box that turns out to have nothing to do is handed to the
+## floor router, so no tap ever dies under a badge.
+##
 ## ## The contract (shared with every other agent)
 ##
 ## Every frame this polls the `affordable` group. Any node in it exposes
@@ -52,11 +58,20 @@ const GROUP: String = "affordable"
 ## ART_BIBLE §8: a child's tap target is at least 240 px across at the
 ## 1366x1024 reference. The drawn disc is smaller; the invisible hit box is not.
 const HIT_SIZE: float = 240.0
-const BADGE_RADIUS: float = 74.0
-const OUTLINE_PX: float = 5.0
+## Every drawn size below is stated at the REFERENCE height and scaled by
+## `badge_scale()` -- the disc is 12.8 % of the viewport's height whatever the
+## device: 96 px on a 1334x750 iPad frame, 138 px at 2340x1080. The first build
+## drew a 148 px disc at every size, and on the iPad it hid the thing it was
+## pointing at (owner feedback, 2026-09-20).
+const REFERENCE_HEIGHT: float = 750.0
+const BADGE_DIAMETER_FRACTION: float = 0.128
+const BADGE_RADIUS: float = 48.0
+const OUTLINE_PX: float = 4.0
+const MIN_SCALE: float = 0.7
+const MAX_SCALE: float = 2.2
 ## How far above the object's highlight ring the badge floats.
-const BADGE_LIFT: float = 62.0
-const EDGE_MARGIN: float = 26.0
+const BADGE_LIFT: float = 40.0
+const EDGE_MARGIN: float = 22.0
 ## The top band nothing may sit in unless the HUD says otherwise: the star
 ## counter and the Home button live there. `set_top_keep_out()` raises it while
 ## a prompt is on screen.
@@ -72,17 +87,19 @@ const MAX_SLIDE_PX: float = 260.0
 ## played and no badge may show, whoever mounted this layer.
 const CARE_OVERLAY_NAME: String = "CareOverlay"
 
-## The word under the picture. 28 pt clears the §8 floor of 27.
-const LABEL_FONT_SIZE: int = 28
-const LABEL_WIDTH: float = 156.0
-const LABEL_HEIGHT: float = 42.0
-const LABEL_GAP: float = 14.0
+## The word under the picture: 22 px at the reference height, on a cream pill
+## that fits the word (SOON's pill carries a short sentence).
+const LABEL_FONT_SIZE: int = 22
+const LABEL_WIDTH: float = 104.0
+const LABEL_HEIGHT: float = 30.0
+const LABEL_GAP: float = 8.0
+const LABEL_PAD: float = 16.0
 
 ## The highlight ring around the thing itself, px, clamped so a fridge across
 ## the room and a table under the camera both get a ring you can see.
-const RING_MIN_PX: float = 44.0
-const RING_MAX_PX: float = 210.0
-const RING_WIDTH: float = 7.0
+const RING_MIN_PX: float = 36.0
+const RING_MAX_PX: float = 150.0
+const RING_WIDTH: float = 5.0
 const DEFAULT_EXTENT_M: float = 0.35
 
 ## `NavigationController.TapKind.TARGET`. Mirrored rather than imported so this
@@ -285,6 +302,50 @@ func is_enabled() -> bool:
 	return _enabled
 
 
+## -- Sizing --------------------------------------------------------------------
+
+## How much bigger (or smaller) than the reference every drawn size is, for a
+## viewport `view_height` px tall. Pure, so a test can pin 96 px on the iPad.
+static func badge_scale(view_height: float) -> float:
+	if view_height <= 0.0:
+		return 1.0
+	return clampf(view_height * BADGE_DIAMETER_FRACTION / (BADGE_RADIUS * 2.0), MIN_SCALE, MAX_SCALE)
+
+
+## The disc's drawn diameter at `view_height`, px.
+static func badge_diameter(view_height: float) -> float:
+	return BADGE_RADIUS * 2.0 * badge_scale(view_height)
+
+
+## The pill's width for `verb`'s label at `scale`: the reference width, or wider
+## when the words need it.
+static func label_width_for(verb: String, scale: float, font: Font = null) -> float:
+	var text: String = AffordanceRules.label_for(verb)
+	var measured: float = 0.0
+	var f: Font = font if font != null else ThemeDB.fallback_font
+	if f != null:
+		measured = f.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1,
+				int(round(LABEL_FONT_SIZE * scale))).x + LABEL_PAD * scale
+	return maxf(LABEL_WIDTH * scale, measured)
+
+
+## The live scale for this layer's viewport.
+func current_scale() -> float:
+	var view: Vector2 = _view_size()
+	return badge_scale(view.y)
+
+
+func _view_size() -> Vector2:
+	var view: Vector2 = Vector2.ZERO
+	if is_inside_tree():
+		view = get_viewport_rect().size
+	if view.x <= 0.0 or view.y <= 0.0:
+		view = size
+	if view.x <= 0.0 or view.y <= 0.0:
+		view = Vector2(1334.0, REFERENCE_HEIGHT)
+	return view
+
+
 ## -- Per frame -----------------------------------------------------------------
 
 func step(delta: float) -> void:
@@ -316,7 +377,8 @@ func evaluate() -> Dictionary:
 	if is_care_overlay_visible():
 		return {}
 	var here: Vector3 = SpatialUtil.world_position(_actor)
-	return AffordanceRules.pick(_candidates(), here, _preferred_now())
+	var facing: Vector3 = -SpatialUtil.world_transform(_actor).basis.z
+	return AffordanceRules.pick(_candidates(), here, _preferred_now(), facing)
 
 
 ## True while a `CareOverlay` beside this layer is showing. Checked here as
@@ -411,6 +473,16 @@ func _default_context(target: Object) -> Dictionary:
 	if local_id.is_empty():
 		return context
 
+	context["carrying"] = carrying_kind(_actor)
+
+	if target.has_method("is_door") and bool(target.call("is_door")):
+		var destination: Dictionary = {}
+		if target.has_method("get_destination"):
+			destination = target.call("get_destination")
+		var to_room: String = String(destination.get("toRoomId", ""))
+		context["door"] = {"locked": not to_room.is_empty() and not is_room_open(to_room)}
+		return context
+
 	if _world.has_method("get_kitchen_state"):
 		var kitchen: Variant = _world.call("get_kitchen_state")
 		if kitchen is Object and is_instance_valid(kitchen) and kitchen.has_method("describe") \
@@ -446,13 +518,59 @@ func _default_context(target: Object) -> Dictionary:
 
 	if not context.has("station") and _world.has_method("get_current_room"):
 		var room: Variant = _world.call("get_current_room")
-		if room is Object and is_instance_valid(room) and room.has_method("get_storage") \
-				and room.call("get_storage", local_id) != null:
-			var is_open: bool = false
-			if room.has_method("is_storage_open"):
-				is_open = bool(room.call("is_storage_open", local_id))
-			context["storage"] = {"isOpen": is_open}
+		if room is Object and is_instance_valid(room):
+			if room.has_method("get_storage") and room.call("get_storage", local_id) != null:
+				var is_open: bool = false
+				if room.has_method("is_storage_open"):
+					is_open = bool(room.call("is_storage_open", local_id))
+				var can_place: bool = true
+				if String(context["carrying"]) == "item" and room.has_method("can_store_node"):
+					can_place = bool(room.call("can_store_node", local_id, _carried_node(_actor)))
+				context["storage"] = {"isOpen": is_open, "canPlace": can_place}
+			elif room.has_method("is_openable") and bool(room.call("is_openable", local_id)):
+				# The wardrobe: doors on hinges, no shelf model behind them. OPEN
+				# is still the word, and it says the same thing shut or open.
+				var doors_open: bool = bool(room.call("is_open", local_id))
+				context["storage"] = {"isOpen": doors_open, "canPlace": false}
 	return context
+
+
+## `"child"` while a child actor rides in `actor`'s arms, `"item"` for any other
+## carried node, `""` for empty arms. Duck-typed off the carry API.
+static func carrying_kind(actor: Object) -> String:
+	var carried: Object = _carried_node(actor)
+	if carried == null:
+		return ""
+	return "child" if carried.has_method("set_carried_by") else "item"
+
+
+static func _carried_node(actor: Object) -> Node:
+	if actor == null or not is_instance_valid(actor) or not actor.has_method("get_carried_node"):
+		return null
+	var carried: Variant = actor.call("get_carried_node")
+	if carried is Node and is_instance_valid(carried):
+		return carried
+	return null
+
+
+## -- Locked rooms ---------------------------------------------------------------
+##
+## Free Play keeps some rooms for later. The layer does not know why; it is
+## handed a gate -- `func(room_id: String) -> bool`, true when the room may be
+## entered -- and a door to a room the gate refuses shows SOON instead of ENTER.
+## No gate means every room is open, which is Story's world exactly as it was.
+var _room_gate: Callable = Callable()
+
+
+func set_room_gate(gate: Callable) -> void:
+	build()
+	_room_gate = gate
+
+
+func is_room_open(room_id: String) -> bool:
+	if not _room_gate.is_valid():
+		return true
+	return bool(_room_gate.call(room_id))
 
 
 func _station_context(station_id: String, described: Dictionary, held: String) -> Dictionary:
@@ -526,20 +644,28 @@ func _layout() -> void:
 	var edge: Vector2 = camera.unproject_position(anchor + basis.x * maxf(extent, 0.05))
 	_ring_px = clampf((edge - _screen).length(), RING_MIN_PX, RING_MAX_PX)
 
-	var view: Vector2 = get_viewport_rect().size
-	if view.x <= 0.0 or view.y <= 0.0:
-		view = size
+	var view: Vector2 = _view_size()
+	var scale: float = badge_scale(view.y)
+	_ring_px = clampf(_ring_px, RING_MIN_PX * scale, RING_MAX_PX * scale)
 	var target: Variant = _current.get("target", null)
 	var character: bool = is_character_target(target)
 	var keep_outs: Array = get_keep_out_rects()
 	_bubble_rect = _bubble_keep_out(camera, target) if character else Rect2()
 	if _bubble_rect.size.x > 0.0:
 		keep_outs.append(_bubble_rect)
+	var verb: String = String(_current.get("verb", ""))
 	var placed: Dictionary = place_badge(
-		_screen, _ring_px, view, _top_keep_out, _actor_screen_x(camera), keep_outs, character)
+		_screen, _ring_px, view, _top_keep_out, _actor_screen_x(camera), keep_outs, character,
+		label_width_for(verb, scale, _font))
 	_badge = placed["centre"]
 	_placement = String(placed["placement"])
-	_hit.position = _badge - Vector2(HIT_SIZE, HIT_SIZE) * 0.5
+	# The hit box never shrinks with the picture: 240 px stays the floor, and a
+	# badge drawn bigger than that gets a box that covers the whole of it.
+	var footprint: Rect2 = badge_footprint(_badge, scale, label_width_for(verb, scale, _font))
+	var hit_size: Vector2 = Vector2(
+		maxf(HIT_SIZE, footprint.size.x), maxf(HIT_SIZE, footprint.size.y + BADGE_RADIUS * scale))
+	_hit.size = hit_size
+	_hit.position = _badge - hit_size * 0.5
 	_hit.visible = true
 	_laid_out = true
 
@@ -602,14 +728,26 @@ func get_bubble_keep_out() -> Rect2:
 
 
 ## The badge's on-screen footprint -- disc, outline and the word pill -- for a
-## badge centred at `centre`. What the keep-outs are tested against.
-static func badge_footprint(centre: Vector2) -> Rect2:
-	var half: float = BADGE_RADIUS + OUTLINE_PX
-	var width: float = maxf(half * 2.0, LABEL_WIDTH)
+## badge centred at `centre` at `scale` (1.0 is the 750 px reference). What the
+## keep-outs are tested against.
+static func badge_footprint(centre: Vector2, scale: float = 1.0, label_width: float = -1.0) -> Rect2:
+	var half: float = (BADGE_RADIUS + OUTLINE_PX) * scale
+	var pill: float = label_width if label_width > 0.0 else LABEL_WIDTH * scale
+	var width: float = maxf(half * 2.0, pill)
 	return Rect2(
 		Vector2(centre.x - width * 0.5, centre.y - half),
-		Vector2(width, half + BADGE_RADIUS + LABEL_GAP + LABEL_HEIGHT)
+		Vector2(width, half + (BADGE_RADIUS + LABEL_GAP + LABEL_HEIGHT) * scale)
 	)
+
+
+## What the keep-outs are measured against: the drawn footprint AND the
+## invisible hit box under it, whichever reaches further. The picture got small
+## and the hit box did not, so a badge whose picture clears the stick could
+## still have its press box over it; the box is what the thumb meets.
+static func placement_rect(centre: Vector2, scale: float = 1.0, label_width: float = -1.0) -> Rect2:
+	var footprint: Rect2 = badge_footprint(centre, scale, label_width)
+	var hit: Rect2 = Rect2(centre - Vector2(HIT_SIZE, HIT_SIZE) * 0.5, Vector2(HIT_SIZE, HIT_SIZE))
+	return footprint.merge(hit)
 
 
 ## Where the badge goes. Pure, so `test_affordance.gd` can prove every rule
@@ -630,11 +768,15 @@ static func badge_footprint(centre: Vector2) -> Rect2:
 ## covers least does -- a badge the child can still see beats none at all.
 ## Returns `{"centre": Vector2, "placement": String}`.
 static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep_out: float,
-		actor_x: float, keep_outs: Array, prefer_beside: bool = false) -> Dictionary:
-	var min_x: float = EDGE_MARGIN + BADGE_RADIUS + OUTLINE_PX
+		actor_x: float, keep_outs: Array, prefer_beside: bool = false,
+		label_width: float = -1.0) -> Dictionary:
+	var s: float = badge_scale(view.y)
+	var radius: float = BADGE_RADIUS * s
+	var pill_w: float = label_width if label_width > 0.0 else LABEL_WIDTH * s
+	var min_x: float = EDGE_MARGIN + maxf(radius + OUTLINE_PX * s, pill_w * 0.5)
 	var max_x: float = maxf(min_x, view.x - min_x)
-	var min_y: float = maxf(top_keep_out, TOP_MARGIN) + BADGE_RADIUS
-	var max_y: float = maxf(min_y, view.y - (EDGE_MARGIN + BADGE_RADIUS + LABEL_GAP + LABEL_HEIGHT))
+	var min_y: float = maxf(top_keep_out, TOP_MARGIN) + radius
+	var max_y: float = maxf(min_y, view.y - (EDGE_MARGIN + radius + (LABEL_GAP + LABEL_HEIGHT) * s))
 
 	# The side away from Aliz, and failing a clear answer, away from the
 	# nearer screen edge -- which is also the side with room on it.
@@ -644,16 +786,16 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 		away_from_actor = -1.0
 	elif actor_x < screen.x - 8.0:
 		away_from_actor = 1.0
-	var side_offset: float = ring_px + SIDE_GAP + BADGE_RADIUS
-	var vertical_offset: float = ring_px + BADGE_LIFT + BADGE_RADIUS
+	var side_offset: float = ring_px + SIDE_GAP * s + radius
+	var vertical_offset: float = ring_px + BADGE_LIFT * s + radius
 
 	var above: Dictionary = {"placement": "above", "centre": screen + Vector2(0.0, -vertical_offset)}
 	var near_side: Dictionary = {"placement": "left" if away_from_actor < 0.0 else "right",
-			"centre": screen + Vector2(away_from_actor * side_offset, -BADGE_RADIUS * 0.4)}
+			"centre": screen + Vector2(away_from_actor * side_offset, -radius * 0.4)}
 	var far_side: Dictionary = {"placement": "left" if away_from_actor > 0.0 else "right",
-			"centre": screen + Vector2(-away_from_actor * side_offset, -BADGE_RADIUS * 0.4)}
+			"centre": screen + Vector2(-away_from_actor * side_offset, -radius * 0.4)}
 	var below: Dictionary = {"placement": "below",
-			"centre": screen + Vector2(0.0, vertical_offset + LABEL_HEIGHT)}
+			"centre": screen + Vector2(0.0, vertical_offset + LABEL_HEIGHT * s)}
 	var candidates: Array = [near_side, far_side, below, above] if prefer_beside \
 			else [above, near_side, far_side, below]
 
@@ -661,10 +803,14 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 	# outward along its own direction until it clears whatever it landed on --
 	# a toy box in the stick's corner gets its badge just past the stick's
 	# edge, still beside the box. Unslid always beats slid: a badge 260 px
-	# above its object is worse than one beside it that needed no slide.
+	# above its object is worse than one beside it that needed no slide. And
+	# among the slid spots the SHORTEST slide wins, not the first in the list:
+	# 17 px further right beats 135 px further up.
 	var best: Dictionary = {}
 	var best_overlap: float = INF
 	for pass_index: int in range(2):
+		var shortest: Dictionary = {}
+		var shortest_slide: float = INF
 		for candidate: Dictionary in candidates:
 			var wanted: Vector2 = candidate["centre"]
 			var placement: String = String(candidate["placement"])
@@ -673,22 +819,31 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 			if placement == "above" and wanted.y < min_y:
 				continue
 			var centre: Vector2 = Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y))
-			var measured: Dictionary = _overlap(badge_footprint(centre), keep_outs)
+			var measured: Dictionary = _overlap(placement_rect(centre, s, pill_w), keep_outs)
+			var slide: float = 0.0
 			if pass_index == 1:
 				if float(measured["overlap"]) <= 0.0:
 					continue
-				var slid: Vector2 = _slid_clear(placement, centre, badge_footprint(centre), measured["block"])
+				var slid: Vector2 = _slid_clear(placement, centre, placement_rect(centre, s, pill_w), measured["block"])
 				slid = Vector2(clampf(slid.x, min_x, max_x), clampf(slid.y, min_y, max_y))
-				if slid.distance_to(centre) > MAX_SLIDE_PX or slid.is_equal_approx(centre):
+				slide = slid.distance_to(centre)
+				if slide > MAX_SLIDE_PX * s or slid.is_equal_approx(centre):
 					continue
 				centre = slid
-				measured = _overlap(badge_footprint(centre), keep_outs)
+				measured = _overlap(placement_rect(centre, s, pill_w), keep_outs)
 			var overlap: float = float(measured["overlap"])
 			if overlap <= 0.0:
-				return {"centre": centre, "placement": placement}
+				if pass_index == 0:
+					return {"centre": centre, "placement": placement}
+				if slide < shortest_slide:
+					shortest_slide = slide
+					shortest = {"centre": centre, "placement": placement}
+				continue
 			if overlap < best_overlap:
 				best_overlap = overlap
 				best = {"centre": centre, "placement": placement}
+		if not shortest.is_empty():
+			return shortest
 	if best.is_empty():
 		# Every candidate was ruled out before overlap was even measured (an
 		# absurdly tall keep-out); fall back to the first side, clamped.
@@ -766,8 +921,26 @@ func _on_hit_input(event: InputEvent) -> void:
 		pressed = (event as InputEventScreenTouch).pressed
 	if not pressed:
 		return
-	perform()
+	if not perform():
+		# Nothing to do here after all (the hands are full, the target has no
+		# id). The child pressed the floor under the badge, and the floor must
+		# answer exactly as if the badge were not there: the hit box is a STOP
+		# control, so the press is handed to the router by hand.
+		_route_press_to_floor(event)
 	accept_event()
+
+
+func _route_press_to_floor(event: InputEvent) -> void:
+	if _nav == null or not is_instance_valid(_nav) or not _nav.has_method("handle_tap"):
+		return
+	var at: Vector2 = Vector2.ZERO
+	if event is InputEventMouse:
+		at = (event as InputEventMouse).global_position
+	elif event is InputEventScreenTouch:
+		at = (event as InputEventScreenTouch).position
+	else:
+		return
+	_nav.call("handle_tap", at)
 
 
 ## Does the shown affordance. Returns whether anything was asked to happen.
@@ -793,6 +966,12 @@ func perform() -> bool:
 			}))
 		elif _actor != null and is_instance_valid(_actor) and _actor.has_method("move_to"):
 			routed = bool(_actor.call("move_to", target_id))
+		if not routed and _actor != null and is_instance_valid(_actor) \
+				and _actor.has_method("get_current_target_id") \
+				and String(_actor.call("get_current_target_id")) == target_id:
+			# Already walking there: the second tap changed nothing, and that is
+			# the anti-jitter rule working, not a dead press.
+			routed = true
 	affordance_performed.emit(verb, target_id, false)
 	return routed
 
@@ -841,24 +1020,27 @@ func _draw() -> void:
 	var verb: String = String(_current.get("verb", ""))
 	var tint: Color = AffordanceRules.verb_color(verb)
 	var pulse: float = 0.5 + 0.5 * sin(_clock * TAU * 0.6)
+	var s: float = current_scale()
+	var outline: float = OUTLINE_PX * s
+	var ring_w: float = RING_WIDTH * s
 
 	# The thing itself: a ring in the verb's colour, breathing at the art
 	# bible's 0.6 Hz, with a faint cream halo so it reads on any wall.
-	draw_arc(_screen, _ring_px + 10.0 + pulse * 6.0, 0.0, TAU, 56,
-			Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, 0.16 + pulse * 0.12), RING_WIDTH + 6.0, true)
-	draw_arc(_screen, _ring_px + pulse * 5.0, 0.0, TAU, 56,
-			Color(tint.r, tint.g, tint.b, 0.62 + pulse * 0.28), RING_WIDTH, true)
-	draw_arc(_screen, _ring_px + pulse * 5.0, 0.0, TAU, 56,
-			Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.22), 2.0, true)
+	draw_arc(_screen, _ring_px + (8.0 + pulse * 5.0) * s, 0.0, TAU, 56,
+			Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, 0.16 + pulse * 0.12), ring_w + 4.0 * s, true)
+	draw_arc(_screen, _ring_px + pulse * 4.0 * s, 0.0, TAU, 56,
+			Color(tint.r, tint.g, tint.b, 0.62 + pulse * 0.28), ring_w, true)
+	draw_arc(_screen, _ring_px + pulse * 4.0 * s, 0.0, TAU, 56,
+			Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.22), 1.5 * s, true)
 
 	# The badge bobs gently so it reads as alive, and squashes on a press.
-	var bob: float = sin(_clock * TAU * 0.9) * 4.0
-	var scale: float = 1.0
+	var bob: float = sin(_clock * TAU * 0.9) * 3.0 * s
+	var squash: float = 1.0
 	if _press_clock >= 0.0:
 		var t: float = clampf(_press_clock / PRESS_SEC, 0.0, 1.0)
-		scale = 1.0 - 0.12 * sin(t * PI)
+		squash = 1.0 - 0.12 * sin(t * PI)
 	var centre: Vector2 = _badge + Vector2(0.0, bob)
-	var radius: float = BADGE_RADIUS * scale
+	var radius: float = BADGE_RADIUS * s * squash
 
 	# Pointer tail towards the object, drawn first so the disc sits on it.
 	var towards: Vector2 = Vector2(0.0, 1.0)
@@ -869,21 +1051,25 @@ func _draw() -> void:
 	elif _placement == "below":
 		towards = Vector2(0.0, -1.0)
 	var across: Vector2 = Vector2(-towards.y, towards.x)
-	var tail_tip: Vector2 = centre + towards * (radius + 22.0)
+	var tail_tip: Vector2 = centre + towards * (radius + 14.0 * s)
 	var tail: PackedVector2Array = PackedVector2Array([
-		centre + towards * (radius - 12.0) - across * 20.0,
-		centre + towards * (radius - 12.0) + across * 20.0, tail_tip,
+		centre + towards * (radius - 8.0 * s) - across * 13.0 * s,
+		centre + towards * (radius - 8.0 * s) + across * 13.0 * s, tail_tip,
 	])
 	var tail_outline: PackedVector2Array = PackedVector2Array([
-		centre + towards * (radius - 14.0) - across * 26.0,
-		centre + towards * (radius - 14.0) + across * 26.0,
-		tail_tip + towards * 7.0,
+		centre + towards * (radius - 9.0 * s) - across * 17.0 * s,
+		centre + towards * (radius - 9.0 * s) + across * 17.0 * s,
+		tail_tip + towards * 4.5 * s,
 	])
 	draw_colored_polygon(tail_outline, Palette.INK)
 	draw_colored_polygon(tail, tint)
 
-	draw_circle(centre, radius + OUTLINE_PX, Palette.INK)
-	draw_circle(centre, radius + OUTLINE_PX - 3.0, Palette.CREAM)
+	# A soft drop shadow under the disc, the way the asset sheet's badges sit
+	# proud of the screen; then ink, cream and the coloured face.
+	draw_circle(centre + Vector2(0.0, 3.0 * s), radius + outline,
+			Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.18))
+	draw_circle(centre, radius + outline, Palette.INK)
+	draw_circle(centre, radius + outline - 2.0 * s, Palette.CREAM)
 	draw_circle(centre, radius, tint)
 	# A soft highlight on the upper left, the way every prop in the house has one.
 	draw_circle(centre + Vector2(-radius * 0.34, -radius * 0.38), radius * 0.22,
@@ -892,22 +1078,27 @@ func _draw() -> void:
 	_draw_glyph(verb, centre, radius * 1.18)
 
 	# The word, on a cream pill under the disc.
+	var pill_w: float = label_width_for(verb, s, _font)
+	var pill_h: float = LABEL_HEIGHT * s
 	var pill: Rect2 = Rect2(
-		Vector2(centre.x - LABEL_WIDTH * 0.5, centre.y + radius + LABEL_GAP),
-		Vector2(LABEL_WIDTH, LABEL_HEIGHT)
+		Vector2(centre.x - pill_w * 0.5, centre.y + radius + LABEL_GAP * s),
+		Vector2(pill_w, pill_h)
 	)
+	_pill.set_corner_radius_all(int(pill_h * 0.5))
+	_pill.set_border_width_all(maxi(2, int(round(2.5 * s))))
 	draw_style_box(_pill, pill)
 	if _font != null:
-		var baseline: float = pill.position.y + LABEL_HEIGHT * 0.5 \
-				+ _font.get_ascent(LABEL_FONT_SIZE) * 0.5 - 3.0
-		draw_string(_font, Vector2(pill.position.x, baseline), verb,
-				HORIZONTAL_ALIGNMENT_CENTER, LABEL_WIDTH, LABEL_FONT_SIZE, Palette.INK)
+		var font_size: int = int(round(LABEL_FONT_SIZE * s))
+		var baseline: float = pill.position.y + pill_h * 0.5 \
+				+ _font.get_ascent(font_size) * 0.5 - 2.0 * s
+		draw_string(_font, Vector2(pill.position.x, baseline), AffordanceRules.label_for(verb),
+				HORIZONTAL_ALIGNMENT_CENTER, pill_w, font_size, Palette.INK)
 
 
 ## One picture per word, all ink strokes on the coloured disc. `box` is the
 ## square the picture fills; every shape is rounded or a simple arrow.
 func _draw_glyph(verb: String, c: Vector2, box: float) -> void:
-	var w: float = maxf(box * 0.085, 5.0)
+	var w: float = maxf(box * 0.085, 3.0)
 	var ink: Color = Palette.INK
 	match verb:
 		AffordanceRules.VERB_OPEN:
@@ -976,8 +1167,63 @@ func _draw_glyph(verb: String, c: Vector2, box: float) -> void:
 			draw_circle(c + Vector2(0.0, -box * 0.28), box * 0.11, ink)
 			draw_line(c + Vector2(-box * 0.10, box * 0.08), c + Vector2(box * 0.10, box * 0.08), ink, w * 0.7, true)
 			draw_line(c + Vector2(-box * 0.10, box * 0.20), c + Vector2(box * 0.10, box * 0.20), ink, w * 0.7, true)
+		AffordanceRules.VERB_SIT:
+			# An armchair seen from the front: a back, a seat and two arms.
+			var back: Rect2 = Rect2(c + Vector2(-box * 0.24, -box * 0.38), Vector2(box * 0.48, box * 0.40))
+			draw_rect(back, ink, true)
+			draw_rect(back.grow(-w * 0.8), Palette.CREAM, true)
+			var seat: Rect2 = Rect2(c + Vector2(-box * 0.36, -box * 0.02), Vector2(box * 0.72, box * 0.24))
+			draw_rect(seat, ink, true)
+			draw_rect(seat.grow(-w * 0.8), Palette.CREAM, true)
+			for side: float in [-1.0, 1.0]:
+				draw_line(c + Vector2(side * box * 0.28, box * 0.22), c + Vector2(side * box * 0.28, box * 0.40), ink, w * 1.2, true)
+		AffordanceRules.VERB_WASH:
+			# A tap with a bend, and three drops falling from it.
+			draw_line(c + Vector2(-box * 0.30, -box * 0.02), c + Vector2(-box * 0.30, -box * 0.30), ink, w * 1.3, true)
+			draw_line(c + Vector2(-box * 0.30, -box * 0.30), c + Vector2(box * 0.10, -box * 0.30), ink, w * 1.3, true)
+			draw_line(c + Vector2(box * 0.10, -box * 0.30), c + Vector2(box * 0.10, -box * 0.14), ink, w * 1.3, true)
+			draw_line(c + Vector2(-box * 0.40, -box * 0.02), c + Vector2(-box * 0.20, -box * 0.02), ink, w * 1.1, true)
+			for drop: Array in [[0.10, 0.02, 1.0], [-0.02, 0.22, 0.8], [0.20, 0.26, 0.7]]:
+				var at: Vector2 = c + Vector2(box * float(drop[0]), box * float(drop[1]))
+				var r: float = w * 1.3 * float(drop[2])
+				draw_circle(at + Vector2(0.0, r * 0.5), r, ink)
+				draw_colored_polygon(PackedVector2Array([
+					at + Vector2(-r * 0.9, r * 0.4), at + Vector2(r * 0.9, r * 0.4), at + Vector2(0.0, -r * 1.4),
+				]), ink)
+		AffordanceRules.VERB_COOK:
+			# A round bowl with a spoon standing in it, and two curls of steam.
+			_oval(c + Vector2(0.0, box * 0.12), box * 0.36, box * 0.12, ink)
+			draw_colored_polygon(PackedVector2Array([
+				c + Vector2(-box * 0.36, box * 0.12), c + Vector2(box * 0.36, box * 0.12),
+				c + Vector2(box * 0.22, box * 0.40), c + Vector2(-box * 0.22, box * 0.40),
+			]), ink)
+			_oval(c + Vector2(0.0, box * 0.12), box * 0.36 - w * 0.9, box * 0.12 - w * 0.6, Palette.CREAM)
+			draw_line(c + Vector2(box * 0.10, box * 0.10), c + Vector2(box * 0.30, -box * 0.30), ink, w, true)
+			draw_circle(c + Vector2(box * 0.32, -box * 0.33), w * 1.1, ink)
+			for x: float in [-0.14, 0.06]:
+				draw_arc(c + Vector2(box * x, -box * 0.22), box * 0.07, PI * 0.5, PI * 1.5, 8, ink, w * 0.8, true)
+				draw_arc(c + Vector2(box * x, -box * 0.36), box * 0.07, -PI * 0.5, PI * 0.5, 8, ink, w * 0.8, true)
+		AffordanceRules.VERB_SOON:
+			# A little signpost with a star on it: not now, and nothing is wrong.
+			draw_line(c + Vector2(0.0, box * 0.10), c + Vector2(0.0, box * 0.42), ink, w * 1.2, true)
+			var sign: Rect2 = Rect2(c + Vector2(-box * 0.34, -box * 0.34), Vector2(box * 0.68, box * 0.44))
+			draw_rect(sign, ink, true)
+			draw_rect(sign.grow(-w * 0.8), Palette.CREAM, true)
+			_star(c + Vector2(0.0, -box * 0.12), box * 0.16, Palette.STAR_EARNED, ink, w * 0.6)
 		_:
 			draw_circle(c, box * 0.16, ink)
+
+
+func _star(centre: Vector2, r: float, fill: Color, rim: Color, rim_w: float) -> void:
+	var points: PackedVector2Array = PackedVector2Array()
+	for index: int in range(10):
+		var angle: float = -PI * 0.5 + TAU * float(index) / 10.0
+		var radius: float = r if index % 2 == 0 else r * 0.45
+		points.append(centre + Vector2(cos(angle), sin(angle)) * radius)
+	draw_colored_polygon(points, fill)
+	var closed: PackedVector2Array = points.duplicate()
+	closed.append(points[0])
+	draw_polyline(closed, rim, rim_w, true)
 
 
 func _oval(centre: Vector2, half_w: float, half_h: float, color: Color) -> void:
