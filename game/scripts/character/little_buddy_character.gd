@@ -149,7 +149,9 @@ func move_to_ground(x: float, z: float) -> bool:
 	if _controller.call("is_disabled"):
 		move_failed.emit("", "disabled")
 		return false
-	return _submit_move(Vector3(x, _world_position().y, z), {"targetId": ""}, "")
+	# `nearest`: a floor tap beyond the mesh walks as far as it can towards the
+	# tap rather than doing nothing. See `CharacterMovementController.request_move`.
+	return _submit_move(Vector3(x, _world_position().y, z), {"targetId": "", "nearest": true}, "")
 
 
 ## Walks in a DIRECTION rather than to a place: the virtual thumbstick.

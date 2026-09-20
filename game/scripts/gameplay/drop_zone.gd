@@ -113,6 +113,12 @@ const AFFORD_PRIORITY: int = 2
 
 var _pending_carry: Node = null
 var _pending_item: Node3D = null
+## When the landing this zone is waiting for stops being believable. A carry
+## that never reports its end (the item freed by a room change mid-flight, a
+## controller rebuilt under it) must not leave the pad refusing PLACE for the
+## rest of the session.
+var _pending_deadline_msec: int = 0
+const PENDING_TIMEOUT_MSEC: int = 3000
 
 
 func _ready() -> void:
@@ -181,6 +187,8 @@ func get_affordance(actor: Node3D) -> Dictionary:
 	var carried: Node = actor.call("get_carried_node") if actor.has_method("get_carried_node") else null
 	if carried == null or carried.has_method("set_carried_by"):
 		return {}  # the child is put down on the floor, not on a pad
+	if _pending_item != null and Time.get_ticks_msec() > _pending_deadline_msec:
+		_forget_pending()
 	if _pending_item != null:
 		return {}  # already landing something here
 	return {
@@ -205,6 +213,7 @@ func perform_affordance(actor: Node3D) -> bool:
 	if carry != null and carry.has_signal("carry_ended"):
 		_pending_carry = carry
 		_pending_item = item
+		_pending_deadline_msec = Time.get_ticks_msec() + PENDING_TIMEOUT_MSEC
 		carry.connect("carry_ended", _on_carry_landed, CONNECT_ONE_SHOT)
 	else:
 		_deliver(item)
@@ -217,6 +226,14 @@ func _on_carry_landed(node: Node3D) -> void:
 	_pending_carry = null
 	if node == item:
 		_deliver(item)
+
+
+func _forget_pending() -> void:
+	if _pending_carry != null and is_instance_valid(_pending_carry) \
+			and _pending_carry.is_connected("carry_ended", _on_carry_landed):
+		_pending_carry.disconnect("carry_ended", _on_carry_landed)
+	_pending_carry = null
+	_pending_item = null
 
 
 func _deliver(item: Node3D) -> void:

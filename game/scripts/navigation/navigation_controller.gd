@@ -103,6 +103,16 @@ var _wired: bool = false
 var _character: Node = null
 var _camera: Camera3D = null
 var _ripple: Node3D = null
+## The last touch press, so its emulated mouse twin is not routed as a second
+## tap. `pointing/emulate_mouse_from_touch` is on: one finger on the iPad
+## produces an `InputEventScreenTouch` AND an `InputEventMouseButton` at the same
+## spot, and before this both reached `handle_tap()` -- two `target_tapped`s per
+## tap, the word spoken twice over itself, two ripples. The stick and the
+## draggables already latch the pair; this is the router's latch.
+var _last_touch_position: Vector2 = Vector2(INF, INF)
+var _last_touch_msec: int = -100000
+const TOUCH_TWIN_WINDOW_MSEC: int = 120
+const TOUCH_TWIN_DISTANCE: float = 3.0
 ## Optional. Anything answering `claims_press(Vector2) -> bool` that owns part of
 ## the screen. Today that is the virtual thumbstick; see `set_press_claimant()`.
 var _press_claimant: Object = null
@@ -304,9 +314,28 @@ func _unhandled_input(event: InputEvent) -> void:
 	var screen_position: Variant = _press_position(event)
 	if screen_position == null:
 		return
+	if is_emulated_twin(event):
+		return
 	if is_press_claimed(screen_position as Vector2):
 		return
 	handle_tap(screen_position as Vector2)
+
+
+## True for the synthetic mouse press that follows a touch press at the same
+## spot. Public so the latch can be asserted without a touchscreen.
+func is_emulated_twin(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		var touch: InputEventScreenTouch = event as InputEventScreenTouch
+		if touch.pressed:
+			_last_touch_position = touch.position
+			_last_touch_msec = Time.get_ticks_msec()
+		return false
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+		var mouse: InputEventMouseButton = event as InputEventMouseButton
+		if Time.get_ticks_msec() - _last_touch_msec <= TOUCH_TWIN_WINDOW_MSEC \
+				and mouse.position.distance_to(_last_touch_position) <= TOUCH_TWIN_DISTANCE:
+			return true
+	return false
 
 
 ## Public so a room can feed it a tap from its own input handling (the Baby Room

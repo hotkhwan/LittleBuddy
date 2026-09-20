@@ -181,6 +181,16 @@ const SNAP_RADIUS: float = 0.9
 ## does not exist yet) runs for this long and then ends. This is the "no stuck
 ## state" guarantee.
 const DEFAULT_ACTION_SEC: float = 1.2
+## A `nearest` request (a plain floor tap) that would move the character less
+## than this is not worth a walk cycle: it is refused as UNREACHABLE rather than
+## shuffled two centimetres.
+const MIN_NEAREST_TRAVEL: float = 0.15
+## And how far off the mesh a `nearest` tap may land and still be walked
+## towards: the apron in front of the room and a wall are inside this, another
+## room across the house (10 m away, a separate island) is not -- a tap there
+## stays UNREACHABLE, so the child is never marched into a wall towards a room
+## she cannot see.
+const NEAREST_RADIUS: float = 6.0
 
 ## -- Direct drive (the virtual thumbstick) ------------------------------------
 
@@ -279,6 +289,13 @@ func get_provider() -> RefCounted:
 ##   `facePoint`     Vector3 -- turn to face this on arrival, then report
 ##                   interaction-ready. Omit for a plain floor tap.
 ##   `arrivalRadius` float -- override the default arrival generosity.
+##   `nearest`       bool -- a FLOOR tap: when the point is off the mesh by more
+##                   than `SNAP_RADIUS`, walk to the nearest standable point in
+##                   that direction anyway (SNAPPED) instead of refusing. A child
+##                   who taps the apron in front of the room, or a wall, has
+##                   said "over there", and a character who does nothing at all
+##                   reads as frozen (owner feedback, 2026-09-20). A TARGET move
+##                   never sets it: a sink in another room must still fail.
 ##
 ## Returns a `MoveResult`. See the enum for what each one means; UNREACHABLE and
 ## REFUSED both leave the character exactly as it was.
@@ -299,6 +316,11 @@ func request_move(destination: Vector3, options: Dictionary = {}) -> int:
 		# short. The distance between what was asked for and where the path really
 		# ends IS the reachability signal.
 		if NavMath.flat_distance(endpoint, destination) <= SNAP_RADIUS:
+			result = MoveResult.SNAPPED
+			effective = endpoint
+		elif bool(options.get("nearest", false)) \
+				and NavMath.flat_distance(endpoint, destination) <= NEAREST_RADIUS \
+				and NavMath.flat_distance(endpoint, from) >= MIN_NEAREST_TRAVEL:
 			result = MoveResult.SNAPPED
 			effective = endpoint
 		else:
