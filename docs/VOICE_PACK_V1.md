@@ -115,7 +115,7 @@ All of these are driven in `test_voice_director.gd`.
 | need | needsComfort / crying | bunny_010_hug | child_actor.gd |
 | need | needsChanging | (none) | -- |
 | needUrgent | | bunny_012_upset + face `hmph` | child_actor.gd, once per ignored need |
-| milkPrompt | | bunny_002_milk | feeding_table.gd when the target is a drink |
+| milkPrompt | | bunny_002_milk | feeding_table.gd when the target item is `milk` (the bottle; the current tray has water) |
 | task | apple / banana / water / milk / prepareMilk / bath / brushTeeth / bedtime / tidy / cooking | aliz_011 .. aliz_019 | feeding_table.gd per item; `_speak()` text routing |
 | foodBite | | bunny_003_yummy | feeding_table.gd first bite / first sip |
 | mealHalfway | | bunny_004_more | feeding_table.gd half-way bite / gulp |
