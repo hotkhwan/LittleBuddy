@@ -229,8 +229,10 @@ func _test_learning_history_from_engine_format():
 			failures.append("the title was not read from the lesson content: %s" % str(row))
 		if int(row["stars"]) != granted or int(row["stars"]) != 1:
 			failures.append("stars %s do not match what the engine paid (%d) / the content (1)" % [str(row["stars"]), granted])
-		if String(row["dateText"]) != "date not recorded":
-			failures.append("save_progress() records no date yet; the row must say so, got %s" % str(row["dateText"]))
+		# The engine stamps `completedAt` (ISO-8601 UTC) on completion, so the
+		# row shows today's local date; an OLD entry without it says so instead.
+		if String(row["dateText"]) == "date not recorded" or String(row["dateText"]).is_empty():
+			failures.append("a lesson the engine just completed must show its date, got %s" % str(row["dateText"]))
 	var lines: PackedStringArray = model.learning_history_lines()
 	if lines.size() != 1 or not lines[0].begins_with("Cat and Dog -- 1 star -- "):
 		failures.append("history lines: %s" % str(lines))
@@ -244,11 +246,15 @@ func _test_learning_history_from_engine_format():
 	if all_rows.size() != 2 or bool(all_rows[1]["completed"]) or not String(all_rows[1]["line"]).contains("step 3 of 6"):
 		failures.append("the full list does not describe the in-progress lesson: %s" % str(all_rows))
 
-	# A future `completedAt` (ISO UTC or unix) shows as a local date, newest first.
+	# `completedAt` (ISO UTC or unix) shows as a local date, newest first; an
+	# entry from before the stamp existed (no completedAt) sorts last.
 	progress["colors_red_blue"] = {"stepIndex": 6, "stepCount": 6, "correctFirstTry": 3, "completed": true,
 			"rewardGranted": true, "completedAt": "2026-09-19T23:30:00.000Z"}
 	progress["numbers_one_two_three"] = {"stepIndex": 7, "stepCount": 7, "correctFirstTry": 3, "completed": true,
 			"rewardGranted": true, "completedAt": 1789898400}
+	var legacy: Dictionary = (progress["animals_cat_dog"] as Dictionary).duplicate()
+	legacy.erase("completedAt")
+	progress["animals_cat_dog"] = legacy
 	var dated: Array = LearningHistory.completed_entries(progress, Callable(), 7 * 60)  # Bangkok
 	if dated.size() != 3:
 		failures.append("expected three completed lessons, got %d" % dated.size())
