@@ -169,6 +169,15 @@ var _owned_map: RID = RID()
 
 func _ready() -> void:
 	build_world()
+	# The play-session clock (Agent S, `scripts/session/play_session.gd`): the
+	# house counts as gameplay from its first frame, first run included. The
+	# directors attach the same clock when they bind, so this is only earlier,
+	# never different; the clock is one node under the root and no autoload.
+	var session_script: GDScript = load("res://scripts/session/play_session.gd") as GDScript
+	if session_script != null:
+		var session: Node = session_script.get_or_create(get_tree())
+		if session != null:
+			session.call("attach", self)
 	var viewport: Viewport = get_viewport()
 	if viewport != null:
 		# Re-fit on rotation and on any resize, so a room never crops when the
@@ -1258,6 +1267,15 @@ func _play_transition_fade() -> void:
 		return
 	var tween: Tween = create_tween()
 	tween.tween_property(_fade, "modulate:a", 0.0, 0.28)
+	# The fade is loading, not play: the play-session clock is held for it.
+	var session: Node = get_node_or_null("/root/PlaySession")
+	if session != null and session.has_method("pause_for"):
+		session.call("pause_for", "loading")
+		tween.finished.connect(
+			func() -> void:
+				if is_instance_valid(session):
+					session.call("resume_for", "loading"),
+			CONNECT_ONE_SHOT)
 
 
 ## Short, warm, and always the DISPLAY name -- a child is never shown the
