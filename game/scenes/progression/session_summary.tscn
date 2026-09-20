@@ -94,7 +94,7 @@ alignment = 1
 
 [node name="RatingStar1" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/RatingRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 140)
+custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
@@ -103,7 +103,7 @@ state = 0
 
 [node name="RatingStar2" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/RatingRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 140)
+custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
@@ -112,7 +112,7 @@ state = 0
 
 [node name="RatingStar3" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/RatingRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 140)
+custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
@@ -142,13 +142,12 @@ theme_override_constants/separation = 12
 alignment = 1
 
 [node name="EarnedStar" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow/EarnedRow"]
-custom_minimum_size = Vector2(66, 66)
+custom_minimum_size = Vector2(76, 76)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-script = ExtResource("3")
-glyph = 0
-tint = Color(1, 0.78, 0.239, 1)
+script = ExtResource("10")
+state = 0
 
 [node name="EarnedLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow/EarnedRow"]
 unique_name_in_owner = true
@@ -166,13 +165,12 @@ theme_override_constants/separation = 12
 alignment = 1
 
 [node name="TotalStar" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow/TotalRow"]
-custom_minimum_size = Vector2(56, 56)
+custom_minimum_size = Vector2(62, 62)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-script = ExtResource("3")
-glyph = 0
-tint = Color(1, 0.78, 0.239, 1)
+script = ExtResource("10")
+state = 0
 
 [node name="TotalLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/ScoreRow/TotalRow"]
 unique_name_in_owner = true
@@ -183,6 +181,50 @@ theme_override_colors/font_color = Color(0.541, 0.451, 0.345, 1)
 theme_override_font_sizes/font_size = 40
 text = "0"
 
+[node name="AlmostRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="AlmostStar1" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/AlmostRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 56)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+script = ExtResource("10")
+state = 3
+
+[node name="AlmostStar2" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/AlmostRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 56)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+script = ExtResource("10")
+state = 3
+
+[node name="AlmostStar3" type="TextureRect" parent="SafeArea/Center/Panel/Margin/VBox/AlmostRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 56)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+script = ExtResource("10")
+state = 3
+
+[node name="AlmostLabel" type="Label" parent="SafeArea/Center/Panel/Margin/VBox/AlmostRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.541, 0.451, 0.345, 1)
+theme_override_font_sizes/font_size = 34
+text = "So close!"
+
 [node name="StickerRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -192,7 +234,7 @@ alignment = 1
 
 [node name="StickerCell" type="Control" parent="SafeArea/Center/Panel/Margin/VBox/StickerRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(172, 190)
+custom_minimum_size = Vector2(190, 210)
 layout_mode = 2
 mouse_filter = 2
 script = ExtResource("4")

@@ -46,6 +46,15 @@ const BabyAvatarScript := preload("res://scripts/characters/little_buddy/baby_li
 # not build. A `class_name` reference here parse-errors the whole room there.
 const LevelSystemScript := preload("res://scripts/progression/level_system.gd")
 const StarRulesScript := preload("res://scripts/progression/star_rules.gd")
+## The highchair minigame. Pure rules preloaded; the scene loaded on first use so
+## a room that never plays a feeding task never builds the stage.
+const FeedingRulesScript := preload("res://scripts/feeding/feeding_rules.gd")
+const FEEDING_TABLE_SCENE: String = "res://scenes/feeding/feeding_table.tscn"
+## Where the highchair stage sits in the room's world: far enough from the
+## nursery that neither camera ever sees the other set, under the same single
+## directional light and environment.
+const FEEDING_TABLE_OFFSET: Vector3 = Vector3(40.0, 0.0, 0.0)
+const MAIN_MENU_SCENE: String = "res://scenes/main/main.tscn"
 
 const ENCOURAGEMENT_GREAT: String = "Great!"
 const ENCOURAGEMENT_TRY_AGAIN: String = "Try again!"
@@ -135,6 +144,8 @@ enum ProgressionMode { STORY, FREE_PLAY }
 @onready var _sticker_button: Button = %StickerButton
 @onready var _next_button: Button = %NextButton
 @onready var _level_chapter_label: Label = %LevelChapterLabel
+@onready var _star_counter_panel: Control = $UI/SafeArea/StarCounter
+@onready var _top_stack: Control = $UI/SafeArea/TopStack
 
 var _mode: int = Mode.LEGACY
 var _progression_mode: int = ProgressionMode.STORY
@@ -174,6 +185,13 @@ var _mission_new_stickers: Array = []
 var _level_caption: String = ""
 var _task_speak_enabled: bool = false
 var _happy_reaction_generation: int = 0
+## The highchair stage (see `scripts/feeding/feeding_table.gd`), built on the
+## first feeding task and kept for the rest of the session.
+var _feeding_table: Node3D = null
+var _feeding_open: bool = false
+## Task ids the child finished after one wrong try this mission -- the "almost"
+## half stars the summary shows. Paid as 0 stars; see `feeding_rules.gd`.
+var _mission_half_stars: Array = []
 
 
 ## Shows the Meshy baby instead of the procedural one, when it is switched on.
@@ -362,6 +380,7 @@ func _begin_legacy_mode() -> void:
 
 
 func _teardown_mission_mode() -> void:
+	_close_feeding_table()
 	# Order matters: the activity scene must go while the runner (and therefore
 	# its mode handlers) is still alive to let go of the objects it spawned
 	# under that scene.
@@ -572,8 +591,10 @@ func _start_next_mission(preferred_mission_id: String = "") -> void:
 		ledger.call("begin_session")
 
 	_mission_new_stickers = []
+	_mission_half_stars = []
 	_task_speak_enabled = false
 	_hide_summary()
+	_close_feeding_table()
 	_swap_activity_scene(_category_for_mission(mission_id))
 	_set_baby_view_state("idle")
 	_show_level_caption(mission_id)
@@ -586,6 +607,10 @@ func _start_next_mission(preferred_mission_id: String = "") -> void:
 		"thaiHints": _thai_hints_enabled(),
 		"tts": _autoload("TtsService"),
 		"speech": _autoload("SpeechService"),
+		# The four drag-to-mouth feeding tasks play on the highchair stage; the
+		# mode handler spawns nothing for them and halves the credit after a
+		# wrong try. See `ModeHandler.CTX_EXTERNAL_STAGE`.
+		"externalStage": Callable(self, "_stages_task_externally"),
 	}
 	if _activity != null and _activity.has_method("build_context"):
 		context = _activity.call("build_context", context)
@@ -612,7 +637,8 @@ func _refresh_level_caption() -> void:
 	if _level_chapter_label == null:
 		return
 	_level_chapter_label.text = _level_caption
-	_level_chapter_label.visible = not _level_caption.is_empty() and not _is_overlay_open()
+	_level_chapter_label.visible = not _level_caption.is_empty() and not _is_overlay_open() \
+			and not _feeding_open
 
 
 func _level_caption_for_mission(mission_id: String) -> String:
@@ -739,6 +765,11 @@ func _on_task_started(_task_id: String, _mode_name: String) -> void:
 	_next_button.visible = true
 	_hide_encouragement()
 	_set_baby_view_state(_view_state_for_current_task())
+	var task: Dictionary = _runner.call("get_current_task") if _runner != null else {}
+	if _stages_task_externally(task):
+		_open_feeding_table(task)
+	else:
+		_close_feeding_table()
 
 
 ## Clears the previous task's props off the table.
@@ -764,6 +795,10 @@ func _clear_other_handlers_objects() -> void:
 func _on_task_completed(task_id: String, stars: int) -> void:
 	_progress_dots.call("mark_current_done")
 	_play_happy_reaction()
+	if _feeding_open and _feeding_table != null and _feeding_table.has_method("on_task_completed_externally"):
+		# A no-op when the stage delivered it itself; makes Bunny celebrate when
+		# the task ended some other way.
+		_feeding_table.call("on_task_completed_externally", task_id)
 	# The single writer. `RewardManager` routes this through the process-wide
 	# `RewardLedger`, so a re-fired signal, a retry or a reloaded scene cannot
 	# make the same task pay twice.
@@ -790,6 +825,7 @@ func _on_mission_completed(_mission_id: String, _stars_earned: int) -> void:
 	_update_mic_visual()
 	_progress_dots.call("clear")
 	_quiet_activity_objects()
+	_close_feeding_table()
 	_set_baby_view_state("happy")
 
 	var ledger: RefCounted = RewardManager.shared_ledger()
@@ -797,7 +833,12 @@ func _on_mission_completed(_mission_id: String, _stars_earned: int) -> void:
 	if ledger != null and ledger.has_method("get_session_stars"):
 		session_stars = int(ledger.call("get_session_stars"))
 
-	_show_summary(session_stars, _reward_manager.get_stars(), _mission_new_stickers, _rate_and_record_level(_mission_id))
+	var level_result: Dictionary = _rate_and_record_level(_mission_id)
+	if not _mission_half_stars.is_empty():
+		# Additive: the summary draws these as "almost" half stars. It never
+		# touches the level rating or the star total.
+		level_result["almostStars"] = _mission_half_stars.size()
+	_show_summary(session_stars, _reward_manager.get_stars(), _mission_new_stickers, level_result)
 
 
 ## Rates the run that just ended, stores the level's best-ever rating and works
@@ -876,6 +917,8 @@ func _on_mission_prompt_changed(prompt: String, thai_hint: String) -> void:
 	var hint: String = thai_hint if _thai_hints_enabled() else ""
 	_thai_hint_label.text = hint
 	_thai_hint_label.visible = not hint.strip_edges().is_empty()
+	if _feeding_open and _feeding_table != null and _feeding_table.has_method("set_prompt"):
+		_feeding_table.call("set_prompt", prompt, hint)
 
 
 func _on_speak_button_enabled(enabled: bool) -> void:
@@ -1103,9 +1146,15 @@ func _refresh_input_blocking() -> void:
 	if viewport != null:
 		viewport.physics_object_picking = not blocked
 
-	var room_visible: bool = not blocked
+	var room_visible: bool = not blocked and not _feeding_open
 	_progress_dots.visible = room_visible and _progress_dots.call("get_total") > 0
 	_sticker_button.visible = room_visible
+	# The highchair brings its own prompt bar and star counter (below this
+	# layer), so the room's step aside while it is up.
+	if _star_counter_panel != null:
+		_star_counter_panel.visible = not _feeding_open
+	if _top_stack != null:
+		_top_stack.visible = not _feeding_open
 	_refresh_level_caption()
 
 	# The grown-up gear sits top-right, where a full-screen child overlay puts
@@ -1114,9 +1163,10 @@ func _refresh_input_blocking() -> void:
 	if _parent_settings != null and is_instance_valid(_parent_settings):
 		_parent_settings.visible = _parent_settings_open or not blocked
 
-	if blocked:
+	if blocked or _feeding_open:
 		_next_button.visible = false
 		_mic_button.visible = false
+		_listening_label.visible = false
 	else:
 		_next_button.visible = _mode == Mode.MISSION and _runner != null \
 				and bool(_runner.call("is_running"))
@@ -1345,7 +1395,7 @@ func _update_mic_visual() -> void:
 	if speech != null and speech.has_method("is_available"):
 		available = bool(speech.is_available())
 
-	var usable: bool = available and not _is_overlay_open()
+	var usable: bool = available and not _is_overlay_open() and not _feeding_open
 	if _mode == Mode.MISSION:
 		usable = usable and _task_speak_enabled
 
@@ -1407,16 +1457,151 @@ func _restart_activity() -> void:
 	_feed_activity.start()
 
 
+## -- The highchair (feeding minigame) -----------------------------------------
+##
+## `feedApple`, `feedBanana`, `feedMilk` and `feedWater` play on a close-up stage
+## (`scenes/feeding/feeding_table.tscn`) instead of the spawn row. The stage is a
+## child of this room, parked at `FEEDING_TABLE_OFFSET`; opening it makes its
+## camera current and hides the room's own HUD, closing it hands the camera
+## back. `MissionRunner` stays the only source of truth: every delivery the
+## stage reports goes through `on_object_chosen()`, the same call a drop zone
+## makes, so the mode handler, the runner's award latch, `RewardManager` and the
+## ledger all behave exactly as before. `findIt` / `sayIt` tasks never come here.
+
+func _stages_task_externally(task: Variant) -> bool:
+	return FeedingRulesScript.handles_task(task)
+
+
+func is_feeding_table_open() -> bool:
+	return _feeding_open
+
+
+func get_feeding_table() -> Node3D:
+	return _feeding_table
+
+
+func _ensure_feeding_table() -> Node3D:
+	if _feeding_table != null and is_instance_valid(_feeding_table):
+		return _feeding_table
+	if not ResourceLoader.exists(FEEDING_TABLE_SCENE):
+		return null
+	var packed: Resource = load(FEEDING_TABLE_SCENE)
+	if packed == null or not (packed is PackedScene):
+		return null
+	var table: Node = (packed as PackedScene).instantiate()
+	if table == null or not (table is Node3D):
+		if table != null:
+			table.free()
+		return null
+	_feeding_table = table as Node3D
+	_feeding_table.name = "FeedingTable"
+	_feeding_table.position = FEEDING_TABLE_OFFSET
+	add_child(_feeding_table)
+	if _feeding_table.has_method("set_item_colors"):
+		_feeding_table.call("set_item_colors", _feeding_item_colors())
+	_feeding_table.connect("item_delivered", _on_feeding_item_delivered)
+	_feeding_table.connect("wrong_item", _on_feeding_item_delivered)
+	_feeding_table.connect("half_star", _on_feeding_half_star)
+	_feeding_table.connect("home_requested", _on_feeding_home)
+	_feeding_table.connect("back_requested", _on_feeding_back)
+	return _feeding_table
+
+
+## The foods take their colours from the content library, like the stickers.
+func _feeding_item_colors() -> Dictionary:
+	var colors: Dictionary = {}
+	if _library == null or not _library.has_method("get_object"):
+		return colors
+	for item_id: String in FeedingRulesScript.HANDLED_ITEMS:
+		var record: Dictionary = _library.call("get_object", item_id)
+		var hex: String = String(record.get("color", "")).strip_edges().trim_prefix("#")
+		if hex.length() == 6 and hex.is_valid_hex_number():
+			colors[item_id] = Color.html(hex)
+	return colors
+
+
+func _open_feeding_table(task: Dictionary) -> void:
+	var table: Node3D = _ensure_feeding_table()
+	if table == null:
+		# No stage in this build: the task still plays on the ordinary spawn
+		# row -- but the handler was told it would not, so put the choices back.
+		_close_feeding_table()
+		return
+	var object_id: String = String(task.get("objectId", ""))
+	var display_name: String = object_id
+	if _library != null and _library.has_method("get_object"):
+		var record: Dictionary = _library.call("get_object", object_id)
+		display_name = String(record.get("word", record.get("displayName", object_id)))
+	var hint: String = String(task.get("thaiHint", "")) if _thai_hints_enabled() else ""
+	table.call("set_task", task, display_name, hint)
+	table.call("set_star_count", _reward_manager.get_stars())
+	table.call("set_active", true)
+	_feeding_open = true
+	_refresh_input_blocking()
+
+
+func _close_feeding_table() -> void:
+	if not _feeding_open and (_feeding_table == null or not _feeding_table.visible):
+		return
+	_feeding_open = false
+	if _feeding_table != null and is_instance_valid(_feeding_table):
+		_feeding_table.call("clear_task")
+		_feeding_table.call("set_active", false)
+	if _camera != null and is_inside_tree():
+		_camera.current = true
+	_refresh_input_blocking()
+
+
+## The stage says which object reached Bunny's mouth -- right or wrong -- and
+## the runner decides what that means, exactly as it does for a drop zone.
+func _on_feeding_item_delivered(object_id: String) -> void:
+	if _mode == Mode.MISSION and _runner != null:
+		_runner.call("on_object_chosen", object_id)
+
+
+func _on_feeding_half_star(task_id: String) -> void:
+	if not task_id.is_empty() and not _mission_half_stars.has(task_id):
+		_mission_half_stars.append(task_id)
+
+
+## Home: save, then back to the menu. Nothing is lost -- every star was written
+## the moment it was earned.
+func _on_feeding_home() -> void:
+	_play_sfx(SFX_GENTLE_TAP)
+	var save_service: Node = _autoload("SaveService")
+	if save_service != null and save_service.has_method("save_profile"):
+		save_service.call("save_profile")
+	if _runner != null and _runner.has_method("cancel"):
+		_runner.call("cancel")
+	if ResourceLoader.exists(MAIN_MENU_SCENE):
+		get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+
+
+## Back on the stage is the room's Next: this task is set aside kindly, with no
+## penalty, and the mission carries on.
+func _on_feeding_back() -> void:
+	_play_sfx(SFX_GENTLE_TAP)
+	if _mode == Mode.MISSION and _runner != null:
+		_runner.call("skip_current_task")
+
+
 ## -- Star counter ---------------------------------------------------------
 
 func _set_star_count(total: int) -> void:
 	_star_count_label.text = str(total)
+	if _feeding_table != null and _feeding_table.has_method("set_star_count"):
+		_feeding_table.call("set_star_count", total)
 
 
 ## -- Encouragement --------------------------------------------------------
 
 func _show_encouragement(text: String) -> void:
 	if text.strip_edges().is_empty():
+		return
+	if _feeding_open and _feeding_table != null:
+		var hud: Node = _feeding_table.call("get_hud")
+		if hud != null and hud.has_method("show_encouragement"):
+			hud.call("show_encouragement", text)
 		return
 	_encouragement_label.text = text
 	_encouragement_label.visible = true
@@ -1437,7 +1622,9 @@ func _hide_encouragement() -> void:
 ## input_event/_input handlers (they call set_input_as_handled() on success),
 ## so this never double-delivers.
 func _unhandled_input(event: InputEvent) -> void:
-	if _is_overlay_open():
+	if _is_overlay_open() or _feeding_open:
+		# The highchair owns every touch while it is up; its own
+		# `_unhandled_input` runs the drag.
 		return
 
 	var is_press: bool = false

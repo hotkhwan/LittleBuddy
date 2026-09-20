@@ -28,6 +28,18 @@ const SFX_GENTLE_TAP: String = "gentle_tap"
 ## They are never summed -- see docs/PHASE1_CONTRACT.md.
 const MAX_LEVEL_STARS: int = 3
 
+## Half stars ("almost") shown on the summary, at most. A halved task is one the
+## child finished after a wrong try on the highchair; it pays 0 stars (see
+## `feeding_rules.gd`) and is shown here as a half star with a kind word, never
+## as a deduction.
+const MAX_ALMOST_STARS: int = 3
+const ALMOST_LINE: String = "So close!"
+
+## The panel is designed for the 1366x1024 canvas. On a shorter viewport (a
+## SubViewport in a harness, a small window) it scales down about its centre
+## rather than running off the bottom of the screen.
+const DESIGN_HEIGHT: float = 960.0
+
 ## What the child is told under the rating row, per rating.
 ##
 ## The entry that matters is index 0. `CLAUDE.md` and the slice contract both say
@@ -62,6 +74,10 @@ var _close_button: Button = null
 var _level_label: Label = null
 var _rating_row: Control = null
 var _rating_stars: Array[CanvasItem] = []
+var _almost_row: Control = null
+var _almost_stars: Array[CanvasItem] = []
+var _almost_label: Label = null
+var _center: Control = null
 
 var _celebration: Control = null
 var _shown: bool = false
@@ -106,6 +122,17 @@ func _ensure_resolved() -> void:
 		if star != null:
 			_rating_stars.append(star)
 
+	_almost_row = get_node_or_null("%AlmostRow") as Control
+	_almost_label = get_node_or_null("%AlmostLabel") as Label
+	_almost_stars = []
+	for index: int in range(MAX_ALMOST_STARS):
+		var half: CanvasItem = get_node_or_null("%%AlmostStar%d" % (index + 1)) as CanvasItem
+		if half != null:
+			_almost_stars.append(half)
+	_center = get_node_or_null("SafeArea/Center") as Control
+	if _center != null and not _center.resized.is_connected(_fit_panel):
+		_center.resized.connect(_fit_panel)
+
 	if _play_again_button != null and not _play_again_button.pressed.is_connected(_on_play_again_pressed):
 		_play_again_button.pressed.connect(_on_play_again_pressed)
 	if _next_button != null and not _next_button.pressed.is_connected(_on_next_pressed):
@@ -149,6 +176,7 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [],
 	var total: int = maxi(total_stars, 0)
 
 	_apply_level_result(level_result)
+	_apply_almost(int(level_result.get("almostStars", 0)) if typeof(level_result) == TYPE_DICTIONARY else 0)
 
 	if _earned_label != null:
 		_earned_label.text = "+%d" % earned
@@ -211,6 +239,39 @@ func reset() -> void:
 	if _earned_row != null:
 		_earned_row.visible = true
 	_apply_level_result({})
+	_apply_almost(0)
+
+
+## The "almost" row: one half star per halved task (capped), and a kind word.
+func _apply_almost(count: int) -> void:
+	var shown: int = clampi(count, 0, MAX_ALMOST_STARS)
+	if _almost_row != null:
+		_almost_row.visible = shown > 0
+	for index: int in range(_almost_stars.size()):
+		_almost_stars[index].visible = index < shown
+	if _almost_label != null:
+		_almost_label.text = ALMOST_LINE
+
+
+func get_almost_count() -> int:
+	var count: int = 0
+	for star: CanvasItem in _almost_stars:
+		if star.visible and _almost_row != null and _almost_row.visible:
+			count += 1
+	return count
+
+
+## Scales the centred panel down when the viewport is shorter than the design
+## height, so the buttons never fall off the bottom of a small frame.
+func _fit_panel() -> void:
+	if _center == null:
+		return
+	var height: float = _center.size.y
+	if height <= 0.0:
+		return
+	var factor: float = clampf(height / DESIGN_HEIGHT, 0.6, 1.0)
+	_center.pivot_offset = _center.size * 0.5
+	_center.scale = Vector2.ONE * factor
 
 
 # ---------------------------------------------------------------------------

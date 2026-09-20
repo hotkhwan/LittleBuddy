@@ -29,6 +29,9 @@ signal sticker_shown(sticker_id: String)
 const _StickerArt := preload("res://scripts/progression/sticker_art.gd")
 const _IconGlyph := preload("res://scripts/progression/icon_glyph.gd")
 const _StickerCell := preload("res://scripts/progression/sticker_cell.gd")
+## The glossy star -- the same one the summary's rating row and the highchair's
+## counter draw, so a star looks like the same star wherever it appears.
+const _RatingStar := preload("res://scripts/ui/rating_star.gd")
 
 # SFX names. Literal strings on purpose: this keeps the celebration decoupled
 # from the audio script's load order, and they match `SfxPlayer`'s constants.
@@ -39,7 +42,7 @@ const SFX_SUCCESS_CHIME: String = "success_chime"
 ## Hard cap on simultaneous star sprites -- delight, not a fireworks display.
 const MAX_STARS: int = 5
 
-const STAR_SIZE: float = 74.0
+const STAR_SIZE: float = 84.0
 const STAR_DURATION: float = 0.85
 const STICKER_SIZE: Vector2 = Vector2(200.0, 220.0)
 const STICKER_DURATION: float = 1.25
@@ -163,9 +166,8 @@ func chime() -> void:
 
 func _spawn_star(burst_origin: Vector2, index: int, total: int,
 		rise_distance: float = STAR_RISE) -> void:
-	var star: Control = _IconGlyph.new()
-	star.set("glyph", _IconGlyph.Glyph.STAR)
-	star.set("tint", STAR_COLOR)
+	var star: Control = _RatingStar.new()
+	star.call("set_state", _RatingStar.State.EARNED)
 	star.custom_minimum_size = Vector2(STAR_SIZE, STAR_SIZE)
 	star.size = Vector2(STAR_SIZE, STAR_SIZE)
 	star.mouse_filter = Control.MOUSE_FILTER_IGNORE

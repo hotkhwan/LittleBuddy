@@ -95,6 +95,12 @@ var _awarded_task_ids: Dictionary = {}
 var _gentle_attempts: int = 0
 var _advancing: bool = false
 
+## Bumped by `cancel()`. A task-gap timer armed by a mission that has since
+## been cancelled or restarted must not advance the NEW mission when it fires
+## -- without this, "Replay" pressed inside the 1.6 s gap after a completion
+## silently skipped the next mission's first task.
+var _delay_generation: int = 0
+
 var _library: Object = null
 var _context: Dictionary = {}
 var _handlers: Dictionary = {}
@@ -150,6 +156,7 @@ func start_mission(mission_id: String, library: Object, context: Dictionary = {}
 func cancel() -> void:
 	_running = false
 	_advancing = false
+	_delay_generation += 1
 	if _handler != null and _handler.has_method("cancel"):
 		_handler.call("cancel")
 	_handler = null
@@ -455,7 +462,13 @@ func _delay(seconds: float, callable: Callable) -> void:
 		callable.call()
 		return
 	var timer: SceneTreeTimer = tree.create_timer(seconds)
-	timer.timeout.connect(callable, CONNECT_ONE_SHOT)
+	timer.timeout.connect(_on_delay_due.bind(callable, _delay_generation), CONNECT_ONE_SHOT)
+
+
+func _on_delay_due(callable: Callable, generation: int) -> void:
+	if generation != _delay_generation:
+		return
+	callable.call()
 
 
 static func _reward_stars(task: Dictionary) -> int:

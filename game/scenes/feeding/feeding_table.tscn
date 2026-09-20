@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/feeding/feeding_table.gd" id="1_feeding_table"]
+
+; The highchair close-up. Everything -- backdrop, chair, tray, Bunny, camera and
+; the 2D HUD -- is built in `feeding_table.gd::build()` from primitives, so the
+; stage runs headless and needs no art files. Instanced by baby_room.gd for the
+; four drag-to-mouth feeding tasks; see feeding_rules.gd::handles_task().
+
+[node name="FeedingTable" type="Node3D"]
+script = ExtResource("1_feeding_table")

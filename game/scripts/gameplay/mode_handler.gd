@@ -53,6 +53,14 @@ const CTX_TTS: String = "tts"                     # Node with speak()
 const CTX_SPEECH: String = "speech"               # Node with start_listening()
 const CTX_THAI_HINTS: String = "thaiHints"        # bool
 const CTX_REVIEW: String = "review"               # Dictionary, vocabulary review state
+## Callable(task: Dictionary) -> bool. When it answers true for the task being
+## played, a dedicated stage (the highchair, `scripts/feeding/`) is showing the
+## choices instead of this handler: nothing is spawned here, a wrong choice
+## halves the task's credit (paid as 0 -- see `feeding_rules.gd`), and the
+## repeat is the ask itself rather than the "Can you say ...?" invite, because
+## that stage has no microphone. Everything else -- the latch, the gentle-attempt
+## count, `task_completed` -- is untouched, so the runner needs no second path.
+const CTX_EXTERNAL_STAGE: String = "externalStage"
 
 const VOCABULARY_REVIEW_SCRIPT_PATH: String = "res://scripts/content/vocabulary_review.gd"
 
@@ -136,7 +144,12 @@ func _set_all_markers_visible(value: bool) -> void:
 		return
 	for key: Variant in (zones as Dictionary).keys():
 		var zone: Variant = (zones as Dictionary)[key]
-		if zone is Node and is_instance_valid(zone) and zone.has_method("set_marker_visible"):
+		# `is_instance_valid()` FIRST: a cached handler can outlive the activity
+		# scene that owned these zones (a mission restart frees it), and `is` on
+		# a freed instance is itself an error.
+		if not is_instance_valid(zone):
+			continue
+		if zone is Node and zone.has_method("set_marker_visible"):
 			zone.call("set_marker_visible", value)
 
 
@@ -152,7 +165,9 @@ func _reveal_target_zone_marker() -> void:
 	if not (zones is Dictionary) or not (zones as Dictionary).has(zone_id):
 		return
 	var zone: Variant = (zones as Dictionary)[zone_id]
-	if zone is Node and is_instance_valid(zone) and zone.has_method("set_marker_visible"):
+	if not is_instance_valid(zone):
+		return
+	if zone is Node and zone.has_method("set_marker_visible"):
 		zone.call("set_marker_visible", true)
 
 
@@ -229,6 +244,24 @@ func get_reward_stars() -> int:
 	return 1
 
 
+## What `_succeed()` actually pays. Identical to `get_reward_stars()` unless an
+## external stage is showing the task and the child already needed a retry --
+## then the star is halved, and a half star is an integer 0 all the way down the
+## reward path while the stage draws the "almost" (see `feeding_rules.gd`).
+func get_earned_stars() -> int:
+	if is_staged_externally() and _attempts > 0:
+		return 0
+	return get_reward_stars()
+
+
+## True when `CTX_EXTERNAL_STAGE` claims the task on screen.
+func is_staged_externally() -> bool:
+	var probe: Variant = _context.get(CTX_EXTERNAL_STAGE, null)
+	if probe is Callable and (probe as Callable).is_valid():
+		return bool((probe as Callable).call(_task))
+	return false
+
+
 func get_spawned_objects() -> Array:
 	return _spawned.duplicate()
 
@@ -258,7 +291,7 @@ func _succeed() -> void:
 	speak_button_enabled.emit(false)
 	_set_objects_enabled(false)
 	encouragement.emit(_pick(SUCCESS_PHRASES))
-	task_completed.emit(get_task_id(), get_reward_stars())
+	task_completed.emit(get_task_id(), get_earned_stars())
 
 
 ## A wrong answer is NOT a failure state: the task stays active, the object goes
@@ -269,7 +302,10 @@ func _gentle_retry(object_id: String = "") -> void:
 		return
 	_attempts += 1
 	_return_object_home(object_id)
-	encouragement.emit(_pick(GENTLE_PHRASES))
+	# An external stage has already said its own, more specific kind thing
+	# ("Try the apple!"); a second generic phrase on top would just flicker.
+	if not is_staged_externally():
+		encouragement.emit(_pick(GENTLE_PHRASES))
 	_repeat_prompt()
 	# Emitted LAST on purpose: `MissionRunner` may respond by moving to the next
 	# task, and the outgoing task must not then overwrite the new task's prompt.
@@ -278,7 +314,7 @@ func _gentle_retry(object_id: String = "") -> void:
 
 func _repeat_prompt() -> void:
 	var repeat: String = String(_task.get("repeatPrompt", "")).strip_edges()
-	if repeat.is_empty():
+	if repeat.is_empty() or is_staged_externally():
 		repeat = get_prompt()
 	prompt_changed.emit(repeat, get_thai_hint())
 	_speak(repeat)
@@ -289,6 +325,8 @@ func _repeat_prompt() -> void:
 ## Builds the touchable choice set. A no-op when the context has no anchor
 ## (headless/unit-test use) -- the mode stays drivable via `on_object_chosen()`.
 func _spawn_choices(object_ids: Array, zone_id: String = "") -> void:
+	if is_staged_externally():
+		return
 	var anchor: Node = _context.get(CTX_OBJECT_ANCHOR, null)
 	if anchor == null or not (anchor is Node3D):
 		return
@@ -346,7 +384,7 @@ func _zone_for(zone_id: String) -> Node:
 	if typeof(zones) != TYPE_DICTIONARY:
 		return null
 	var zone: Variant = (zones as Dictionary).get(zone_id, null)
-	if zone is Node:
+	if is_instance_valid(zone) and zone is Node:
 		return zone as Node
 	return null
 

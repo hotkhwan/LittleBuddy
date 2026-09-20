@@ -158,7 +158,38 @@ func _draw() -> void:
 	var art: Rect2 = Rect2(
 		card.position + Vector2(inset, inset * 0.8),
 		Vector2(card.size.x - inset * 2.0, maxf(art_height, 24.0)))
+	# A soft warm shadow under the sticker lifts it off the card -- the pillowy
+	# look of the owner's UI sheet. Warm ink, never grey, never black.
+	if _unlocked:
+		var shadow_centre: Vector2 = art.position + Vector2(art.size.x * 0.5, art.size.y * 0.9)
+		_draw_soft_ellipse(shadow_centre, Vector2(art.size.x * 0.34, art.size.y * 0.07), Color(SHADOW, 0.16))
 	_StickerArt.draw_sticker(self, _sticker, art, not _unlocked)
+	if _unlocked:
+		_draw_sparkle(card.position + Vector2(card.size.x * 0.86, card.size.y * 0.12), card.size.x * 0.05)
+
+
+## Warm ink, per the palette; the only dark this game uses.
+const SHADOW: Color = Color(0.349, 0.259, 0.169)
+const SPARKLE: Color = Color(1.0, 0.78, 0.239)
+
+
+func _draw_soft_ellipse(centre: Vector2, radii: Vector2, color: Color) -> void:
+	var points: PackedVector2Array = PackedVector2Array()
+	for i: int in range(24):
+		var angle: float = float(i) / 24.0 * TAU
+		points.append(centre + Vector2(cos(angle) * radii.x, sin(angle) * radii.y))
+	draw_colored_polygon(points, color)
+
+
+## A little four-point sparkle, like the one on the sheet's Stickers tile.
+func _draw_sparkle(centre: Vector2, radius: float) -> void:
+	var points: PackedVector2Array = PackedVector2Array()
+	for i: int in range(8):
+		var r: float = radius if i % 2 == 0 else radius * 0.32
+		var angle: float = -PI * 0.5 + float(i) * PI / 4.0
+		points.append(centre + Vector2(cos(angle), sin(angle)) * r)
+	draw_colored_polygon(points, SPARKLE)
+	draw_circle(centre + Vector2(radius * 1.6, radius * 1.1), radius * 0.28, SPARKLE)
 
 
 func _gui_input(event: InputEvent) -> void:
