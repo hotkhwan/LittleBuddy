@@ -57,7 +57,7 @@ extends RefCounted
 ## in a member initialiser) and builds its address from `TutorFlags.backend_url()`.
 const NETWORK_ALLOWLIST: Array[String] = [
 	# Agent F -- server-authoritative quota/entitlement client (cloud only):
-	# "res://scripts/tutor/quota/tutor_quota_client.gd",
+	"res://scripts/tutor/quota/cloud_quota_client.gd",
 	# Agent E -- cloud conversation provider (POST turns to the backend):
 	# "res://scripts/tutor/providers/backend_conversation_provider.gd",
 	# Agent E -- cloud synthesis provider (backend TTS bytes, flag-gated):

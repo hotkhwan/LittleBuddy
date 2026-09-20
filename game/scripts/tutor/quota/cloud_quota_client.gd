@@ -37,11 +37,13 @@ const KIND_ENTITLEMENT: String = "entitlement"
 const SESSIONS_PATH: String = "/api/v1/tutor/sessions"
 const ENTITLEMENT_PATH: String = "/api/v1/tutor/entitlement"
 
+const TutorFlagsScript := preload("res://scripts/tutor/tutor_flags.gd")
+
 var _base_url: String = ""
 var _client_id: String = ""
 var _approval_token: String = ""
 var _session_id: String = ""
-var _request: HTTPRequest = null
+var _request: Node = null  # an HTTPRequest, built only after the flag check below
 var _in_flight: String = ""
 var _turn_counter: int = 0
 var _timeout_seconds: float = float(QuotaConfig.DEFAULT_CLOUD_TIMEOUT_SECONDS)
@@ -54,7 +56,16 @@ func _ready() -> void:
 ## `base_url` from `TutorFlags.backend_url()`; `client_id` a per-install id;
 ## `approval_token` from the server after the parental gate (never invented here).
 func configure(base_url: String, client_id: String, approval_token: String = "") -> void:
-	_base_url = base_url.strip_edges().trim_suffix("/")
+	# Never configured while the cloud tutor is off: the first thing this file
+	# does with the network is ask the flag.
+	if not TutorFlagsScript.cloud_enabled():
+		_base_url = ""
+		return
+	# The address always comes from the flag file: an empty or foreign base
+	# collapses to TutorFlags.backend_url(), so no other URL can be dialled.
+	var configured: String = base_url.strip_edges().trim_suffix("/")
+	var allowed: String = String(TutorFlagsScript.backend_url()).strip_edges().trim_suffix("/")
+	_base_url = allowed if configured.is_empty() or configured != allowed else configured
 	_client_id = client_id.strip_edges()
 	_approval_token = approval_token.strip_edges()
 	_timeout_seconds = float(QuotaConfig.cloud_timeout_seconds())
@@ -133,6 +144,10 @@ func forget_session() -> void:
 func _ensure_request_node() -> void:
 	if _request != null:
 		return
+	# Checked here as well as by TutorQuota: this file is on the privacy guard's
+	# network allowlist and must never build a request while the cloud is off.
+	if not TutorFlagsScript.cloud_enabled():
+		return
 	_request = HTTPRequest.new()
 	_request.name = "Request"
 	_request.use_threads = false
@@ -154,6 +169,10 @@ func _send(kind: String, method: int, path: String, body: Dictionary, extra_head
 				"The cloud client is not in the scene tree.")
 		return false
 	_ensure_request_node()
+	if _request == null:
+		_fail_now(kind, BackendResponse.STATE_PROVIDER_UNAVAILABLE, "cloud_disabled",
+				"The cloud tutor is off in this build.")
+		return false
 	_request.timeout = _timeout_seconds
 	var headers: PackedStringArray = PackedStringArray(["content-type: application/json", "accept: application/json"])
 	for header: Variant in extra_headers:
