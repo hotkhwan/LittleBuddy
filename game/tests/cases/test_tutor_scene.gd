@@ -653,3 +653,32 @@ func _test_idle_interruption_is_not_an_attempt():
 		failures.append("an idle interruption must not count as an attempt on the new step")
 	_free(scene)
 	return failures
+
+
+## QA C1: a long silence in the hands-free classroom must make Aliz ask again
+## (the scene owns the lesson), never raise a script error and never end the turn.
+func _test_long_pause_asks_again():
+	var failures: Array = []
+	var scene: Node = _make()
+	if not _reach_first_question(scene):
+		failures.append("never reached the first question")
+		_free(scene)
+		return failures
+	var session: Object = scene.voice_session()
+	if session == null or not session.has_signal("long_pause"):
+		_free(scene)
+		return failures
+	var paused: Array = []
+	session.connect("long_pause", func() -> void: paused.append(true))
+	var step_before: String = String(scene.current_step().get("stepId", ""))
+	scene.simulate("silence")
+	if _until(scene, func() -> bool: return not paused.is_empty(), 500) < 0:
+		failures.append("3.5 s of silence should raise long_pause (state %s)" % scene.state())
+	if _until(scene, func() -> bool: return scene.state() == "speaking", 200) < 0:
+		failures.append("after a long pause Aliz should ask again (state %s)" % scene.state())
+	if _until(scene, func() -> bool: return _ready_to_answer(scene), 600) < 0:
+		failures.append("after asking again the mic should reopen (state %s)" % scene.state())
+	if String(scene.current_step().get("stepId", "")) != step_before:
+		failures.append("a silence must not move the lesson (was %s, now %s)" % [step_before, scene.current_step().get("stepId")])
+	_free(scene)
+	return failures

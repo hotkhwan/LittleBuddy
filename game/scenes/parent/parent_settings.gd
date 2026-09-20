@@ -258,6 +258,9 @@ func set_standalone(value: bool) -> void:
 ## so the host takes the overlay down and gives the room back.
 func show_gate_card() -> void:
 	_card_requested = true
+	if _panel == null:
+		# Asked before the scene is in the tree: _ready() shows the card itself.
+		return
 	if not _panel.visible:
 		_show_locked()
 

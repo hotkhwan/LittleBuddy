@@ -356,6 +356,7 @@ func _make_session() -> Object:
 	_connect_if(session, "child_speech_ended", _on_child_speech_ended)
 	_connect_if(session, "partial_transcript", _on_partial_transcript)
 	_connect_if(session, "barge_in", _on_barge_in)
+	_connect_if(session, "long_pause", _on_long_pause)
 	_connect_if(session, "session_ended", _on_session_ended)
 	return session
 
@@ -867,6 +868,13 @@ func _on_child_speech_ended(transcript: String) -> void:
 	if _state != STATE_LISTENING:
 		return
 	_heard(transcript)
+
+
+## The child stayed quiet: Aliz asks the same thing again, kindly, and keeps listening.
+func _on_long_pause() -> void:
+	if _state != STATE_LISTENING or _closing:
+		return
+	repeat_prompt()
 
 
 ## The child interrupted Aliz: stop at once, turn, listen.

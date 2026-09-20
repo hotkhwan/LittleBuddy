@@ -68,6 +68,8 @@ signal session_ended(reason: String)
 signal capture_changed(capturing: bool)
 signal turn_applied(turn: Dictionary, action: String)
 signal reprompted(count: int)
+## Capture-only: the child stayed quiet for a long while; the owner of the lesson loop decides.
+signal long_pause()
 
 const VadScript := preload("res://scripts/tutor/voice/vad.gd")
 const ConversationProviderScript := preload("res://scripts/tutor/providers/conversation_provider.gd")
@@ -593,6 +595,10 @@ func _reprompt() -> void:
 	_reprompts += 1
 	_reprompt_total += 1
 	reprompted.emit(_reprompts)
+	if _capture_only or _engine == null:
+		# No lesson here: the scene re-asks (or moves on) and the mic stays open.
+		long_pause.emit()
+		return
 	if _reprompts > MAX_REPROMPTS_PER_STEP:
 		_request_turn("", ConversationProviderScript.PHASE_TOGETHER)
 		return
