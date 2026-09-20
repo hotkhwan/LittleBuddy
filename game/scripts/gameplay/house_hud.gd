@@ -39,7 +39,7 @@ const Presentation := preload("res://scripts/ui/hud_presentation.gd")
 const PauseMenuScript := preload("res://scripts/ui/pause_menu.gd")
 const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
 const SafeAreaScript := preload("res://scripts/ui/safe_area.gd")
-const GameVersion := preload("res://scripts/content_packs/game_version.gd")
+const Localization := preload("res://scripts/localization/localization.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 
@@ -75,7 +75,7 @@ const WORD_SECONDS: float = 3.2
 const DOT_SIZE: float = 26.0
 const DOT_GAP: float = 12.0
 
-## -- Home, and the version --------------------------------------------------------
+## -- Home -----------------------------------------------------------------------------
 ##
 ## Home is the way out. It sits top-right, round, peach, with the title
 ## screen's own house on it, and it is the one control a grown-up can find
@@ -89,13 +89,9 @@ const HOME_RIGHT: float = -36.0
 ## Space the level caption gives up so it never runs under Home.
 const CAPTION_RIGHT: float = HOME_RIGHT - HOME_SIZE - 20.0
 
-## The build number, bottom-right, small and out of everybody's way. It is
-## not for the child; it is for the owner reading a screenshot.
-const VERSION_FONT_SIZE: int = 16
-const VERSION_WIDTH: float = 170.0
-const VERSION_HEIGHT: float = 22.0
-## Clear air between the label and Next when the safe area pushes it up.
-const VERSION_CLEARANCE: float = 6.0
+## The build number is NOT shown in the room any more (2026-09-20): it lives on
+## the title screen only, where the owner reads it from a screenshot without
+## it sharing the child's play space. `has_version_label()` stays false.
 
 ## -- Where the two child-facing buttons live --------------------------------
 ##
@@ -159,28 +155,10 @@ static func home_button_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(viewport_size.x + HOME_RIGHT - HOME_SIZE, HOME_TOP, HOME_SIZE, HOME_SIZE)
 
 
-## Where the version label lands, given the safe-area `insets` (left, top,
-## right, bottom) for that viewport.
-##
-## Bottom-right, tucked under Next by default. When the device's bottom inset
-## (an iPhone home indicator) would push it up into Next, it moves ABOVE Next
-## instead of sitting under either -- and it is never anywhere near the
-## thumbstick, which owns the bottom-LEFT. `test_interaction_ux.gd` asserts all
-## three at every shipped aspect.
-static func version_label_rect(viewport_size: Vector2, insets: Vector4 = Vector4.ZERO) -> Rect2:
-	var right: float = viewport_size.x - maxf(insets.z, -NEXT_RIGHT)
-	var bottom: float = viewport_size.y - maxf(insets.w, 8.0)
-	var rect: Rect2 = Rect2(right - VERSION_WIDTH, bottom - VERSION_HEIGHT, VERSION_WIDTH, VERSION_HEIGHT)
-	var next: Rect2 = button_rects(viewport_size)["next"]
-	if rect.intersects(next.grow(VERSION_CLEARANCE)):
-		rect.position.y = next.position.y - VERSION_CLEARANCE - VERSION_HEIGHT
-	return rect
-
-
 var _prompt: Label = null
 var _hint: Label = null
+var _prompt_thai_hint: String = ""
 var _home_button: Button = null
-var _version: Label = null
 var _pause_menu: Control = null
 var _settings_overlay: Node = null
 var _affordance: Control = null
@@ -394,17 +372,6 @@ func build() -> void:
 	_home_button.add_child(house)
 	_home_button.pressed.connect(open_pause_menu)
 
-	_version = _add_label("Version", VERSION_FONT_SIZE, CREAM)
-	_version.add_theme_constant_override("outline_size", 6)
-	_version.text = GameVersion.BUILD
-	_version.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_version.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_place_version()
-	if is_inside_tree():
-		var viewport: Viewport = get_viewport()
-		if viewport != null and not viewport.size_changed.is_connected(_place_version):
-			viewport.size_changed.connect(_place_version)
-
 	_apply_mode(true)
 
 
@@ -541,7 +508,7 @@ func _apply_mode(initial: bool) -> void:
 		_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_place(_hint, l["hintRect"])
 	_hint.add_theme_font_size_override("font_size", int(l["hintSize"]))
-	_hint.horizontal_alignment = _prompt.horizontal_alignment
+	_hint.horizontal_alignment = _helper_alignment(_prompt.horizontal_alignment)
 
 	_encouragement.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	_place(_encouragement, l["encouragementRect"])
@@ -664,8 +631,7 @@ func show_word(word: String, thai_hint: String = "") -> void:
 		return
 	_word.text = text
 	_word.visible = true
-	_word_thai.text = thai_hint.strip_edges()
-	_word_thai.visible = not _word_thai.text.is_empty()
+	_set_helper_text(_word_thai, text, thai_hint)
 
 	_word_generation += 1
 	var generation: int = _word_generation
@@ -710,9 +676,66 @@ func set_prompt(text: String, thai_hint: String = "") -> void:
 	if text != _prompt.text:
 		_end_reward()
 	_prompt.text = text
-	_hint.text = thai_hint
+	_prompt_thai_hint = thai_hint
+	_set_helper_text(_hint, text, thai_hint)
 	refresh_presentation()
 	_refresh_visibility()
+
+
+## Re-derives the helper lines from the current language without a new prompt.
+## The parent settings apply a language change to `Localization` at once; a HUD
+## that is on screen at the time calls this (the pause path does, on close) so
+## the line under the prompt changes with no restart.
+func refresh_helper_language() -> void:
+	build()
+	_set_helper_text(_hint, _prompt.text, _prompt_thai_hint)
+	_refresh_visibility()
+
+
+## The helper line under an English line: the family's language, from
+## `Localization`, honouring the content author's Thai when Thai is chosen and
+## laying Arabic out right-to-left. Empty (and hidden) when the helper is off or
+## nothing is translated.
+func _set_helper_text(label: Label, english: String, thai_hint: String) -> void:
+	if label == null:
+		return
+	# The profile is the source of truth when there is one; without a SaveService
+	# (a test, a bare scene) whatever `Localization` was last told stands.
+	var service: Node = _save_service()
+	if service != null:
+		Localization.sync_from_settings(service)
+	var text: String = Localization.helper_line(english, thai_hint)
+	label.text = text
+	label.visible = not text.is_empty()
+	var rtl: bool = Localization.is_rtl()
+	label.text_direction = Control.TEXT_DIRECTION_RTL if rtl else Control.TEXT_DIRECTION_AUTO
+	if not rtl:
+		label.language = ""
+	else:
+		label.language = Localization.helper_language()
+	label.horizontal_alignment = _helper_alignment(label.horizontal_alignment)
+
+
+## Centred lines stay centred in every script; a left-aligned helper line
+## flips to the right for a right-to-left language, and back when it changes.
+static func _helper_alignment(base: int) -> int:
+	if Localization.is_rtl():
+		return HORIZONTAL_ALIGNMENT_RIGHT if base == HORIZONTAL_ALIGNMENT_LEFT else base
+	return HORIZONTAL_ALIGNMENT_LEFT if base == HORIZONTAL_ALIGNMENT_RIGHT else base
+
+
+## The current helper language's code, for tests and the runbook.
+func get_helper_language() -> String:
+	return Localization.helper_language()
+
+
+## The SaveService autoload, or null. Resolved through the main loop so a HUD
+## built outside a running scene (a test) gets null instead of an engine error.
+func _save_service() -> Node:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(NodePath("SaveService"))
 
 
 func get_prompt() -> String:
@@ -932,14 +955,11 @@ func get_home_button() -> Button:
 	return _home_button
 
 
-func get_version_label() -> Label:
+## The room shows no build number; the title screen does. Kept as a method so
+## a test can state the rule.
+func has_version_label() -> bool:
 	build()
-	return _version
-
-
-func get_version_text() -> String:
-	build()
-	return _version.text
+	return find_child("Version", true, false) != null
 
 
 func get_affordance_layer() -> Control:
@@ -1017,6 +1037,9 @@ func _on_grown_ups_closed() -> void:
 		overlay.queue_free()
 	else:
 		_settings_overlay = null
+	# A grown-up may have changed the helper language: the line under the prompt
+	# follows at once, no restart.
+	refresh_helper_language()
 	_set_world_paused(false)
 
 
@@ -1120,8 +1143,8 @@ func _bind_affordance() -> void:
 
 
 ## The screen rects the badge must never cover, from this HUD's own layout:
-## Home, the star counter, the version label, and Next / Speak while they are
-## up. The thumbstick's zone the layer reads from the world itself.
+## Home, the star counter, and Next / Speak while they are up. The thumbstick's
+## zone the layer reads from the world itself.
 func _push_keep_outs() -> void:
 	if _affordance == null or not is_instance_valid(_affordance) \
 			or not _affordance.has_method("set_keep_out"):
@@ -1139,28 +1162,7 @@ func _push_keep_outs() -> void:
 			Rect2(_stars.offset_left, _stars.offset_top,
 				_stars.offset_right - _stars.offset_left, _stars.offset_bottom - _stars.offset_top)
 			if _stars.visible else Rect2())
-	_affordance.call("set_keep_out", "version",
-			version_label_rect(view, SafeAreaScript.insets_for(view)))
-
-
-func _place_version() -> void:
-	if _version == null:
-		return
-	var view: Vector2 = Vector2(1366.0, 1024.0)
-	if is_inside_tree():
-		var rect_size: Vector2 = get_viewport_rect().size
-		if rect_size.x > 0.0 and rect_size.y > 0.0:
-			view = rect_size
-	var rect: Rect2 = version_label_rect(view, SafeAreaScript.insets_for(view))
-	_version.offset_left = rect.position.x
-	_version.offset_top = rect.position.y
-	_version.offset_right = rect.end.x
-	_version.offset_bottom = rect.end.y
-
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_RESIZED and _built:
-		_place_version()
+	_affordance.call("set_keep_out", "version", Rect2())
 
 
 ## -- Construction helpers ------------------------------------------------------

@@ -62,8 +62,7 @@ func test_name() -> String:
 
 func run():
 	var failures: Array = []
-	failures.append_array(_test_version_label_reads_the_build())
-	failures.append_array(_test_version_label_keeps_clear_of_next_and_the_stick())
+	failures.append_array(_test_version_label_is_not_in_the_room())
 	failures.append_array(_test_home_button_is_there_and_clear_of_the_caption())
 	failures.append_array(_test_pause_menu_buttons_are_wired())
 	failures.append_array(_test_home_asks_the_world_to_leave())
@@ -79,55 +78,18 @@ func run():
 # Version
 # ---------------------------------------------------------------------------
 
-func _test_version_label_reads_the_build():
+## Changed deliberately 2026-09-20: the build number moved to the title screen
+## (Agent B). The room shows no version label at all, and nothing reserves a
+## keep-out for one.
+func _test_version_label_is_not_in_the_room():
 	var failures: Array = []
 	var hud: Control = HouseHud.new()
 	hud.call("build")
-	var text: String = String(hud.call("get_version_text"))
-	if text != GameVersion.BUILD:
-		failures.append("interaction_ux: the version label says '%s'; GameVersion.BUILD is '%s'" % [text, GameVersion.BUILD])
-	if not GameVersion.is_valid(text):
-		failures.append("interaction_ux: the version label '%s' is not MAJOR.MINOR.PATCH" % text)
-	var label: Label = hud.call("get_version_label")
-	if label == null or not label.visible:
-		failures.append("interaction_ux: the version label is missing or hidden")
-	elif label.get_theme_font_size("font_size") > 20:
-		failures.append("interaction_ux: the version label is %d pt; it is not for the child and must stay small"
-				% label.get_theme_font_size("font_size"))
+	if bool(hud.call("has_version_label")):
+		failures.append("interaction_ux: the room HUD still carries a version label; it belongs on the title screen only")
 	hud.free()
 	return failures
 
-
-func _test_version_label_keeps_clear_of_next_and_the_stick():
-	var failures: Array = []
-	for view: Vector2 in VIEWPORTS:
-		for insets: Vector4 in [Vector4(24.0, 16.0, 24.0, 16.0), Vector4(24.0, 16.0, 24.0, 44.0), Vector4(60.0, 16.0, 60.0, 34.0)]:
-			var rect: Rect2 = HouseHud.version_label_rect(view, insets)
-			var next: Rect2 = HouseHud.button_rects(view)["next"]
-			if rect.intersects(next):
-				failures.append("interaction_ux: at %s with insets %s the version label %s sits under Next %s"
-						% [str(view), str(insets), str(rect), str(next)])
-			if not Rect2(Vector2.ZERO, view).encloses(rect):
-				failures.append("interaction_ux: at %s the version label %s leaves the screen" % [str(view), str(rect)])
-			if rect.position.x < view.x * 0.5 or rect.position.y < view.y * 0.5:
-				failures.append("interaction_ux: at %s the version label %s is not bottom-right" % [str(view), str(rect)])
-			if rect.end.y > view.y - insets.w + 0.01:
-				failures.append("interaction_ux: at %s the version label %s ignores the bottom inset %.0f"
-						% [str(view), str(rect), insets.w])
-			var stick: Control = Joystick.new()
-			stick.size = view
-			stick.call("build")
-			var zone: Rect2 = stick.call("get_activation_rect")
-			if zone.size != Vector2.ZERO and rect.intersects(zone):
-				failures.append("interaction_ux: at %s the version label %s sits in the thumbstick zone %s"
-						% [str(view), str(rect), str(zone)])
-			stick.free()
-	return failures
-
-
-# ---------------------------------------------------------------------------
-# Home
-# ---------------------------------------------------------------------------
 
 func _test_home_button_is_there_and_clear_of_the_caption():
 	var failures: Array = []
@@ -424,8 +386,9 @@ func _test_hud_adopts_the_world_layer_and_forwards_its_rules():
 
 	# Keep-outs: Home and the stars always; Next only while it is up.
 	var rects: Array = world_layer.call("get_keep_out_rects")
-	if rects.size() < 3:
-		failures.append("interaction_ux: the HUD pushed only %d keep-out rect(s); expected Home, stars and version at least" % rects.size())
+	# Home and the stars (the version keep-out went with the version label, 2026-09-20).
+	if rects.size() < 2:
+		failures.append("interaction_ux: the HUD pushed only %d keep-out rect(s); expected Home and stars at least" % rects.size())
 	var before: int = rects.size()
 	hud.call("set_skip_visible", true)
 	if (world_layer.call("get_keep_out_rects") as Array).size() != before + 1:
