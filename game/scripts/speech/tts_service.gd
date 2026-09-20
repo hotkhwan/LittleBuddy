@@ -254,6 +254,13 @@ func speak(text: String, interrupt: bool = true) -> void:
 	var line: String = text.strip_edges()
 	if line.is_empty():
 		return
+	# The same words are already being said (two paths asked for one prompt --
+	# the voice pack's cue and a mode handler's own call): say them once. An
+	# interrupting repeat still supersedes whatever was queued behind them.
+	if _is_speaking and _current_text == line:
+		if interrupt:
+			_queue.clear()
+		return
 
 	if interrupt:
 		if _reaction_is_protected():

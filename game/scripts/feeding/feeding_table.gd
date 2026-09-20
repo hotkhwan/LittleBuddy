@@ -65,6 +65,12 @@ const HudScript := preload("res://scripts/feeding/feeding_hud.gd")
 const _Palette := preload("res://scripts/ui/palette.gd")
 const BabyAvatarScript := preload("res://scripts/characters/little_buddy/baby_little_buddy.gd")
 const BabyViewScript := preload("res://scripts/baby/baby_view_3d.gd")
+## The voice pack (2026-09-20): Aliz asks with her learning line, Bunny answers
+## with "Yummy!", "More, please!", "Thank you, Aliz!" and sulks with "Hmph!" on
+## a wrong item. Every cue is a null-guarded one-liner through `VoiceBridge`;
+## without the `Voice` autoload the highchair speaks exactly as it did before.
+const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
+const VoiceCues := preload("res://scripts/voice/voice_cues.gd")
 
 ## Stage layout, metres, local. Bunny's mouth sits ~0.45 m up (measured from the
 ## rig's socket), so the tray is just under his chin and hides his legs.
@@ -94,6 +100,8 @@ const CELEBRATE_SECONDS: float = 1.4
 const AUTO_GLIDE_SECONDS: float = 0.55
 const HOP_HEIGHT: float = 0.05
 
+## The bite that is half-way through the meal: Bunny asks for "More, please!".
+const HALFWAY_BITE: int = int(ceil(float(Rules.BITES) / 2.0))
 const SFX_POP: String = "soft_pop"
 const SFX_PICKUP: String = "pickup"
 const SFX_RETURN: String = "drop_return"
@@ -259,6 +267,11 @@ func set_task(task: Dictionary, display_name: String = "", helper: String = "") 
 	_lay_table()
 	var english: String = String(_task.get("instruction", _task.get("prompt", ""))).strip_edges()
 	set_prompt(english, helper)
+	# Aliz's learning line for this item, after whatever the mission is saying
+	# (never cutting the instruction); Bunny asks for a bottle when it is one.
+	_cue(VoiceCues.EVENT_TASK, _target_id, {"queue": true})
+	if _target_id == "milk":
+		_cue(VoiceCues.EVENT_MILK_PROMPT, "", {"queue": true})
 	_hud.call("set_task_credit", Rules.CREDIT_FULL)
 	_hud.call("hide_hint")
 	_hud.call("set_guide", Vector2.ZERO, Vector2.ZERO, false)
@@ -770,6 +783,10 @@ func _bite(item: Node3D, bite: int, generation: int) -> void:
 	item.call("set_bite_scale", Rules.bite_scale(bite))
 	_play_sfx(SFX_POP)
 	_hud.call("sparkle_at", get_mouth_screen_position() + Vector2(70.0, -30.0))
+	if bite == 1:
+		_cue(VoiceCues.EVENT_FOOD_BITE)
+	elif bite == HALFWAY_BITE:
+		_cue(VoiceCues.EVENT_MEAL_HALFWAY)
 	if bite >= Rules.BITES:
 		item.visible = false
 
@@ -783,6 +800,7 @@ func _drink_sequence(item: Node3D, generation: int, was_holding: bool) -> void:
 	item.call("set_liquid_level", 0.35)
 	_play_sfx(SFX_POP)
 	_hud.call("sparkle_at", get_mouth_screen_position() + Vector2(70.0, -30.0))
+	_cue(VoiceCues.EVENT_FOOD_BITE)
 	_after(0.45, _gulp.bind(item, generation))
 	_after(0.9, _finish_success.bind(generation))
 
@@ -793,6 +811,7 @@ func _gulp(item: Node3D, generation: int) -> void:
 	item.call("set_liquid_level", 0.12)
 	_play_sfx(SFX_POP)
 	_hud.call("sparkle_at", get_mouth_screen_position() + Vector2(-70.0, -30.0))
+	_cue(VoiceCues.EVENT_MEAL_HALFWAY)
 
 
 func _finish_success(generation: int) -> void:
@@ -806,7 +825,12 @@ func _finish_success(generation: int) -> void:
 	_celebrate()
 	_hud.call("pop_task_star")
 	_hud.call("show_encouragement", Rules.SUCCESS_PHRASE)
-	_speak(Rules.SUCCESS_PHRASE)
+	# With the voice pack: Bunny's "Thank you, Aliz!" then Aliz's "All done!".
+	# Without it: the success phrase through the device voice, as before.
+	if _cue(VoiceCues.EVENT_CARE_COMPLETED):
+		_cue(VoiceCues.EVENT_TASK_DONE, "", {"queue": true})
+	else:
+		_speak(Rules.SUCCESS_PHRASE)
 	encouragement.emit(Rules.SUCCESS_PHRASE)
 	# THE hand-off. The room forwards this to `MissionRunner.on_object_chosen()`.
 	item_delivered.emit(_target_id)
@@ -841,6 +865,11 @@ func _arrive_wrong(item: Node3D) -> void:
 	# The room forwards this to the runner too, so the mode handler counts the
 	# gentle attempt and repeats the ask exactly as it does for a drop zone.
 	wrong_item.emit(item_id)
+	# THEN the voice: Bunny's "Hmph!" now (it cuts the repeated ask, which the
+	# prompt speaker re-queues behind him), and Aliz's "Let's try again!" --
+	# with "It's okay. We can do it!" on the second miss -- right after.
+	if _cue(VoiceCues.EVENT_WRONG_ITEM, "", {"interrupt": true}):
+		VoiceBridge.say_lines(self, VoiceCues.for_encouragement(phrase, _mistakes), {"queue": true})
 	if _mistakes == 1:
 		half_star.emit(get_task_id())
 	if is_guided() and _mistakes == 2:
@@ -859,7 +888,8 @@ func _enter_guided() -> void:
 func _turn_away() -> void:
 	_kill_turn()
 	_play_clip("fuss")
-	_set_face("unhappy")
+	# The owner's cute-angry `hmph` (brows down, puffed cheeks), not the sad face.
+	_set_face(VoiceCues.face_for(VoiceCues.EVENT_WRONG_ITEM))
 	if _bunny == null:
 		return
 	if _instant or not is_inside_tree():
@@ -1094,6 +1124,16 @@ func _play_sfx(sfx_name: String) -> void:
 func _speak(text: String) -> void:
 	if text.strip_edges().is_empty():
 		return
+	# Through the voice pack when it exists (a recorded line for "Great!" and
+	# the like, the device voice under its queue otherwise), else TtsService.
+	if VoiceBridge.say_text(self, text, {"queue": true}):
+		return
 	var tts: Node = _autoload("TtsService")
 	if tts != null and tts.has_method("speak"):
 		tts.call("speak", text)
+
+
+## A voice-pack cue. False when there is no `Voice` autoload or no line for
+## the moment, so a caller can keep its old line.
+func _cue(event: String, detail: String = "", opts: Dictionary = {}) -> bool:
+	return VoiceBridge.cue(self, event, detail, opts)

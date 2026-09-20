@@ -115,7 +115,7 @@ func _run() -> void:
 	_table.call("drag_to_mouth")
 	await _settle(0.4)
 	_check_state("wrong item", int(_table.call("get_mistakes")) == 1, "one mistake counted")
-	_check_state("wrong item", String(_table.call("get_bunny_face")) == "unhappy", "Bunny's face is unhappy")
+	_check_state("wrong item", String(_table.call("get_bunny_face")) == "hmph", "Bunny's face is the hmph")
 	_check_state("wrong item", String(_table.call("get_credit")) == Rules.CREDIT_HALF, "the task is worth a half star")
 	await _shot("feeding_wrong_item")
 	await _settle(1.4)

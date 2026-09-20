@@ -35,6 +35,7 @@ extends Control
 
 ## The locked palette (SLICE_CONTRACT §7 / ART_BIBLE).
 const SpeechFeedbackScript := preload("res://scripts/ui/speech_feedback.gd")
+const SubtitleStripScript := preload("res://scripts/voice/subtitle_strip.gd")
 const Presentation := preload("res://scripts/ui/hud_presentation.gd")
 const PauseMenuScript := preload("res://scripts/ui/pause_menu.gd")
 const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
@@ -115,6 +116,14 @@ const SPEAK_HALF_WIDTH: float = 112.0
 
 const ENCOURAGEMENT_SEC: float = 1.8
 
+## The voice pack's subtitle pill: bottom-centre, ABOVE the encouragement band
+## (which ends 136 px up) and the button row, clear of the thumbstick's rest
+## ring on the left (its centre is a `MAX_RADIUS` in from the corner, so the
+## ring's right edge is about 280 px from the left). Hidden while the Free Play
+## word card is up: the card IS that moment's subtitle.
+const SUBTITLE_BOTTOM_MARGIN: float = 224.0
+const SUBTITLE_SIDE_CLEARANCE: float = 300.0
+
 ## How long the reward presentation holds after a task is marked done.
 ##
 ## Matched to `ENCOURAGEMENT_SEC` on purpose: the praise line IS the reward
@@ -173,6 +182,7 @@ var _prior_character_disabled: bool = false
 var _caption: Label = null
 var _stars: Label = null
 var _encouragement: Label = null
+var _subtitle: Control = null
 var _dots: HBoxContainer = null
 var _next_button: Button = null
 var _speak_button: Button = null
@@ -321,6 +331,15 @@ func build() -> void:
 	_speech_feedback.name = "SpeechFeedback"
 	add_child(_speech_feedback)
 	_speech_feedback.call("build")
+
+	# The voice pack's subtitle strip. It binds to `/root/Voice` on its own when
+	# the autoload exists and stays hidden otherwise; it never takes a touch.
+	_subtitle = SubtitleStripScript.new()
+	_subtitle.name = "SubtitleStrip"
+	add_child(_subtitle)
+	_subtitle.call("build")
+	_subtitle.call("set_bottom_margin", SUBTITLE_BOTTOM_MARGIN)
+	_subtitle.call("set_side_clearance", SUBTITLE_SIDE_CLEARANCE)
 
 	# The Free Play word card. Low and centred, so it sits under the object the
 	# child just touched rather than over it, and above where thumbs rest on an
@@ -636,6 +655,8 @@ func show_word(word: String, thai_hint: String = "") -> void:
 	_word.text = text
 	_word.visible = true
 	_set_helper_text(_word_thai, text, thai_hint)
+	if _subtitle != null:
+		_subtitle.visible = false  # the word card is this moment's subtitle
 
 	_word_generation += 1
 	var generation: int = _word_generation
@@ -654,10 +675,26 @@ func show_word(word: String, thai_hint: String = "") -> void:
 	)
 
 
+## The subtitle pill's rect for a viewport of `view`, for keep-outs and tests.
+static func subtitle_rect(view: Vector2) -> Rect2:
+	return SubtitleStripScript.rect_for(view, SUBTITLE_BOTTOM_MARGIN, SUBTITLE_SIDE_CLEARANCE)
+
+
+func get_subtitle_strip() -> Control:
+	build()
+	return _subtitle
+
+
+func _subtitle_showing() -> bool:
+	return _subtitle != null and _subtitle.visible and bool(_subtitle.call("is_showing"))
+
+
 func hide_word() -> void:
 	build()
 	_word.visible = false
 	_word_thai.visible = false
+	if _subtitle != null:
+		_subtitle.visible = true
 
 
 func get_word_text() -> String:
@@ -1230,6 +1267,7 @@ func _push_keep_outs() -> void:
 				_stars.offset_right - _stars.offset_left, _stars.offset_bottom - _stars.offset_top)
 			if _stars.visible else Rect2())
 	_affordance.call("set_keep_out", "version", Rect2())
+	_affordance.call("set_keep_out", "subtitle", subtitle_rect(view) if _subtitle_showing() else Rect2())
 
 
 ## -- Construction helpers ------------------------------------------------------

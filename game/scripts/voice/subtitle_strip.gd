@@ -22,9 +22,15 @@ extends Control
 const Palette := preload("res://scripts/ui/palette.gd")
 
 const FONT_SIZE: int = 30
+## Smaller sizes tried in order when the line does not fit between the side
+## clearances (a phone-width viewport); ellipsis only after the smallest.
+const FONT_SIZES: Array[int] = [30, 27, 24, 22]
 const HEIGHT: float = 58.0
 const MAX_WIDTH: float = 760.0
 const PAD_X: float = 28.0
+const DEFAULT_SIDE_CLEARANCE: float = 24.0
+## Design-size fallback when there is no viewport to measure (headless).
+const FALLBACK_VIEWPORT: Vector2 = Vector2(1366.0, 1024.0)
 const CORNER_RADIUS: int = 29
 const BORDER_WIDTH: int = 3
 const DEFAULT_BOTTOM_MARGIN: float = 24.0
@@ -44,6 +50,7 @@ var _label: Label = null
 var _style: StyleBoxFlat = null
 var _built: bool = false
 var _bottom_margin: float = DEFAULT_BOTTOM_MARGIN
+var _side_clearance: float = DEFAULT_SIDE_CLEARANCE
 var _current_line: String = ""
 var _voice: Node = null
 var _linger_serial: int = 0
@@ -122,18 +129,36 @@ func get_bottom_margin() -> float:
 	return _bottom_margin
 
 
+## Pixels the pill keeps clear of the left and right screen edges -- the mount
+## sets it past its own side chrome (the joystick's rest ring, a Back button).
+func set_side_clearance(pixels: float) -> void:
+	build()
+	_side_clearance = maxf(pixels, 0.0)
+	_layout()
+
+
+func get_side_clearance() -> float:
+	return _side_clearance
+
+
 ## The pill's rect in this control's coordinates, for keep-out checks.
 func pill_rect() -> Rect2:
 	build()
 	return Rect2(_pill.position, _pill.size)
 
 
-## Where the pill lands in a viewport of `viewport_size` for `bottom_margin`,
-## as a static rect so layout tests need no frame.
-static func rect_for(viewport_size: Vector2, bottom_margin: float, text_width: float = MAX_WIDTH) -> Rect2:
-	var width: float = clampf(text_width + PAD_X * 2.0, HEIGHT, MAX_WIDTH)
+## Where the pill lands in a viewport of `viewport_size` for `bottom_margin`
+## and `side_clearance`, as a static rect so layout tests need no frame.
+## `text_width` defaults to the widest the pill can be.
+static func rect_for(viewport_size: Vector2, bottom_margin: float,
+		side_clearance: float = DEFAULT_SIDE_CLEARANCE, text_width: float = MAX_WIDTH) -> Rect2:
+	var width: float = clampf(text_width + PAD_X * 2.0, HEIGHT, max_pill_width(viewport_size, side_clearance))
 	var top: float = viewport_size.y - bottom_margin - HEIGHT
 	return Rect2(viewport_size.x * 0.5 - width * 0.5, top, width, HEIGHT)
+
+
+static func max_pill_width(viewport_size: Vector2, side_clearance: float) -> float:
+	return maxf(minf(MAX_WIDTH, viewport_size.x - 2.0 * side_clearance), HEIGHT)
 
 
 func show_line(line_id: String, character: String, text: String) -> void:
@@ -228,14 +253,27 @@ func _unbind_voice() -> void:
 func _layout() -> void:
 	if _pill == null:
 		return
+	var view: Vector2 = FALLBACK_VIEWPORT
+	if is_inside_tree():
+		var rect_size: Vector2 = get_viewport_rect().size
+		if rect_size.x > 0.0 and rect_size.y > 0.0:
+			view = rect_size
+	var available: float = max_pill_width(view, _side_clearance)
 	var font: Font = _label.get_theme_font("font")
 	var text_width: float = 0.0
+	var size: int = FONT_SIZE
 	if font != null and not _label.text.is_empty():
-		text_width = font.get_string_size(_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE).x
-	var width: float = clampf(text_width + PAD_X * 2.0, HEIGHT, MAX_WIDTH)
+		for candidate: int in FONT_SIZES:
+			size = candidate
+			text_width = font.get_string_size(_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, candidate).x
+			if text_width + PAD_X * 2.0 <= available:
+				break
+	_label.add_theme_font_size_override("font_size", size)
+	var width: float = clampf(text_width + PAD_X * 2.0, HEIGHT, available)
 	_pill.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_pill.offset_left = -width * 0.5
 	_pill.offset_right = width * 0.5
 	_pill.offset_top = -_bottom_margin - HEIGHT
 	_pill.offset_bottom = -_bottom_margin
 	_pill.custom_minimum_size = Vector2(width, HEIGHT)
+	_pill.size = Vector2(width, HEIGHT)

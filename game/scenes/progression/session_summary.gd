@@ -20,6 +20,11 @@ signal closed()
 
 const _Celebration := preload("res://scripts/progression/celebration.gd")
 const _RatingStar := preload("res://scripts/ui/rating_star.gd")
+## The voice pack (2026-09-20): "You earned a star!" after the headline when
+## stars were earned, "A new sticker for you!" when one unlocked. Null-guarded;
+## the headline still goes through TtsService when there is no `Voice`.
+const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
+const VoiceCues := preload("res://scripts/voice/voice_cues.gd")
 
 const SFX_GENTLE_TAP: String = "gentle_tap"
 
@@ -220,6 +225,12 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [],
 			_speak(_level_headline(_rated_stars))
 		else:
 			_speak(_headline(earned))
+		var reward_lines: Array = []
+		if earned > 0 or _rated_stars > 0:
+			reward_lines.append_array(VoiceCues.for_event(VoiceCues.EVENT_STAR))
+		if not sticker.is_empty():
+			reward_lines.append_array(VoiceCues.for_event(VoiceCues.EVENT_STICKER))
+		VoiceBridge.say_lines(self, reward_lines, {"queue": true})
 		if _celebration != null:
 			# In the celebration's own top-right corner, the same place the
 			# reward moment plays in the baby room -- not over the panel.
@@ -401,6 +412,8 @@ func _play_sfx(sfx_name: String) -> void:
 
 
 func _speak(text: String) -> void:
+	if VoiceBridge.say_text(self, text):
+		return
 	var tts: Node = _autoload("TtsService")
 	if tts != null and tts.has_method("speak"):
 		tts.call("speak", text)

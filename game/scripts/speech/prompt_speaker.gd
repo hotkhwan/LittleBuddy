@@ -41,6 +41,14 @@ extends Node
 const DEFAULT_SIGNAL: String = "prompt_changed"
 const ENCOURAGEMENT_SIGNAL: String = "encouragement"
 
+## The voice pack (2026-09-20). When the `Voice` autoload exists every line this
+## speaker says goes through it: a prompt that is one of the 36 recorded lines
+## plays the recording, anything else is the device voice under the pack's
+## queue (so a Bunny reaction and an Aliz prompt never talk over each other and
+## the subtitle strip shows the line). Without the autoload this is exactly the
+## TtsService path it always was.
+const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
+
 var _tts: Object = null
 var _pending: Array[String] = []
 var _flush_scheduled: bool = false
@@ -89,6 +97,10 @@ func on_encouragement(text: String) -> void:
 	var line: String = text.strip_edges()
 	if line.is_empty() or _tts == null:
 		return
+	# Praise is a reaction: it queues behind whatever Bunny is saying rather than
+	# cutting him, and is protected from the next prompt.
+	if VoiceBridge.say_text(self, line, {"queue": true, "reaction": true}):
+		return
 	if _tts.has_method("react"):
 		_tts.call("react", line)
 	elif _tts.has_method("speak"):
@@ -107,6 +119,8 @@ func flush() -> void:
 	for line in lines:
 		if _already_covered(line):
 			continue
+		if VoiceBridge.say_text(self, line, {"queue": true}):
+			continue
 		_tts.call("speak", line, false)
 
 
@@ -118,4 +132,12 @@ func _already_covered(line: String) -> bool:
 		var queued: Variant = _tts.call("get_pending_texts")
 		if queued is Array and (queued as Array).has(line):
 			return true
+	var voice: Node = VoiceBridge.voice(self)
+	if voice != null:
+		if voice.has_method("current_text") and String(voice.call("current_text")) == line:
+			return true
+		if voice.has_method("pending_texts"):
+			var pending: Variant = voice.call("pending_texts")
+			if pending is Array and (pending as Array).has(line):
+				return true
 	return false

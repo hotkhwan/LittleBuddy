@@ -56,6 +56,7 @@ func run():
 	failures.append_array(_test_recording_waits_for_a_foreign_prompt())
 	failures.append_array(_test_interrupt_stops_the_device_voice_before_a_recording())
 	failures.append_array(_test_foreign_prompt_ends_a_recording())
+	failures.append_array(_test_say_text())
 	failures.append_array(_test_same_words_are_not_said_twice())
 	failures.append_array(_test_volume_persistence_and_migration())
 	failures.append_array(_test_no_tts_at_all_still_moves())
@@ -247,10 +248,11 @@ func _test_same_character_replaces_queued():
 	director.say("bunny_005_thank_you")
 	if director.pending_line_ids() != ["bunny_005_thank_you"]:
 		failures.append("only Bunny's newest line should be queued: %s" % str(director.pending_line_ids()))
-	# `queue: true` obeys the same rule, and never cuts.
+	# `queue: true` is plain FIFO: it never cuts and never replaces.
 	director.say("bunny_011_happy", {"queue": true})
-	if director.pending_line_ids() != ["bunny_011_happy"] or director.current_line() != "aliz_014_milk_time":
-		failures.append("queue:true replaces the same character's queued line and cuts nothing: %s / %s"
+	if director.pending_line_ids() != ["bunny_005_thank_you", "bunny_011_happy"] \
+			or director.current_line() != "aliz_014_milk_time":
+		failures.append("queue:true appends behind the queued line and cuts nothing: %s / %s"
 				% [str(director.pending_line_ids()), director.current_line()])
 	_teardown(h)
 	return failures
@@ -374,24 +376,75 @@ func _test_interrupt_stops_the_device_voice_before_a_recording():
 	return failures
 
 
-## Someone hands TtsService a different prompt while a recording plays: the
-## recording yields, because the prompt is what the child must hear.
+## Someone hands TtsService a different prompt while a recording plays.
+## A NARRATION recording yields at once (the prompt is what the child must
+## hear); a young REACTION recording is protected -- the prompt is held and
+## said the moment the reaction ends. Never two voices at once either way.
 func _test_foreign_prompt_ends_a_recording():
 	var failures: Array = []
-	var h: Dictionary = _make(["bunny_003_yummy"])
+	var h: Dictionary = _make(["aliz_011_apple", "bunny_003_yummy"])
 	var director = h["director"]
 	var tts = h["tts"]
 
-	director.say("bunny_003_yummy")
+	director.say("aliz_011_apple")
 	if not director.is_playing_recording():
 		return ["harness: the recording did not start"]
 	tts.speak("Find the baby bottle.")
 	if director.is_speaking():
-		failures.append("a recording must yield to a foreign prompt: never two voices at once")
+		failures.append("a narration recording must yield to a foreign prompt: never two voices at once")
 	if not tts.is_speaking():
 		failures.append("the foreign prompt must keep playing")
-	if h["finished"] != ["bunny_003_yummy"]:
+	if h["finished"] != ["aliz_011_apple"]:
 		failures.append("the yielded recording must report finished: %s" % str(h["finished"]))
+	_finish_tts(h)
+
+	# A reaction: the prompt waits for it.
+	director.say("bunny_003_yummy")
+	tts.speak("Give the baby the apple.")
+	if not director.is_playing_recording() or director.current_line() != "bunny_003_yummy":
+		failures.append("a young reaction recording is not cut by a prompt: %s" % director.current_line())
+	if tts.is_speaking():
+		failures.append("the prompt must not play OVER the reaction (two voices)")
+	director.notify_recording_finished("bunny")
+	if not director.is_speaking() or director.current_line() != "" or director.current_text() != "Give the baby the apple.":
+		failures.append("the held prompt must follow the reaction at once: '%s' / '%s'"
+				% [director.current_line(), director.current_text()])
+	if String(tts.get_current_text()) != "Give the baby the apple." or not tts.is_speaking():
+		failures.append("the held prompt is said by the device voice, got '%s'" % tts.get_current_text())
+	var last: Dictionary = h["started"][h["started"].size() - 1]
+	if String(last["lineId"]) != "" or String(last["text"]) != "Give the baby the apple.":
+		failures.append("a held prompt raises line_started with the prompt text (subtitle): %s" % str(last))
+	_teardown(h)
+	return failures
+
+
+## `say_text()` routes free text: an alias lands on its recorded line, unknown
+## text becomes an ad-hoc device-voice line with an empty id, and both show up
+## as subtitles.
+func _test_say_text():
+	var failures: Array = []
+	var h: Dictionary = _make()
+	var director = h["director"]
+	var tts = h["tts"]
+	if not director.say_text("Nice!", {"reaction": true}):
+		failures.append("an alias must be accepted")
+	if director.current_line() != "aliz_006_good_job" or String(tts.get_current_text()) != "Great job!":
+		failures.append("'Nice!' should play the owner's Great job! line: %s / '%s'"
+				% [director.current_line(), tts.get_current_text()])
+	if not tts.is_reaction_protected():
+		failures.append("a reaction fallback should be protected by TtsService like react() is")
+	_finish_tts(h)
+	if not director.say_text("Walk to the kitchen.", {"queue": true}):
+		failures.append("free text must be accepted")
+	if director.current_line() != "" or director.current_text() != "Walk to the kitchen." \
+			or String(tts.get_current_text()) != "Walk to the kitchen.":
+		failures.append("free text becomes an ad-hoc line on the device voice: '%s'" % director.current_text())
+	if director.say_text("   "):
+		failures.append("blank text is refused")
+	# An ad-hoc Aliz line obeys the same rules: Bunny queues behind it.
+	director.say("bunny_003_yummy")
+	if director.pending_line_ids() != ["bunny_003_yummy"]:
+		failures.append("Bunny waits behind an ad-hoc Aliz line: %s" % str(director.pending_line_ids()))
 	_teardown(h)
 	return failures
 

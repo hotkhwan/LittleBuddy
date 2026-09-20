@@ -220,6 +220,16 @@ var _handed_off: bool = false
 ## anywhere skips to the hand-off.
 var _departure: Node = null
 var _departure_route: Callable = Callable()
+
+## The voice pack (2026-09-20): Aliz welcomes once per launch and says "Let's
+## go home!" when Start / Free Play is pressed. `static` so returning to the
+## title from the house does not welcome the child a second time.
+static var _welcomed_this_launch: bool = false
+const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
+const VoiceCues := preload("res://scripts/voice/voice_cues.gd")
+const SubtitleStripScript := preload("res://scripts/voice/subtitle_strip.gd")
+## The subtitle pill sits above the button row (buttons end 292 px up).
+const SUBTITLE_BOTTOM_MARGIN: float = 308.0
 var _skip_catcher: Control = null
 
 
@@ -244,8 +254,10 @@ func _ready() -> void:
 	_dress_buttons()
 	_place_logo()
 	_add_version_label()
+	_add_subtitle_strip()
 
 	_arm_first_run()
+	_welcome_once()
 
 
 func _process(delta: float) -> void:
@@ -632,11 +644,49 @@ static func _first_existing(paths: Array) -> String:
 # ---------------------------------------------------------------------------
 
 func _on_play_pressed() -> void:
+	if _departure == null:
+		VoiceBridge.cue(self, VoiceCues.EVENT_START_PRESSED, "", {"interrupt": true})
 	_depart(_route_play)
 
 
 func _on_free_play_pressed() -> void:
+	if _departure == null:
+		VoiceBridge.cue(self, VoiceCues.EVENT_FREE_PLAY_PRESSED, "", {"interrupt": true})
 	_depart(_route_free_play)
+
+
+## "Welcome to Little Days!" then "Let's play together!" -- once per launch,
+## never on a return to the title. Nothing without the `Voice` autoload.
+func _welcome_once() -> void:
+	if _welcomed_this_launch:
+		return
+	if VoiceBridge.cue(self, VoiceCues.EVENT_MENU_READY):
+		_welcomed_this_launch = true
+
+
+## Test hook: lets a case check the once-per-launch rule from a clean state.
+static func reset_welcome_for_tests() -> void:
+	_welcomed_this_launch = false
+
+
+static func has_welcomed_this_launch() -> bool:
+	return _welcomed_this_launch
+
+
+func _add_subtitle_strip() -> void:
+	var host: Control = get_node_or_null("UI/SafeArea") as Control
+	if host == null or host.get_node_or_null("SubtitleStrip") != null:
+		return
+	var strip: Control = SubtitleStripScript.new()
+	strip.name = "SubtitleStrip"
+	host.add_child(strip)
+	strip.call("build")
+	strip.call("set_bottom_margin", SUBTITLE_BOTTOM_MARGIN)
+
+
+func get_subtitle_strip() -> Control:
+	var host: Control = get_node_or_null("UI/SafeArea") as Control
+	return host.get_node_or_null("SubtitleStrip") as Control if host != null else null
 
 
 ## Story Mode's routing, byte-for-byte what pressing Play always did.

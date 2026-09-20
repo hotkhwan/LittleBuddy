@@ -35,8 +35,8 @@ extends Node
 ##         behind a playing Aliz line she queues (replacing queued Aliz lines).
 ##       - Bunny never interrupts anyone: he queues behind Aliz, or behind his
 ##         own current line, replacing his own queued lines.
-##   * `{"queue": true}`: never cuts; appends, replacing that character's
-##     queued lines.
+##   * `{"queue": true}`: never cuts, never replaces; plain FIFO behind
+##     whatever is playing or queued (sequences and follow-ups use this).
 ##   * `{"interrupt": true}`: cuts whatever is playing (recording or TTS, ours
 ##     or not) and clears the queue.
 ##   * `stop(character)`: cuts that character's current line and drops their
@@ -51,6 +51,7 @@ extends Node
 ## with Aliz's level so the device voice and her recordings sit at one level.
 
 const VoiceManifestScript := preload("res://scripts/voice/voice_manifest.gd")
+const VoiceCuesScript := preload("res://scripts/voice/voice_cues.gd")
 
 signal line_started(line_id: String, character: String, text: String)
 signal line_finished(line_id: String)
@@ -75,6 +76,9 @@ const MAX_QUEUED: int = 6
 const RECORDING_TIMEOUT_FACTOR: float = 1.25
 const RECORDING_TIMEOUT_PAD_SECONDS: float = 0.5
 const MIN_RECORDING_SECONDS: float = 0.3
+## Mirrors `TtsService.REACTION_PROTECT_SECONDS`: a recorded reaction younger
+## than this is not cut by a device-voice prompt; the prompt follows it.
+const REACTION_PROTECT_SECONDS: float = 2.5
 
 const MODE_RECORDING: String = "recording"
 const MODE_TTS: String = "tts"
@@ -128,7 +132,11 @@ func _ensure_initialised() -> void:
 
 ## Plays (or queues) `line_id`. Returns false only for an id the manifest does
 ## not know; true means the line is playing or queued under the rules above.
-## `opts`: {"interrupt": bool, "queue": bool}.
+## `opts`: {"interrupt": bool, "queue": bool, "reaction": bool}.
+## Every Bunny line is a reaction; an Aliz line is one only when asked
+## (`reaction: true` -- praise). A reaction that is a RECORDING is protected
+## for `REACTION_PROTECT_SECONDS` from a device-voice prompt arriving on top:
+## the prompt is held and said right after it instead (see `_on_tts_started`).
 func say(line_id: String, opts: Dictionary = {}) -> bool:
 	_ensure_initialised()
 	if not _manifest.has_line(line_id):
@@ -136,15 +144,40 @@ func say(line_id: String, opts: Dictionary = {}) -> bool:
 	var character: String = _manifest.character_for(line_id)
 	if not CHARACTERS.has(character):
 		return false
-	var entry: Dictionary = {
+	return _submit({
 		"lineId": line_id,
 		"character": character,
 		"text": _manifest.text_for(line_id),
-		"cut": false,
-	}
+	}, opts)
+
+
+## Speaks free English text under the same queue rules. When `text` is one of
+## the 36 lines (or a documented alias -- `VoiceCues.for_text`), the recorded
+## line is used; otherwise the text goes to the device voice as an ad-hoc Aliz
+## line with an empty `lineId`. Subtitles show it either way. This is how
+## `prompt_speaker.gd` and the `_speak()` call sites hand everything they say to
+## one queue instead of two.
+## `opts` as for `say()`, plus `"character"` ("aliz" default) for an ad-hoc line.
+func say_text(text: String, opts: Dictionary = {}) -> bool:
+	_ensure_initialised()
+	var line: String = text.strip_edges()
+	if line.is_empty():
+		return false
+	var line_id: String = VoiceCuesScript.for_text(line)
+	if not line_id.is_empty() and _manifest.has_line(line_id):
+		return say(line_id, opts)
+	var character: String = String(opts.get("character", CHARACTER_ALIZ))
+	if not CHARACTERS.has(character):
+		character = CHARACTER_ALIZ
+	return _submit({"lineId": "", "character": character, "text": line}, opts)
+
+
+func _submit(entry: Dictionary, opts: Dictionary) -> bool:
+	var character: String = String(entry["character"])
+	entry["cut"] = false
+	entry["reaction"] = bool(opts.get("reaction", false)) or character == CHARACTER_BUNNY
 	var interrupt: bool = bool(opts.get("interrupt", false))
 	var queue_only: bool = bool(opts.get("queue", false))
-	var append: bool = bool(opts.get("append", false))
 
 	if interrupt:
 		_queue.clear()
@@ -155,8 +188,6 @@ func say(line_id: String, opts: Dictionary = {}) -> bool:
 		return true
 
 	if queue_only:
-		if not append:
-			_drop_queued(character)
 		_enqueue(entry)
 		_pump()
 		return true
@@ -190,10 +221,9 @@ func say_all(line_ids: Array, opts: Dictionary = {}) -> int:
 		var per_line: Dictionary = opts.duplicate()
 		if not first:
 			# Only the first line of a sequence carries the interruption; the
-			# rest follow it in order, and do not replace the line before them.
+			# rest follow it in order.
 			per_line.erase("interrupt")
 			per_line["queue"] = true
-			per_line["append"] = true
 		if say(String(line_id), per_line):
 			accepted += 1
 		first = false
@@ -240,6 +270,13 @@ func pending_line_ids() -> Array:
 	for entry: Dictionary in _queue:
 		ids.append(String(entry["lineId"]))
 	return ids
+
+
+func pending_texts() -> Array:
+	var texts: Array = []
+	for entry: Dictionary in _queue:
+		texts.append(String(entry["text"]))
+	return texts
 
 
 ## Whether `line_id`'s recording is in the build. Manifest truth only.
@@ -380,6 +417,7 @@ func _begin(entry: Dictionary) -> void:
 	_serial += 1
 	entry["serial"] = _serial
 	entry["started"] = false
+	entry["beganMsec"] = Time.get_ticks_msec()
 	var character: String = String(entry["character"])
 	var text: String = String(entry["text"])
 	var line_id: String = String(entry["lineId"])
@@ -430,7 +468,13 @@ func _begin(entry: Dictionary) -> void:
 func _speak_via_tts(tts: Node, character: String, text: String, cut: bool) -> void:
 	var my_serial: int = int(_current.get("serial", -1))
 	_set_tts_volume_for(character)
-	tts.call("speak", text, cut)
+	if bool(_current.get("reaction", false)) and tts.has_method("react") \
+			and not bool(tts.call("is_speaking")):
+		# TtsService protects a reaction from the next prompt for 2.5 s: the
+		# prompt queues behind it instead of truncating it.
+		tts.call("react", text)
+	else:
+		tts.call("speak", text, cut)
 	if _current.is_empty() or int(_current.get("serial", -1)) != my_serial:
 		return  # resolved synchronously through the signals
 	if tts.has_method("get_current_text") and String(tts.call("get_current_text")) == text \
@@ -556,13 +600,18 @@ func _on_tts_started(text: String) -> void:
 	if mode == MODE_RECORDING:
 		# Someone handed the device voice a prompt while a recording plays. Never
 		# two voices at once: the same words are already being said (stop the
-		# duplicate); different words are a prompt the child must hear (yield).
+		# duplicate); different words are a prompt the child must hear -- said
+		# right after a young reaction, or right now in place of anything else.
 		var tts: Node = _tts_service()
 		if String(_current.get("text", "")) == text:
 			if tts != null and tts.has_method("stop"):
 				_suppress_tts_events += 1
 				tts.call("stop")
 				_suppress_tts_events -= 1
+			return
+		var age: float = float(Time.get_ticks_msec() - int(_current.get("beganMsec", 0))) / 1000.0
+		if bool(_current.get("reaction", false)) and age < REACTION_PROTECT_SECONDS and tts != null:
+			_hold_foreign_prompt(tts, text)
 			return
 		_cut_current()
 
@@ -584,6 +633,30 @@ func _on_tts_finished(text: String) -> void:
 		return
 	# Someone else's prompt ended; a waiting line may go now.
 	_pump()
+
+
+## Takes the device voice's prompt (and anything queued behind it) off the
+## platform and puts it at the FRONT of this queue, so it plays the moment the
+## protected reaction ends. The child hears "Yummy!" whole, then the ask.
+func _hold_foreign_prompt(tts: Node, text: String) -> void:
+	var held: Array = [text]
+	if tts.has_method("get_pending_texts"):
+		var pending: Variant = tts.call("get_pending_texts")
+		if pending is Array:
+			for queued: Variant in pending:
+				held.append(String(queued))
+	if tts.has_method("stop"):
+		_suppress_tts_events += 1
+		tts.call("stop")
+		_suppress_tts_events -= 1
+	for index: int in range(held.size() - 1, -1, -1):
+		var line: String = String(held[index]).strip_edges()
+		if line.is_empty():
+			continue
+		_queue.push_front({"lineId": "", "character": CHARACTER_ALIZ, "text": line,
+				"cut": false, "reaction": false, "held": true})
+	while _queue.size() > MAX_QUEUED:
+		_queue.pop_back()
 
 
 func text_of_current() -> String:

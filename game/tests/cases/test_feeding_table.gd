@@ -386,8 +386,10 @@ func _test_wrong_item_halves_then_guides(root: Node, library: RefCounted):
 		failures.append("feeding_table: the first mistake did not raise half_star (got %s)" % str(rig.half_stars))
 	if int(hud.call("get_task_star_state")) != RatingStar.State.HALF:
 		failures.append("feeding_table: the task star should now be a half star")
-	if String(table.call("get_bunny_face")) not in ["unhappy", ""]:
-		failures.append("feeding_table: Bunny should look unhappy at a wrong item, not '%s'" % table.call("get_bunny_face"))
+	# The owner's cute-angry `hmph` (voice pack, 2026-09-20), never a smile; ""
+	# is the placeholder view, which has no face.
+	if String(table.call("get_bunny_face")) not in ["hmph", ""]:
+		failures.append("feeding_table: Bunny should sulk (hmph) at a wrong item, not '%s'" % table.call("get_bunny_face"))
 	if String(hud.call("get_encouragement")) != "Try the apple!":
 		failures.append("feeding_table: the wrong item should say 'Try the apple!', not '%s'" % hud.call("get_encouragement"))
 	if not rig.completed.is_empty():

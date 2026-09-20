@@ -52,6 +52,12 @@ extends Node3D
 ## camera as the child, and sits in the room rather than on top of it.
 
 const WrapperScript := preload("res://scripts/characters/little_buddy/baby_little_buddy.gd")
+## The voice pack (2026-09-20): Bunny SAYS his need when it changes ("I'm
+## hungry, Aliz!", "I'm sleepy.") and gives one "Hmph!" when a need has been
+## left long enough to escalate. Cue calls only, null-guarded: without the
+## `Voice` autoload the bubble is all there is, as before.
+const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
+const VoiceCues := preload("res://scripts/voice/voice_cues.gd")
 const StatsScript := preload("res://scripts/care/child_stats.gd")
 const Needs := preload("res://scripts/care/child_needs.gd")
 const Present := preload("res://scripts/care/child_presentation.gd")
@@ -172,6 +178,12 @@ var _backing_fitted_text: String = "\r"
 ## While true the line and its backing are hidden whatever the need is. See
 ## `set_bubble_suppressed()`.
 var _bubble_suppressed: bool = false
+## When each need was last SAID (msec), so a stat hovering around its threshold
+## cannot make him chatter: one line per need per `NEED_LINE_COOLDOWN_SEC`.
+var _need_said_msec: Dictionary = {}
+## The one "Hmph!" per ignored need.
+var _urgent_voiced: bool = false
+const NEED_LINE_COOLDOWN_SEC: float = 20.0
 var _activity: String = Present.ACTIVITY_IDLE
 ## Which act the activity is, when the caller knows. See `set_activity()`.
 var _activity_detail: String = ""
@@ -567,6 +579,7 @@ func _tick_ignored(delta: float) -> void:
 		# Escalate: the line, the face and the body, in one refresh.
 		_urgent = true
 		_refresh()
+		_say_urgent()
 	if not _walking and _player != null and Life.stamp_due(_ignored_for, _last_stamp_at):
 		_last_stamp_at = _ignored_for
 		_stamp_pending = true
@@ -578,6 +591,43 @@ func _reset_ignored() -> void:
 	_last_stamp_at = -1.0
 	_stamp_pending = false
 	_urgent = false
+	_urgent_voiced = false
+
+
+## -- Voice cues -----------------------------------------------------------------
+
+## Bunny says the need he just got, at most once per need per cooldown. Never
+## interrupts anyone (a Bunny line queues behind Aliz by the pack's rules).
+func _say_need(need: String) -> void:
+	if need.is_empty() or _bubble_suppressed:
+		return
+	var line_id: String = VoiceCues.for_need(need)
+	if line_id.is_empty():
+		return
+	var now: int = Time.get_ticks_msec()
+	var last: int = int(_need_said_msec.get(need, -1_000_000))
+	if now - last < int(NEED_LINE_COOLDOWN_SEC * 1000.0):
+		return
+	if VoiceBridge.say_lines(self, [line_id]):
+		_need_said_msec[need] = now
+
+
+## One "Hmph!" when a need has waited long enough to escalate; the face already
+## went to the `hmph` through `child_life.gd`. Once per wait.
+func _say_urgent() -> void:
+	if _urgent_voiced or _bubble_suppressed:
+		return
+	if VoiceBridge.cue(self, VoiceCues.EVENT_NEED_URGENT):
+		_urgent_voiced = true
+
+
+## Test hooks for the cooldown.
+func get_need_line_cooldown_sec() -> float:
+	return NEED_LINE_COOLDOWN_SEC
+
+
+func has_voiced_urgent() -> bool:
+	return _urgent_voiced
 
 
 ## -- The blink ------------------------------------------------------------------------
@@ -1384,6 +1434,7 @@ func _refresh() -> void:
 		_reset_ignored()
 		described = Present.describe(_state.call("describe"), _activity, false)
 		need_changed.emit(_need)
+		_say_need(_need)
 
 	var pose: String = String(described["pose"])
 	if _wrapper.has_method("set_pose") and String(_wrapper.call("get_pose")) != pose:

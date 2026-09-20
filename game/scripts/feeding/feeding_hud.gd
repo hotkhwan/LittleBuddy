@@ -25,6 +25,7 @@ const _Palette := preload("res://scripts/ui/palette.gd")
 const _RatingStar := preload("res://scripts/ui/rating_star.gd")
 const _IconGlyph := preload("res://scripts/progression/icon_glyph.gd")
 const _SafeArea := preload("res://scripts/ui/safe_area.gd")
+const _SubtitleStrip := preload("res://scripts/voice/subtitle_strip.gd")
 
 const FRAME_PANEL: StyleBox = preload("res://assets/ui/styles/panel_cream.tres")
 const FRAME_BUTTON: StyleBox = preload("res://assets/ui/styles/btn_peach.tres")
@@ -43,6 +44,10 @@ const ENCOURAGE_SECONDS: float = 1.8
 
 ## Sparkle lines live this long.
 const SPARKLE_SECONDS: float = 0.55
+## The subtitle pill sits at the bottom centre; the Back button owns the bottom
+## left (200 px round + 8 px margin), so the pill keeps clear of it sideways.
+const SUBTITLE_BOTTOM_MARGIN: float = 24.0
+const SUBTITLE_SIDE_CLEARANCE: float = 232.0
 
 var _safe: Control = null
 var _prompt_label: Label = null
@@ -59,6 +64,7 @@ var _back_button: Button = null
 var _overlay: Control = null
 var _built: bool = false
 var _encourage_generation: int = 0
+var _subtitle: Control = null
 
 
 func _ready() -> void:
@@ -90,6 +96,7 @@ func build() -> void:
 	_build_buttons()
 	_build_hint()
 	_build_encouragement()
+	_build_subtitle()
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +404,21 @@ func _build_hint() -> void:
 	_hint_label = _label("", HINT_FONT, _Palette.INK)
 	_hint_label.name = "HintLabel"
 	_hint.add_child(_hint_label)
+
+
+## The voice pack's subtitle strip (reads `Voice.line_started/finished` itself).
+func _build_subtitle() -> void:
+	_subtitle = _SubtitleStrip.new()
+	_subtitle.name = "SubtitleStrip"
+	_safe.add_child(_subtitle)
+	_subtitle.call("build")
+	_subtitle.call("set_bottom_margin", SUBTITLE_BOTTOM_MARGIN)
+	_subtitle.call("set_side_clearance", SUBTITLE_SIDE_CLEARANCE)
+
+
+func get_subtitle_strip() -> Control:
+	build()
+	return _subtitle
 
 
 func _build_encouragement() -> void:

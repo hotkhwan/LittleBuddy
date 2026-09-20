@@ -73,6 +73,7 @@ extends Node
 ## never fires for a node added to the root in the `--script` runner.
 
 const HouseHudScript := preload("res://scripts/gameplay/house_hud.gd")
+const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
 const Words := preload("res://scripts/gameplay/house_freeplay_words.gd")
 const GestureHintScript := preload("res://scripts/onboarding/gesture_hint.gd")
 const HouseRoute := preload("res://scripts/house/house_route.gd")
@@ -1693,6 +1694,13 @@ func _resolve_services() -> void:
 func _speak(text: String, interrupt: bool) -> void:
 	var line: String = text.strip_edges()
 	if line.is_empty():
+		return
+	# The voice pack first (2026-09-20): a line that is one of the 36 recorded
+	# lines ("Thank you!", "Let's tidy up!") plays the recording, anything else
+	# is the device voice under the pack's queue. `interrupt` keeps its meaning;
+	# a non-interrupting line is a reaction that queues and is protected.
+	# Without the `Voice` autoload this is the TtsService call it always was.
+	if VoiceBridge.say_text(self, line, {"interrupt": interrupt, "queue": not interrupt, "reaction": not interrupt}):
 		return
 	_resolve_services()
 	if _tts != null and _tts.has_method("speak"):
