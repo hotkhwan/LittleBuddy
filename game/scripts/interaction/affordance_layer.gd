@@ -571,45 +571,38 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 		{"placement": "below", "centre": screen + Vector2(0.0, vertical_offset + LABEL_HEIGHT)},
 	]
 
+	# Pass 0: every spot exactly where it wants to be. Pass 1: each spot slid
+	# outward along its own direction until it clears whatever it landed on --
+	# a toy box in the stick's corner gets its badge just past the stick's
+	# edge, still beside the box. Unslid always beats slid: a badge 260 px
+	# above its object is worse than one beside it that needed no slide.
 	var best: Dictionary = {}
 	var best_overlap: float = INF
-	for candidate: Dictionary in candidates:
-		var wanted: Vector2 = candidate["centre"]
-		var placement: String = String(candidate["placement"])
-		# "Above" only counts when it really is above: clamped down onto the
-		# object it would sit on whatever stands in front of it.
-		if placement == "above" and wanted.y < min_y:
-			continue
-		var centre: Vector2 = Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y))
-		# Two goes: where the candidate wants to be, then slid outward along its
-		# own direction until it clears whatever it landed on -- a toy box in
-		# the stick's corner gets its badge just past the stick's edge, still
-		# beside the box, rather than a badge that half-covers the stick.
-		for attempt: int in range(2):
-			var footprint: Rect2 = badge_footprint(centre)
-			var overlap: float = 0.0
-			var first_block: Rect2 = Rect2()
-			for entry: Variant in keep_outs:
-				if not (entry is Rect2):
+	for pass_index: int in range(2):
+		for candidate: Dictionary in candidates:
+			var wanted: Vector2 = candidate["centre"]
+			var placement: String = String(candidate["placement"])
+			# "Above" only counts when it really is above: clamped down onto the
+			# object it would sit on whatever stands in front of it.
+			if placement == "above" and wanted.y < min_y:
+				continue
+			var centre: Vector2 = Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y))
+			var measured: Dictionary = _overlap(badge_footprint(centre), keep_outs)
+			if pass_index == 1:
+				if float(measured["overlap"]) <= 0.0:
 					continue
-				var blocked: Rect2 = (entry as Rect2).grow(KEEP_OUT_PAD)
-				if footprint.intersects(blocked):
-					var hit: Rect2 = footprint.intersection(blocked)
-					overlap += hit.size.x * hit.size.y
-					if first_block.size == Vector2.ZERO:
-						first_block = blocked
+				var slid: Vector2 = _slid_clear(placement, centre, badge_footprint(centre), measured["block"])
+				slid = Vector2(clampf(slid.x, min_x, max_x), clampf(slid.y, min_y, max_y))
+				if slid.distance_to(centre) > MAX_SLIDE_PX or slid.is_equal_approx(centre):
+					continue
+				centre = slid
+				measured = _overlap(badge_footprint(centre), keep_outs)
+			var overlap: float = float(measured["overlap"])
 			if overlap <= 0.0:
 				return {"centre": centre, "placement": placement}
 			if overlap < best_overlap:
 				best_overlap = overlap
 				best = {"centre": centre, "placement": placement}
-			if attempt == 1:
-				break
-			var slid: Vector2 = _slid_clear(placement, centre, footprint, first_block)
-			slid = Vector2(clampf(slid.x, min_x, max_x), clampf(slid.y, min_y, max_y))
-			if slid.distance_to(centre) > MAX_SLIDE_PX or slid.is_equal_approx(centre):
-				break
-			centre = slid
 	if best.is_empty():
 		# Every candidate was ruled out before overlap was even measured (an
 		# absurdly tall keep-out); fall back to the first side, clamped.
@@ -618,6 +611,22 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 		best = {"centre": Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y)),
 				"placement": String(side["placement"])}
 	return best
+
+
+## Total area of `footprint` inside any keep-out, and the first rect it hit.
+static func _overlap(footprint: Rect2, keep_outs: Array) -> Dictionary:
+	var overlap: float = 0.0
+	var first_block: Rect2 = Rect2()
+	for entry: Variant in keep_outs:
+		if not (entry is Rect2):
+			continue
+		var blocked: Rect2 = (entry as Rect2).grow(KEEP_OUT_PAD)
+		if footprint.intersects(blocked):
+			var hit: Rect2 = footprint.intersection(blocked)
+			overlap += hit.size.x * hit.size.y
+			if first_block.size == Vector2.ZERO:
+				first_block = blocked
+	return {"overlap": overlap, "block": first_block}
 
 
 ## The centre that puts `footprint` just past `blocked`, moving only along the
