@@ -100,6 +100,41 @@ func _run() -> void:
 		_finish()
 		return
 
+	if _mode == "departlive":
+		# The REAL thing: press Start and let `_process()` drive the walk for
+		# the asked-for seconds, so the fade, the hand-off and the reveal are
+		# the ones a child gets, not the hand-stepped ones.
+		var play_live: Button = _menu.get_node_or_null("UI/SafeArea/PlayButton") as Button
+		if play_live == null:
+			_fail.append("no PlayButton to press")
+		else:
+			play_live.pressed.emit()
+			var seconds: float = float(_mode_arg) if _mode_arg.is_valid_float() else 1.0
+			await _settle(seconds)
+			var scenes: Array = []
+			for child: Node in _viewport.get_children():
+				scenes.append("%s(%s)" % [String(child.name), child.scene_file_path.get_file()])
+			var cover: Node = root.get_node_or_null("SceneCover")
+			var cover_alpha: String = "none"
+			if cover != null and cover.get_node_or_null("Cover") != null:
+				cover_alpha = "%.2f" % (cover.get_node("Cover") as ColorRect).modulate.a
+			var root_scenes: Array = []
+			for child: Node in root.get_children():
+				if not child.scene_file_path.is_empty():
+					root_scenes.append(child.scene_file_path.get_file())
+			print("  live after %.2fs: viewport children %s; root scenes %s; cover alpha %s" % [
+				seconds, str(scenes), str(root_scenes), cover_alpha])
+			if is_instance_valid(_menu) and _menu.has_method("get_departure"):
+				var live: Node = _menu.call("get_departure")
+				if live != null:
+					print("  departure: phase=%s elapsed=%.2f" % [
+						String(live.call("get_phase")), float(live.call("get_elapsed"))])
+			await _shot(_name)
+			if save != null:
+				root.add_child(save)
+			_finish()
+			return
+
 	if _mode == "depart":
 		var play: Button = _menu.get_node_or_null("UI/SafeArea/PlayButton") as Button
 		if play == null:

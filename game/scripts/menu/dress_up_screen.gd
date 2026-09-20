@@ -389,7 +389,9 @@ func _pin_accessories() -> void:
 func _socket_position(socket_name: String) -> Vector3:
 	if _aliz.has_method("has_socket") and bool(_aliz.call("has_socket", socket_name)) \
 			and _aliz.has_method("get_socket"):
-		if _aliz.has_method("refresh_sockets"):
+		# In the tree the skeleton keeps its attachments current every frame;
+		# out of it (the headless runner) nothing does, so ask.
+		if not _aliz.is_inside_tree() and _aliz.has_method("refresh_sockets"):
 			_aliz.call("refresh_sockets")
 		var socket: Node3D = _aliz.call("get_socket", socket_name) as Node3D
 		if socket != null and socket != _aliz:

@@ -391,7 +391,9 @@ func _held_transform() -> Transform3D:
 	var socket: Node3D = null
 	if _aliz.has_method("has_socket") and bool(_aliz.call("has_socket", "carryFront")) \
 			and _aliz.has_method("get_socket"):
-		if _aliz.has_method("refresh_sockets"):
+		# In the tree the skeleton keeps its attachments current every frame;
+		# out of it (the headless runner) nothing does, so ask.
+		if not _aliz.is_inside_tree() and _aliz.has_method("refresh_sockets"):
 			_aliz.call("refresh_sockets")
 		socket = _aliz.call("get_socket", "carryFront") as Node3D
 		if socket == _aliz:
