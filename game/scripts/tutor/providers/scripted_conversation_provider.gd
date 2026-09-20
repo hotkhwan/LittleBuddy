@@ -123,20 +123,32 @@ func _turn_for_verdict(verdict: Dictionary, step: Dictionary, asset: String, wor
 	var action: String = String(verdict.get("lessonAction", "retry"))
 	var hint: String = String(verdict.get("hint", step.get("hint", "")))
 	var encouragement: String = String(verdict.get("encouragement", step.get("encouragement", "")))
+	# The engine's own line for this verdict (the lesson author's words) wins
+	# over anything composed here; the composition is the fallback for an
+	# engine that returns none.
+	var authored: String = String(verdict.get("line", "")).strip_edges()
 	if outcome == "correct":
+		if not authored.is_empty():
+			return TurnValidator.make(authored, "happy", "clap", action if action != "retry" else "next_question", asset)
 		var praise: String = PRAISE[_praise_index % PRAISE.size()]
 		_praise_index += 1
 		return TurnValidator.make("%s %s!" % [praise, word.capitalize()], "happy", "clap", "next_question", asset)
 	var lead: String = "Let's try together!" if timed_out else encouragement
 	if lead.is_empty():
 		lead = "Let's try together!"
+	if not authored.is_empty():
+		var spoken: String = authored
+		if timed_out and not authored.begins_with("Let's try together"):
+			spoken = ("Let's try together! " + authored).left(TurnValidator.MAX_SPEECH)
+		var gesture: String = "point" if action == "give_hint" else ("nod" if action != "retry" else "tilt")
+		return TurnValidator.make(spoken, "encouraging", gesture, action, asset)
 	match action:
 		"give_hint":
 			var hint_text: String = hint if not hint.is_empty() else "%s!" % word.capitalize()
 			return TurnValidator.make("%s %s" % [lead, hint_text], "encouraging", "point", "give_hint", asset)
-		"next_question":
+		"next_question", "complete":
 			return TurnValidator.make("%s %s! Let's do the next one." % [lead, word.capitalize()], "encouraging", "nod",
-				"next_question", asset)
+				action, asset)
 		_:
 			return TurnValidator.make(lead, "encouraging", "tilt", "retry", asset)
 

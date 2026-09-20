@@ -1,74 +1,76 @@
 extends Node3D
 
-## ALIZ TUTOR MODE -- the classroom scene's orchestrator.
+## ALIZ TUTOR MODE -- the classroom scene's orchestrator, HANDS-FREE.
 ##
-##   LessonEngine -> ConversationProvider -> SpeechSynthesisProvider -> face
-##                                        <- recognition (SpeechService / dev sim)
+##   TutorVoiceSession (mic, turn-taking) --> transcript
+##       LessonEngine -> ConversationProvider -> TutorTurn (validated)
+##           -> SpeechSynthesisProvider (Voice / TTS) -> Aliz's face + hands
 ##
-## One turn of the loop, as the child sees it:
+## The child presses nothing per turn. Entering the classroom starts the voice
+## session, Aliz welcomes the child ("Hi! What would you like to learn
+## today?"), the child names a subject (or Aliz picks one after a gentle
+## repeat), and the lesson runs as a conversation: Aliz asks, the microphone
+## is live, the child answers, Aliz answers back. The child may interrupt
+## when the session supports barge-in: Aliz stops, turns, and listens.
 ##
-##   Aliz asks ("What is this?", the card on the board)  ....... SPEAKING
-##   the mic opens, the ring pulses, "Listening..."  ........... LISTENING
-##   the child answers; a beat, a nod, "Thinking..."  .......... THINKING
-##   Aliz answers: smile + clap and "Great job!", or an
-##   encouraging hint, or "Let's try together!" on silence  .... SPEAKING
-##   the lesson engine's `lessonAction` is applied at the end
-##   of that speech -- next step, retry, or the break card  .... (boundary)
+## Everything the child hears passed through `tutor_turn.gd` first. The
+## engine owns progression (`advance()` is called here, at a boundary, never
+## by a provider). The quota (`TutorQuota`) counts active seconds and may end
+## the lesson only at a boundary -- with Aliz's own friendly closing, never a
+## cut. Home and End lesson always work, from every state.
 ##
-## Everything the child hears passed through `tutor_turn.gd` first. The engine
-## owns progression (`advance()` is called here, at a boundary, never by a
-## provider). The quota mirror counts active seconds and may only end the
-## lesson at a boundary. Home and Stop always work, from every state.
+## ## Microphone scope (addendum, test-enforced)
 ##
-## ## Recognition, honestly
+## Capture only between `session.start()` and `session.stop()`: after Home,
+## after End, after the closing, and the moment the app goes to the
+## background -- where the session is stopped and NOT reopened on return; a
+## "Welcome back -- tap to continue" card asks the child first.
 ##
-## When `SpeechService` reports a live backend the mic is real. When it does
-## not -- a Mac without permission, a build without the plugin, the headless
-## suite -- the scene never pretends: the mic press becomes "Let's try
-## together!", Aliz says the word with the child and the lesson moves on. The
-## DEV simulation (`enable_simulation()`, the hidden panel, `-- --tutor-sim`)
-## feeds a transcript into exactly the same path a recognised phrase takes, so
-## the whole loop is testable; it is refused unless it was explicitly enabled.
+## ## Honest fallbacks
+##
+## No recogniser (permission denied, no plugin, the headless suite): the
+## indicator says "Mic off", the answer cards appear for every question and
+## the big Tap-to-talk button says the word together with the child. The
+## parent's `handsFreeMode` off: Tap-to-talk opens one push-to-talk turn.
+## A provider failure: "Let's try together!" and the scripted path. Nothing
+## here ever fakes a transcript; the DEV simulation goes through the voice
+## session's test hook and is refused unless explicitly enabled.
 ##
 ## ## Seams
 ##
-## `advance(delta)` is the frame; `_process()` calls it and tests call it. The
-## engine, the provider and the quota are swapped for the real ones whenever
-## their files exist (`ResourceLoader.exists()`), so Agents A, E and F land
-## without a change here.
+## `advance(delta)` is the frame; `_process()` calls it and tests call it.
+## The engine, the voice session and the quota are the real classes when
+## their files exist (`ResourceLoader.exists()`), stubs from `classroom/`
+## otherwise, so Agents A, E and F land without a change here.
 
 const TurnValidator := preload("res://scripts/tutor/turn/tutor_turn.gd")
 const ScriptedProviderScript := preload("res://scripts/tutor/providers/scripted_conversation_provider.gd")
 const SynthesisScript := preload("res://scripts/tutor/providers/local_synthesis_provider.gd")
 const ClassroomScript := preload("res://scripts/tutor/classroom/classroom_builder.gd")
 const SeatPoseScript := preload("res://scripts/tutor/classroom/tutor_seat_pose.gd")
-const LocalQuotaScript := preload("res://scripts/tutor/classroom/tutor_local_quota.gd")
 const EngineStubScript := preload("res://scripts/tutor/classroom/lesson_engine_stub.gd")
+const LocalSessionScript := preload("res://scripts/tutor/classroom/local_voice_session.gd")
+const FlashcardArt := preload("res://scripts/tutor/classroom/flashcard_art.gd")
 const HudScript := preload("res://scripts/tutor/ui/tutor_hud.gd")
+const IndicatorScript := preload("res://scripts/tutor/ui/tutor_mic_indicator.gd")
 const BreakCardScript := preload("res://scripts/tutor/ui/tutor_break_card.gd")
 const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
 
 const LESSON_ENGINE_PATH: String = "res://scripts/tutor/lesson/lesson_engine.gd"
 const TUTOR_QUOTA_PATH: String = "res://scripts/tutor/quota/tutor_quota.gd"
+const VOICE_SESSION_PATH: String = "res://scripts/tutor/voice/tutor_voice_session.gd"
+const SUBJECTS_PATH: String = "res://content/tutor/subjects.json"
 const ALIZ_SCENE_PATH: String = "res://scenes/characters/buddy/PinkGirlBuddy.tscn"
 const MAIN_SCRIPT_PATH: String = "res://scenes/main/main.gd"
 const HOME_SCENE_PATH: String = "res://scenes/main/main.tscn"
-const DEFAULT_LESSON_ID: String = "fruits_01"
+const DEFAULT_LESSON_ID: String = "english_colors_fruits"
 const SIM_USER_ARG: String = "--tutor-sim"
 const SAVE_SERVICE_PATH: String = "/root/SaveService"
 const SPEECH_SERVICE_PATH: String = "/root/SpeechService"
 const AUDIO_PATH: String = "/root/Audio"
-
-## How long a listening turn may run before it counts as silence. The speech
-## service caps its own session sooner (4 s without a partial).
-const LISTEN_SECONDS: float = 8.0
-## The "thinking" beat: long enough to read as a nod, too short to feel slow.
-const THINK_SECONDS: float = 0.45
-## How long "Great job!" stays up after a correct answer's speech.
-const CELEBRATE_SECONDS: float = 1.1
-## Without recognition the mic waits for a tap; after this long Aliz repeats
-## the question once, and after as long again she says it with the child.
-const NUDGE_SECONDS: float = 10.0
+const VOICE_PATH: String = "/root/Voice"
+const TTS_PATH: String = "/root/TtsService"
+const HANDS_FREE_SETTING: String = "handsFreeMode"
 
 ## The shot: across the table from Aliz, a child's eye height, looking a
 ## little down so the table top and the board are both in frame.
@@ -79,6 +81,41 @@ const CAMERA_FOV: float = 36.0
 const LIGHT_FROM: Vector3 = Vector3(-2.0, 4.0, 3.5)
 const LIGHT_AT: Vector3 = Vector3(0.0, 0.8, -0.6)
 
+## Silence handling while the mic is live: after this long with no speech
+## Aliz asks the question again, once; after the full window it counts as an
+## unanswered turn ("Let's try together!" + the hint), never a fail.
+const NO_SPEECH_PROMPT_SECONDS: float = 3.0
+const LISTEN_SECONDS: float = 8.0
+## The "thinking" beat: long enough to read as a nod, too short to feel slow.
+const THINK_SECONDS: float = 0.45
+## How long "Great job!" stays up after a correct answer's speech.
+const CELEBRATE_SECONDS: float = 1.1
+## Push-to-talk / say-together: without recognition the tap waits; after
+## this long Aliz repeats the question once, and after as long again says it
+## with the child.
+const NUDGE_SECONDS: float = 10.0
+
+const WELCOME_TEXT: String = "Hi! What would you like to learn today?"
+const WELCOME_AGAIN_TEXT: String = "We can learn fruits, numbers, colors or animals. What would you like?"
+const CLOSING_TEXT: String = "Great job today! Come back tomorrow for more Little Days! Let's keep playing with Bunny!"
+
+## Subject routing for the welcome question, keyed by subjectId.
+const SUBJECT_KEYWORDS: Dictionary = {
+	"english_basics": ["english", "fruit", "fruits", "apple", "banana", "words", "word"],
+	"numbers": ["number", "numbers", "count", "counting", "one", "two", "three"],
+	"colors": ["color", "colors", "colour", "colours", "red", "blue", "yellow", "green"],
+	"animals": ["animal", "animals", "cat", "dog", "pets", "pet", "kitty", "puppy"],
+	"everyday_life": ["cup", "spoon", "everyday", "things", "home"],
+}
+const SUBJECT_CARDS: Dictionary = {
+	"english_basics": "apple_red", "numbers": "number_1", "colors": "color_blue", "animals": "cat",
+}
+
+const PHASE_WELCOME: String = "welcome"
+const PHASE_CHOSEN: String = "chosen"
+const PHASE_CLOSING: String = "closing"
+const PHASE_CELEBRATE: String = "celebrate"
+
 const STATE_IDLE: String = "idle"
 const STATE_SPEAKING: String = "speaking"
 const STATE_LISTENING: String = "listening"
@@ -87,6 +124,7 @@ const STATE_THINKING: String = "thinking"
 const STATE_CELEBRATE: String = "celebrate"
 const STATE_BREAK: String = "break"
 const STATE_PAUSED: String = "paused"
+const STATE_BACKGROUND: String = "background"
 const STATE_DONE: String = "done"
 
 signal state_changed(state: String)
@@ -103,6 +141,7 @@ var _engine: Object = null
 var _provider: Object = null
 var _synth: Node = null
 var _quota: Object = null
+var _session: Object = null
 var _camera: Camera3D = null
 
 var _state: String = STATE_IDLE
@@ -115,7 +154,10 @@ var _pending_phase: String = ""
 var _pending_transcript: String = ""
 var _timer: float = 0.0
 var _nudged: bool = false
-var _listening_live: bool = false
+var _child_talking: bool = false
+var _push_to_talk_live: bool = false
+var _choosing: bool = false
+var _welcomed_twice: bool = false
 var _sim_enabled: bool = false
 var _muted: bool = false
 var _built: bool = false
@@ -123,11 +165,16 @@ var _leaving: bool = false
 var _last_departure: String = ""
 var _outcome_was_correct: bool = false
 var _using_real_engine: bool = false
+var _using_real_session: bool = false
 var _turn_log: Array = []
-var _end_requested: bool = false
 var _lesson_complete: bool = false
+var _closing: bool = false
+var _resume_needed: bool = false
 var _save_override: Object = null
 var _last_failure_reason: String = ""
+var _subjects: Array = []
+var _lip_sync: Node = null
+var _no_recogniser_forced: bool = false
 
 
 func _ready() -> void:
@@ -140,6 +187,14 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	advance(delta)
+
+
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT:
+			go_background()
+		NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN:
+			return_from_background()
 
 
 # ---------------------------------------------------------------------------
@@ -184,9 +239,8 @@ func build() -> void:
 	_provider.turn_ready.connect(_on_turn_ready)
 	_provider.provider_failed.connect(_on_provider_failed)
 
-	_quota = _make_quota()
-	if _quota.has_signal("expired"):
-		_quota.connect("expired", _on_quota_expired)
+	_session = _make_session()
+	_subjects = _load_subjects()
 
 	var layer: CanvasLayer = get_node_or_null("UI") as CanvasLayer
 	if layer == null:
@@ -199,10 +253,12 @@ func build() -> void:
 	_hud.home_pressed.connect(leave_to_home)
 	_hud.mute_toggled.connect(set_muted)
 	_hud.repeat_pressed.connect(repeat_prompt)
-	_hud.mic_pressed.connect(_on_mic_pressed)
+	_hud.tap_to_talk_pressed.connect(_on_tap_to_talk)
+	_hud.answer_card_tapped.connect(_on_answer_card)
 	_hud.exit_requested.connect(_on_exit_requested)
 	_hud.exit_kept.connect(_on_exit_kept)
 	_hud.exit_confirmed.connect(_on_exit_confirmed)
+	_hud.resume_pressed.connect(_on_resume_pressed)
 	_hud.sim_requested.connect(simulate)
 
 	_break_card = BreakCardScript.new()
@@ -212,7 +268,7 @@ func build() -> void:
 	_break_card.home_pressed.connect(leave_to_home)
 	_break_card.learn_again_pressed.connect(_on_learn_again)
 
-	_bind_speech_service()
+	_bind_lip_sync()
 
 
 func _build_aliz() -> void:
@@ -242,6 +298,24 @@ func _build_aliz() -> void:
 	_face("neutral")
 
 
+## Aliz's mouth follows what is actually playing: the Voice bus when the
+## director exists, the platform voice's envelope otherwise. All guarded.
+func _bind_lip_sync() -> void:
+	if _aliz == null or not _aliz.has_method("get_lip_sync"):
+		return
+	_lip_sync = _aliz.call("get_lip_sync") as Node
+	if _lip_sync == null:
+		return
+	var voice: Node = _autoload(VOICE_PATH)
+	if voice != null and voice.has_method("get_player") and _lip_sync.has_method("attach"):
+		var player: AudioStreamPlayer = voice.call("get_player", "aliz") as AudioStreamPlayer
+		if player != null:
+			_lip_sync.call("attach", player)
+	var tts: Node = _autoload(TTS_PATH)
+	if tts != null and _lip_sync.has_method("attach_tts"):
+		_lip_sync.call("attach_tts", tts)
+
+
 func _make_engine() -> Object:
 	if ResourceLoader.exists(LESSON_ENGINE_PATH):
 		var script: Resource = load(LESSON_ENGINE_PATH)
@@ -254,53 +328,122 @@ func _make_engine() -> Object:
 	return EngineStubScript.new()
 
 
+func _make_session() -> Object:
+	var session: Object = null
+	if ResourceLoader.exists(VOICE_SESSION_PATH):
+		var script: Resource = load(VOICE_SESSION_PATH)
+		if script is GDScript and (script as GDScript).can_instantiate():
+			var candidate: Object = (script as GDScript).new()
+			if candidate != null and candidate.has_method("start") and candidate.has_method("get_input_level"):
+				session = candidate
+				_using_real_session = true
+	if session == null:
+		session = LocalSessionScript.new()
+		_using_real_session = false
+	if session is Node:
+		(session as Node).name = "VoiceSession"
+		add_child(session)
+	_connect_if(session, "child_speech_started", _on_child_speech_started)
+	_connect_if(session, "child_speech_ended", _on_child_speech_ended)
+	_connect_if(session, "partial_transcript", _on_partial_transcript)
+	_connect_if(session, "barge_in", _on_barge_in)
+	_connect_if(session, "session_ended", _on_session_ended)
+	return session
+
+
 func _make_quota() -> Object:
 	var save: Object = _save_service()
 	if ResourceLoader.exists(TUTOR_QUOTA_PATH):
 		var script: Resource = load(TUTOR_QUOTA_PATH)
 		if script is GDScript and (script as GDScript).can_instantiate():
-			var quota: Object = (script as GDScript).new()
-			if quota != null and quota.has_method("state") and quota.has_method("request_end_at_boundary"):
-				if quota.has_method("set_save_service"):
-					quota.call("set_save_service", save)
-				if quota is Node:
-					add_child(quota)
+			var quota: Object = (script as GDScript).new(save)
+			if quota != null and quota.has_method("begin_session") and quota.has_method("boundary_reached"):
+				_connect_if(quota, "expired", _on_quota_expired)
 				return quota
-	return LocalQuotaScript.new(save)
+	return null
 
 
-func _bind_speech_service() -> void:
-	var speech: Node = _speech_service()
-	if speech == null:
-		return
-	if speech.has_signal("recognized") and not speech.recognized.is_connected(_on_recognized):
-		speech.recognized.connect(_on_recognized)
-	if speech.has_signal("session_ended") and not speech.session_ended.is_connected(_on_session_ended):
-		speech.session_ended.connect(_on_session_ended)
-	if speech.has_signal("recognition_failed") and not speech.recognition_failed.is_connected(_on_recognition_failed):
-		speech.recognition_failed.connect(_on_recognition_failed)
+static func _connect_if(object: Object, signal_name: String, target: Callable) -> void:
+	if object != null and object.has_signal(signal_name) and not object.is_connected(signal_name, target):
+		object.connect(signal_name, target)
+
+
+func _load_subjects() -> Array:
+	if not FileAccess.file_exists(SUBJECTS_PATH):
+		return []
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(SUBJECTS_PATH))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return []
+	var subjects: Variant = (parsed as Dictionary).get("subjects", [])
+	return subjects if typeof(subjects) == TYPE_ARRAY else []
 
 
 # ---------------------------------------------------------------------------
 # Lesson flow
 # ---------------------------------------------------------------------------
 
+## Enters the classroom: opens the quota session, starts the voice session
+## and has Aliz welcome the child. `lesson_id` is the lesson Aliz falls back
+## to when the child does not name a subject.
 func begin_lesson(lesson_id: String = DEFAULT_LESSON_ID) -> void:
 	build()
 	_lesson_id = lesson_id if not lesson_id.is_empty() else DEFAULT_LESSON_ID
 	_lesson_complete = false
-	_end_requested = false
+	_closing = false
+	_choosing = true
+	_welcomed_twice = false
 	_turn_log.clear()
-	if not bool(_engine.call("load_lesson", _lesson_id)):
-		_engine = EngineStubScript.new()
-		_engine.call("load_lesson", DEFAULT_LESSON_ID)
-		_provider.call("set_engine", _engine)
+	_current_step = {}
+	_last_question = {}
+	if _quota == null:
+		_quota = _make_quota()
+	if _quota != null and _quota.has_method("set_lesson_id"):
+		_quota.call("set_lesson_id", _lesson_id)
+	if _quota != null and not bool(_quota.call("begin_session")):
+		# Nothing left today: Aliz's closing, then the card. No mic is opened.
+		_hud.visible = true
+		_set_music(true)
+		_speak_closing()
+		return
+	if _quota != null and _quota.has_method("request_end_at_boundary"):
+		_quota.call("request_end_at_boundary")
+	_set_music(true)
+	_start_session()
+	_provider.call("begin_session", _lesson_id)
+	_show_card("")
+	_pending_phase = PHASE_WELCOME
+	_speak_turn(TurnValidator.make(WELCOME_TEXT, "smile", "wave", "retry"))
+
+
+func _start_session() -> void:
+	if _session == null:
+		return
+	if _session.has_method("enable_simulation"):
+		_session.call("enable_simulation", _sim_enabled)
+	if _session.has_method("mute"):
+		_session.call("mute", _muted)
+	_session.call("start", _lesson_id, {"handsFree": _hands_free_setting()})
+	_refresh_input_mode()
+
+
+## Loads `lesson_id` into the engine (restarting a lesson the child already
+## finished) and opens its first step.
+func _load_and_open(lesson_id: String) -> void:
+	_choosing = false
+	_lesson_id = lesson_id
+	if not bool(_engine.call("load_lesson", lesson_id)):
+		if lesson_id != DEFAULT_LESSON_ID and bool(_engine.call("load_lesson", DEFAULT_LESSON_ID)):
+			_lesson_id = DEFAULT_LESSON_ID
+		else:
+			_engine = EngineStubScript.new()
+			_engine.call("load_lesson", lesson_id)
+			_provider.call("set_engine", _engine)
 	if _engine.has_method("load_progress"):
 		_engine.call("load_progress", _save_service())
-	if _quota.has_method("begin_session"):
-		_quota.call("begin_session")
-	_set_music(true)
-	_provider.call("begin_session", _lesson_id)
+	if bool(_engine.call("is_complete")) and _engine.has_method("restart"):
+		_engine.call("restart")
+	if _quota != null and _quota.has_method("set_lesson_id"):
+		_quota.call("set_lesson_id", _lesson_id)
 	_open_step()
 
 
@@ -312,6 +455,7 @@ func _open_step() -> void:
 		return
 	var asset: String = String(_current_step.get("visualAssetId", ""))
 	_show_card(asset)
+	_tell_session_expected_answer()
 	_request_turn("", ScriptedProviderScript.PHASE_OPEN)
 
 
@@ -325,14 +469,13 @@ func _request_turn(transcript: String, phase: String) -> void:
 
 
 func _on_turn_ready(raw_turn: Dictionary) -> void:
-	var turn: Dictionary = TurnValidator.coerce(raw_turn)
-	_speak_turn(turn)
+	_speak_turn(TurnValidator.coerce(raw_turn))
 
 
 func _on_provider_failed(reason: String) -> void:
 	# The contract's rule: a failing provider shows "Let's try together!" and
 	# offers the local scripted path -- which is also what this scene runs, so
-	# recovering means rebuilding the scripted provider and re-opening the step.
+	# recovering means rebuilding the scripted provider and carrying on.
 	push_warning("tutor provider failed: %s" % reason)
 	_hud.call("set_banner", HudScript.BANNER_TOGETHER)
 	_provider = ScriptedProviderScript.new()
@@ -349,19 +492,23 @@ func _speak_turn(turn: Dictionary) -> void:
 	var phase: String = _pending_phase
 	if phase == ScriptedProviderScript.PHASE_OPEN and String(_current_step.get("kind", "")) == "ask":
 		_last_question = turn
+	elif phase == PHASE_WELCOME:
+		_last_question = turn
 	_outcome_was_correct = phase == ScriptedProviderScript.PHASE_ANSWER \
 			and String(turn.get("emotion", "")) == "happy" \
-			and String(turn.get("lessonAction", "")) == "next_question"
+			and String(turn.get("lessonAction", "")) in ["next_question", "complete"]
 	var visual: Dictionary = turn.get("visual", {})
 	if String(visual.get("type", "none")) != "none":
 		_show_card(String(visual.get("assetId", "")))
+	_child_talking = false
+	_hud.call("hide_answer_cards")
 	_set_state(STATE_SPEAKING)
 	_hud.call("set_banner", HudScript.BANNER_NONE)
 	if phase == ScriptedProviderScript.PHASE_TIMEOUT or phase == ScriptedProviderScript.PHASE_TOGETHER \
 			or String(turn.get("speech", "")).begins_with("Let's try together"):
 		_hud.call("set_banner", HudScript.BANNER_TOGETHER)
 	_hud.call("set_subtitle", String(turn.get("subtitle", turn.get("speech", ""))))
-	_hud.call("set_mic_enabled", false)
+	_hud.call("set_tap_to_talk_enabled", false)
 	_face(String(turn.get("emotion", "neutral")))
 	_gesture(String(turn.get("gesture", "none")))
 	_set_speaking(true)
@@ -382,15 +529,29 @@ func _on_speech_finished(_text: String) -> void:
 
 ## The boundary: the turn has been heard; apply its lessonAction.
 func _after_turn() -> void:
+	var phase: String = _pending_phase
+	if phase == PHASE_CLOSING:
+		_finish_closing()
+		return
+	if _quota != null and _quota.has_method("boundary_reached") and bool(_quota.call("boundary_reached")):
+		_speak_closing()
+		return
+	if phase == PHASE_WELCOME:
+		_start_listening()
+		return
+	if phase == PHASE_CHOSEN:
+		_load_and_open(_lesson_id)
+		return
+	if phase == PHASE_CELEBRATE:
+		_finish_lesson()
+		return
 	var action: String = String(_current_turn.get("lessonAction", "retry"))
-	if _quota_exhausted():
-		_end_requested = true
-		if _quota.has_method("request_end_at_boundary"):
-			_quota.call("request_end_at_boundary")
-		if _state == STATE_BREAK:
-			return
 	match action:
 		"complete", "end_session":
+			if _outcome_was_correct:
+				_outcome_was_correct = false
+				_hud.call("set_banner", HudScript.BANNER_SUCCESS)
+				_face("happy")
 			_complete_lesson()
 		"next_question":
 			if _outcome_was_correct:
@@ -412,143 +573,371 @@ func _advance_step() -> void:
 	_open_step()
 
 
+## The lesson is done: Aliz says the lesson's own celebration line, then the
+## card. The reward is granted by the engine's `save_progress()`.
 func _complete_lesson() -> void:
+	if _lesson_complete:
+		_finish_lesson()
+		return
 	_lesson_complete = true
-	# The celebrate step is the last one; step past it so the engine's own
-	# progress says completed, which is what `tutorProgress` persists.
-	if not bool(_engine.call("is_complete")):
+	# The engine says `complete` at the last question; step past whatever
+	# trails it (a recap the celebration line replaces) so its own progress
+	# reads completed and the reward is granted in the same save.
+	var guard: int = 0
+	while not bool(_engine.call("is_complete")) and guard < 64:
+		guard += 1
 		_engine.call("advance")
 	if _engine.has_method("save_progress"):
 		_engine.call("save_progress", _save_service())
+	lesson_completed.emit(_engine.call("progress"))
+	var line: String = "Great job today!"
+	if _engine.has_method("completion_reward"):
+		var reward: Dictionary = _engine.call("completion_reward")
+		var celebration: String = String(reward.get("celebrationLine", "")).strip_edges()
+		if not celebration.is_empty():
+			line = celebration
+	_pending_phase = PHASE_CELEBRATE
+	_speak_turn(TurnValidator.make(line, "happy", "clap", "complete"))
+
+
+func _finish_lesson() -> void:
 	_hud.call("set_banner", HudScript.BANNER_SUCCESS)
 	_face("happy")
-	lesson_completed.emit(_engine.call("progress"))
 	_show_break(not _quota_exhausted())
 
 
+## The quota is used up (or the day started that way): Aliz's friendly
+## closing, spoken, then the card. The session closes and the mic is released
+## when the closing has been heard.
+func _speak_closing() -> void:
+	if _closing:
+		return
+	_closing = true
+	_hud.call("hide_answer_cards")
+	_pending_phase = PHASE_CLOSING
+	_speak_turn(TurnValidator.make(CLOSING_TEXT, "happy", "wave", "end_session"))
+
+
+func _finish_closing() -> void:
+	_show_break(false)
+
+
 func _show_break(time_left: bool) -> void:
-	_stop_listening()
+	_stop_session("break")
 	_synth.call("cancel")
 	_hud.call("set_subtitle", "")
-	_hud.call("set_mic_enabled", false)
-	if _quota.has_method("end_session"):
-		_quota.call("end_session")
+	_hud.call("hide_answer_cards")
+	if _quota != null and _quota.has_method("end_session"):
+		_quota.call("end_session", "lesson_complete" if time_left else "quota")
 	_set_state(STATE_BREAK)
 	_hud.visible = false
 	_break_card.call("open", time_left)
 
 
 func _on_quota_expired() -> void:
-	if _state == STATE_BREAK or _leaving:
-		return
-	_show_break(false)
+	# The meter emits this from `boundary_reached()`, which `_after_turn()`
+	# already answers with the closing; nothing else to do here.
+	pass
 
 
 func _on_learn_again() -> void:
 	_break_card.call("close")
 	_hud.visible = true
+	_set_state(STATE_IDLE)
 	begin_lesson(_lesson_id)
 
 
 # ---------------------------------------------------------------------------
-# Listening
+# Listening (hands-free) and its fallbacks
 # ---------------------------------------------------------------------------
+
+func _hands_free_setting() -> bool:
+	var save: Object = _save_service()
+	if save != null and save.has_method("get_setting"):
+		return bool(save.call("get_setting", HANDS_FREE_SETTING, true))
+	return true
+
+
+## Whether the live session can capture on its own right now.
+func _hands_free_live() -> bool:
+	if _session == null or not _hands_free_setting() or _no_recogniser_forced:
+		return false
+	if _session.has_method("hands_free_available"):
+		return bool(_session.call("hands_free_available"))
+	return bool(_session.call("is_active"))
+
+
+func _recogniser_available() -> bool:
+	if _no_recogniser_forced:
+		return false
+	var speech: Node = _autoload(SPEECH_SERVICE_PATH)
+	return speech != null and speech.has_method("is_available") and bool(speech.call("is_available"))
+
+
+## DEV/test seam: behave as a device whose recogniser is denied or missing,
+## so the touch fallback can be exercised on a Mac that has one.
+func force_no_recogniser(forced: bool) -> void:
+	_no_recogniser_forced = forced
+	if _session != null and _session.has_method("force_unavailable"):
+		_session.call("force_unavailable", forced)
+	if _built:
+		_refresh_input_mode()
+
+
+## Sets the bottom-centre control to match the device: the indicator when
+## hands-free runs (or the dev simulation stands in for it), Tap-to-talk
+## otherwise.
+func _refresh_input_mode() -> void:
+	var live: bool = _hands_free_live() or _sim_enabled
+	_hud.call("set_tap_to_talk_visible", not live)
+
 
 func _start_listening() -> void:
 	_nudged = false
 	_timer = 0.0
+	_child_talking = false
 	_last_failure_reason = ""
 	_face("listening")
-	var speech: Node = _speech_service()
-	if speech != null and speech.has_method("is_available") and bool(speech.call("is_available")):
-		_listening_live = true
+	_tell_session_expected_answer()
+	_refresh_input_mode()
+	if _hands_free_live() or _sim_enabled:
 		_set_state(STATE_LISTENING)
 		_hud.call("set_banner", HudScript.BANNER_LISTENING)
-		_hud.call("set_listening", true)
-		speech.call("start_listening", _locale())
+		_hud.call("set_tap_to_talk_enabled", false)
+		if not _hands_free_live():
+			_offer_answer_cards()
 		return
-	if _sim_enabled:
-		_listening_live = false
-		_set_state(STATE_LISTENING)
-		_hud.call("set_banner", HudScript.BANNER_LISTENING)
-		_hud.call("set_listening", true)
-		return
-	# No recognition on this device: the mic is a "say it with me" button.
-	_listening_live = false
+	# No hands-free: the tap is the way in, and the cards are the way out.
 	_set_state(STATE_AWAIT_MIC)
 	_hud.call("set_banner", HudScript.BANNER_NONE)
-	_hud.call("set_listening", false)
-	_hud.call("set_mic_enabled", true)
+	_hud.call("set_tap_to_talk_enabled", true)
+	if not _recogniser_available():
+		_offer_answer_cards()
 
 
-func _stop_listening() -> void:
-	if _listening_live:
-		var speech: Node = _speech_service()
-		if speech != null and speech.has_method("stop_listening"):
-			speech.call("stop_listening")
-	_listening_live = false
-	_hud.call("set_listening", false)
-
-
-func _on_recognized(text: String) -> void:
-	if _state != STATE_LISTENING or not _listening_live:
+## Tap-to-talk: one push-to-talk turn when a recogniser exists, "say it
+## together" when none does.
+func _on_tap_to_talk() -> void:
+	if _state != STATE_AWAIT_MIC:
 		return
-	_listening_live = false
-	_hud.call("set_listening", false)
-	_think(text, ScriptedProviderScript.PHASE_ANSWER)
+	_hud.call("set_tap_to_talk_enabled", false)
+	if _recogniser_available():
+		var speech: Node = _autoload(SPEECH_SERVICE_PATH)
+		_connect_if(speech, "recognized", _on_push_to_talk_recognized)
+		_connect_if(speech, "session_ended", _on_push_to_talk_ended)
+		_connect_if(speech, "recognition_failed", _on_recognition_failed)
+		_push_to_talk_live = true
+		_set_state(STATE_LISTENING)
+		_hud.call("set_banner", HudScript.BANNER_LISTENING)
+		_hud.call("set_indicator", IndicatorScript.STATE_LISTENING, 0.3)
+		speech.call("start_listening", _locale())
+		return
+	if _choosing:
+		_choose_subject("")
+		return
+	_request_turn("", ScriptedProviderScript.PHASE_TOGETHER)
+
+
+func _on_push_to_talk_recognized(text: String) -> void:
+	if not _push_to_talk_live:
+		return
+	_push_to_talk_live = false
+	_heard(text)
+
+
+func _on_push_to_talk_ended(outcome: String) -> void:
+	if not _push_to_talk_live or outcome == "recognized":
+		return
+	_push_to_talk_live = false
+	if _last_failure_reason == "timeout":
+		_heard("")
+		return
+	_set_state(STATE_AWAIT_MIC)
+	_hud.call("set_banner", HudScript.BANNER_NONE)
+	_hud.call("set_tap_to_talk_enabled", true)
 
 
 func _on_recognition_failed(reason: String) -> void:
 	_last_failure_reason = reason
 
 
-func _on_session_ended(outcome: String) -> void:
-	if _state != STATE_LISTENING or not _listening_live:
+## The touch fallback for a question: the right card and two others.
+func _offer_answer_cards() -> void:
+	if _choosing:
+		var ids: Array = []
+		for subject in _subjects:
+			var card: String = String(SUBJECT_CARDS.get(String((subject as Dictionary).get("subjectId", "")), ""))
+			if not card.is_empty() and ids.size() < 3:
+				ids.append(card)
+		if ids.is_empty():
+			ids = ["apple_red", "number_1", "cat"]
+		_hud.call("show_answer_cards", ids)
 		return
-	if outcome == "recognized":
-		return  # `_on_recognized` handled it
-	_listening_live = false
-	_hud.call("set_listening", false)
-	if _last_failure_reason == "timeout":
-		_think("", ScriptedProviderScript.PHASE_TIMEOUT)
+	if String(_current_step.get("kind", "")) != "ask":
 		return
-	# Anything else -- no permission, no plugin, an audio-session error -- is
-	# the device's failure, not the child's silence, and is never counted as a
-	# miss. The dev simulation keeps listening; the product falls back to the
-	# tap-to-say-together mic.
-	if _sim_enabled:
-		_timer = 0.0
+	var answer: String = String(_current_step.get("visualAssetId", ""))
+	if answer.is_empty():
 		return
-	_set_state(STATE_AWAIT_MIC)
+	var pool: Array = TurnValidator.allowed_asset_ids().filter(func(id: String) -> bool: return id != answer)
+	pool.sort()
+	var seed: int = String(_current_step.get("stepId", "")).hash()
+	var others: Array = []
+	for i: int in range(2):
+		if pool.is_empty():
+			break
+		others.append(pool.pop_at((seed + i * 7) % pool.size()))
+	var cards: Array = [answer] + others
+	# A stable, non-telling order: sort by id so the answer is not always first.
+	cards.sort()
+	_hud.call("show_answer_cards", cards)
+
+
+func _on_answer_card(asset_id: String) -> void:
+	if _state != STATE_LISTENING and _state != STATE_AWAIT_MIC:
+		return
+	if _choosing:
+		for subject_id in SUBJECT_CARDS.keys():
+			if String(SUBJECT_CARDS[subject_id]) == asset_id:
+				_choose_subject(String(subject_id))
+				return
+		_choose_subject("")
+		return
+	_heard(FlashcardArt.word_for(asset_id))
+
+
+# -- session signals --------------------------------------------------------
+
+func _on_child_speech_started() -> void:
+	if _state == STATE_LISTENING:
+		_child_talking = true
+		if _hud.call("banner_kind") != HudScript.BANNER_INTERRUPTED:
+			_hud.call("set_banner", HudScript.BANNER_HEARING)
+	elif _state == STATE_SPEAKING and _session != null and _session.has_method("supports_barge_in") \
+			and bool(_session.call("supports_barge_in")):
+		_on_barge_in()
+
+
+func _on_partial_transcript(text: String) -> void:
+	if _state == STATE_LISTENING:
+		_child_talking = true
+		# "I'm listening!" stays up through an interruption; partials show
+		# softly on an ordinary turn.
+		if _hud.call("banner_kind") != HudScript.BANNER_INTERRUPTED:
+			_hud.call("show_partial", text)
+
+
+func _on_child_speech_ended(transcript: String) -> void:
+	if _state != STATE_LISTENING:
+		return
+	_heard(transcript)
+
+
+## The child interrupted Aliz: stop at once, turn, listen.
+func _on_barge_in() -> void:
+	if _state != STATE_SPEAKING or _closing:
+		return
+	_synth.call("cancel")
+	_set_speaking(false)
+	_hud.call("set_subtitle", "")
+	_face("listening")
+	_gesture("tilt")
+	_set_state(STATE_LISTENING)
+	_child_talking = true
 	_timer = 0.0
-	_hud.call("set_banner", HudScript.BANNER_NONE)
-	_hud.call("set_mic_enabled", true)
+	_hud.call("set_banner", HudScript.BANNER_INTERRUPTED)
 
 
-func _on_mic_pressed() -> void:
-	match _state:
-		STATE_AWAIT_MIC:
-			_hud.call("set_mic_enabled", false)
-			if _sim_enabled:
-				_start_listening()
-			else:
-				_request_turn("", ScriptedProviderScript.PHASE_TOGETHER)
-		STATE_LISTENING:
-			pass
-		_:
-			pass
+func _on_session_ended(reason: String) -> void:
+	if reason == "background" or _leaving or _state in [STATE_BREAK, STATE_DONE, STATE_BACKGROUND]:
+		return
+	# The session dropped under us (device failure): fall back to the tap.
+	if _state == STATE_LISTENING:
+		_refresh_input_mode()
+
+
+## A transcript arrived, from whichever path. Blank (a cough) keeps listening.
+func _heard(transcript: String) -> void:
+	var text: String = transcript.strip_edges()
+	if text.is_empty():
+		_child_talking = false
+		_timer = 0.0
+		if _state == STATE_LISTENING:
+			_hud.call("set_banner", HudScript.BANNER_LISTENING)
+		return
+	if _choosing:
+		_choose_subject(_route_subject(text))
+		return
+	if _engine.has_method("handle_interjection") and _pending_phase != ScriptedProviderScript.PHASE_OPEN:
+		var handled: Dictionary = _engine.call("handle_interjection", text)
+		if bool(handled.get("handled", false)):
+			_pending_phase = ScriptedProviderScript.PHASE_ANSWER
+			_speak_turn(TurnValidator.make(String(handled.get("line", "Okay!")), "happy", "nod",
+				String(handled.get("lessonAction", "next_question")), String(_current_step.get("visualAssetId", ""))))
+			return
+	_think(text, ScriptedProviderScript.PHASE_ANSWER)
 
 
 ## A short "Thinking..." beat with a nod, then the transcript goes to the provider.
 func _think(transcript: String, phase: String) -> void:
-	_stop_listening()
 	_pending_transcript = transcript
 	_pending_phase = phase
+	_child_talking = false
+	_hud.call("hide_answer_cards")
 	_set_state(STATE_THINKING)
 	_hud.call("set_banner", HudScript.BANNER_THINKING)
 	_face("thinking")
 	_gesture("nod")
 	_timer = THINK_SECONDS
+
+
+# -- the welcome and the subject choice -------------------------------------
+
+func _route_subject(transcript: String) -> String:
+	var said: String = " " + EngineStubScript.normalise(transcript) + " "
+	for subject_id in SUBJECT_KEYWORDS.keys():
+		for word in SUBJECT_KEYWORDS[subject_id]:
+			if said.find(" " + String(word) + " ") >= 0:
+				return String(subject_id)
+	return ""
+
+
+## Loads the chosen subject's first lesson; "" means the child did not name
+## one -- Aliz asks once more, then picks the default herself.
+func _choose_subject(subject_id: String) -> void:
+	var lesson_id: String = ""
+	var title: String = ""
+	for subject in _subjects:
+		var entry: Dictionary = subject
+		if String(entry.get("subjectId", "")) == subject_id:
+			var ids: Array = entry.get("lessonIds", [])
+			if not ids.is_empty():
+				lesson_id = String(ids[0])
+				title = String(entry.get("title", ""))
+	if lesson_id.is_empty() and not _welcomed_twice and subject_id.is_empty() and _pending_phase != PHASE_WELCOME:
+		pass
+	if lesson_id.is_empty():
+		if not _welcomed_twice and not _subjects.is_empty():
+			_welcomed_twice = true
+			_pending_phase = PHASE_WELCOME
+			_speak_turn(TurnValidator.make(WELCOME_AGAIN_TEXT, "encouraging", "tilt", "retry"))
+			return
+		lesson_id = _lesson_id
+		title = ""
+	_lesson_id = lesson_id
+	_choosing = false
+	_pending_phase = PHASE_CHOSEN
+	var line: String = "Great! Let's learn %s!" % title if not title.is_empty() else "Great! Let's learn together!"
+	_speak_turn(TurnValidator.make(line, "happy", "clap", "next_question"))
+
+
+func _tell_session_expected_answer() -> void:
+	if _session == null or not _session.has_method("set_expected_answer"):
+		return
+	var answer: String = "fruits"
+	if not _choosing:
+		var answers: Array = _current_step.get("expectedAnswers", [])
+		answer = String(answers[0]) if not answers.is_empty() else "yes"
+	_session.call("set_expected_answer", answer)
 
 
 # ---------------------------------------------------------------------------
@@ -560,7 +949,10 @@ func advance(delta: float) -> void:
 		return
 	_synth.call("advance", delta)
 	_hud.call("advance", delta)
-	if _quota.has_method("tick") and _is_active_state():
+	if _session != null and _session.has_method("advance"):
+		_session.call("advance", delta)
+	_update_indicator()
+	if _quota != null and _quota.has_method("tick") and _is_active_state():
 		_quota.call("tick", delta)
 	match _state:
 		STATE_THINKING:
@@ -573,9 +965,18 @@ func advance(delta: float) -> void:
 				_hud.call("set_banner", HudScript.BANNER_NONE)
 				_advance_step()
 		STATE_LISTENING:
-			if not _listening_live:
-				_timer += delta
-				if _timer >= LISTEN_SECONDS:
+			if _push_to_talk_live:
+				return
+			if _child_talking:
+				return
+			_timer += delta
+			if not _nudged and _timer >= NO_SPEECH_PROMPT_SECONDS and _hands_free_live():
+				_nudged = true
+				repeat_prompt()
+			elif _timer >= LISTEN_SECONDS:
+				if _choosing:
+					_choose_subject("")
+				else:
 					_think("", ScriptedProviderScript.PHASE_TIMEOUT)
 		STATE_AWAIT_MIC:
 			_timer += delta
@@ -584,8 +985,29 @@ func advance(delta: float) -> void:
 				_timer = 0.0
 				repeat_prompt()
 			elif _nudged and _timer >= NUDGE_SECONDS:
-				_hud.call("set_mic_enabled", false)
-				_request_turn("", ScriptedProviderScript.PHASE_TOGETHER)
+				_hud.call("set_tap_to_talk_enabled", false)
+				if _choosing:
+					_choose_subject("")
+				else:
+					_request_turn("", ScriptedProviderScript.PHASE_TOGETHER)
+
+
+func _update_indicator() -> void:
+	var state: String = IndicatorScript.STATE_OFF
+	var level: float = 0.0
+	if _session != null and bool(_session.call("is_active")):
+		level = float(_session.call("get_input_level"))
+		if _muted:
+			state = IndicatorScript.STATE_MUTED
+		elif _state == STATE_SPEAKING:
+			state = IndicatorScript.STATE_ALIZ
+		elif _state == STATE_LISTENING and (_hands_free_live() or _sim_enabled or _push_to_talk_live):
+			state = IndicatorScript.STATE_HEARING if _child_talking else IndicatorScript.STATE_LISTENING
+		elif _hands_free_live():
+			state = IndicatorScript.STATE_LISTENING
+	elif _muted:
+		state = IndicatorScript.STATE_MUTED
+	_hud.call("set_indicator", state, level)
 
 
 func _is_active_state() -> bool:
@@ -596,23 +1018,23 @@ func _is_active_state() -> bool:
 # Buttons
 # ---------------------------------------------------------------------------
 
-## Aliz says the current prompt again. Listening is closed first and reopened
-## after the repeat, so the mic is never open while she speaks.
+## Aliz says the current prompt again; the mic reopens after it.
 func repeat_prompt() -> void:
-	if _state in [STATE_BREAK, STATE_PAUSED, STATE_DONE, STATE_IDLE]:
+	if _state in [STATE_BREAK, STATE_PAUSED, STATE_BACKGROUND, STATE_DONE, STATE_IDLE] or _closing:
 		return
 	var turn: Dictionary = _last_question if not _last_question.is_empty() else _current_turn
 	if turn.is_empty():
 		return
-	_stop_listening()
 	_synth.call("cancel")
-	_pending_phase = ScriptedProviderScript.PHASE_OPEN
+	_pending_phase = PHASE_WELCOME if _choosing else ScriptedProviderScript.PHASE_OPEN
 	_speak_turn(turn)
 
 
 func set_muted(muted: bool) -> void:
 	_muted = muted
 	_synth.call("set_muted", muted)
+	if _session != null and _session.has_method("mute"):
+		_session.call("mute", muted)
 	if _hud != null and bool(_hud.call("is_muted")) != muted:
 		_hud.call("set_muted", muted)
 	var audio: Node = _autoload(AUDIO_PATH)
@@ -628,25 +1050,35 @@ func _on_exit_requested() -> void:
 	if _state == STATE_PAUSED:
 		return
 	_resume_state = _state
-	_stop_listening()
 	_synth.call("cancel")
+	_set_speaking(false)
 	_hud.call("set_subtitle", "")
 	_hud.call("set_banner", HudScript.BANNER_NONE)
+	_hud.call("hide_answer_cards")
+	if _quota != null and _quota.has_method("pause_for"):
+		_quota.call("pause_for", "confirm")
 	_set_state(STATE_PAUSED)
 
 
 func _on_exit_kept() -> void:
 	if _state != STATE_PAUSED:
 		return
+	if _quota != null and _quota.has_method("resume_for"):
+		_quota.call("resume_for", "confirm")
 	if _resume_state == STATE_BREAK:
 		_set_state(STATE_BREAK)
 		return
-	# Pick the lesson up by asking the current step again.
 	_set_state(STATE_IDLE)
-	_open_step()
+	if _choosing:
+		_pending_phase = PHASE_WELCOME
+		_speak_turn(TurnValidator.make(WELCOME_TEXT, "smile", "wave", "retry"))
+	else:
+		_open_step()
 
 
 func _on_exit_confirmed() -> void:
+	if _quota != null and _quota.has_method("resume_for"):
+		_quota.call("resume_for", "confirm")
 	_show_break(not _quota_exhausted())
 
 
@@ -671,10 +1103,11 @@ func _depart(path: String, target: String, main_script: Resource = null) -> bool
 		return false
 	_leaving = true
 	_last_departure = target
-	_stop_listening()
+	_stop_session("leave")
 	_synth.call("cancel")
-	if _quota.has_method("end_session"):
-		_quota.call("end_session")
+	_set_speaking(false)
+	if _quota != null and _quota.has_method("end_session"):
+		_quota.call("end_session", "leave")
 	var save: Object = _save_service()
 	if save != null and save.has_method("save_profile"):
 		save.call("save_profile")
@@ -698,35 +1131,96 @@ func _depart(path: String, target: String, main_script: Resource = null) -> bool
 
 
 # ---------------------------------------------------------------------------
+# Mobile lifecycle
+# ---------------------------------------------------------------------------
+
+## The app went to the background: the mic closes now, the session stops,
+## the meter stops counting. Public so a test can drive it.
+func go_background() -> void:
+	if not _built or _leaving or _state in [STATE_BREAK, STATE_DONE, STATE_BACKGROUND]:
+		return
+	_resume_state = _state
+	_resume_needed = true
+	_stop_session("background")
+	_synth.call("cancel")
+	_set_speaking(false)
+	_hud.call("set_subtitle", "")
+	_hud.call("set_banner", HudScript.BANNER_NONE)
+	_hud.call("hide_answer_cards")
+	if _quota != null and _quota.has_method("set_app_active"):
+		_quota.call("set_app_active", false)
+	_set_state(STATE_BACKGROUND)
+	_update_indicator()
+
+
+## Back in the foreground: the mic stays OFF until the child taps to continue.
+func return_from_background() -> void:
+	if not _resume_needed or _state != STATE_BACKGROUND:
+		return
+	_hud.call("show_resume_card", true)
+
+
+func _on_resume_pressed() -> void:
+	if _state != STATE_BACKGROUND:
+		return
+	_resume_needed = false
+	if _quota != null and _quota.has_method("set_app_active"):
+		_quota.call("set_app_active", true)
+	_start_session()
+	_set_state(STATE_IDLE)
+	if _choosing:
+		_pending_phase = PHASE_WELCOME
+		_speak_turn(TurnValidator.make(WELCOME_TEXT, "smile", "wave", "retry"))
+	else:
+		_open_step()
+
+
+func _stop_session(reason: String) -> void:
+	_push_to_talk_live = false
+	if _session != null and bool(_session.call("is_active")):
+		_session.call("stop", reason)
+
+
+# ---------------------------------------------------------------------------
 # Dev simulation
 # ---------------------------------------------------------------------------
 
 func enable_simulation(enabled: bool) -> void:
 	_sim_enabled = enabled
+	if _session != null and _session.has_method("enable_simulation"):
+		_session.call("enable_simulation", enabled)
+	if _built:
+		_refresh_input_mode()
 
 
 func is_simulation_enabled() -> bool:
 	return _sim_enabled
 
 
-## Feeds a simulated transcript. Refused unless simulation is on, so nothing in
-## normal play can fake a recognition result.
+## DEV: simulated child audio, through the session's hook. Refused unless
+## simulation is on, so nothing in normal play can fake a transcript.
 func simulate(kind: String) -> void:
 	if not _sim_enabled:
-		push_warning("tutor: simulated transcript refused; simulation is not enabled")
+		push_warning("tutor: simulated audio refused; simulation is not enabled")
 		return
 	if _state == STATE_AWAIT_MIC:
 		_start_listening()
+	_tell_session_expected_answer()
+	if _session != null and _session.has_method("simulate_child_audio"):
+		_session.call("simulate_child_audio", kind)
+		return
+	# A session without hooks: emulate the signals it would have sent.
 	if _state != STATE_LISTENING:
 		return
+	var answers: Array = _current_step.get("expectedAnswers", [])
+	var answer: String = String(answers[0]) if not answers.is_empty() else "fruits"
 	match kind:
-		HudScript.SIM_CORRECT:
-			var answers: Array = _current_step.get("expectedAnswers", [])
-			_think(String(answers[0]) if not answers.is_empty() else "yes", ScriptedProviderScript.PHASE_ANSWER)
-		HudScript.SIM_WRONG:
-			_think("a car", ScriptedProviderScript.PHASE_ANSWER)
+		"correct", "pause_then_finish", "interrupt":
+			_heard(answer)
+		"wrong":
+			_heard("a car")
 		_:
-			_think("", ScriptedProviderScript.PHASE_TIMEOUT)
+			_heard("")
 
 
 # ---------------------------------------------------------------------------
@@ -757,6 +1251,8 @@ func _gesture(gesture: String) -> void:
 func _set_speaking(active: bool) -> void:
 	if _aliz != null and _aliz.has_method("set_speaking"):
 		_aliz.call("set_speaking", active)
+	if _session != null and _session.has_method("set_aliz_speaking"):
+		_session.call("set_aliz_speaking", active)
 
 
 func _show_card(asset_id: String) -> void:
@@ -803,15 +1299,10 @@ func _save_service() -> Object:
 	return _autoload(SAVE_SERVICE_PATH)
 
 
-## A test seam: a dictionary-backed save service.
+## A test seam: a dictionary-backed save service. Rebuilds the quota on it.
 func set_save_service(save: Object) -> void:
 	_save_override = save
-	if _quota != null and _quota.has_method("set_save_service"):
-		_quota.call("set_save_service", save)
-
-
-func _speech_service() -> Node:
-	return _autoload(SPEECH_SERVICE_PATH)
+	_quota = _make_quota()
 
 
 func _locale() -> String:
@@ -822,6 +1313,8 @@ func _locale() -> String:
 
 
 func _quota_exhausted() -> bool:
+	if _quota == null:
+		return false
 	if _quota.has_method("is_exhausted"):
 		return bool(_quota.call("is_exhausted"))
 	var state: Dictionary = _quota.call("state")
@@ -878,6 +1371,10 @@ func quota() -> Object:
 	return _quota
 
 
+func voice_session() -> Object:
+	return _session
+
+
 func synthesis() -> Node:
 	return _synth
 
@@ -890,6 +1387,14 @@ func current_step() -> Dictionary:
 	return _current_step
 
 
+func current_lesson_id() -> String:
+	return _lesson_id
+
+
+func is_choosing_subject() -> bool:
+	return _choosing
+
+
 func turn_log() -> Array:
 	return _turn_log
 
@@ -898,8 +1403,16 @@ func is_lesson_complete() -> bool:
 	return _lesson_complete
 
 
+func is_closing() -> bool:
+	return _closing
+
+
 func using_real_engine() -> bool:
 	return _using_real_engine
+
+
+func using_real_session() -> bool:
+	return _using_real_session
 
 
 func last_departure() -> String:
@@ -984,5 +1497,3 @@ func project_point(point: Vector3, viewport_size: Vector2) -> Vector2:
 		return Vector2.ZERO
 	var ndc: Vector2 = Vector2(clip.x, clip.y) / clip.w
 	return Vector2((ndc.x + 1.0) * 0.5 * viewport_size.x, (1.0 - ndc.y) * 0.5 * viewport_size.y)
-
-

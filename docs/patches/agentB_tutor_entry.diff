@@ -1,0 +1,233 @@
+Agent B -- "Learn with Aliz" title-screen entry (LEAD applies; main.* is lead-owned)
+=====================================================================================
+
+Base: integration head f3a3ea9 (also applies to f0f212b + wt4/classroom merge).
+Apply: git apply docs/patches/agentB_tutor_entry.diff
+
+What it adds
+  * main.tscn: a WIDE SKY-BLUE BANNER BUTTON "Learn with Aliz" above the
+    four-button row (a fifth 256 px square is one too many on a phone).
+    DUSTY_BLUE #9AC0D9 fill, cream 4 px rim, radius 44, ink text 40 px, the
+    icon pack's mic glyph at the left. Two inline StyleBoxFlat sub_resources
+    (load_steps 16 -> 18). ComingSoonLabel moves up 120 px so it clears it.
+  * main.gd: %LearnWithAlizButton -> _on_learn_with_aliz_pressed() ->
+    _enter_scene(TUTOR_SCENE, ProgressionMode.FREE_PLAY) (the classroom's
+    stars come from the LessonEngine; it is not story progress). Visible only
+    while tutor_available(): TutorFlags.local_tutor_enabled() AND the scene
+    exists AND the grown-up setting `aiTutorEnabled` (default true) is on.
+    Added to _menu_buttons() so it gets the same shadow + squish. The voice
+    subtitle pill moves up (SUBTITLE_BOTTOM_MARGIN 308 -> 420) to sit above it.
+    The microphone is NOT touched here: the classroom starts its own
+    TutorVoiceSession after the hand-off (mic-scope rule).
+
+Layout numbers (offsets from the bottom-anchored SafeArea edge; the safe
+area insets 24 px horizontally / 16 px vertically on desktop):
+  banner  700 x 96, x -350..+350 about centre, y -404..-308 (16 px above the
+          row, which spans -292..-36)
+  1334 x 750  -> banner x 317..1017, y 330..426; row y 442..698
+  2340 x 1080 -> banner x 820..1520, y 660..756; row y 772..1028
+
+Companion change the lead owns: game/tests/cases/test_menu_wow.gd asserts
+the title screen has exactly BUTTONS.size() buttons (line ~322) -- add
+"LearnWithAlizButton" to that expectation (it is 700 x 96, not 256 x 256, so
+keep it out of the equal-size loop) or count BUTTONS.size() + 1.
+
+Verified on this worktree with the patch applied: test_ui_palette PASS
+(no new colour; DUSTY_BLUE is a locked token), test_menu_start_continue
+PASS, test_menu_wow fails only on the button count above.
+
+diff --git a/game/scenes/main/main.gd b/game/scenes/main/main.gd
+index 26485f7..fa21f4d 100644
+--- a/game/scenes/main/main.gd
++++ b/game/scenes/main/main.gd
+@@ -209,6 +209,10 @@ const UI_FADE_SEC: float = 0.25
+ @onready var _free_play_button: Button = %FreePlayButton
+ @onready var _dress_button: Button = %DressUpButton
+ @onready var _parent_button: Button = %ParentButton
++## "Learn with Aliz" -- the tutor classroom. Shown only while a grown-up has
++## the local tutor switched on (`aiTutorEnabled`, default on) and the scene
++## is in this build; never a dead button.
++@onready var _tutor_button: Button = %LearnWithAlizButton
+ @onready var _coming_soon_label: Label = %ComingSoonLabel
+ 
+ ## Set once the menu has handed off, so the first-launch timer can never fire
+@@ -228,8 +232,9 @@ static var _welcomed_this_launch: bool = false
+ const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
+ const VoiceCues := preload("res://scripts/voice/voice_cues.gd")
+ const SubtitleStripScript := preload("res://scripts/voice/subtitle_strip.gd")
+-## The subtitle pill sits above the button row (buttons end 292 px up).
+-const SUBTITLE_BOTTOM_MARGIN: float = 308.0
++## The subtitle pill sits above the Learn with Aliz banner (which ends 404 px
++## up; the button row ends at 292).
++const SUBTITLE_BOTTOM_MARGIN: float = 420.0
+ var _skip_catcher: Control = null
+ 
+ 
+@@ -248,6 +253,8 @@ func _ready() -> void:
+ 	_coming_soon_label.visible = false
+ 	_play_button.pressed.connect(_on_play_pressed)
+ 	_free_play_button.pressed.connect(_on_free_play_pressed)
++	_tutor_button.pressed.connect(_on_learn_with_aliz_pressed)
++	_tutor_button.visible = tutor_available()
+ 	_dress_button.pressed.connect(_on_dress_up_pressed)
+ 	_parent_button.pressed.connect(_on_parent_pressed)
+ 	_label_play_button()
+@@ -342,6 +349,12 @@ func _has_progress() -> bool:
+ ## one thing a title-screen button must never do.
+ const DRESS_UP_SCENE: String = "res://scenes/dress_up/dress_up.tscn"
+ const PARENT_SCENE: String = "res://scenes/parent/parent_settings.tscn"
++## Aliz Tutor Mode's classroom (`scripts/tutor/tutor_scene.gd`). Opened in
++## FREE_PLAY mode: a lesson is no chapter and grants its own stars through the
++## LessonEngine, never story progress.
++const TUTOR_SCENE: String = "res://scenes/tutor/classroom.tscn"
++const TutorFlagsScript := preload("res://scripts/tutor/tutor_flags.gd")
++const AI_TUTOR_ENABLED_SETTING: String = "aiTutorEnabled"
+ 
+ const SHADOW_SIZE: int = 22
+ const SHADOW_OFFSET: Vector2 = Vector2(0.0, 12.0)
+@@ -356,7 +369,7 @@ const Palette := preload("res://scripts/ui/palette.gd")
+ 
+ func _menu_buttons() -> Array:
+ 	var buttons: Array = []
+-	for button: Button in [_play_button, _free_play_button, _dress_button, _parent_button]:
++	for button: Button in [_play_button, _free_play_button, _dress_button, _parent_button, _tutor_button]:
+ 		if button != null:
+ 			buttons.append(button)
+ 	return buttons
+@@ -431,6 +444,24 @@ func _on_parent_pressed() -> void:
+ 		_show_unavailable()
+ 
+ 
++## Learn with Aliz. The classroom starts the hands-free voice session itself,
++## after this hand-off -- the microphone is never opened from the title screen.
++func _on_learn_with_aliz_pressed() -> void:
++	if not tutor_available() or not _enter_scene(TUTOR_SCENE, ProgressionMode.FREE_PLAY):
++		_show_unavailable()
++
++
++## The local scripted tutor is always allowed by the flag; a grown-up may still
++## switch "Learn with Aliz" off in Grown-ups, and a build may ship without it.
++func tutor_available() -> bool:
++	if not TutorFlagsScript.local_tutor_enabled() or not ResourceLoader.exists(TUTOR_SCENE):
++		return false
++	var save_service: Node = _autoload("SaveService")
++	if save_service != null and save_service.has_method("get_setting"):
++		return bool(save_service.call("get_setting", AI_TUTOR_ENABLED_SETTING, true))
++	return true
++
++
+ # ---------------------------------------------------------------------------
+ # Routing -- pure, static, and testable without a tree
+ # ---------------------------------------------------------------------------
+diff --git a/game/scenes/main/main.tscn b/game/scenes/main/main.tscn
+index 10866fa..ead44ce 100644
+--- a/game/scenes/main/main.tscn
++++ b/game/scenes/main/main.tscn
+@@ -1,4 +1,4 @@
+-[gd_scene load_steps=16 format=3]
++[gd_scene load_steps=18 format=3]
+ 
+ [ext_resource type="Script" path="res://scenes/main/main.gd" id="1"]
+ [ext_resource type="Script" path="res://scripts/ui/safe_area.gd" id="2"]
+@@ -28,6 +28,40 @@
+ ; outdoor scene with its own framing, and its shadow is cast on one large open
+ ; plane rather than across pastel walls, which is what the section 7 amendment
+ ; of 2026-09-18 was about. Only the colour is shared.
++; "Learn with Aliz": a wide sky-blue banner above the four-button row (a
++; fifth square would crowd the row on a phone). DUSTY_BLUE (#9AC0D9) from
++; ART_BIBLE section 3, cream rim, the same corner radius family as the row.
++; Numbers, from the bottom-anchored SafeArea edge: 700 x 96, from -404 to
++; -308 (16 px above the row, which ends at -292). At 1334x750 that is
++; x 317..1017, y 330..426; at 2340x1080, x 820..1520, y 660..756.
++[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tutor"]
++content_margin_left = 34.0
++content_margin_right = 34.0
++bg_color = Color(0.604, 0.753, 0.851, 1)
++border_width_left = 4
++border_width_top = 4
++border_width_right = 4
++border_width_bottom = 4
++border_color = Color(1, 0.965, 0.898, 1)
++corner_radius_top_left = 44
++corner_radius_top_right = 44
++corner_radius_bottom_right = 44
++corner_radius_bottom_left = 44
++
++[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tutor_down"]
++content_margin_left = 34.0
++content_margin_right = 34.0
++bg_color = Color(0.548, 0.644, 0.701, 1)
++border_width_left = 4
++border_width_top = 4
++border_width_right = 4
++border_width_bottom = 4
++border_color = Color(1, 0.965, 0.898, 1)
++corner_radius_top_left = 44
++corner_radius_top_right = 44
++corner_radius_bottom_right = 44
++corner_radius_bottom_left = 44
++
+ [sub_resource type="Environment" id="Environment_1"]
+ background_mode = 1
+ background_color = Color(0.782, 0.848, 0.918, 1)
+@@ -319,6 +353,48 @@ text = "Grown-ups"
+ horizontal_alignment = 1
+ vertical_alignment = 1
+ 
++[node name="LearnWithAlizButton" type="Button" parent="UI/SafeArea"]
++unique_name_in_owner = true
++layout_mode = 1
++anchors_preset = -1
++anchor_left = 0.5
++anchor_top = 1.0
++anchor_right = 0.5
++anchor_bottom = 1.0
++offset_left = -350.0
++offset_top = -404.0
++offset_right = 350.0
++offset_bottom = -308.0
++grow_horizontal = 2
++grow_vertical = 0
++focus_mode = 0
++theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
++theme_override_colors/font_hover_color = Color(0.349, 0.259, 0.169, 1)
++theme_override_colors/font_pressed_color = Color(0.349, 0.259, 0.169, 1)
++theme_override_font_sizes/font_size = 40
++theme_override_styles/normal = SubResource("StyleBoxFlat_tutor")
++theme_override_styles/hover = SubResource("StyleBoxFlat_tutor")
++theme_override_styles/pressed = SubResource("StyleBoxFlat_tutor_down")
++theme_override_styles/disabled = SubResource("StyleBoxFlat_tutor")
++theme_override_styles/focus = SubResource("StyleBoxFlat_tutor")
++text = "Learn with Aliz"
++alignment = 1
++
++[node name="LearnIcon" type="TextureRect" parent="UI/SafeArea/LearnWithAlizButton"]
++layout_mode = 1
++anchors_preset = 4
++anchor_top = 0.5
++anchor_bottom = 0.5
++offset_left = 22.0
++offset_top = -30.0
++offset_right = 82.0
++offset_bottom = 30.0
++grow_vertical = 2
++mouse_filter = 2
++script = ExtResource("3")
++glyph = 4
++tint = Color(0.349, 0.259, 0.169, 1)
++
+ [node name="ComingSoonLabel" type="Label" parent="UI/SafeArea"]
+ unique_name_in_owner = true
+ visible = false
+@@ -329,9 +405,9 @@ anchor_top = 1.0
+ anchor_right = 0.5
+ anchor_bottom = 1.0
+ offset_left = -180.0
+-offset_top = -400.0
++offset_top = -520.0
+ offset_right = 180.0
+-offset_bottom = -300.0
++offset_bottom = -420.0
+ grow_horizontal = 2
+ grow_vertical = 0
+ mouse_filter = 2

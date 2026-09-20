@@ -38,6 +38,7 @@ var _remaining: float = 0.0
 var _muted: bool = false
 var _using_tts: bool = false
 var _tts: Node = null
+var _voice: Node = null
 var _voice_used: String = ""
 ## Increments per `speak()`, so a finish that arrives late (deferred, or from
 ## the service's own signal) is matched to the utterance it belongs to.
@@ -56,6 +57,14 @@ func _process(delta: float) -> void:
 ## lesson still moves at the same speed.
 func set_muted(muted: bool) -> void:
 	_muted = muted
+	if muted and _voice_used == "voice" and _voice != null and is_instance_valid(_voice):
+		var voice_text: String = _current_text
+		_detach_voice()
+		if _voice.has_method("stop"):
+			_voice.call("stop", "aliz")
+		_voice_used = "paced"
+		_remaining = maxf(_remaining, _pace_for(voice_text) * 0.5)
+		return
 	if muted and _using_tts and _tts != null and _tts.has_method("stop"):
 		# `stop()` emits `speech_finished`, which finishes this utterance via
 		# the TTS path; the subtitle then falls back to pacing for the rest.
@@ -102,13 +111,14 @@ func speak(text: String, spoken_line_id: String = "") -> void:
 	if _muted:
 		return
 	var voice: Node = _autoload(VOICE_PATH)
-	if voice != null and not spoken_line_id.is_empty() and voice.has_method("say"):
-		var played: Variant = voice.call("say", spoken_line_id)
-		if typeof(played) != TYPE_BOOL or bool(played):
-			_voice_used = "voice"
-			if voice.has_signal("finished") and not voice.is_connected("finished", _on_voice_finished):
-				voice.connect("finished", _on_voice_finished, CONNECT_ONE_SHOT)
-			return
+	if voice != null and voice.has_method("say_text") and voice.has_signal("line_finished"):
+		# The Voice director owns the recordings, the device voice and the
+		# queue policy; a `spokenLineId` plays the recorded line, anything
+		# else is an ad-hoc Aliz line. Deferred for the same reason as TTS.
+		_voice = voice
+		_voice_used = "voice"
+		call_deferred("_begin_voice", line, spoken_line_id, _utterance)
+		return
 	_tts = _autoload(TTS_PATH)
 	if _tts != null and _tts.has_method("speak") and _tts.has_signal("speech_finished"):
 		_using_tts = true
@@ -129,6 +139,10 @@ func cancel() -> void:
 	if _using_tts and _tts != null and _tts.has_method("stop"):
 		_detach_tts()
 		_tts.call("stop")
+	if _voice_used == "voice" and _voice != null and is_instance_valid(_voice):
+		_detach_voice()
+		if _voice.has_method("stop"):
+			_voice.call("stop", "aliz")
 	_using_tts = false
 	_speaking = false
 	_current_text = ""
@@ -143,7 +157,7 @@ func advance(delta: float) -> void:
 	if not _speaking or delta <= 0.0:
 		return
 	_remaining -= delta
-	if _using_tts:
+	if _using_tts or _voice_used == "voice":
 		# Give the platform voice generous room; the service guarantees its
 		# own `speech_finished`, so this only catches a service that vanished.
 		if _remaining > -PACE_MAX_SECONDS * 2.0:
@@ -158,6 +172,7 @@ func _finish() -> void:
 		return
 	var text: String = _current_text
 	_detach_tts()
+	_detach_voice()
 	_using_tts = false
 	_speaking = false
 	_current_text = ""
@@ -173,6 +188,38 @@ func _begin_tts(line: String, utterance: int) -> void:
 	_tts.call("speak", line, true)
 	if not _tts.speech_finished.is_connected(_on_tts_finished):
 		_tts.speech_finished.connect(_on_tts_finished)
+
+
+func _begin_voice(line: String, spoken_line_id: String, utterance: int) -> void:
+	if utterance != _utterance or not _speaking or _voice == null or not is_instance_valid(_voice):
+		return
+	var accepted: bool = false
+	if not spoken_line_id.is_empty() and _voice.has_method("say"):
+		accepted = bool(_voice.call("say", spoken_line_id, {"interrupt": true}))
+	if not accepted:
+		accepted = bool(_voice.call("say_text", line, {"interrupt": true}))
+	if not accepted:
+		# Nothing to play: the pacing clock finishes the subtitle.
+		_voice_used = "paced"
+		return
+	# Connected AFTER the call: an interrupting say() cuts the previous line
+	# and emits `line_finished` for it synchronously.
+	if not _voice.line_finished.is_connected(_on_voice_line_finished):
+		_voice.line_finished.connect(_on_voice_line_finished)
+
+
+func _on_voice_line_finished(_line_id: String) -> void:
+	if _voice_used != "voice" or not _speaking:
+		return
+	if _voice != null and is_instance_valid(_voice) and _voice.has_method("is_speaking") and bool(_voice.call("is_speaking")):
+		return  # a different (queued) line ended; ours is still going
+	call_deferred("_finish_utterance", _utterance)
+
+
+func _detach_voice() -> void:
+	if _voice != null and is_instance_valid(_voice) and _voice.has_signal("line_finished") \
+			and _voice.line_finished.is_connected(_on_voice_line_finished):
+		_voice.line_finished.disconnect(_on_voice_line_finished)
 
 
 func _on_tts_finished(_text: String) -> void:

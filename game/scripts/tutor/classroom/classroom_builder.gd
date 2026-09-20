@@ -11,20 +11,24 @@ extends Node3D
 ##
 ## ## Props manifest (swap-in seam)
 ##
-## `res://content/tutor/props_manifest.json` may name a GLB per prop id. When
-## it does, that GLB is instantiated at the manifest's scale IN PLACE OF the
-## primitive and nothing else changes -- the Meshy agent's table, chairs,
-## apple, banana, animals and number blocks drop in without touching this
-## file. Accepted shape (either nesting):
+## `res://content/tutor/props_manifest.json` (Agent M, `docs/TUTOR_MESHY_ASSETS.md`)
+## names a GLB per prop id. When an entry exists and loads, that GLB is
+## instantiated at the manifest's `scaleToMetres`, turned by `yawDegrees` and
+## rested on the floor with `-baseY * scaleToMetres`, IN PLACE OF the
+## primitive; nothing else changes. Accepted shapes:
 ##
-##   {"props": {"table": {"glb": "res://assets/tutor/table.glb", "scale": 1.0,
-##                        "yawDeg": 0, "offset": [0, 0, 0]}}}
-##   {"table": {"path": "res://...glb", "scale": [1, 1, 1]}}
+##   {"props": [{"propId": "fruit_set", "file": "res://...glb",
+##               "scaleToMetres": 0.26, "yawDegrees": 0, "baseY": -0.43}]}
+##   {"props": {"fruit_set": {"glb": "res://...glb", "scale": 1.0, "yawDeg": 0}}}
 ##
-## Prop ids: table, chairAliz, chairChild, apple, banana, cat, dog,
-## numberBlocks, books, pencilCup, cardRack, shelf. A missing file or a
-## non-scene resource keeps the primitive, and `prop_source(id)` answers
-## "glb" or "primitive" so a test can see which one is standing.
+## Prop ids this room asks for: `fruit_set` (the apple and banana on the
+## table), `number_blocks` (the tower on the shelf), `cat_dog` (the pets by
+## the right wall) and `table_set` (a second little table in the back-left
+## corner). Aliz's own table and chairs stay primitives on purpose: her seat
+## pose is fitted to them, and a generated set's chair would not be where her
+## hips are. A missing file or a non-scene resource keeps the primitive, and
+## `prop_source(id)` answers "glb" or "primitive" so a test can see which one
+## is standing.
 
 const Palette := preload("res://scripts/ui/palette.gd")
 const FlashcardArt := preload("res://scripts/tutor/classroom/flashcard_art.gd")
@@ -180,6 +184,10 @@ func _build_chairs() -> void:
 	# Aliz's chair, behind the table; the child's, angled at the right.
 	var aliz_chair: Node3D = _chair("ChairAliz", "chairAliz", Vector3(0.0, 0.0, -1.06), 0.0, Palette.DUSTY_BLUE)
 	aliz_chair.set_meta("propId", "chairAliz")
+	# The child's chair, unless the manifest's table set (which brings its own
+	# two chairs) stands in that corner.
+	if _has_manifest_model("table_set"):
+		return
 	var child_chair: Node3D = _chair("ChairChild", "chairChild", Vector3(-1.6, 0.0, -1.35), PI * 0.38, Palette.STAR_NEXT)
 	child_chair.scale = Vector3.ONE * 0.85
 	child_chair.set_meta("propId", "chairChild")
@@ -234,21 +242,36 @@ func _build_table_props() -> void:
 		for i: int in range(3):
 			var pencil: MeshInstance3D = _cylinder(cup, "Pencil%d" % i, 0.008, 0.008, 0.17, Vector3(-0.02 + float(i) * 0.02, 0.12, -0.01 + float(i) * 0.012), pencil_colours[i])
 			pencil.rotation.z = float(i - 1) * 0.12
-	# The lesson's own fruit, on the table between them.
-	var apple: Node3D = _group("Apple")
-	apple.position = top + Vector3(0.04, 0.0, -0.3)
-	if not _try_glb(apple, "apple"):
+	# The lesson's own fruit, on the table between them: the Meshy pair when
+	# the manifest has it, an apple and a banana from primitives otherwise.
+	var fruit: Node3D = _group("Fruit")
+	fruit.position = top + Vector3(0.1, 0.0, -0.3)
+	fruit.rotation.y = 0.35
+	if not _try_glb(fruit, "fruit_set"):
+		var apple: Node3D = _group("Apple", fruit)
+		apple.position = Vector3(-0.06, 0.0, 0.0)
 		_sphere(apple, "Body", 0.055, Vector3(0.0, 0.05, 0.0), FlashcardArt.APPLE_RED)
 		_cylinder(apple, "Stem", 0.006, 0.006, 0.03, Vector3(0.0, 0.11, 0.0), FlashcardArt.STEM_BROWN)
 		var leaf: MeshInstance3D = _sphere(apple, "Leaf", 0.02, Vector3(0.02, 0.115, 0.0), FlashcardArt.LEAF_GREEN)
 		leaf.scale = Vector3(1.4, 0.4, 0.8)
-	var banana: Node3D = _group("Banana")
-	banana.position = top + Vector3(0.2, 0.0, -0.32)
-	banana.rotation.y = 0.5
-	if not _try_glb(banana, "banana"):
+		var banana: Node3D = _group("Banana", fruit)
+		banana.position = Vector3(0.12, 0.0, 0.1)
+		banana.rotation.y = 0.5
 		var body: MeshInstance3D = _capsule(banana, "Body", 0.028, 0.2, Vector3(0.0, 0.03, 0.0), FlashcardArt.BANANA_YELLOW)
 		body.rotation.z = PI * 0.5
 		body.rotation.x = 0.15
+	# The pets, by the right wall, and a second little table in the back-left
+	# corner -- both only when the manifest brings them; nothing to fake there.
+	var pets: Node3D = _group("Pets")
+	pets.position = Vector3(2.05, 0.0, -1.55)
+	pets.rotation.y = -0.5
+	if not _try_glb(pets, "cat_dog"):
+		pets.queue_free()
+	var play_table: Node3D = _group("PlayTable")
+	play_table.position = Vector3(-2.05, 0.0, -1.5)
+	play_table.rotation.y = 0.3
+	if not _try_glb(play_table, "table_set"):
+		play_table.queue_free()
 
 
 func _build_shelf() -> void:
@@ -276,7 +299,7 @@ func _build_shelf() -> void:
 	_sphere(duck, "Beak", 0.02, Vector3(0.09, 0.14, 0.0), FlashcardArt.ORANGE_ORANGE).scale = Vector3(1.4, 0.6, 1.0)
 	var blocks: Node3D = _group("NumberBlocks", shelf)
 	blocks.position = Vector3(0.48, 0.025, 0.0)
-	if not _try_glb(blocks, "numberBlocks"):
+	if not _try_glb(blocks, "number_blocks"):
 		var block_colours: Array = [Palette.MINT, Palette.SOFT_PINK, Palette.LAVENDER]
 		for i: int in range(3):
 			var block: MeshInstance3D = _box(blocks, "Block%d" % (i + 1), Vector3(0.13, 0.13, 0.13), Vector3(0.0, 0.065 + float(i) * 0.135, 0.0), block_colours[i])
@@ -309,9 +332,28 @@ func _load_manifest() -> Dictionary:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return {}
 	var table: Dictionary = parsed
-	if typeof(table.get("props", null)) == TYPE_DICTIONARY:
-		return table["props"]
+	var props: Variant = table.get("props", null)
+	if typeof(props) == TYPE_DICTIONARY:
+		return props
+	if typeof(props) == TYPE_ARRAY:
+		var by_id: Dictionary = {}
+		for entry in props:
+			if typeof(entry) == TYPE_DICTIONARY and (entry as Dictionary).has("propId"):
+				by_id[String((entry as Dictionary)["propId"])] = entry
+		return by_id
 	return table
+
+
+## Whether the manifest names a loadable scene for `prop_id`.
+func _has_manifest_model(prop_id: String) -> bool:
+	var entry: Variant = _manifest.get(prop_id, null)
+	if typeof(entry) == TYPE_STRING:
+		return ResourceLoader.exists(String(entry))
+	if typeof(entry) != TYPE_DICTIONARY:
+		return false
+	var spec: Dictionary = entry
+	var path: String = String(spec.get("glb", spec.get("path", spec.get("file", "")))).strip_edges()
+	return not path.is_empty() and ResourceLoader.exists(path)
 
 
 ## Instantiates the manifest's GLB for `prop_id` under `parent`. Returns false
@@ -337,18 +379,31 @@ func _try_glb(parent: Node3D, prop_id: String) -> bool:
 		return false
 	var model: Node3D = instance
 	model.name = "Model"
-	var scale_value: Variant = spec.get("scale", 1.0)
+	var scale_value: Variant = spec.get("scaleToMetres", spec.get("scale", 1.0))
+	var uniform: float = 1.0
 	if typeof(scale_value) == TYPE_ARRAY and (scale_value as Array).size() == 3:
 		model.scale = Vector3(float(scale_value[0]), float(scale_value[1]), float(scale_value[2]))
+		uniform = float(scale_value[1])
 	else:
-		model.scale = Vector3.ONE * float(scale_value)
-	model.rotation.y = deg_to_rad(float(spec.get("yawDeg", 0.0)))
+		uniform = float(scale_value)
+		model.scale = Vector3.ONE * uniform
+	model.rotation.y = deg_to_rad(float(spec.get("yawDegrees", spec.get("yawDeg", 0.0))))
+	# Meshy centres its models; `baseY` is the model-space floor.
+	model.position = Vector3(0.0, -float(spec.get("baseY", 0.0)) * uniform, 0.0)
 	var offset: Variant = spec.get("offset", null)
 	if typeof(offset) == TYPE_ARRAY and (offset as Array).size() == 3:
-		model.position = Vector3(float(offset[0]), float(offset[1]), float(offset[2]))
+		model.position += Vector3(float(offset[0]), float(offset[1]), float(offset[2]))
+	_disable_shadows(model)
 	parent.add_child(model)
 	_sources[prop_id] = "glb"
 	return true
+
+
+static func _disable_shadows(node: Node) -> void:
+	if node is GeometryInstance3D:
+		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child: Node in node.get_children():
+		_disable_shadows(child)
 
 
 # ---------------------------------------------------------------------------
