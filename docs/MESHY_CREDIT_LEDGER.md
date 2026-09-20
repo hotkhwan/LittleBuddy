@@ -245,3 +245,51 @@ repaints and keyframes on the shipping rig. The Bunny neck seam that was to be
 inspected turned out not to exist on the mesh (0 boundary edges, 0 split
 normals, no dark texels on the front of the neck band), so there was nothing to
 regenerate. Standing ceiling of 100 credits: untouched.
+
+## Tutor teaching props — Agent M (2026-09-20, evening)
+
+Owner approval: Meshy for classroom teaching assets, inside the standing
+**100-credit sprint ceiling**. Per-asset hard stop: 40 credits.
+
+**Live price list, read 2026-09-20 from `docs.meshy.ai/en/api/pricing`
+(zero credits):**
+
+| Operation | Cost |
+|---|---|
+| Text-to-3D preview, Smart Topology (`model_type: smart-topology`, `ai_model: meshy-t2`) | **5** |
+| Text-to-3D preview, Meshy-6 / lowpoly | 20 |
+| Text-to-3D preview, Meshy-7 / 7.1 | 20 (+5 for `geometry_resolution` 2k/4k) |
+| Text-to-3D refine, `texture_resolution` 2k/4k | **10** |
+| Text-to-3D refine, 8k | 15 |
+| Remesh | 5 |
+| Auto-rigging | 5 |
+
+**Plan (proposed before any paid call).** Smart Topology is the cheapest tier
+that yields a usable texture: **5 (preview) + 10 (refine) = 15 credits per
+asset**, and it accepts `target_polycount` 100–15,000 directly, so the ~3,000
+triangle prop budget is asked for at generation time rather than paid for
+again as a remesh. Order, stopping when credits or value run out:
+
+| # | Asset | propId | Est. |
+|---|---|---|---|
+| T1 | Round pastel teaching table with two small chairs, one model | `table_set` | 15 |
+| T2 | Red apple + yellow banana, one model | `fruit_set` | 15 |
+| T3 | Toy-style cat and dog, one model | `cat_dog` (split later if separable) | 15 |
+| T4 | Number blocks 1-2-3, one model | `number_blocks` | 15 |
+
+Worst case **60 of 100**. A preview whose thumbnail is not usable is NOT
+refined (10 credits saved, 5 written off) and is recorded as rejected. No
+retries. Balance at plan time: **3184** (`GET /openapi/v1/balance`, HTTP 200,
+15:06:46Z). Tool: `tools/meshy_tutor_text3d.sh` (balance before/after, explicit
+`--yes`, no retry, no overwrite, sentinel refused, id echo compared).
+
+| # | Date | Asset | Operation | Endpoint | Est. | Actual | Balance before → after | Task id | Outcome |
+|---|---|---|---|---|---|---|---|---|---|
+| T1a | 2026-09-20 15:08:55Z | `table_set` | Text-to-3D **preview**, smart-topology `meshy-t2`, 2800 tris | `POST /openapi/v2/text-to-3d` | 5 | **5** | 3184 → 3179 | `01a0bf5c-ef29-7008-90d4-e7de13bda01f` | **SUCCEEDED** 19s, 2,853 tris, 1 primitive; thumbnail reviewed: round table, chunky legs, two chairs — usable, refine approved |
+| T1b | 2026-09-20 15:09:47Z | `table_set` | Text-to-3D **refine**, 2k texture, no PBR, on T1a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3179 → 3169 | `01a0bf5d-ba03-7253-99d1-5e4fa89e71bd` | **SUCCEEDED** ~5 min; 2,853 tris, 1 material, JPEG 2048² base colour; thumbnail: mint top, wood legs, yellow + pink chairs — **accepted**. T1 total 15. |
+| T2a | 2026-09-20 15:15:29Z | `fruit_set` | Text-to-3D **preview**, smart-topology `meshy-t2`, 2800 tris | `POST /openapi/v2/text-to-3d` | 5 | **5** | 3169 → 3164 | `01a0bf62-ee3f-76db-84c7-3ae636d45f97` | **SUCCEEDED** 11s, 3,038 tris (38 over the gate — fixed locally, no credits); thumbnail: apple with stem + leaf, banana in front — usable, refine approved |
+| T2b | 2026-09-20 15:16:10Z | `fruit_set` | Text-to-3D **refine**, 2k texture, no PBR, on T2a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3164 → 3154 | `01a0bf63-9030-7760-adcc-5e5d31b43d5d` | task created; awaiting result |
+| T3a | 2026-09-20 15:16:32Z | `cat_dog` | Text-to-3D **preview**, smart-topology `meshy-t2`, 2600 tris | `POST /openapi/v2/text-to-3d` | 5 | **5** | 3154 → 3149 | `01a0bf63-e681-701d-bdff-a38d0a186dbc` | **SUCCEEDED** 12s, 2,809 tris; thumbnail: sitting cat (ears, whiskers) beside sitting floppy-eared dog, clear gap — usable, refine approved |
+| T3b | 2026-09-20 15:17:04Z | `cat_dog` | Text-to-3D **refine**, 2k texture, no PBR, on T3a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3149 → 3139 | `01a0bf64-61ff-7081-a154-3dbaf04849d9` | task created; awaiting result |
+| T4a | 2026-09-20 15:17:18Z | `number_blocks` | Text-to-3D **preview**, smart-topology `meshy-t2`, 2600 tris | `POST /openapi/v2/text-to-3d` | 5 | **5** | 3139 → 3134 | `01a0bf64-9d67-774f-8c81-7d1df655c930` | **SUCCEEDED** 18s, 2,547 tris; thumbnail: three touching rounded cubes with bold raised 1, 2, 3 — usable, refine approved |
+| T4b | 2026-09-20 15:18:01Z | `number_blocks` | Text-to-3D **refine**, 2k texture, no PBR, on T4a | `POST /openapi/v2/text-to-3d` | 10 | **10** | 3134 → 3124 | `01a0bf65-28bb-7381-a687-705b4994647d` | task created; awaiting result |
