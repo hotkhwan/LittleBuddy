@@ -8,9 +8,11 @@ extends SceneTree
 ##
 ## Writes, into docs/shots/:
 ##   settings_aliz_<prefix>          Parent Corner scrolled to "Learn with Aliz":
-##                                   AI Tutor On/Off, daily allowance, microphone,
-##                                   language, privacy, delete history, subscription
-##   settings_aliz_privacy_<prefix>  the same section with the privacy text open
+##                                   AI Tutor On/Off, Hands-free On/Off, Aliz's voice
+##                                   (cloud presets disabled), daily allowance, microphone,
+##                                   language
+##   settings_aliz_privacy_<prefix>  further down: privacy information, learning history,
+##                                   delete history, subscription
 ##
 ## Same SubViewport / `size_2d_override` discipline as shots_settings.gd. Every
 ## PNG's size is asserted, and the section's rows are asserted to be inside the
@@ -88,6 +90,12 @@ func _aliz_frames() -> void:
 	var today: String = Time.get_date_string_from_unix_time(int(Time.get_unix_time_from_system()))
 	save.settings["tutorQuota"] = {"dayUtc": today, "usedSeconds": 90.0, "entitlement": "free",
 			"lastSeenUnix": int(Time.get_unix_time_from_system())}
+	# Two finished lessons and one in progress, in the engine's save_progress() shape.
+	save.settings["tutorProgress"] = {
+		"animals_cat_dog": {"stepIndex": 5, "stepCount": 5, "correctFirstTry": 2, "completed": true, "rewardGranted": true},
+		"colors_red_blue": {"stepIndex": 6, "stepCount": 6, "correctFirstTry": 3, "completed": true, "rewardGranted": true},
+		"numbers_one_two_three": {"stepIndex": 2, "stepCount": 7, "correctFirstTry": 1, "completed": false, "rewardGranted": false},
+	}
 	var model: RefCounted = panel.call("model")
 	model.call("set_service", save)
 	var quota: RefCounted = panel.call("tutor_quota")
@@ -113,7 +121,10 @@ func _aliz_frames() -> void:
 	_scroll_to(scroll, box)
 	await _settle(0.4)
 	var visible_h: float = float(_viewport.size_2d_override.y)
-	for node_name: String in ["LearnWithAlizTitle", "AiTutorOnButton", "AiTutorOffButton", "AlizAllowanceValue",
+	print("  history: %s" % str(panel.call("aliz_learning_history_lines")))
+	print("  voices: %s" % str(panel.call("aliz_voice_choices")))
+	for node_name: String in ["LearnWithAlizTitle", "AiTutorOnButton", "AiTutorOffButton", "HandsFreeOnButton",
+			"AlizVoice_aliz_bright", "AlizVoice_aliz_playful_cloud", "AlizAllowanceValue",
 			"AlizMicrophoneValue", "AlizLanguageEnButton"]:
 		var node: Control = panel.find_child(node_name, true, false) as Control
 		if node == null or not node.is_visible_in_tree():
@@ -124,16 +135,14 @@ func _aliz_frames() -> void:
 			_fail.append("settings_aliz: %s is at %s, outside the %d-tall frame" % [node_name, str(rect), int(visible_h)])
 	await _shot("settings_aliz_%s" % _prefix)
 
-	# The privacy text open, scrolled so it and the rows below are in frame.
-	var privacy_button: Button = panel.find_child("AlizPrivacyButton", true, false) as Button
-	privacy_button.pressed.emit()
-	await _settle(0.3)
-	var privacy_box: Control = panel.find_child("AlizPrivacyBox", true, false) as Control
-	_scroll_to(scroll, privacy_box, 140.0)
+	# Further down: the privacy information, the learning history and the delete.
+	var privacy_title: Control = panel.find_child("AlizPrivacyTitle", true, false) as Control
+	_scroll_to(scroll, privacy_title)
 	await _settle(0.4)
 	if not bool(panel.call("is_aliz_privacy_visible")):
-		_fail.append("settings_aliz_privacy: the privacy text did not open")
-	for node_name: String in ["AlizPrivacyLine0", "AlizDeleteHistoryButton", "AlizSubscriptionValue", "AlizPricingLabel"]:
+		_fail.append("settings_aliz_privacy: the privacy text is not on screen")
+	for node_name: String in ["AlizPrivacyLine0", "AlizPrivacyLine2", "AlizHistoryTitle", "AlizHistoryLine0",
+			"AlizHistoryLine1", "AlizDeleteHistoryButton"]:
 		var node: Control = panel.find_child(node_name, true, false) as Control
 		if node == null or not node.is_visible_in_tree():
 			_fail.append("settings_aliz_privacy: %s is not visible" % node_name)

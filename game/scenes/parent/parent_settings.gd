@@ -56,6 +56,8 @@ const HelperFont := preload("res://scripts/localization/helper_font.gd")
 const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
 const QuotaConfig := preload("res://scripts/tutor/quota/quota_config.gd")
 const TutorQuotaScript := preload("res://scripts/tutor/quota/tutor_quota.gd")
+const VoiceOptions := preload("res://scripts/parent_settings/voice_options.gd")
+const LearningHistory := preload("res://scripts/parent_settings/learning_history.gd")
 
 ## Where a standalone panel goes when it is done.
 const HOME_SCENE: String = "res://scenes/main/main.tscn"
@@ -953,16 +955,37 @@ const ALIZ_LANGUAGE_FIXED: String = "English"
 const ALIZ_LANGUAGE_HELP: String = "Fixed to English in this version."
 const ALIZ_VOICE_NOTE: String = ("Aliz's loudness is the Voice volume and Aliz voice sliders above; "
 		+ "they apply to lessons too.")
-const ALIZ_PRIVACY_TITLE: String = "Privacy"
+const ALIZ_HANDS_FREE_HELP: String = ("Aliz listens for the whole lesson and answers when your child "
+		+ "stops talking. Off: your child taps to talk.")
+const ALIZ_VOICE_HELP: String = "The voice Aliz speaks with in lessons."
+const ALIZ_HISTORY_TITLE: String = "Learning history"
+const ALIZ_HISTORY_HELP: String = "Lessons your child has finished with Aliz."
+## The in-app privacy text, verbatim from docs/ALIZ_TUTOR_PARENT_INFO.md
+## (Agent G): a static label, no button, no link. The sentence "The online AI
+## tutor is switched off in this build." is the claim the privacy guards keep
+## true and must not be shortened.
+const ALIZ_PRIVACY_TITLE: String = "Privacy information"
 const ALIZ_PRIVACY_LINES: Array[String] = [
-	"On this device: the lessons, Aliz's voice lines and your child's lesson progress stay "
-			+ "on this device. Your child's voice is recognised on the device and is never "
-			+ "recorded, saved or sent anywhere.",
-	"Cloud tutor: it is off in this build. If a future version enables it, only the words "
-			+ "recognised from your child's answer and the current lesson step would be sent to "
-			+ "the Little Days server so Aliz can compose her next sentence. Never audio, never "
-			+ "a name, never an account.",
-	"Nothing leaves this device in this version.",
+	"Learn with Aliz runs on this device. Lessons, pictures and Aliz's voice are built into "
+			+ "the app. When your child taps the microphone, the device's own speech recognition "
+			+ "listens for the practice word. Nothing is recorded, saved or sent anywhere: no audio, "
+			+ "no words your child says, no name, no location.",
+	"The app keeps only stars, lesson progress and today's tutor minutes, stored on this device. "
+			+ "You can erase them from Parent Corner at any time.",
+	"The online AI tutor is switched off in this build. It cannot be turned on from the app. "
+			+ "If a future version offers it, we will ask a parent first and explain exactly what "
+			+ "would be shared.",
+]
+## The Thai helper block from the same document, shown under the English when
+## the family's helper language is Thai.
+const ALIZ_PRIVACY_LINES_TH: Array[String] = [
+	"เรียนกับอลิซทำงานบนเครื่องนี้ทั้งหมด บทเรียน รูปภาพ และเสียงของอลิซถูกบรรจุมาในแอป "
+			+ "เมื่อลูกแตะปุ่มไมโครโฟน ระบบรู้จำเสียงของตัวเครื่องจะฟังคำศัพท์ที่ฝึก "
+			+ "ไม่มีการบันทึกเสียง ไม่เก็บคำที่ลูกพูด ไม่ส่งข้อมูลใด ๆ ออกไป ไม่มีชื่อ ไม่มีตำแหน่งที่อยู่",
+	"แอปเก็บเพียงดาว ความคืบหน้าของบทเรียน และเวลาเรียนของวันนี้ไว้ในเครื่องนี้เท่านั้น "
+			+ "ผู้ปกครองลบได้ทุกเมื่อจากมุมผู้ปกครอง",
+	"ครูสอนออนไลน์ (AI) ปิดอยู่ในเวอร์ชันนี้ และเปิดจากในแอปไม่ได้ "
+			+ "หากเวอร์ชันในอนาคตมีฟีเจอร์นี้ เราจะขออนุญาตผู้ปกครองก่อน และอธิบายให้ชัดเจนว่าจะแบ่งปันข้อมูลอะไรบ้าง",
 ]
 const ALIZ_DELETE_TITLE: String = "Delete learning history"
 const ALIZ_DELETE_ARMED: String = "Tap again to delete"
@@ -982,8 +1005,13 @@ var _aliz_cloud_label: Label = null
 var _aliz_allowance_label: Label = null
 var _aliz_mic_label: Label = null
 var _aliz_language_button: Button = null
-var _aliz_privacy_button: Button = null
+var _aliz_hands_free_on: Button = null
+var _aliz_hands_free_off: Button = null
+var _aliz_voice_buttons: Control = null
+var _aliz_voice_note: Label = null
+var _aliz_history_box: VBoxContainer = null
 var _aliz_privacy_box: VBoxContainer = null
+var _aliz_privacy_th: VBoxContainer = null
 var _aliz_delete_button: Button = null
 var _aliz_delete_armed: bool = false
 var _aliz_subscription_label: Label = null
@@ -1035,6 +1063,56 @@ func _build_learn_with_aliz() -> void:
 	_aliz_cloud_label = _aliz_help_label("AiTutorCloudLabel", "")
 	_aliz_box.add_child(_aliz_cloud_label)
 
+	# -- Hands-free on / off -------------------------------------------------
+	var hands_free_row: HBoxContainer = _aliz_row("HandsFree", "Hands-free", ALIZ_HANDS_FREE_HELP)
+	var hands_free_toggles := HBoxContainer.new()
+	hands_free_toggles.name = "HandsFreeButtons"
+	hands_free_toggles.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hands_free_toggles.add_theme_constant_override("separation", 12)
+	hands_free_row.add_child(hands_free_toggles)
+	var hands_free_group := ButtonGroup.new()
+	_aliz_hands_free_on = _aliz_toggle("HandsFreeOnButton", "On", hands_free_group)
+	_aliz_hands_free_off = _aliz_toggle("HandsFreeOffButton", "Off", hands_free_group)
+	hands_free_toggles.add_child(_aliz_hands_free_on)
+	hands_free_toggles.add_child(_aliz_hands_free_off)
+	_aliz_hands_free_on.pressed.connect(_on_hands_free_chosen.bind(true))
+	_aliz_hands_free_off.pressed.connect(_on_hands_free_chosen.bind(false))
+
+	# -- Aliz's voice (configured list; cloud voices disabled while the flag is off)
+	var voice_row: HBoxContainer = _aliz_row("AlizVoice", "Aliz's voice", ALIZ_VOICE_HELP)
+	_aliz_voice_buttons = HFlowContainer.new()
+	_aliz_voice_buttons.name = "AlizVoiceButtons"
+	_aliz_voice_buttons.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_aliz_voice_buttons.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_aliz_voice_buttons.custom_minimum_size = Vector2(620.0, 0.0)
+	_aliz_voice_buttons.alignment = FlowContainer.ALIGNMENT_END
+	_aliz_voice_buttons.add_theme_constant_override("h_separation", 12)
+	_aliz_voice_buttons.add_theme_constant_override("v_separation", 12)
+	voice_row.add_child(_aliz_voice_buttons)
+	var voice_group := ButtonGroup.new()
+	var unavailable: PackedStringArray = PackedStringArray()
+	for option: Dictionary in VoiceOptions.options():
+		var voice_id: String = String(option["id"])
+		var button: Button = _aliz_toggle("AlizVoice_%s" % voice_id, String(option["label"]), voice_group)
+		button.custom_minimum_size = Vector2(0.0, 78.0)
+		button.add_theme_constant_override("h_separation", 8)
+		button.set_meta("voiceId", voice_id)
+		if not VoiceOptions.is_selectable(voice_id):
+			button.disabled = true
+			button.tooltip_text = VoiceOptions.availability_note(voice_id).capitalize()
+			# Muted ink: unavailable, not "off".
+			button.add_theme_color_override("font_disabled_color", ALIZ_ROW_HELP_INK)
+			unavailable.append(String(option["label"]))
+		else:
+			button.tooltip_text = String(option.get("description", ""))
+		button.pressed.connect(_on_aliz_voice_chosen.bind(voice_id))
+		_aliz_voice_buttons.add_child(button)
+	_aliz_voice_note = _aliz_help_label("AlizVoiceNote", "")
+	if not unavailable.is_empty():
+		_aliz_voice_note.text = "%s: %s." % [", ".join(unavailable), VoiceOptions.CLOUD_NOTE]
+		_aliz_voice_note.visible = true
+	_aliz_box.add_child(_aliz_voice_note)
+
 	# -- Daily allowance (read-only) ----------------------------------------
 	var allowance_row: HBoxContainer = _aliz_row("AlizAllowance", "Daily AI allowance", ALIZ_ALLOWANCE_HELP)
 	_aliz_allowance_label = _aliz_value_label("AlizAllowanceValue")
@@ -1055,18 +1133,17 @@ func _build_learn_with_aliz() -> void:
 	language_row.add_child(_aliz_language_button)
 
 	# -- Voice volume: the existing sliders, pointed at, not duplicated ------
-	_aliz_box.add_child(_aliz_help_label("AlizVoiceNote", ALIZ_VOICE_NOTE))
+	_aliz_box.add_child(_aliz_help_label("AlizLoudnessNote", ALIZ_VOICE_NOTE))
 
-	# -- Privacy ------------------------------------------------------------
-	_aliz_privacy_button = Button.new()
-	_aliz_privacy_button.name = "AlizPrivacyButton"
-	_aliz_privacy_button.text = ALIZ_PRIVACY_TITLE
-	_style_secondary_button(_aliz_privacy_button)
-	_aliz_privacy_button.pressed.connect(_on_aliz_privacy_toggled)
-	_aliz_box.add_child(_aliz_privacy_button)
+	# -- Privacy information: a static label, no button, no link -------------
+	var privacy_title := Label.new()
+	privacy_title.name = "AlizPrivacyTitle"
+	privacy_title.text = ALIZ_PRIVACY_TITLE
+	privacy_title.add_theme_font_size_override("font_size", 30)
+	privacy_title.add_theme_color_override("font_color", ALIZ_ROW_TITLE_INK)
+	_aliz_box.add_child(privacy_title)
 	_aliz_privacy_box = VBoxContainer.new()
 	_aliz_privacy_box.name = "AlizPrivacyBox"
-	_aliz_privacy_box.visible = false
 	_aliz_privacy_box.add_theme_constant_override("separation", 8)
 	_aliz_box.add_child(_aliz_privacy_box)
 	for index: int in range(ALIZ_PRIVACY_LINES.size()):
@@ -1075,6 +1152,31 @@ func _build_learn_with_aliz() -> void:
 		line.text = ALIZ_PRIVACY_LINES[index]
 		_style_body(line)
 		_aliz_privacy_box.add_child(line)
+	_aliz_privacy_th = VBoxContainer.new()
+	_aliz_privacy_th.name = "AlizPrivacyThai"
+	_aliz_privacy_th.visible = false
+	_aliz_privacy_th.add_theme_constant_override("separation", 8)
+	_aliz_privacy_box.add_child(_aliz_privacy_th)
+	for index: int in range(ALIZ_PRIVACY_LINES_TH.size()):
+		var thai := Label.new()
+		thai.name = "AlizPrivacyThaiLine%d" % index
+		thai.text = ALIZ_PRIVACY_LINES_TH[index]
+		_style_body(thai)
+		HelperFont.apply(thai)
+		_aliz_privacy_th.add_child(thai)
+
+	# -- Learning history (read-only), just above the delete -----------------
+	var history_title := Label.new()
+	history_title.name = "AlizHistoryTitle"
+	history_title.text = ALIZ_HISTORY_TITLE
+	history_title.add_theme_font_size_override("font_size", 30)
+	history_title.add_theme_color_override("font_color", ALIZ_ROW_TITLE_INK)
+	_aliz_box.add_child(history_title)
+	_aliz_box.add_child(_aliz_help_label("AlizHistoryHelp", ALIZ_HISTORY_HELP))
+	_aliz_history_box = VBoxContainer.new()
+	_aliz_history_box.name = "AlizHistoryBox"
+	_aliz_history_box.add_theme_constant_override("separation", 4)
+	_aliz_box.add_child(_aliz_history_box)
 
 	# -- Delete learning history (two taps) ---------------------------------
 	_aliz_box.add_child(_aliz_help_label("AlizDeleteHelp", ALIZ_DELETE_HELP))
@@ -1189,6 +1291,16 @@ func _refresh_learn_with_aliz() -> void:
 		_aliz_subscription_label.text = "Family Club" if club else "Free"
 
 	_aliz_mic_label.text = _microphone_permission_text()
+	var hands_free: bool = _model.get_hands_free_mode()
+	_aliz_hands_free_on.set_pressed_no_signal(hands_free)
+	_aliz_hands_free_off.set_pressed_no_signal(not hands_free)
+	var voice_id: String = _model.get_ai_voice_id()
+	for child: Node in _aliz_voice_buttons.get_children():
+		if child is Button:
+			(child as Button).set_pressed_no_signal(String(child.get_meta("voiceId", "")) == voice_id)
+	_refresh_learning_history()
+	if _aliz_privacy_th != null:
+		_aliz_privacy_th.visible = _model.get_helper_language() == "th"
 
 	var pricing: String = QuotaConfig.pricing_line()
 	_aliz_pricing_label.text = ALIZ_BILLING_TEXT if pricing.is_empty() \
@@ -1215,12 +1327,37 @@ func _on_ai_tutor_chosen(enabled: bool) -> void:
 	_model.set_ai_tutor_enabled(enabled)
 
 
-func _on_aliz_privacy_toggled() -> void:
-	if _aliz_privacy_box == null:
+func _on_hands_free_chosen(enabled: bool) -> void:
+	if _syncing:
 		return
-	_aliz_privacy_box.visible = not _aliz_privacy_box.visible
-	_aliz_privacy_button.text = ("Hide " + ALIZ_PRIVACY_TITLE.to_lower()) if _aliz_privacy_box.visible \
-			else ALIZ_PRIVACY_TITLE
+	_model.set_hands_free_mode(enabled)
+
+
+func _on_aliz_voice_chosen(voice_id: String) -> void:
+	if _syncing:
+		return
+	_model.set_ai_voice_id(voice_id)
+	# The model may have refused (unknown or cloud-only): show what it kept.
+	var kept: String = _model.get_ai_voice_id()
+	for child: Node in _aliz_voice_buttons.get_children():
+		if child is Button:
+			(child as Button).set_pressed_no_signal(String(child.get_meta("voiceId", "")) == kept)
+
+
+## One line per completed lesson (title, stars, date), or "No lessons yet".
+func _refresh_learning_history() -> void:
+	if _aliz_history_box == null:
+		return
+	for child: Node in _aliz_history_box.get_children():
+		_aliz_history_box.remove_child(child)
+		child.queue_free()
+	var lines: PackedStringArray = _model.learning_history_lines()
+	for index: int in range(lines.size()):
+		var label := Label.new()
+		label.name = "AlizHistoryLine%d" % index
+		label.text = lines[index]
+		_style_body(label)
+		_aliz_history_box.add_child(label)
 
 
 ## Two taps: arm, then delete. Closing the panel disarms.
@@ -1245,10 +1382,6 @@ func _disarm_aliz_delete() -> void:
 
 
 func _collapse_learn_with_aliz() -> void:
-	if _aliz_privacy_box != null:
-		_aliz_privacy_box.visible = false
-	if _aliz_privacy_button != null:
-		_aliz_privacy_button.text = ALIZ_PRIVACY_TITLE
 	_disarm_aliz_delete()
 
 
@@ -1260,8 +1393,24 @@ func is_learn_with_aliz_visible() -> bool:
 	return _panel != null and _panel.visible
 
 
+## The privacy text is a static label: on screen whenever the section is.
 func is_aliz_privacy_visible() -> bool:
 	return _aliz_privacy_box != null and _aliz_privacy_box.visible and is_learn_with_aliz_visible()
+
+
+func aliz_learning_history_lines() -> PackedStringArray:
+	return _model.learning_history_lines()
+
+
+## Voice id -> whether its button can be pressed in this build. Tests.
+func aliz_voice_choices() -> Dictionary:
+	var out: Dictionary = {}
+	if _aliz_voice_buttons == null:
+		return out
+	for child: Node in _aliz_voice_buttons.get_children():
+		if child is Button:
+			out[String(child.get_meta("voiceId", ""))] = not (child as Button).disabled
+	return out
 
 
 func aliz_allowance_text() -> String:

@@ -1,0 +1,10 @@
+{
+  "options": [
+    {"id": "aliz_bright", "label": "Aliz (bright)", "provider": "device", "default": true,
+     "description": "Cheerful, youthful voice from the bundled voice pack or this device's own speech."},
+    {"id": "aliz_warm_cloud", "label": "Aliz (warm)", "provider": "cloud", "default": false,
+     "description": "Warm, slower storytelling voice. Available when the cloud tutor is available."},
+    {"id": "aliz_playful_cloud", "label": "Aliz (playful)", "provider": "cloud", "default": false,
+     "description": "Playful voice with more expression. Available when the cloud tutor is available."}
+  ]
+}

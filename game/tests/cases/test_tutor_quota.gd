@@ -691,8 +691,9 @@ func _test_settings_screen_section():
 	# Every row is inside the ScrollContainer.
 	var scroll: ScrollContainer = panel.find_child("Center", true, false) as ScrollContainer
 	for node_name: String in ["LearnWithAlizBox", "AiTutorOnButton", "AiTutorOffButton", "AiTutorCloudLabel",
-			"AlizAllowanceValue", "AlizMicrophoneValue", "AlizLanguageEnButton", "AlizVoiceNote",
-			"AlizPrivacyButton", "AlizDeleteHistoryButton", "AlizSubscriptionValue", "AlizPricingLabel"]:
+			"AlizAllowanceValue", "AlizMicrophoneValue", "AlizLanguageEnButton", "AlizLoudnessNote",
+			"AlizPrivacyBox", "AlizDeleteHistoryButton", "AlizSubscriptionValue", "AlizPricingLabel",
+			"HandsFreeOnButton", "HandsFreeOffButton", "AlizVoiceButtons", "AlizHistoryBox"]:
 		var node: Node = panel.find_child(node_name, true, false)
 		if node == null:
 			failures.append("%s is missing" % node_name)
@@ -721,20 +722,23 @@ func _test_settings_screen_section():
 	var pricing: String = String(panel.call("aliz_pricing_text"))
 	if not pricing.contains("THB 99 / month (proposed)") or not pricing.contains("Billing is not available yet."):
 		failures.append("the pricing line reads '%s'" % pricing)
-	# Privacy: collapsed, link-free, honest that the cloud is off.
-	if bool(panel.call("is_aliz_privacy_visible")):
-		failures.append("the privacy text is open before a tap")
-	var privacy_button: Button = panel.find_child("AlizPrivacyButton", true, false) as Button
-	privacy_button.pressed.emit()
+	# Privacy: a static label (no button), link-free, the exact claim the
+	# privacy guards keep true, per docs/ALIZ_TUTOR_PARENT_INFO.md.
 	if not bool(panel.call("is_aliz_privacy_visible")):
-		failures.append("tapping Privacy did not reveal the text")
-	var privacy: String = " ".join(panel.call("aliz_privacy_lines")).to_lower()
-	for forbidden: String in ["http", "www.", ".com"]:
-		if privacy.contains(forbidden):
-			failures.append("the privacy text contains a link fragment '%s'" % forbidden)
-	for required: String in ["on this device", "never recorded", "off in this build", "nothing leaves this device"]:
+		failures.append("the privacy text is not on screen with the section")
+	if panel.find_child("AlizPrivacyButton", true, false) != null:
+		failures.append("the privacy information has a button; it must be a static label")
+	var privacy: String = " ".join(panel.call("aliz_privacy_lines"))
+	for forbidden: String in ["http", "www.", ".com", "learn more"]:
+		if privacy.to_lower().contains(forbidden):
+			failures.append("the privacy text contains '%s'" % forbidden)
+	if not privacy.contains("The online AI tutor is switched off in this build."):
+		failures.append("the privacy text lost the sentence the guards depend on")
+	for required: String in ["runs on this device", "Nothing is recorded, saved or sent anywhere", "Parent Corner"]:
 		if not privacy.contains(required):
 			failures.append("the privacy text never says '%s'" % required)
+	if privacy.split(" ").size() > 130:
+		failures.append("the privacy text is %d words; keep it at or under 120" % privacy.split(" ").size())
 	# The toggle persists through the model.
 	var off: Button = panel.find_child("AiTutorOffButton", true, false) as Button
 	off.button_pressed = true
@@ -757,11 +761,11 @@ func _test_settings_screen_section():
 	panel.call("close_settings")
 	if closed[0] != 1 or bool(panel.call("is_panel_visible")):
 		failures.append("close_settings() no longer closes")
-	if bool(panel.call("is_aliz_privacy_visible")) or bool(panel.call("is_aliz_delete_armed")):
-		failures.append("closing did not collapse the privacy text / disarm delete")
+	if bool(panel.call("is_aliz_delete_armed")):
+		failures.append("closing did not disarm delete")
 	panel.call("open_settings")
-	if bool(panel.call("is_aliz_delete_armed")) or bool(panel.call("is_aliz_privacy_visible")):
-		failures.append("re-opening restored an armed delete or an open privacy text")
+	if bool(panel.call("is_aliz_delete_armed")):
+		failures.append("re-opening restored an armed delete")
 	var done: Button = panel.find_child("DoneButton", true, false) as Button
 	done.pressed.emit()
 	if closed[0] != 2:

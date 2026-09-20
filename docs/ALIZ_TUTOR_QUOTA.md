@@ -79,6 +79,22 @@ Daily AI allowance (used / allowance today + local reset time, read-only); Micro
 link-free); Delete learning history (two taps); Subscription (Free / Family Club, the configured
 "THB 99 / month (proposed)", "Billing is not available yet."). Close / Done / gate unchanged.
 
+## Addendum rows (owner change request, evening)
+* `handsFreeMode` (bool, default On; Off = tap-to-talk in lessons) -- `ParentSettingsModel.get/set_hands_free_mode()`.
+* `aiVoiceId` -- the configured list in `game/content/tutor/voice_options.json`
+  (`game/scripts/parent_settings/voice_options.gd`): `aliz_bright` (device, default) plus two cloud
+  presets shown disabled with "when the cloud tutor is available" while the flag is off. Only a
+  known, selectable-in-this-build id is ever stored; anything else reads as the default device voice.
+* Learning history (read-only, directly above "Delete learning history") --
+  `game/scripts/parent_settings/learning_history.gd` reads `tutorProgress` in the engine's
+  `save_progress()` shape; title and stars come from the lesson content file, never invented;
+  "No lessons yet" when empty; junk entries skipped; ids validated before they become a path.
+  **Request to Agent A:** record `completedAt` (ISO-8601 UTC) in `save_progress()` when a lesson
+  completes -- the row already reads it and shows "date not recorded" until then.
+* Privacy information is now the static text from `docs/ALIZ_TUTOR_PARENT_INFO.md` (no button),
+  with the Thai helper block under it when the helper language is Thai.
+* Tests: `game/tests/cases/test_tutor_settings.gd`; frames refreshed by `shots_tutor_settings.gd`.
+
 ## Not done / follow-ups
 * Wiring the meter into the tutor scene (Agent B) and passing quota blocks from the backend
   conversation provider (Agent E) — the APIs above are the seams.

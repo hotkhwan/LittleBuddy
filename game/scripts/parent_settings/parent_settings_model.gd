@@ -11,6 +11,8 @@ extends RefCounted
 
 const Localization := preload("res://scripts/localization/localization.gd")
 const QuotaLedger := preload("res://scripts/tutor/quota/quota_ledger.gd")
+const VoiceOptions := preload("res://scripts/parent_settings/voice_options.gd")
+const LearningHistory := preload("res://scripts/parent_settings/learning_history.gd")
 
 const KEY_THAI_HINTS := "thaiHints"
 const KEY_SPEECH_ENABLED := "speechEnabled"
@@ -33,6 +35,13 @@ const KEY_SESSION_REMINDER_MINUTES := "sessionReminderMinutes"
 ## "Learn with Aliz" (the local scripted tutor) on or off. The CLOUD tutor is
 ## gated separately by `TutorFlags.cloud_enabled()`, which no setting can turn on.
 const KEY_AI_TUTOR_ENABLED := "aiTutorEnabled"
+## Hands-free conversation (the mic stays live for the lesson, Aliz listens for
+## speech start/end). Off = tap-to-talk in lessons. Default on (owner, 2026-09-20).
+const KEY_HANDS_FREE_MODE := "handsFreeMode"
+## Which configured Aliz voice (`content/tutor/voice_options.json`). Only a
+## known, selectable-in-this-build id is ever stored; anything else reads as
+## the default device voice.
+const KEY_AI_VOICE_ID := "aiVoiceId"
 ## The two tutor keys a grown-up's "Delete learning history" clears. Both are
 ## owned by the tutor layer (`lesson_engine.gd`, `quota_ledger.gd`); the model
 ## only knows their names so the delete touches exactly these and nothing else.
@@ -53,6 +62,7 @@ const DEFAULT_BUNNY_VOICE_VOLUME := 0.85
 const DEFAULT_SESSION_REMINDER_MINUTES := 5
 const SESSION_REMINDER_CHOICES: Array[int] = [0, 5, 10, 15]
 const DEFAULT_AI_TUTOR_ENABLED := true
+const DEFAULT_HANDS_FREE_MODE := true
 
 const TTS_SPEED_SLOW := "slow"
 const TTS_SPEED_NORMAL := "normal"
@@ -176,6 +186,40 @@ func get_ai_tutor_enabled() -> bool:
 
 func set_ai_tutor_enabled(enabled: bool) -> void:
 	_write(KEY_AI_TUTOR_ENABLED, enabled)
+
+
+func get_hands_free_mode() -> bool:
+	return _read_bool(KEY_HANDS_FREE_MODE, DEFAULT_HANDS_FREE_MODE)
+
+
+func set_hands_free_mode(enabled: bool) -> void:
+	_write(KEY_HANDS_FREE_MODE, enabled)
+
+
+## The stored voice id when it is known AND selectable in this build; else the
+## configured default (a device voice), so the offline tutor always has one.
+func get_ai_voice_id() -> String:
+	var stored: Variant = _read(KEY_AI_VOICE_ID, "")
+	if typeof(stored) == TYPE_STRING and VoiceOptions.is_selectable(stored):
+		return String(stored)
+	return VoiceOptions.default_id()
+
+
+## Ignores unknown ids and cloud voices while the cloud is off, so the stored
+## key can only ever name a voice this build can play.
+func set_ai_voice_id(voice_id: String) -> void:
+	if not VoiceOptions.is_selectable(voice_id):
+		return
+	_write(KEY_AI_VOICE_ID, voice_id)
+
+
+## The child's completed lessons (title, stars, date), newest first. Read-only.
+func learning_history_lines() -> PackedStringArray:
+	return LearningHistory.lines(_read(KEY_TUTOR_PROGRESS, {}))
+
+
+func learning_history_entries() -> Array:
+	return LearningHistory.completed_entries(_read(KEY_TUTOR_PROGRESS, {}))
 
 
 ## Clears the child's tutor lesson progress and today's local tutor-time usage.
