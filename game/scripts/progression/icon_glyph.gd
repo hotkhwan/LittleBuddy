@@ -60,6 +60,29 @@ const ICON_PATHS: Dictionary = {
 		tint = value
 		self_modulate = value
 
+## A coloured disc behind the icon, drawn in `_draw()` before the texture.
+##
+## Added after the owner called the icons dull: a white glyph tinted ink on a
+## cream button is legible but flat, and a child's eye slides off it. A pastel
+## disc under the same glyph makes it read as a *sticker* -- brighter,
+## rounder, friendlier -- without touching the icon set. Fully transparent
+## (the default) draws nothing, so every existing scene is pixel-identical
+## until it asks for one. Rim is `Palette.deep()` of the backing, never a new
+## colour and never black.
+@export var backing_color: Color = Color(1.0, 1.0, 1.0, 0.0):
+	set(value):
+		backing_color = value
+		queue_redraw()
+
+## How much of the control the disc fills. 1.0 touches the edges.
+@export_range(0.5, 1.0) var backing_scale: float = 0.96:
+	set(value):
+		backing_scale = value
+		queue_redraw()
+
+const _Palette := preload("res://scripts/ui/palette.gd")
+const BACKING_RIM_PX: float = 3.0
+
 
 func _init() -> void:
 	# Set here rather than in the scene files: the TextureRect default
@@ -76,6 +99,31 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_apply_texture()
 	self_modulate = tint
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		queue_redraw()
+
+
+## Runs BEFORE the built-in texture draw (the base class handles its
+## `NOTIFICATION_DRAW` after the script's `_draw()`), so the disc sits behind
+## the glyph.
+func _draw() -> void:
+	if backing_color.a <= 0.001:
+		return
+	var radius: float = minf(size.x, size.y) * 0.5 * clampf(backing_scale, 0.5, 1.0)
+	if radius <= 0.0:
+		return
+	var centre: Vector2 = size * 0.5
+	var rim: Color = _Palette.deep(backing_color)
+	rim.a = backing_color.a
+	draw_circle(centre, radius, rim)
+	draw_circle(centre, maxf(radius - BACKING_RIM_PX, 0.0), backing_color)
+	# A soft shine top-left, the house's shared shape language.
+	var shine: Color = _Palette.CREAM
+	shine.a = 0.55 * backing_color.a
+	draw_circle(centre + Vector2(-radius * 0.34, -radius * 0.36), radius * 0.2, shine)
 
 
 func _apply_texture() -> void:

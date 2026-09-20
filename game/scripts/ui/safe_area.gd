@@ -47,15 +47,22 @@ func _apply_safe_area() -> void:
 
 ## Returns (left, top, right, bottom) in viewport pixels.
 func _compute_insets() -> Vector4:
+	return insets_for(get_viewport_rect().size)
+
+
+## The insets for a viewport of `viewport_size`, as (left, top, right, bottom)
+## in viewport pixels. Static so a control that is NOT under a `SafeArea` node --
+## the house HUD's version label, say -- can keep clear of the same notch and
+## home indicator without a second copy of the arithmetic.
+static func insets_for(viewport_size: Vector2) -> Vector4:
 	var left: float = MIN_MARGIN_HORIZONTAL
 	var top: float = MIN_MARGIN
 	var right: float = MIN_MARGIN_HORIZONTAL
 	var bottom: float = MIN_MARGIN
 
-	if _platform_reports_safe_area():
+	if platform_reports_safe_area():
 		var safe: Rect2i = DisplayServer.get_display_safe_area()
 		var window: Vector2i = DisplayServer.window_get_size()
-		var viewport_size: Vector2 = get_viewport_rect().size
 
 		if window.x > 0 and window.y > 0 and safe.size.x > 0 and safe.size.y > 0 \
 				and viewport_size.x > 0.0 and viewport_size.y > 0.0:
@@ -72,6 +79,6 @@ func _compute_insets() -> Vector4:
 	return Vector4(left, top, right, bottom)
 
 
-func _platform_reports_safe_area() -> bool:
+static func platform_reports_safe_area() -> bool:
 	var platform: String = OS.get_name()
 	return platform == "iOS" or platform == "Android"

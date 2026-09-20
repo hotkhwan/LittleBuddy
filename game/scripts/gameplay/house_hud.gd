@@ -36,6 +36,16 @@ extends Control
 ## The locked palette (SLICE_CONTRACT §7 / ART_BIBLE).
 const SpeechFeedbackScript := preload("res://scripts/ui/speech_feedback.gd")
 const Presentation := preload("res://scripts/ui/hud_presentation.gd")
+const PauseMenuScript := preload("res://scripts/ui/pause_menu.gd")
+const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
+const SafeAreaScript := preload("res://scripts/ui/safe_area.gd")
+const GameVersion := preload("res://scripts/content_packs/game_version.gd")
+const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
+const Palette := preload("res://scripts/ui/palette.gd")
+
+## The grown-ups screen the pause card's third button opens, as an overlay on
+## top of the running world so Done returns to the room.
+const PARENT_SCENE: String = "res://scenes/parent/parent_settings.tscn"
 
 const CREAM: Color = Color("#FFF6E5")
 const DUSTY_BLUE: Color = Color("#9AC0D9")
@@ -64,6 +74,28 @@ const WORD_SECONDS: float = 3.2
 
 const DOT_SIZE: float = 26.0
 const DOT_GAP: float = 12.0
+
+## -- Home, and the version --------------------------------------------------------
+##
+## Home is the way out. It sits top-right, round, peach, with the title
+## screen's own house on it, and it is the one control a grown-up can find
+## without being told: the owner's first playtest note was that there was no
+## obvious way back. 104 px is under the §8 floor for a CHILD'S target on
+## purpose -- it is a grown-up's control that a child may also press -- and
+## what it opens is a card whose buttons are all full size.
+const HOME_SIZE: float = 104.0
+const HOME_TOP: float = 26.0
+const HOME_RIGHT: float = -36.0
+## Space the level caption gives up so it never runs under Home.
+const CAPTION_RIGHT: float = HOME_RIGHT - HOME_SIZE - 20.0
+
+## The build number, bottom-right, small and out of everybody's way. It is
+## not for the child; it is for the owner reading a screenshot.
+const VERSION_FONT_SIZE: int = 16
+const VERSION_WIDTH: float = 170.0
+const VERSION_HEIGHT: float = 22.0
+## Clear air between the label and Next when the safe area pushes it up.
+const VERSION_CLEARANCE: float = 6.0
 
 ## -- Where the two child-facing buttons live --------------------------------
 ##
@@ -97,6 +129,10 @@ const REWARD_SECONDS: float = ENCOURAGEMENT_SEC
 
 signal skip_pressed()
 signal speak_pressed()
+## The pause card's Home was pressed. Emitted whether or not a world answered.
+signal home_requested()
+signal pause_opened()
+signal pause_closed()
 
 
 ## Where Next and Speak land in a viewport of `viewport_size`, as
@@ -118,8 +154,43 @@ static func button_rects(viewport_size: Vector2) -> Dictionary:
 		),
 	}
 
+## Where the Home button lands in a viewport of `viewport_size`.
+static func home_button_rect(viewport_size: Vector2) -> Rect2:
+	return Rect2(viewport_size.x + HOME_RIGHT - HOME_SIZE, HOME_TOP, HOME_SIZE, HOME_SIZE)
+
+
+## Where the version label lands, given the safe-area `insets` (left, top,
+## right, bottom) for that viewport.
+##
+## Bottom-right, tucked under Next by default. When the device's bottom inset
+## (an iPhone home indicator) would push it up into Next, it moves ABOVE Next
+## instead of sitting under either -- and it is never anywhere near the
+## thumbstick, which owns the bottom-LEFT. `test_interaction_ux.gd` asserts all
+## three at every shipped aspect.
+static func version_label_rect(viewport_size: Vector2, insets: Vector4 = Vector4.ZERO) -> Rect2:
+	var right: float = viewport_size.x - maxf(insets.z, -NEXT_RIGHT)
+	var bottom: float = viewport_size.y - maxf(insets.w, 8.0)
+	var rect: Rect2 = Rect2(right - VERSION_WIDTH, bottom - VERSION_HEIGHT, VERSION_WIDTH, VERSION_HEIGHT)
+	var next: Rect2 = button_rects(viewport_size)["next"]
+	if rect.intersects(next.grow(VERSION_CLEARANCE)):
+		rect.position.y = next.position.y - VERSION_CLEARANCE - VERSION_HEIGHT
+	return rect
+
+
 var _prompt: Label = null
 var _hint: Label = null
+var _home_button: Button = null
+var _version: Label = null
+var _pause_menu: Control = null
+var _settings_overlay: Node = null
+var _affordance: Control = null
+var _affordance_bound: bool = false
+## What the world's input looked like before the pause card took it, so
+## Continue puts back exactly that and never re-enables a character somebody
+## else had disabled.
+var _paused_world: bool = false
+var _prior_taps_enabled: bool = true
+var _prior_character_disabled: bool = false
 var _caption: Label = null
 var _stars: Label = null
 var _encouragement: Label = null
@@ -175,11 +246,19 @@ func build() -> void:
 	# it is already in the tree never gets the chance to opt in from `_ready()`.
 	set_process(true)
 
+	# The proximity affordances draw UNDER every other piece of chrome, so the
+	# badge can never cover a prompt or a button. Bound to the world lazily in
+	# `refresh_presentation()`, once this HUD is in a tree that has one.
+	_affordance = AffordanceLayerScript.new()
+	add_child(_affordance)
+	move_child(_affordance, 0)
+	_affordance.call("build")
+
 	_caption = _add_label("Caption", CAPTION_FONT_SIZE, LAVENDER)
 	_caption.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	_caption.offset_left = -400.0
 	_caption.offset_top = 30.0
-	_caption.offset_right = -36.0
+	_caption.offset_right = CAPTION_RIGHT
 	_caption.offset_bottom = 120.0
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_caption.visible = false
@@ -235,6 +314,7 @@ func build() -> void:
 	_next_button.offset_bottom = BUTTON_BOTTOM
 	_next_button.pressed.connect(_on_next_pressed)
 	_next_button.visible = false
+	_set_button_icon(_next_button, "res://assets/ui/icons/next.svg", HORIZONTAL_ALIGNMENT_RIGHT)
 
 	# ART_BIBLE section 3 assigns mint to the speak button in two places: the
 	# palette row ("go, success, freshness -- speak button") and the semantic
@@ -251,6 +331,7 @@ func build() -> void:
 	_speak_button.offset_bottom = BUTTON_BOTTOM
 	_speak_button.pressed.connect(_on_speak_pressed)
 	_speak_button.visible = false
+	_set_button_icon(_speak_button, "res://assets/ui/icons/mic.svg", HORIZONTAL_ALIGNMENT_LEFT)
 
 	# The panel that tells the child what the microphone is doing. Added last so
 	# it draws over the buttons, and it ignores the mouse so it can never eat a
@@ -289,6 +370,41 @@ func build() -> void:
 	_word_thai.offset_bottom = -104.0
 	_word_thai.visible = false
 
+	_home_button = _add_button("HomeButton", "", Palette.HOME_CHROME)
+	_home_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_home_button.offset_left = HOME_RIGHT - HOME_SIZE
+	_home_button.offset_top = HOME_TOP
+	_home_button.offset_right = HOME_RIGHT
+	_home_button.offset_bottom = HOME_TOP + HOME_SIZE
+	for state: String in ["normal", "hover", "pressed", "focus"]:
+		var round_style: StyleBoxFlat = _button_style(Palette.HOME_CHROME, state == "pressed")
+		round_style.set_corner_radius_all(int(HOME_SIZE * 0.5))
+		round_style.set_border_width_all(4)
+		_home_button.add_theme_stylebox_override(state, round_style)
+	var house: Control = HouseGlyphScript.new()
+	house.name = "HouseGlyph"
+	house.set("tint", INK)
+	house.set("face_color", Palette.HOME_CHROME)
+	house.set("window_color", Palette.HOME_CHROME)
+	house.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	house.offset_left = 16.0
+	house.offset_top = 14.0
+	house.offset_right = -16.0
+	house.offset_bottom = -18.0
+	_home_button.add_child(house)
+	_home_button.pressed.connect(open_pause_menu)
+
+	_version = _add_label("Version", VERSION_FONT_SIZE, CREAM)
+	_version.add_theme_constant_override("outline_size", 6)
+	_version.text = GameVersion.BUILD
+	_version.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_version.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_place_version()
+	if is_inside_tree():
+		var viewport: Viewport = get_viewport()
+		if viewport != null and not viewport.size_changed.is_connected(_place_version):
+			viewport.size_changed.connect(_place_version)
+
 	_apply_mode(true)
 
 
@@ -305,6 +421,7 @@ func build() -> void:
 ## every frame: one method call on the camera and an integer comparison.
 func refresh_presentation() -> void:
 	build()
+	_bind_affordance()
 	_seen_focus_radius = _observed_focus_radius()
 	var wanted: int = _mode_override
 	if wanted < 0:
@@ -480,6 +597,15 @@ func _refresh_visibility() -> void:
 	_dots.visible = _chrome_on and not _free_play and _total > 0
 	_encouragement.visible = _chrome_on and _encouragement_on
 	_stars.visible = _chrome_on
+	_home_button.visible = _chrome_on
+	# Affordances stand down whenever the room is not the thing being played:
+	# a summary, a close-up narrating for itself, the pause card. While the
+	# prompt band is up they also keep out from under it.
+	_affordance.call("set_enabled", _chrome_on and not _narration_covered and not _paused_world)
+	var keep_out: float = 0.0
+	if _prompt.visible and String(l["promptAnchor"]) == "topWide":
+		keep_out = Presentation.top_stack_height(_mode) + 12.0
+	_affordance.call("set_top_keep_out", keep_out)
 
 
 ## Hides the HUD's own narration while a full-screen close-up is doing the
@@ -756,6 +882,243 @@ func get_speech_feedback() -> Control:
 	return _speech_feedback
 
 
+## -- Home / pause ----------------------------------------------------------------
+##
+## The HUD owns the button and the card and the input gating around them. What
+## "home" actually DOES belongs to the world: `HouseWorld.leave_to_home()` saves
+## the location and the profile and swaps to the title screen. It is called
+## through `has_method()` so this HUD is renderable in a tree with no world, and
+## when no world answers, Home simply closes the card -- never a dead end,
+## never a scene swap of its own.
+
+func open_pause_menu() -> void:
+	build()
+	if not _chrome_on:
+		return
+	var menu: Control = _ensure_pause_menu()
+	if menu == null or bool(menu.call("is_open")):
+		return
+	_set_world_paused(true)
+	# On top of everything in the layer, including the care overlay.
+	var host: Node = menu.get_parent()
+	if host != null:
+		host.move_child(menu, host.get_child_count() - 1)
+	menu.call("open")
+	pause_opened.emit()
+
+
+func close_pause_menu() -> void:
+	build()
+	if _pause_menu == null or not bool(_pause_menu.call("is_open")):
+		return
+	_pause_menu.call("close")
+
+
+func is_pause_menu_open() -> bool:
+	build()
+	return _pause_menu != null and bool(_pause_menu.call("is_open"))
+
+
+func get_pause_menu() -> Control:
+	build()
+	return _ensure_pause_menu()
+
+
+func get_home_button() -> Button:
+	build()
+	return _home_button
+
+
+func get_version_label() -> Label:
+	build()
+	return _version
+
+
+func get_version_text() -> String:
+	build()
+	return _version.text
+
+
+func get_affordance_layer() -> Control:
+	build()
+	return _affordance
+
+
+## The world this HUD is mounted in, or null. Duck-typed: the nearest ancestor
+## that answers `get_character()`.
+func get_world() -> Node:
+	var node: Node = get_parent()
+	var guard: int = 0
+	while node != null and guard < 16:
+		guard += 1
+		if node.has_method("get_character"):
+			return node
+		node = node.get_parent()
+	return null
+
+
+## Home, as an API. Flushes the profile, then asks the world to leave.
+func request_home() -> void:
+	build()
+	_flush_save()
+	home_requested.emit()
+	var world: Node = get_world()
+	if world != null and world.has_method("leave_to_home"):
+		close_pause_menu()
+		world.call("leave_to_home")
+		return
+	# No world to leave (a preview, a test, a build without the hook): the card
+	# closes and play carries on. A press that does nothing visible is the one
+	# outcome this HUD must not produce.
+	close_pause_menu()
+
+
+## The grown-ups gate, over the running room. Done brings the room back.
+func open_grown_ups() -> void:
+	build()
+	if _settings_overlay != null and is_instance_valid(_settings_overlay):
+		return
+	if not ResourceLoader.exists(PARENT_SCENE):
+		close_pause_menu()
+		return
+	var packed: Resource = load(PARENT_SCENE)
+	if not (packed is PackedScene):
+		close_pause_menu()
+		return
+	var overlay: Node = (packed as PackedScene).instantiate()
+	if overlay == null:
+		close_pause_menu()
+		return
+	_settings_overlay = overlay
+	if overlay.has_signal("closed"):
+		overlay.connect("closed", _on_grown_ups_closed, CONNECT_ONE_SHOT)
+	var host: Node = get_parent() if get_parent() != null else self
+	host.add_child(overlay)
+	host.move_child(overlay, host.get_child_count() - 1)
+	# The card steps aside but the world stays held until Done.
+	if _pause_menu != null and bool(_pause_menu.call("is_open")):
+		_pause_menu.call("close")
+	_set_world_paused(true)
+
+
+func is_grown_ups_open() -> bool:
+	return _settings_overlay != null and is_instance_valid(_settings_overlay)
+
+
+func _on_grown_ups_closed() -> void:
+	if _settings_overlay != null and is_instance_valid(_settings_overlay):
+		var overlay: Node = _settings_overlay
+		_settings_overlay = null
+		if overlay.get_parent() != null:
+			overlay.get_parent().remove_child(overlay)
+		overlay.queue_free()
+	else:
+		_settings_overlay = null
+	_set_world_paused(false)
+
+
+func _ensure_pause_menu() -> Control:
+	if _pause_menu != null and is_instance_valid(_pause_menu):
+		return _pause_menu
+	var menu: Control = PauseMenuScript.new()
+	menu.call("build")
+	menu.connect("home_pressed", request_home)
+	menu.connect("settings_pressed", open_grown_ups)
+	menu.connect("closed", _on_pause_menu_closed)
+	var host: Node = get_parent() if get_parent() != null else self
+	host.add_child(menu)
+	_pause_menu = menu
+	return menu
+
+
+func _on_pause_menu_closed() -> void:
+	if not is_grown_ups_open():
+		_set_world_paused(false)
+	pause_closed.emit()
+
+
+## Takes the room's input away (taps, walking, affordances) and gives back
+## exactly what was there before. Tracked, not toggled: the summary disables the
+## same character, and Continue must never undo the summary's decision.
+func _set_world_paused(paused: bool) -> void:
+	if paused == _paused_world:
+		return
+	_paused_world = paused
+	var world: Node = get_world()
+	var nav: Node = world.get_node_or_null("NavigationController") if world != null else null
+	var character: Node = null
+	if world != null and world.has_method("get_character"):
+		character = world.call("get_character")
+	if paused:
+		if nav != null and nav.get("taps_enabled") != null:
+			_prior_taps_enabled = bool(nav.get("taps_enabled"))
+			nav.set("taps_enabled", false)
+		if character != null and character.has_method("get_state_name") \
+				and character.has_method("set_disabled"):
+			_prior_character_disabled = String(character.call("get_state_name")) == "disabled"
+			if not _prior_character_disabled:
+				character.call("set_disabled", true)
+	else:
+		if nav != null and nav.get("taps_enabled") != null:
+			nav.set("taps_enabled", _prior_taps_enabled)
+		if character != null and character.has_method("set_disabled") \
+				and not _prior_character_disabled:
+			character.call("set_disabled", false)
+	_refresh_visibility()
+
+
+func is_world_paused() -> bool:
+	return _paused_world
+
+
+func _flush_save() -> void:
+	if not is_inside_tree():
+		return
+	var save: Node = get_node_or_null(NodePath("/root/SaveService"))
+	if save != null and save.has_method("save_profile"):
+		save.call("save_profile")
+
+
+## Joins the affordance layer to the world once there is one to join. If the
+## world already mounts a layer of its own (the lead's `house_world.gd` patch),
+## this HUD's copy stands down so the child never sees two badges.
+func _bind_affordance() -> void:
+	if _affordance_bound or not is_inside_tree():
+		return
+	var world: Node = get_world()
+	if world == null:
+		return
+	_affordance_bound = true
+	var host: Node = get_parent()
+	if host != null:
+		for sibling: Node in host.get_children():
+			if sibling != self and sibling.name == "AffordanceLayer":
+				_affordance.call("set_enabled", false)
+				_affordance.visible = false
+				return
+	_affordance.call("bind", world)
+
+
+func _place_version() -> void:
+	if _version == null:
+		return
+	var view: Vector2 = Vector2(1366.0, 1024.0)
+	if is_inside_tree():
+		var rect_size: Vector2 = get_viewport_rect().size
+		if rect_size.x > 0.0 and rect_size.y > 0.0:
+			view = rect_size
+	var rect: Rect2 = version_label_rect(view, SafeAreaScript.insets_for(view))
+	_version.offset_left = rect.position.x
+	_version.offset_top = rect.position.y
+	_version.offset_right = rect.end.x
+	_version.offset_bottom = rect.end.y
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED and _built:
+		_place_version()
+
+
 ## -- Construction helpers ------------------------------------------------------
 
 func _add_label(node_name: String, font_size: int, color: Color) -> Label:
@@ -788,6 +1151,22 @@ func _add_button(node_name: String, text: String, tint: Color) -> Button:
 		button.add_theme_stylebox_override(state, _button_style(tint, state == "pressed"))
 	add_child(button)
 	return button
+
+
+## A picture beside the word, for the reader who cannot read yet. The pack's
+## icons are white, so the button tints them ink like its text.
+func _set_button_icon(button: Button, path: String, side: int) -> void:
+	if not ResourceLoader.exists(path):
+		return
+	var texture: Resource = load(path)
+	if not (texture is Texture2D):
+		return
+	button.icon = texture
+	button.expand_icon = true
+	button.icon_alignment = side
+	for state: String in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_focus_color"]:
+		button.add_theme_color_override(state, INK)
+	button.add_theme_constant_override("h_separation", 10)
 
 
 func _button_style(tint: Color, pressed: bool) -> StyleBoxFlat:

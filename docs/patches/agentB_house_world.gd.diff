@@ -1,0 +1,56 @@
+# Agent B (interaction UX) -- optional hook for the lead's house_world.gd.
+#
+# STATUS: NOT REQUIRED for anything on wt/ux to work. `house_hud.gd` already
+# mounts the affordance layer as its own first child and binds it to the world
+# it finds above it, in Story and in Free Play alike. This patch moves that
+# mounting into the world so the layer also exists during FIRST RUN (the
+# onboarding director builds no HouseHud), and so it lives beside the joystick
+# in the world's own `UI` layer rather than inside a director's chrome.
+#
+# `house_hud.gd::_bind_affordance()` already detects a sibling named
+# "AffordanceLayer" in the UI layer and stands its own copy down, so applying
+# this patch never produces two badges.
+#
+# Home: the lead's `leave_to_home()` / `is_leaving()` are consumed by
+# `house_hud.gd::request_home()` through `has_method()` guards; nothing further
+# is needed from house_world.gd for the Home button.
+
+--- a/game/scripts/house/house_world.gd
++++ b/game/scripts/house/house_world.gd
+@@ const VirtualJoystickScript := preload("res://scripts/input/virtual_joystick.gd")
++## Owned by agentB. `load()`ed, not `preload()`ed, for the same reason as the
++## registry: a world must still parse if the interaction layer is ever moved.
++const AFFORDANCE_LAYER_SCRIPT_PATH: String = "res://scripts/interaction/affordance_layer.gd"
+@@ var _joystick: Control = null
++## The proximity affordance badges (OPEN / TAKE / PLACE / ENTER ...). Built into
++## the world's own `UI` layer so first run, Free Play and Story all have it.
++var _affordance_layer: Control = null
+@@ func build_world() -> void:
+ 	_build_joystick()
++	_build_affordance_layer()
+@@ func get_joystick() -> Control:
++
++
++## Mounts `affordance_layer.gd` UNDER the joystick (index 0) so every button
++## the directors add later draws over it and gets its presses first.
++func _build_affordance_layer() -> void:
++	var ui: Node = get_node_or_null("UI")
++	if ui == null or _character == null:
++		return
++	if not ResourceLoader.exists(AFFORDANCE_LAYER_SCRIPT_PATH):
++		return
++	var script: GDScript = load(AFFORDANCE_LAYER_SCRIPT_PATH)
++	if script == null:
++		return
++	var layer: Control = script.new()
++	layer.name = "AffordanceLayer"
++	ui.add_child(layer)
++	ui.move_child(layer, 0)
++	layer.call("build")
++	layer.call("bind", self)
++	_affordance_layer = layer
++
++
++func get_affordance_layer() -> Control:
++	build_world()
++	return _affordance_layer

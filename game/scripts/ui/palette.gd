@@ -102,3 +102,23 @@ static func is_grey(color: Color) -> bool:
 	if top <= 0.0:
 		return true
 	return (top - bottom) / top < 0.06
+
+
+# --- Affordance verbs (additive, 2026-09-20) --------------------------------
+##
+## One colour per action word, so OPEN is always the same peach and ENTER is
+## always the same lavender wherever the badge appears. Every one of these is
+## an ALIAS of a locked token above -- no new hex value enters the game here,
+## which is what keeps this section on the right side of the bible's lock.
+
+const VERB_OPEN: Color = PEACH
+const VERB_TAKE: Color = MINT
+const VERB_PLACE: Color = DUSTY_BLUE
+const VERB_ENTER: Color = LAVENDER
+const VERB_HUG: Color = SOFT_PINK
+const VERB_CARRY: Color = SOFT_PINK
+const VERB_FEED: Color = STAR_EARNED
+
+## The Home / pause control. Peach, like the menu's own house button, so the
+## way out of a level is the same colour as the way in.
+const HOME_CHROME: Color = PEACH
