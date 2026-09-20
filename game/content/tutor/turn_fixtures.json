@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "description": "Shared truth table for the TutorTurn validator. The client (scripts/tutor/turn/tutor_turn.gd) and the server (backend/src/turn_validator.js) both run every case: `valid` says whether the turn must be accepted as-is; an invalid turn must be replaced by `fallback`.",
+  "$comment": "SHARED TutorTurn validator truth table (docs/ALIZ_TUTOR_CONTRACTS.md). Run by BOTH suites: game/tests/cases/test_tutor_turn.gd (client, game/scripts/tutor/turn/tutor_turn.gd) and backend/test/validator.test.js (server, backend/src/turn_validator.js). Format: cases[].input is the candidate turn; expect is 'valid' or 'fallback'; for 'valid' cases the optional `normalized` object lists fields the validator must output exactly; for 'fallback' cases `reasonPrefix` names the rule that must appear in the reasons list. Rules: ASCII printable 0x20..0x7E only (no typographic punctuation), extra fields dropped, visual required, missing/invalid anything -> the safe fallback turn.",
+  "version": 2,
   "fallback": {
     "speech": "Let's try together!",
     "emotion": "encouraging",
@@ -12,10 +12,307 @@
   },
   "cases": [
     {
-      "id": "valid_flashcard_next_question",
-      "valid": true,
-      "reason": "the canonical example from the contract",
-      "turn": {
+      "name": "minimal valid turn with no visual",
+      "input": {
+        "speech": "Great! What color is the apple?",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "What color is the apple?"
+      },
+      "expect": "valid",
+      "normalized": {
+        "subtitle": "Great! What color is the apple?"
+      }
+    },
+    {
+      "name": "valid flashcard with allowlisted asset",
+      "input": {
+        "speech": "This is an apple.",
+        "subtitle": "This is an apple.",
+        "emotion": "smile",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "apple_red"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid"
+    },
+    {
+      "name": "the safe fallback turn itself is valid",
+      "input": {
+        "speech": "Let's try together!",
+        "emotion": "encouraging",
+        "gesture": "tilt",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid"
+    },
+    {
+      "name": "speech at exactly 160 chars is valid",
+      "input": {
+        "speech": "Nice! The banana is yellow. Bananas grow in warm places and monkeys love them. Can you say yellow banana with me one more time please, my dear friend? Yes, yes!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid"
+    },
+    {
+      "name": "speech over 160 chars falls back",
+      "input": {
+        "speech": "Nice! The banana is yellow. Bananas grow in warm places and monkeys love them. Can you say yellow banana with me one more time please, my dear friend? Yes, yes!!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:too_long"
+    },
+    {
+      "name": "unknown emotion falls back",
+      "input": {
+        "speech": "Hello!",
+        "emotion": "angry",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "emotion:invalid"
+    },
+    {
+      "name": "unknown gesture falls back",
+      "input": {
+        "speech": "Hello!",
+        "emotion": "happy",
+        "gesture": "backflip",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "gesture:invalid"
+    },
+    {
+      "name": "asset not on the allowlist falls back",
+      "input": {
+        "speech": "Look!",
+        "emotion": "happy",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "dinosaur_green"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "visual.assetId:not_allowed"
+    },
+    {
+      "name": "flashcard without an assetId falls back",
+      "input": {
+        "speech": "Look!",
+        "emotion": "happy",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "visual.assetId:required"
+    },
+    {
+      "name": "unknown lessonAction falls back",
+      "input": {
+        "speech": "Bye!",
+        "emotion": "happy",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "skip_lesson"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "lessonAction:invalid"
+    },
+    {
+      "name": "URL in speech falls back",
+      "input": {
+        "speech": "Visit https://example.com for more!",
+        "emotion": "happy",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:url"
+    },
+    {
+      "name": "non-ASCII (emoji) in speech falls back",
+      "input": {
+        "speech": "Great job 🍎",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:non_ascii"
+    },
+    {
+      "name": "banned word falls back",
+      "input": {
+        "speech": "That was stupid, try again.",
+        "emotion": "encouraging",
+        "gesture": "tilt",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:banned_word"
+    },
+    {
+      "name": "personal-data prompt falls back",
+      "input": {
+        "speech": "Tell me your home address and phone number.",
+        "emotion": "neutral",
+        "gesture": "none",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:banned_word"
+    },
+    {
+      "name": "digit run longer than 20 falls back",
+      "input": {
+        "speech": "Count: 123456789012345678901",
+        "emotion": "neutral",
+        "gesture": "none",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:long_number"
+    },
+    {
+      "name": "nextQuestion over 120 chars falls back",
+      "input": {
+        "speech": "Good!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "Can you tell me what color the banana is and also what color the apple is and also what color the grapes are today please?"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "nextQuestion:too_long"
+    },
+    {
+      "name": "missing speech falls back",
+      "input": {
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:required"
+    },
+    {
+      "name": "missing visual falls back",
+      "input": {
+        "speech": "Hi!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "visual:missing"
+    },
+    {
+      "name": "not an object falls back",
+      "input": "Great job!",
+      "expect": "fallback",
+      "reasonPrefix": "turn:not_object"
+    },
+    {
+      "name": "extra unknown fields are dropped, turn stays valid",
+      "input": {
+        "speech": "Nice!",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "complete",
+        "debug": {
+          "tokens": 12
+        },
+        "score": 0.93
+      },
+      "expect": "valid",
+      "normalized": {
+        "lessonAction": "complete"
+      }
+    },
+    {
+      "name": "model visual with allowlisted asset is valid",
+      "input": {
+        "speech": "Here is a cat.",
+        "emotion": "smile",
+        "gesture": "point",
+        "visual": {
+          "type": "model",
+          "assetId": "cat"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "What does a cat say?"
+      },
+      "expect": "valid",
+      "normalized": {
+        "visual": {
+          "type": "model",
+          "assetId": "cat"
+        }
+      }
+    },
+    {
+      "name": "canonical contract example: flashcard, subtitle kept, nextQuestion kept",
+      "input": {
         "speech": "Yes! It is an apple. Well done!",
         "subtitle": "Yes! It is an apple.",
         "emotion": "happy",
@@ -26,24 +323,20 @@
         },
         "lessonAction": "next_question",
         "nextQuestion": "What is this?"
+      },
+      "expect": "valid",
+      "normalized": {
+        "subtitle": "Yes! It is an apple.",
+        "nextQuestion": "What is this?",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "apple_red"
+        }
       }
     },
     {
-      "id": "valid_minimal_no_visual",
-      "valid": true,
-      "reason": "subtitle, nextQuestion and visual are optional; visual defaults to none",
-      "turn": {
-        "speech": "Can you say banana?",
-        "emotion": "listening",
-        "gesture": "tilt",
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "valid_hint_with_model_visual",
-      "valid": true,
-      "reason": "model visuals are allowed with an approved id",
-      "turn": {
+      "name": "model visual with a hint action is valid",
+      "input": {
         "speech": "It is yellow and long. Ba-na-na!",
         "emotion": "encouraging",
         "gesture": "point",
@@ -52,27 +345,15 @@
           "assetId": "banana_yellow"
         },
         "lessonAction": "give_hint"
+      },
+      "expect": "valid",
+      "normalized": {
+        "lessonAction": "give_hint"
       }
     },
     {
-      "id": "valid_complete_with_curly_apostrophe",
-      "valid": true,
-      "reason": "typographic apostrophes and an em dash are common punctuation",
-      "turn": {
-        "speech": "That’s all for today — great job!",
-        "emotion": "smile",
-        "gesture": "wave",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "complete"
-      }
-    },
-    {
-      "id": "valid_end_session_neutral",
-      "valid": true,
-      "reason": "end_session with a neutral face and no gesture",
-      "turn": {
+      "name": "end_session with a neutral face and no gesture is valid",
+      "input": {
         "speech": "Bye bye! See you tomorrow.",
         "emotion": "neutral",
         "gesture": "none",
@@ -80,24 +361,12 @@
           "type": "none"
         },
         "lessonAction": "end_session"
-      }
+      },
+      "expect": "valid"
     },
     {
-      "id": "valid_speech_at_limit",
-      "valid": true,
-      "reason": "exactly 160 characters is allowed",
-      "turn": {
-        "speech": "Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple appl",
-        "emotion": "happy",
-        "gesture": "nod",
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "valid_number_card",
-      "valid": true,
-      "reason": "short numbers in speech are fine and number cards are approved",
-      "turn": {
+      "name": "short numbers in speech and a number card are valid",
+      "input": {
         "speech": "One, two, three! Can you count with me?",
         "emotion": "happy",
         "gesture": "point",
@@ -106,81 +375,26 @@
           "assetId": "number_3"
         },
         "lessonAction": "retry"
-      }
+      },
+      "expect": "valid"
     },
     {
-      "id": "invalid_speech_too_long",
-      "valid": false,
-      "reason": "161 characters",
-      "turn": {
-        "speech": "Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple apple",
-        "emotion": "happy",
-        "gesture": "nod",
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "invalid_unknown_emotion",
-      "valid": false,
-      "reason": "angry is not in the emotion set",
-      "turn": {
-        "speech": "Try again.",
-        "emotion": "angry",
-        "gesture": "nod",
+      "name": "typographic apostrophe and em dash are not ASCII and fall back",
+      "input": {
+        "speech": "That’s all for today — great job!",
+        "emotion": "smile",
+        "gesture": "wave",
         "visual": {
           "type": "none"
         },
-        "lessonAction": "retry"
-      }
+        "lessonAction": "complete"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:non_ascii"
     },
     {
-      "id": "invalid_unknown_gesture",
-      "valid": false,
-      "reason": "shrug is not in the gesture set",
-      "turn": {
-        "speech": "Hmm, what is it?",
-        "emotion": "thinking",
-        "gesture": "shrug",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "invalid_asset_not_on_allowlist",
-      "valid": false,
-      "reason": "only approved asset ids may be shown",
-      "turn": {
-        "speech": "Look at the truck!",
-        "emotion": "happy",
-        "gesture": "point",
-        "visual": {
-          "type": "flashcard",
-          "assetId": "truck_red"
-        },
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "invalid_flashcard_without_asset",
-      "valid": false,
-      "reason": "a flashcard needs an assetId",
-      "turn": {
-        "speech": "Look!",
-        "emotion": "happy",
-        "gesture": "point",
-        "visual": {
-          "type": "flashcard"
-        },
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "invalid_visual_type",
-      "valid": false,
-      "reason": "video is not a visual type",
-      "turn": {
+      "name": "unknown visual type falls back",
+      "input": {
         "speech": "Watch this.",
         "emotion": "happy",
         "gesture": "none",
@@ -189,40 +403,13 @@
           "assetId": "apple_red"
         },
         "lessonAction": "retry"
-      }
+      },
+      "expect": "fallback",
+      "reasonPrefix": "visual.type:invalid"
     },
     {
-      "id": "invalid_lesson_action",
-      "valid": false,
-      "reason": "skip is not a lesson action",
-      "turn": {
-        "speech": "Next one!",
-        "emotion": "happy",
-        "gesture": "nod",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "skip"
-      }
-    },
-    {
-      "id": "invalid_missing_speech",
-      "valid": false,
-      "reason": "speech is required",
-      "turn": {
-        "emotion": "happy",
-        "gesture": "nod",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "invalid_empty_speech",
-      "valid": false,
-      "reason": "speech may not be blank",
-      "turn": {
+      "name": "blank speech falls back",
+      "input": {
         "speech": "   ",
         "emotion": "happy",
         "gesture": "nod",
@@ -230,90 +417,13 @@
           "type": "none"
         },
         "lessonAction": "retry"
-      }
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:required"
     },
     {
-      "id": "invalid_url_in_speech",
-      "valid": false,
-      "reason": "no links, ever",
-      "turn": {
-        "speech": "Visit https://example.com for more!",
-        "emotion": "happy",
-        "gesture": "wave",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "invalid_long_digit_run",
-      "valid": false,
-      "reason": "a number longer than 20 digits",
-      "turn": {
-        "speech": "Call 123456789012345678901 now",
-        "emotion": "happy",
-        "gesture": "none",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "invalid_banned_word",
-      "valid": false,
-      "reason": "the age filter rejects harsh words",
-      "turn": {
-        "speech": "That is wrong, stupid.",
-        "emotion": "neutral",
-        "gesture": "none",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "retry"
-      }
-    },
-    {
-      "id": "invalid_emoji",
-      "valid": false,
-      "reason": "only ASCII-printable plus common punctuation",
-      "turn": {
-        "speech": "Great job 🍎",
-        "emotion": "happy",
-        "gesture": "clap",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "next_question"
-      }
-    },
-    {
-      "id": "invalid_next_question_too_long",
-      "valid": false,
-      "reason": "121 characters",
-      "turn": {
-        "speech": "Good.",
-        "emotion": "happy",
-        "gesture": "nod",
-        "visual": {
-          "type": "none"
-        },
-        "lessonAction": "next_question",
-        "nextQuestion": "What is this thing that is red and round and sweet and grows on a tree in the garden behind the little pink house we saw today?"
-      }
-    },
-    {
-      "id": "invalid_not_an_object",
-      "valid": false,
-      "reason": "a bare string is not a turn",
-      "turn": "Hello there"
-    },
-    {
-      "id": "invalid_unknown_key",
-      "valid": false,
-      "reason": "extra keys are rejected so nothing unvalidated reaches the scene",
-      "turn": {
+      "name": "an unknown key such as a tool call is dropped, never forwarded",
+      "input": {
         "speech": "Hi!",
         "emotion": "happy",
         "gesture": "wave",
@@ -322,20 +432,116 @@
         },
         "lessonAction": "retry",
         "toolCall": "open_url"
+      },
+      "expect": "valid",
+      "normalized": {
+        "speech": "Hi!",
+        "subtitle": "Hi!"
       }
     },
     {
-      "id": "invalid_purchase_prompt",
-      "valid": false,
-      "reason": "no purchase prompts reach a child",
-      "turn": {
-        "speech": "Ask a grown-up to buy more lessons!",
+      "name": "visual of type none carrying an unknown assetId falls back",
+      "input": {
+        "speech": "Hi!",
         "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none",
+          "assetId": "not_allowed"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "visual.assetId:not_allowed"
+    },
+    {
+      "name": "visual of type none carrying an allowlisted assetId is valid and the id is dropped",
+      "input": {
+        "speech": "Hi!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none",
+          "assetId": "cat"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid",
+      "normalized": {
+        "visual": {
+          "type": "none"
+        }
+      }
+    },
+    {
+      "name": "banned word 'hell' matches whole words only, so 'hello' is valid",
+      "input": {
+        "speech": "Hello! Shall we count?",
+        "emotion": "smile",
         "gesture": "wave",
         "visual": {
           "type": "none"
         },
-        "lessonAction": "end_session"
+        "lessonAction": "retry"
+      },
+      "expect": "valid"
+    },
+    {
+      "name": "subtitle over 160 chars falls back",
+      "input": {
+        "speech": "Nice!",
+        "subtitle": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "subtitle:too_long"
+    },
+    {
+      "name": "a non-string speech falls back",
+      "input": {
+        "speech": 42,
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "fallback",
+      "reasonPrefix": "speech:not_string"
+    },
+    {
+      "name": "an array is not a turn",
+      "input": [
+        {
+          "speech": "Hi!"
+        }
+      ],
+      "expect": "fallback",
+      "reasonPrefix": "turn:not_object"
+    },
+    {
+      "name": "leading and trailing whitespace is trimmed",
+      "input": {
+        "speech": "  Great job!  ",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "  What is this?  "
+      },
+      "expect": "valid",
+      "normalized": {
+        "speech": "Great job!",
+        "subtitle": "Great job!",
+        "nextQuestion": "What is this?"
       }
     }
   ]
