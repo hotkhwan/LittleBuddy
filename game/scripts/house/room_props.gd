@@ -72,13 +72,13 @@ static func build(
 		"fridge":
 			_fridge(tool, size, accent)
 		"counter":
-			_counter(tool, size, dominant)
+			_counter(tool, size, accent)
 		"table":
 			_table(tool, size)
 		"sofa":
 			_sofa(tool, size, dominant, accent)
 		"toyBox":
-			_toy_box(tool, size, accent)
+			_toy_box(tool, size)
 		"book":
 			_book(tool, size)
 		_:
@@ -116,6 +116,20 @@ static func _bed(tool: SurfaceTool, size: Vector3, accent: Color) -> void:
 	Kit.plate(tool, Kit.at(Vector3(0.0, 0.246, -0.245)),
 			Kit.rounded_rect(Vector2(size.x - 0.04, 0.20), 0.07, 3), 0.075,
 			Palette.light(accent), 0.02)
+	# Five cream spots on the blanket, on the same argument as the rug's (see
+	# `room.gd::_build_rug`): a flat plate of one colour is bedding, a patterned
+	# one is bedding somebody chose for a child. The bed is the largest single
+	# field of accent colour in the nursery and it was carrying nothing.
+	#
+	# They sit on the FOOT half only, clear of the turned-down top: `sleep` lays
+	# the child down across the middle of the mattress and a pattern under him is
+	# a pattern nobody sees.
+	for spot: Vector2 in [
+		Vector2(-0.24, 0.02), Vector2(0.22, 0.17), Vector2(-0.06, 0.34),
+		Vector2(0.26, -0.13), Vector2(-0.22, 0.47),
+	]:
+		Kit.plate(tool, Kit.at(Vector3(spot.x, 0.266, 0.22 + spot.y)),
+				Kit.circle(0.052, 12), 0.012, Palette.CREAM, 0.004)
 
 
 static func _wardrobe(
@@ -355,7 +369,12 @@ static func _fridge(tool: SurfaceTool, size: Vector3, accent: Color) -> void:
 			0.021, 0.34, Palette.CREAM, 10, 0.008)
 
 
-static func _counter(tool: SurfaceTool, size: Vector3, dominant: Color) -> void:
+## The cupboard doors take the room's ACCENT, a step lighter, matching the wall
+## units above them (`room.gd::_wall_cupboards`). They were `light(peach)` on a
+## `deep(peach)` carcass under a `cream` worktop against a `cream` wall: four
+## values of one warm neutral stacked on top of each other, and the three door
+## panels could not be found in a render at all.
+static func _counter(tool: SurfaceTool, size: Vector3, accent: Color) -> void:
 	var bottom: float = -size.y * 0.5
 	var top: float = size.y * 0.5
 	var front: float = size.z * 0.5
@@ -369,7 +388,7 @@ static func _counter(tool: SurfaceTool, size: Vector3, dominant: Color) -> void:
 	for x: float in [-0.58, 0.0, 0.58]:
 		Kit.extrude(tool, Kit.at(Vector3(x, -0.05, front + 0.005)),
 				Kit.rounded_rect(Vector2(0.52, 0.50), 0.06, 3), 0.045,
-				Palette.light(dominant), 0.018)
+				Palette.light(accent), 0.018)
 		Kit.sphere(tool, Kit.at(Vector3(x, 0.14, front + 0.05)), 0.032, Palette.CREAM, 10, 5)
 
 
@@ -393,7 +412,13 @@ static func _sofa(tool: SurfaceTool, size: Vector3, dominant: Color, accent: Col
 		for z: float in [-(size.z * 0.5 - 0.12), size.z * 0.5 - 0.12]:
 			Kit.cylinder(tool, Kit.at(Vector3(x, bottom + 0.05, z)), 0.045, 0.10,
 					Palette.deep(WOOD), 10)
-	var frame: Color = Palette.deep(dominant)
+	# The frame is the ACCENT deepened, not the dominant deepened, and that is a
+	# correction rather than a preference. `deep(peach)` is exactly the colour
+	# `room.gd` paints the living room's wainscot, so the sofa's frame, its arms
+	# and its back were pixel-for-pixel the wall two centimetres behind them: the
+	# whole object lost its silhouette and only the cushions read. `deep(softPink)`
+	# is a dusty rose that belongs to the sofa and to nothing else in the room.
+	var frame: Color = Palette.deep(accent)
 	Kit.box(tool, Kit.at(Vector3(0.0, bottom + 0.21, 0.0)),
 			Vector3(size.x - 0.08, 0.22, size.z - 0.06), frame, 0.04, 2)
 	Kit.box(tool, Kit.at(Vector3(0.0, 0.10, back_z)),
@@ -407,7 +432,17 @@ static func _sofa(tool: SurfaceTool, size: Vector3, dominant: Color, accent: Col
 				Vector3(0.70, 0.30, 0.14), Palette.light(accent), 0.05, 2)
 
 
-static func _toy_box(tool: SurfaceTool, size: Vector3, accent: Color) -> void:
+## MINT -- which is what `house_layout.furniture()` has always DECLARED this
+## object to be, and which the builder then ignored in favour of the room's
+## accent.
+##
+## The cost of ignoring it was visible: the living room accents on `softPink`,
+## so the toy box came out the same pink as the sofa, the `toyShelf` storage, the
+## rug and the curtains, and the room read as five pink objects on a brown wall.
+## `toyBox` is the only piece of furniture in the room that is not upholstery, so
+## it is the one that should not be.
+static func _toy_box(tool: SurfaceTool, size: Vector3) -> void:
+	var accent: Color = Palette.MINT
 	var bottom: float = -size.y * 0.5
 	Kit.plate(tool, Kit.at(Vector3(0.0, bottom + 0.035, 0.0)),
 			Kit.rounded_rect(Vector2(size.x - 0.08, size.z - 0.08), 0.05, 3), 0.07,

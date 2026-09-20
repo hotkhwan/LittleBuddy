@@ -50,6 +50,76 @@ func run():
 	failures += _test_the_worktop_is_not_overcrowded()
 	failures += _test_the_fridge_shelf_is_in_front_of_the_fridge()
 	failures += _test_a_carried_item_hangs_from_its_middle()
+	failures += _test_two_words_never_share_a_shape()
+	return failures
+
+
+## -- 6. One object teaches one word -----------------------------------------------
+
+## ART_BIBLE §6: "**One object teaches one word. Two nouns must never share a
+## shape.**" That is a rule about a four-year-old being ASKED for something: if
+## the banana and the spoon are the same rounded lozenge in two colours, "give me
+## the spoon" has no answer a child can see, and colour cannot carry it because
+## colour is a separate word this game also teaches.
+##
+## It was true of three pairs at once before this was written -- banana/spoon
+## (both drawn from the generic `flat` plate) and bowl/mashedBanana/fruitBowl
+## (one vessel in three interior colours) -- so this is a regression guard for a
+## defect that shipped, not a hypothetical.
+##
+## Two things are checked, and the second is the one with teeth:
+##
+##   1. two items that teach DIFFERENT English words are drawn by different
+##      `ITEM_FORM` entries -- the table is the INTENT, and it is exact;
+##   2. their meshes are not the same GEOMETRY -- same proportions and the same
+##      triangle count is a form that quietly calls the same builder, which is
+##      how the intent would rot without anyone noticing.
+##
+## **Colour is deliberately not one of the criteria.** Every one of the four
+## historical defects differed in colour and nothing else, and §3 makes colour a
+## word this game teaches separately: "the blue one" cannot be the answer to
+## "which one is the spoon". A pair that differs only in albedo fails here.
+##
+## This is not a substitute for looking. `docs/shots/props_silhouette_*.png` is
+## the silhouette evidence; this is the regression guard.
+func _test_two_words_never_share_a_shape():
+	var failures: Array = []
+	var view: Node3D = _view()
+	var shapes: Dictionary = {}
+	for item_id: String in Items.ids():
+		var node: MeshInstance3D = view.call("_make_item", item_id, Vector3.ZERO, 1.0)
+		if node == null or node.mesh == null:
+			continue
+		var box: AABB = node.mesh.get_aabb()
+		var longest: float = maxf(box.size.x, maxf(box.size.y, box.size.z))
+		shapes[item_id] = {
+			"word": Items.word_for(item_id),
+			"form": String(KitchenView.ITEM_FORM.get(item_id, Items.shape_for(item_id))),
+			# Proportion only -- two items may legitimately be the same SIZE.
+			"ratio": box.size / maxf(longest, 0.0001),
+			"tris": Kit.triangles(node.mesh),
+		}
+		node.free()
+	view.free()
+
+	var ids: Array = shapes.keys()
+	for i: int in range(ids.size()):
+		for j: int in range(i + 1, ids.size()):
+			var a: Dictionary = shapes[ids[i]]
+			var b: Dictionary = shapes[ids[j]]
+			if String(a["word"]) == String(b["word"]):
+				continue
+			if String(a["form"]) == String(b["form"]):
+				failures.append(("'%s' (%s) and '%s' (%s) are two words drawn by the same "
+						+ "form '%s'; §6 forbids two nouns sharing a shape")
+						% [ids[i], a["word"], ids[j], b["word"], String(a["form"])])
+				continue
+			var shape_gap: float = ((a["ratio"] as Vector3) - (b["ratio"] as Vector3)).length()
+			if shape_gap < 0.02 and int(a["tris"]) == int(b["tris"]):
+				failures.append(("'%s' (%s) and '%s' (%s) are the same %d triangles at the "
+						+ "same proportions (within %.4f); two different forms have converged "
+						+ "on one shape, and only colour tells them apart")
+						% [ids[i], a["word"], ids[j], b["word"], int(a["tris"]), shape_gap])
 	return failures
 
 
@@ -117,6 +187,22 @@ func _test_nothing_rests_on_thin_air():
 	return failures
 
 
+## The widest of these items along X, as the kitchen really draws them on a
+## surface. Built from `_make_item()` itself, so a re-drawn prop is re-measured
+## rather than re-guessed.
+func _widest(item_ids: Array) -> float:
+	var view: Node3D = _view()
+	var widest: float = 0.0
+	for entry: Variant in item_ids:
+		var node: MeshInstance3D = view.call("_make_item", String(entry), Vector3.ZERO, 1.0)
+		if node == null or node.mesh == null:
+			continue
+		widest = maxf(widest, node.mesh.get_aabb().size.x * KitchenView.SURFACE_SCALE)
+		node.free()
+	view.free()
+	return widest
+
+
 func _table_top() -> float:
 	var row: Dictionary = _row(Rules.STATION_TABLE)
 	if row.is_empty():
@@ -143,9 +229,13 @@ func _test_the_board_is_under_what_is_put_on_it():
 	var surface: Vector3 = anchor["surface"]
 	var half: Vector2 = HouseLayout.WORKTOP_BOARD_SIZE * 0.5
 	# The longest thing that is ever put down here, drawn at presentation scale.
-	var longest: float = 0.0
-	for item_id: String in Items.ids():
-		longest = maxf(longest, Items.size_for(item_id) * 1.9 * KitchenView.SURFACE_SCALE)
+	#
+	# MEASURED off the mesh, not assumed. This used to read `size * 1.9`, which was
+	# how wide the one generic `flat` lozenge happened to be drawn; a banana is now
+	# a crescent and a spoon is a handle and a bowl, so a hard-coded factor is a
+	# test checking the number it was written from. `_widest()` builds the real
+	# item and reads its `AABB`, so re-drawing a prop re-measures it here.
+	var longest: float = _widest(Items.ids())
 	var reach: float = longest * 0.5
 
 	if absf(surface.x - HouseLayout.WORKTOP_BOARD_X) + reach > half.x:
@@ -177,11 +267,9 @@ func _test_the_board_is_under_what_is_put_on_it():
 ## looked fine" is not a clearance, so here is one.
 func _test_the_worktop_is_not_overcrowded():
 	var failures: Array = []
-	# Widest resident ingredient, drawn at presentation scale.
-	var widest: float = 0.0
-	for item_id: String in ["bowl", "spoon"]:
-		widest = maxf(widest, Items.size_for(item_id) * 2.0 * KitchenView.SURFACE_SCALE)
-	var half_item: float = widest * 0.5
+	# Widest resident ingredient, drawn at presentation scale -- measured off the
+	# real mesh, for the reason given in rule 2.
+	var half_item: float = _widest(["bowl", "spoon"]) * 0.5
 
 	# `room.gd`'s own fixture widths. Named here rather than imported because a
 	# test that reads the number it is checking checks nothing.

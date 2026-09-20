@@ -108,25 +108,30 @@ const BEFORE: Dictionary = {
 ## wall (`0.35`), which is the "adjacent surfaces must read as different planes"
 ## requirement: three walls, three values, none of them clipped.
 ##
-## **Key 1.12 -> 0.72.** Not a mood choice, an exposure one. With the sun under
+## **Key 1.12 -> 0.61.** Not a mood choice, an exposure one. With the sun under
 ## the floor only two planes caught it and both came out over `1.0` in linear
 ## light (`1.18` and `1.07`) and clipped to the same near-white: 24.5% of the
 ## kitchen frame sat at or above 0.97 luminance. Lift the sun and FIVE times as
 ## much surface catches it, so the same energy would have blown the room out
-## completely. At `0.72` the brightest large field lands at `0.975` — under the
+## completely. At `0.61` the brightest large field lands at `0.973` — under the
 ## ceiling, with headroom left for a white prop in front of it.
 ##
-## **Ambient 0.62 -> 0.44, and no longer `cream`.** `cream` ambient on `cream`
+## **Ambient 0.62 -> 0.52, and no longer `cream`.** `cream` ambient on `cream`
 ## walls is a tautology: it can only ever produce more cream, which is the
 ## "milky" complaint stated as a colour identity. §3's rule is "never darken by
 ## reducing value alone — always mix toward `ink`", so the fill is
-## `CREAM -> PEACH` at 0.62 (`#FFE8CF`), a palette mix rather than an invented
+## `CREAM -> PEACH` at 0.35 (`#FFEAD5`), a palette mix rather than an invented
 ## colour. The shaded side of every form now goes WARM rather than pale.
 ##
-## The resulting ladder on a `cream` wall, in linear light: up-facing `0.97`,
-## lit side wall `0.85`, back wall `0.69`, shaded side wall `0.44`. In sRGB
-## bytes that is 252 / 239 / 219 / 177 — four clearly separate planes, the
-## deepest of them still a warm light beige, and nothing anywhere near `#000000`.
+## The resulting ladder on a `cream` wall, in linear light: up-facing `0.973`,
+## lit side wall `0.877`, back wall `0.718`, shaded side wall `0.520` — four
+## clearly separate planes, the deepest of them still a warm light beige, and
+## nothing anywhere near `#000000`.
+##
+## (The paragraphs above previously quoted `0.72` and `0.44` — the values of an
+## earlier draft of this same pass, left behind when the numbers were settled.
+## They are corrected here against the constants below, which are what ships and
+## what `test_lighting_house.gd` pins to the scene file.)
 const AFTER: Dictionary = {
 	"name": "after",
 	## Deeper and warmer than before. This is §5's "soft cream void" above an
@@ -145,11 +150,58 @@ const AFTER: Dictionary = {
 }
 
 
+## The alternative the LOOK pass measured and REJECTED, kept because the
+## rejection is the finding and an undocumented rejection gets re-proposed.
+##
+## `docs/LIGHTING_PASS.md` §7.3 flagged the shaded (`+X`) wall, at screen
+## luminance 0.372, as "the value most likely to come back from a device review
+## … one number (`ambientEnergy`) away from being lifted". This is that number
+## lifted, with the key dropped to pay for it so total energy still does not
+## rise (0.58 + 0.55 = 1.13, exactly what ships).
+##
+## It does lift the shaded wall. It also flattens everything else, and the four
+## planes are what the whole pass was for:
+##
+## | plane | ships (0.52/0.61) | lifted (0.58/0.55) |
+## |---|---|---|
+## | floor, up-facing | 0.973 | **0.989** — 0.011 from clipping |
+## | `-X` wall, lit | 0.877 | 0.902 |
+## | back wall | 0.718 | 0.758 |
+## | `+X` wall, fill only | 0.520 | 0.580 |
+## | **floor : shaded wall** | **1.87** | **1.71** |
+##
+## The frame's whole contrast range shrinks by 9% to lift its darkest large
+## field by one step, and the brightest one goes to 0.989, which leaves nothing
+## at all for a white prop in front of it. Photographed as `alt_*.png` and
+## looked at: the rooms read flatter, and the corner between the back wall and
+## the shaded wall — the only corner a single directional light can draw on that
+## side — is the first thing to go.
+const LIFTED_FILL: Dictionary = {
+	"name": "lift",
+	"backgroundColor": Color(0.8958, 0.852, 0.7814),
+	"ambientColor": Color(1.0, 0.9167, 0.8336),
+	"ambientEnergy": 0.58,
+	"keyColor": Color(1.0, 0.9346, 0.8575),
+	"keyEnergy": 0.55,
+	"elevation": 48.0,
+	"azimuth": 61.0,
+	"angularDistance": 2.4,
+}
+
+
 ## Named setups, for a harness that takes one on the command line.
+##
+## `previous` is an alias for `AFTER`: the LOOK pass changed no house-light
+## value, so the house's before and after are the same light on purpose, and the
+## harness's `previous` tag differs from `after` only in the camera's close-up
+## framing and in the menu's shadow. Saying so here is cheaper than a reader
+## discovering it from two identical renders.
 static func setup(setup_name: String) -> Dictionary:
 	match setup_name:
 		"before":
 			return BEFORE
+		"lift":
+			return LIFTED_FILL
 		_:
 			return AFTER
 

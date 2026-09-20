@@ -64,6 +64,8 @@ extends Node3D
 ## a sink faces.
 
 const DropZoneScript := preload("res://scripts/gameplay/drop_zone.gd")
+const Kit := preload("res://scripts/house/prop_kit.gd")
+const Palette := preload("res://scripts/ui/palette.gd")
 const HouseLayout := preload("res://scripts/house/house_layout.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 const TaskPlan := preload("res://scripts/gameplay/house_task_plan.gd")
@@ -77,7 +79,18 @@ const ANCHOR_NAME: String = "ObjectAnchor"
 ## narrow enough that the whole row stays inside a 4 m room.
 const SPAWN_SPACING: float = 0.46
 const SPAWN_SLOTS: int = 4
-const SPAWN_LIFT: float = 0.02
+
+## How far a slot stands off the floorboards, in ANCHOR-LOCAL metres -- so the
+## number on screen is this times `OBJECT_SCALE`, which is 1.8 to 2.3.
+##
+## It was 0.02, which is 4 cm of daylight under every toy in the room, and it was
+## there because `ObjectSpawner` used to hang a pickup's mesh around a fixed
+## centre height instead of standing it on its own base: a lift was needed to
+## stop the tall objects being half-buried, and it made the short ones hover.
+## The spawner now stands every visual on its origin, so all this has to do is
+## keep two coplanar surfaces out of each other's depth test -- about 2 mm once
+## the anchor's scale is applied.
+const SPAWN_LIFT: float = 0.001
 
 ## Derived layouts are a 2x2 cluster rather than a 1x4 line, and this is the
 ## spacing of its second rank -- towards the room's open side, away from the
@@ -207,14 +220,55 @@ const ZONE_PROP_OFFSET: Vector3 = Vector3(0.0, 0.30, 0.26)
 const BODY_ZONE_RADIUS: float = 0.34
 const PROP_ZONE_RADIUS: float = 0.40
 
-## The "go here" disc. A pre-reader cannot read "Walk to the bathroom", and the
+## The "go here" spot. A pre-reader cannot read "Walk to the bathroom", and the
 ## two doors of a room look identical, so the place the task wants is marked on
 ## the floor in the same soft pastel language the drop zones already use. It is a
-## hint, not a gate: tapping anything else still works, and the disc disappears
-## the moment Little Buddy arrives.
+## hint, not a gate: tapping anything else still works, and it disappears the
+## moment Little Buddy arrives.
+##
+## ## It was a grey smudge, and here is why
+##
+## It was one `CylinderMesh` at `Color(0.66, 0.90, 0.81, 0.42)` -- mint, at 42%
+## alpha, unshaded. Rendered, the RC review called it "one of the palest, least
+## intentional shapes in frame", and the lighting pass found the cause: 42% of a
+## pale mint over a floor that was clipping to near-white leaves almost no colour
+## behind. Lifting the sun above the floor recovered some of it; the shape was
+## still 42% of a pastel on a pastel.
+##
+## So it is **opaque**, and it is a RING rather than a wash. Three things follow:
+##
+##   * ART_BIBLE §10 targets **zero transparent surfaces** and this was one of
+##     only three in the whole world. It is now none of them -- the marker no
+##     longer sorts, no longer blends and no longer depends on what is under it.
+##   * §7's amendment asks a floor decal to be **warm `ink`-tinted**. The ring is
+##     `deep(mint)`, which IS mint mixed toward `ink` -- §3's own "Deep" step --
+##     so it is warm without inventing a colour.
+##   * A ring with a dot in it reads as a PLACE TO STAND. A filled disc reads as
+##     a stain, which is what a 42% wash on floorboards actually looked like.
+##
+## Lit like everything else rather than unshaded: it is a thing lying on the
+## floor, and the one shared `prop_kit` material is what makes it belong to the
+## room instead of sitting on top of it like a sticker.
 const BEAT_MARKER_RADIUS: float = 0.42
 const BEAT_MARKER_HEIGHT: float = 0.014
-const BEAT_MARKER_COLOR: Color = Color(0.66, 0.90, 0.81, 0.42)
+## The field is `cream`, the ring is `deep(mint)`.
+##
+## Value, not hue, is what makes a floor decal survive the two surfaces it has to
+## live on. `cream` is the palette's base note and it is LIGHTER than warm
+## floorboards and lighter than the kitchen's mint rug, so the spot separates
+## from both by the same amount; `mint` is §3's "go" and it rings the spot.
+## Tried and rejected by rendering: all-mint (vanished on the mint rug, which is
+## exactly where the child is being sent to stand) and an `ink` rim (read as a
+## hole punched in the floor -- §3's own warning about a dark in a pastel scene,
+## and it was 6 cm of it).
+const BEAT_MARKER_COLOR: Color = Palette.CREAM
+const BEAT_MARKER_RING: Color = Palette.MINT
+## Of the radius: how much of it is field, and how big the centre dot is. The
+## ring is a BAND rather than a hairline -- §6 puts the floor at ~1.5 cm of
+## in-world thickness for anything that has to survive MSAA being off, and this
+## is 4 cm of it.
+const BEAT_MARKER_FIELD: float = 0.80
+const BEAT_MARKER_DOT: float = 0.24
 
 var _anchor: Node3D = null
 var _zones: Dictionary = {}
@@ -438,24 +492,40 @@ func show_beat_marker(where: Variant) -> void:
 			_beat_marker.visible = false
 		return
 	if _beat_marker == null:
-		_beat_marker = MeshInstance3D.new()
-		_beat_marker.name = "BeatMarker"
-		var mesh: CylinderMesh = CylinderMesh.new()
-		mesh.top_radius = BEAT_MARKER_RADIUS
-		mesh.bottom_radius = BEAT_MARKER_RADIUS
-		mesh.height = BEAT_MARKER_HEIGHT
-		_beat_marker.mesh = mesh
-		var material: StandardMaterial3D = StandardMaterial3D.new()
-		material.albedo_color = BEAT_MARKER_COLOR
-		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.roughness = 1.0
-		_beat_marker.material_override = material
+		_beat_marker = _build_beat_marker()
 		add_child(_beat_marker)
 	SpatialUtil.set_world_position(
 		_beat_marker, (where as Vector3) + Vector3(0.0, HouseLayout.FLOOR_Y + 0.008, 0.0)
 	)
 	_beat_marker.visible = true
+
+
+## The ring, the field and the dot, in ONE mesh with ONE shared material -- so the
+## whole marker is one draw call, exactly as the old single cylinder was.
+##
+## Three stacked opaque discs rather than a true annulus: `prop_kit` has no
+## annulus, a disc costs the same, and the upper disc simply covers the middle of
+## the lower one. Each stands a fraction of a millimetre above the last, which is
+## less than the chamfer on either and far more than the depth buffer needs.
+func _build_beat_marker() -> MeshInstance3D:
+	var rim: Color = Palette.deep(BEAT_MARKER_RING)
+	var tool: SurfaceTool = Kit.begin()
+	Kit.plate(tool, Kit.at(Vector3.ZERO), Kit.circle(BEAT_MARKER_RADIUS, 20),
+			BEAT_MARKER_HEIGHT, rim, 0.005)
+	Kit.plate(tool, Kit.at(Vector3(0.0, 0.0012, 0.0)),
+			Kit.circle(BEAT_MARKER_RADIUS * BEAT_MARKER_FIELD, 20),
+			BEAT_MARKER_HEIGHT, BEAT_MARKER_COLOR, 0.005)
+	# The dot is what turns a ring into "stand HERE" rather than "something is
+	# going on in this area".
+	Kit.plate(tool, Kit.at(Vector3(0.0, 0.0024, 0.0)),
+			Kit.circle(BEAT_MARKER_RADIUS * BEAT_MARKER_DOT, 10),
+			BEAT_MARKER_HEIGHT, rim, 0.004)
+
+	var node := MeshInstance3D.new()
+	node.name = "BeatMarker"
+	node.mesh = Kit.commit(tool)
+	node.material_override = Kit.material()
+	return node
 
 
 func is_beat_marker_visible() -> bool:

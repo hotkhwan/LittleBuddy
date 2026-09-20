@@ -412,11 +412,7 @@ func _build_walls(tool: SurfaceTool) -> void:
 ## at toddler height, each with its own bevel, each catching the light
 ## differently.
 func _build_panelling(tool: SurfaceTool) -> void:
-	# A step DOWN from the room's dominant, not the dominant itself. Two of the
-	# four rooms are dominant-`peach`, and the floorboards are `peach` too: at full
-	# strength the panelling and the floor were the same value and the room lost
-	# its horizon.
-	var dominant: Color = Palette.deep(HouseLayout.dominant_color(room_id))
+	var dominant: Color = _panel_color()
 	for face: Dictionary in _wall_faces():
 		var normal: Vector3 = face["normal"]
 		var axis: Vector3 = face["axis"]
@@ -440,6 +436,37 @@ func _build_panelling(tool: SurfaceTool) -> void:
 				band[3] as Color,
 				0.016
 			)
+
+
+## Which of §3's three steps the wainscot takes, and the rule is about the FLOOR
+## rather than about taste.
+##
+## `deep(dominant)` used to be applied in all four rooms, for a reason that was
+## only ever true in two of them: the kitchen and the living room are both
+## dominant-`peach` and the floorboards are `peach`, so a full-strength wainscot
+## was the same value as the boards in front of it and the room lost its horizon.
+##
+## Applied to the other two it was a straight loss. `deep(dustyBlue)` is a cold
+## slate grey, and it was 0.7 m tall on all three walls of the bathroom -- the
+## single largest field of colour in that room, and the one thing in the house
+## that read as an institution rather than as a home. `deep(lavender)` is the
+## same grey-mauve §3 already rejected for the nursery basket ("cold, the least
+## appealing object in the house"), and it was wrapped round the baby's room.
+##
+## So the step is chosen against the floor: a dominant that would disappear into
+## `peach` boards is deepened, and one that already contrasts with them is used at
+## full strength, which is what §3's room-mood table actually asks for. Both
+## values are §3 tokens or its documented `deep` derivation either way.
+func _panel_color() -> Color:
+	var dominant: Color = HouseLayout.dominant_color(room_id)
+	var floor_tone: Color = HouseLayout.floor_color(room_id)
+	var difference: float = maxf(
+		absf(dominant.r - floor_tone.r),
+		maxf(absf(dominant.g - floor_tone.g), absf(dominant.b - floor_tone.b))
+	)
+	if difference < 0.10:
+		return Palette.deep(dominant)
+	return dominant
 
 
 ## The three visible wall faces, as `{normal, axis, centre, length}` in room-local
@@ -512,6 +539,113 @@ func _build_window(tool: SurfaceTool) -> void:
 	Kit.box(tool, Kit.at(Vector3(WINDOW_CENTRE.x, WINDOW_CENTRE.y - half.y - 0.035,
 			INNER_Z + 0.09)), Vector3(WINDOW_SIZE.x + 0.16, 0.07, 0.20),
 			Palette.CREAM, 0.018)
+	_build_curtains(tool)
+
+
+## -- Curtains ------------------------------------------------------------------
+##
+## The one addition that changes every room at once, and the cheapest warmth in
+## the house after the window itself.
+##
+## Before this, the top third of all three walls was an unbroken 1.3 m field of
+## `cream` in every room -- the largest single area in the shot, carrying nothing.
+## The window sat in the middle of it as a pale blue rectangle with a cream frame
+## on a cream wall, which is a hole, not a window. A window is only warm when
+## something soft hangs beside it.
+##
+## Three decisions, each of which was the alternative's problem:
+##
+##   * **Beside the glass, never over it.** The first pass hung a valance across
+##     the window head and two panels over the frame, and both rooms came back
+##     with the window looking like a *picture frame in the accent colour* rather
+##     than like a window with curtains: the cloth ringed the glass on three
+##     sides and the cream frame stopped reading at all. The panels now stop at
+##     the glass edge and there is no valance -- a pole above the head does the
+##     same tying-together job without covering anything.
+##   * **Three lobes with a scalloped hem, not a panel.** A flat rectangle of
+##     accent beside a window is a poster. What makes cloth read in a style with
+##     no textures and almost no shading (§7) is the break between the lobes, the
+##     middle one standing proud and a step lighter, and a hem that is not a
+##     straight line.
+##   * **Sill length, not floor length.** The sill is 20 cm deep and stands proud
+##     of the wall, so a floor-length curtain either passes through it or has to
+##     be pushed out in front of it, and in two rooms the counter and the bath are
+##     immediately below. The hem stops just above the sill in all four rooms,
+##     which is also what makes four rooms read as one home.
+##
+## No collider, nothing tappable, and it merges into the shell mesh, so this is
+## zero extra draw calls and nothing new for a child to aim at.
+const CURTAIN_TOP_Y: float = 2.04
+const CURTAIN_HEM_Y: float = 1.02
+const CURTAIN_POLE_Y: float = 2.085
+## From the window's centre to each panel's centre. Set so the panels stop level
+## with the glass: any further in and the cloth reads as a frame round the sky.
+const CURTAIN_OFFSET_X: float = 0.66
+const CURTAIN_WIDTH: float = 0.28
+const CURTAIN_Z: float = 0.105
+
+
+## The cloth colour: the room's accent -- except where the accent IS the sky.
+##
+## §3 gives the bedroom `dustyBlue` as its accent and §5 fixes the window sky at
+## `#B8DBED`, and those two are four points apart on every channel. Rendered, the
+## bedroom's first pair of curtains and the pane behind them were a single blue
+## field with a cream frame lost inside it: the window stopped being a window.
+## The nursery therefore hangs its DOMINANT instead, which is what a lavender
+## nursery wants beside a blue window anyway. Every other room's accent is
+## nowhere near the sky and is used as §3 intends.
+##
+## The test is on HUE and nothing else, and that is not fastidiousness: measured
+## per channel, `mint` is 0.117 from the sky and `dustyBlue` is 0.118, so a
+## channel-distance rule hung dusty-blue curtains in the bathroom -- whose accent
+## is mint -- on the first run. By hue they are not close at all: 202 degrees
+## against 154.
+func _curtain_color() -> Color:
+	var accent: Color = HouseLayout.accent_color(room_id)
+	var gap: float = absf(accent.h - Kit.WINDOW_SKY.h)
+	if minf(gap, 1.0 - gap) < 0.05:
+		return HouseLayout.dominant_color(room_id)
+	return accent
+
+
+func _build_curtains(tool: SurfaceTool) -> void:
+	var cloth: Color = _curtain_color()
+	var facing := Vector3(-90.0, 0.0, 0.0)
+	var span: float = (CURTAIN_OFFSET_X + CURTAIN_WIDTH * 0.5) * 2.0 + 0.14
+
+	# The pole. A curtain needs something to hang FROM or it is a banner taped to
+	# a wall, and a 4 cm wooden rod reads at gameplay distance where a track would
+	# not. Wood, because it is the one warm dark line the top of the wall has.
+	Kit.cylinder(
+		tool,
+		Kit.at_rotated(Vector3(WINDOW_CENTRE.x, CURTAIN_POLE_Y, INNER_Z + CURTAIN_Z),
+				Vector3(0.0, 0.0, 90.0)),
+		0.021, span, Palette.deep(HouseLayout.WOOD_COLOR), 10, 0.008
+	)
+	for side: float in [-1.0, 1.0]:
+		Kit.sphere(tool, Kit.at(Vector3(WINDOW_CENTRE.x + side * span * 0.5,
+				CURTAIN_POLE_Y, INNER_Z + CURTAIN_Z)), 0.042,
+				Palette.deep(HouseLayout.WOOD_COLOR), 10, 5)
+
+	var pleat: float = CURTAIN_WIDTH / 3.0
+	for side: float in [-1.0, 1.0]:
+		var centre_x: float = WINDOW_CENTRE.x + side * CURTAIN_OFFSET_X
+		for index: int in range(3):
+			var at_x: float = centre_x - CURTAIN_WIDTH * 0.5 + pleat * (float(index) + 0.5)
+			var middle: bool = index == 1
+			# The middle lobe hangs 4 cm shorter, which is the whole scalloped hem:
+			# three lobes cut off on one line is a board with grooves in it.
+			var hem: float = CURTAIN_HEM_Y + (0.045 if middle else 0.0)
+			var drop: float = CURTAIN_TOP_Y - hem
+			Kit.plate(
+				tool,
+				Kit.at_rotated(Vector3(at_x, hem + drop * 0.5,
+						INNER_Z + CURTAIN_Z + (0.014 if middle else 0.0)), facing),
+				Kit.rounded_rect(Vector2(pleat * 1.34, drop), pleat * 0.52, 3),
+				0.045,
+				Palette.light(cloth) if middle else cloth,
+				0.012
+			)
 
 
 ## One rug per room (§5), in the room's dominant colour, sized and placed to sit
@@ -547,6 +681,46 @@ func _build_rug(tool: SurfaceTool) -> void:
 		Palette.light(accent),
 		0.004
 	)
+	# Four spots on the field, and they are what turns a rug into a rug that was
+	# CHOSEN. A border round a plain field reads as a mat; a pattern reads as
+	# something somebody picked for this room, which is §5's "tidy but lived-in"
+	# in the one place it costs nothing -- the rug is a flat plate with no
+	# collider, so the navigation bake never sees any of this.
+	#
+	# Six spots round the field's edge, rather than a scatter or a grid: at
+	# gameplay distance a grid becomes a texture (and §7 has no textures), and a
+	# scatter reads as mess.
+	#
+	# Six and not four, because the CHILD stands in the middle of the rug. Four at
+	# the corners left the kitchen and the bedroom showing one visible spot with
+	# the rest behind her, and one lone circle on a plain field does not read as a
+	# pattern -- it reads as a mark. Two more at the mid-sides mean at least three
+	# are always clear of her, in every room.
+	#
+	# `cream`, and that was drawn in the ACCENT first and looked at: a dot the
+	# same colour as the border, sitting on that border's `light()` step, has the
+	# value of a shadow and none of the shape of one, and it read as a hole in the
+	# rug. Cream is the house's base note -- it is already the mattress, the sill
+	# and the window frames -- and a cream spot on a pale field is unambiguously a
+	# pattern.
+	var spot: float = minf(field.x, field.y) * 0.072
+	# PULLED IN off the corners. The offsets below were set against the field's
+	# rectangular extent, but the rug is a ROUNDED rect -- at the old +/-0.56,
+	# +/-0.54 the corner spots landed exactly where the corner radius has cut the
+	# rug away, so they sat half on the floorboards and read as stains rather
+	# than as a pattern. The mid-edge pair had the same problem at 0.62.
+	var spots: Array = [
+		Vector2(-0.40, -0.39), Vector2(0.40, -0.39),
+		Vector2(-0.40, 0.39), Vector2(0.40, 0.39),
+		Vector2(-0.47, 0.0), Vector2(0.47, 0.0),
+	]
+	for spot_at: Vector2 in spots:
+		Kit.plate(
+			tool,
+			Kit.at(Vector3(at.x + spot_at.x * field.x, HouseLayout.FLOOR_Y + 0.018,
+					at.y + spot_at.y * field.y)),
+			Kit.circle(spot, 14), 0.008, Palette.CREAM, 0.003
+		)
 
 
 ## Pulled FORWARD, toward the open fourth wall, and grown.
@@ -561,7 +735,14 @@ func _rug_placement() -> Dictionary:
 		HouseLayout.BEDROOM:
 			return {"size": Vector2(2.15, 1.75), "at": Vector2(0.40, 0.95)}
 		HouseLayout.BATHROOM:
-			return {"size": Vector2(1.85, 1.35), "at": Vector2(0.10, 0.85)}
+			# Grown from 1.85 x 1.35. It was the smallest rug in the house by a
+			# clear margin, in the room with the emptiest floor, and at the wide
+			# iPhone aspect the near half of the bathroom was three metres of bare
+			# boards with a child standing on a mat in the middle of them. A rug is
+			# free floor dressing -- a flat plate with no collider, so the navigation
+			# bake never sees it -- and this one still clears the bath mat at
+			# z = -0.72 and both dressing corners at x = +/-1.76.
+			return {"size": Vector2(2.10, 1.60), "at": Vector2(0.10, 0.85)}
 		HouseLayout.KITCHEN:
 			return {"size": Vector2(2.00, 1.80), "at": Vector2(0.45, 0.80)}
 		HouseLayout.LIVING_ROOM:
@@ -587,11 +768,11 @@ func _build_dressing(tool: SurfaceTool) -> void:
 		HouseLayout.BEDROOM:
 			_nursery_wall_art(tool, -1.22, 1.44, accent)
 		HouseLayout.BATHROOM:
-			_mirror(tool, -1.20, 1.36)
+			_bathroom_fixtures(tool)
 		HouseLayout.KITCHEN:
 			_kitchen_fixtures(tool)
 		HouseLayout.LIVING_ROOM:
-			_wall_picture(tool, -1.10, 1.52, accent)
+			_gallery_wall(tool, accent)
 
 
 ## -- The nursery's wall -----------------------------------------------------------
@@ -650,14 +831,16 @@ func _nursery_wall_art(tool: SurfaceTool, x: float, y: float, accent: Color) -> 
 	# landed on that wall the whole composition was a single hue.
 	#
 	# Three, at three sizes, on a rising diagonal -- a row of equal marks is a
-	# pattern and a scatter is a mess. The gap between the cloud's right lobe
-	# (x ~ -1.03) and the window's left edge (x -0.50) is 0.53 m, and every one of
-	# them stays inside it.
+	# pattern and a scatter is a mess. They live in the gap between the cloud's
+	# right lobe (x ~ -1.03) and the LEFT CURTAIN's outer edge (x -0.65), and the
+	# middle one used to be at -0.66: with the curtains hung, half of it
+	# disappeared behind the cloth and the rest read as something yellow caught in
+	# the hem. It is at -0.78 now, and all three clear -0.70.
 	#
 	# They are CROSSED LOZENGES, not discs. Rendered as discs they read as three
 	# yellow dots -- the kit has no five-point star outline, and two crossed
 	# lozenges is the twinkle that shape is standing in for anyway.
-	for star: Array in [[0.36, 0.17, 0.085], [0.56, 0.33, 0.058], [0.29, -0.09, 0.046]]:
+	for star: Array in [[0.36, 0.17, 0.085], [0.44, 0.33, 0.058], [0.29, -0.09, 0.046]]:
 		var radius: float = float(star[2])
 		var centre := Vector3(x + float(star[0]), y + float(star[1]), INNER_Z + 0.032)
 		for turn: float in [22.0, 112.0]:
@@ -756,6 +939,30 @@ func _kitchen_fixtures(tool: SurfaceTool) -> void:
 		HouseLayout.WORKTOP_BOARD_THICKNESS, HouseLayout.WOOD_COLOR, 0.012
 	)
 
+	# A pan on the hob. Two rings on a blue plate say "a flat thing with circles
+	# on it"; a pan standing in one of them is what makes it a STOVE, and it is
+	# the only object in the room that says food gets cooked here.
+	#
+	# It stands inside the hob's own footprint, so it takes nothing from the
+	# worktop plan: `kitchen_view.gd` stands the child's ingredients between
+	# x -1.02 and -0.58 and the hob is at -1.50.
+	var pan_y: float = top + 0.10
+	Kit.vessel(
+		tool,
+		Kit.at(Vector3(HouseLayout.WORKTOP_HOB_X - 0.092, pan_y,
+				HouseLayout.WORKTOP_HOB_Z)),
+		Kit.circle(0.092, 14), 0.115, 0.022, 0.02, steel, Palette.CREAM
+	)
+	Kit.plate(tool, Kit.at(Vector3(HouseLayout.WORKTOP_HOB_X - 0.092, pan_y + 0.062,
+			HouseLayout.WORKTOP_HOB_Z)), Kit.circle(0.086, 14), 0.024,
+			Palette.CREAM, 0.008)
+	Kit.sphere(tool, Kit.at(Vector3(HouseLayout.WORKTOP_HOB_X - 0.092, pan_y + 0.090,
+			HouseLayout.WORKTOP_HOB_Z)), 0.028, steel, 10, 5)
+	# The handle, pointing into the room so it is a handle and not a stub.
+	Kit.cylinder(tool, Kit.at_rotated(Vector3(HouseLayout.WORKTOP_HOB_X - 0.092,
+			pan_y + 0.012, HouseLayout.WORKTOP_HOB_Z + 0.16),
+			Vector3(90.0, 0.0, 0.0)), 0.018, 0.16, Palette.deep(HouseLayout.WOOD_COLOR), 8)
+
 	_splashback(tool)
 	_wall_cupboards(tool)
 	_table_mat(tool)
@@ -802,25 +1009,23 @@ func _table_mat(tool: SurfaceTool) -> void:
 ## cupboards into one run instead of three objects parked against a cream wall.
 ## Four tiles rather than a grid -- at this camera distance a real tile pattern
 ## merges into noise, and §7 has no textures to draw it with anyway.
+##
+## ## The field is the accent at FULL strength, and it was `light()` first
+##
+## Rendered, `light(mint)` behind cream tiles is cream behind cream: the panel
+## existed in the mesh and could not be found in the picture, and the whole run
+## was still a beige wall. The grout lines are the only thing the tiles have to
+## say and they need a value under them to say it with. The kitchen has no other
+## mint above worktop height, so this is also where the room gets its §3 accent.
 func _splashback(tool: SurfaceTool) -> void:
-	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
 	var base_y: float = HouseLayout.WORKTOP_Y + SPLASHBACK_SIZE.y * 0.5 + 0.01
-	Kit.plate(
+	_tiles(
 		tool,
-		Kit.at_rotated(Vector3(SPLASHBACK_X, base_y, INNER_Z + 0.02), facing),
-		Kit.rounded_rect(SPLASHBACK_SIZE, 0.03, 2), 0.04,
-		Palette.light(HouseLayout.accent_color(room_id)), 0.012
+		Vector2(SPLASHBACK_X, base_y),
+		SPLASHBACK_SIZE,
+		HouseLayout.accent_color(room_id),
+		4
 	)
-	var tile: float = SPLASHBACK_SIZE.x / 4.0
-	for index: int in range(4):
-		Kit.plate(
-			tool,
-			Kit.at_rotated(Vector3(
-					SPLASHBACK_X - SPLASHBACK_SIZE.x * 0.5 + tile * (float(index) + 0.5),
-					base_y, INNER_Z + 0.045), facing),
-			Kit.rounded_rect(Vector2(tile - 0.035, SPLASHBACK_SIZE.y - 0.045), 0.025, 2),
-			0.018, Palette.CREAM, 0.008
-		)
 
 
 ## Wall units over the worktop -- the storage the fridge is not.
@@ -852,7 +1057,12 @@ func _wall_cupboards(tool: SurfaceTool) -> void:
 		Vector3(CUPBOARD_SIZE.x + 0.05, 0.036, CUPBOARD_DEPTH + 0.03),
 		Palette.deep(HouseLayout.WOOD_COLOR), 0.012
 	)
-	var door_face: Color = Palette.light(Palette.PEACH)
+	# The doors take the room's ACCENT, a step lighter. They were `light(peach)`
+	# on a `deep(peach)` carcass against a `cream` wall -- three values of one
+	# warm neutral, which is why the first pass of these read as a framed picture
+	# rather than as cupboards. Painted units are also simply what a kitchen a
+	# four-year-old has been in looks like, and §3 gives this room `mint`.
+	var door_face: Color = Palette.light(HouseLayout.accent_color(room_id))
 	for side: float in [-1.0, 1.0]:
 		Kit.plate(
 			tool,
@@ -868,17 +1078,96 @@ func _wall_cupboards(tool: SurfaceTool) -> void:
 		)
 
 
+## -- The living room's wall ------------------------------------------------------
+##
+## The living room was the plainest room in the house after the bathroom, and
+## measurably so: above the sofa it had 1.3 m of unbroken `cream` carrying ONE
+## 0.50 x 0.40 m frame whose mount was cream and whose picture was a pale pink
+## rectangle on it. Cold, on a phone, there was nothing on that wall at all.
+##
+## Three frames at three sizes, hung as a group, is the single cheapest thing a
+## room can have that says a family lives in it -- and unlike a fourth piece of
+## furniture it costs no collider, no touch target and no navigation floor.
+##
+## They are hung to the LEFT of the window, because the right-hand half of that
+## wall belongs to the toy box and the curtain, and the group is deliberately
+## asymmetric: three frames in a row at one height is a corridor in an office.
+func _gallery_wall(tool: SurfaceTool, accent: Color) -> void:
+	# Three mounts, three §3 tokens, none of them `deep()`. The first version hung
+	# the two small frames on `deep(peach)` and `deep(softPink)` and they came
+	# back as two brown boxes: at 0.30 m across, a deepened pastel has no hue left
+	# in it at this distance -- it is just a dark rectangle, and two dark
+	# rectangles beside a pale one is not a gallery.
+	_wall_picture(tool, -1.42, 1.50, Vector2(0.52, 0.42), accent, "blob")
+	_wall_picture(tool, -0.92, 1.66, Vector2(0.30, 0.30), Palette.MINT, "arch")
+	_wall_picture(tool, -0.92, 1.22, Vector2(0.30, 0.36), Palette.LAVENDER, "hill")
+	_wall_clock(tool, 1.42, 1.54, accent)
+
+
 ## A framed picture. No text, no representational subject -- one soft shape, so
 ## it stays warm without competing with the object the room is teaching.
-func _wall_picture(tool: SurfaceTool, x: float, y: float, accent: Color) -> void:
+##
+## The MOUNT is the picture's colour and the picture is drawn on it in cream.
+## That is the other way round from the first version, and it is the difference
+## between a frame that reads and one that does not: a cream mount on a cream
+## wall inside a cream frame leaves nothing but a thin outline, and the pale
+## shape floated on it was, at gameplay distance, invisible.
+func _wall_picture(
+	tool: SurfaceTool, x: float, y: float, size: Vector2, ink: Color, subject: String
+) -> void:
 	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
 	Kit.plate(tool, Kit.at_rotated(Vector3(x, y, INNER_Z + 0.03), facing),
-			Kit.rounded_rect(Vector2(0.50, 0.40), 0.05, 3), 0.055, Palette.CREAM, 0.018)
+			Kit.rounded_rect(size, 0.05, 3), 0.055, Palette.deep(Palette.CREAM), 0.018)
 	Kit.plate(tool, Kit.at_rotated(Vector3(x, y, INNER_Z + 0.055), facing),
-			Kit.rounded_rect(Vector2(0.38, 0.28), 0.04, 3), 0.03,
-			accent, 0.01)
-	Kit.plate(tool, Kit.at_rotated(Vector3(x, y - 0.01, INNER_Z + 0.075), facing),
-			Kit.circle(0.085, 16), 0.02, accent, 0.006)
+			Kit.rounded_rect(size - Vector2(0.10, 0.10), 0.04, 3), 0.03, ink, 0.01)
+	var face: Color = Palette.CREAM
+	match subject:
+		"arch":
+			Kit.plate(tool, Kit.at_rotated(Vector3(x, y - 0.02, INNER_Z + 0.075), facing),
+					Kit.circle(size.y * 0.24, 16), 0.02, face, 0.006)
+		"hill":
+			for lobe: Array in [[-0.05, -0.03, 0.30], [0.05, 0.02, 0.24]]:
+				Kit.plate(tool, Kit.at_rotated(Vector3(
+						x + size.x * float(lobe[0]), y + size.y * float(lobe[1]),
+						INNER_Z + 0.075), facing),
+						Kit.circle(size.y * float(lobe[2]), 14), 0.02, face, 0.006)
+		_:
+			Kit.plate(tool, Kit.at_rotated(Vector3(x, y - 0.01, INNER_Z + 0.075), facing),
+					Kit.rounded_rect(Vector2(size.x * 0.46, size.y * 0.46),
+							size.y * 0.20, 3), 0.02, face, 0.006)
+
+
+## A wall clock. Not a word this game teaches, which is exactly why it is safe
+## (§6 -- "two nouns must never share a shape"), and it is the one object that
+## fills a bare upper wall without inviting a tap that would do nothing.
+func _wall_clock(tool: SurfaceTool, x: float, y: float, rim: Color) -> void:
+	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
+	var hand: Color = Palette.deep(rim)
+	Kit.plate(tool, Kit.at_rotated(Vector3(x, y, INNER_Z + 0.03), facing),
+			Kit.circle(0.21, 20), 0.055, rim, 0.016)
+	Kit.plate(tool, Kit.at_rotated(Vector3(x, y, INNER_Z + 0.062), facing),
+			Kit.circle(0.168, 20), 0.026, Palette.CREAM, 0.008)
+	# Four ticks rather than twelve: at gameplay distance twelve is a dotted ring.
+	for quarter: int in range(4):
+		var angle: float = TAU * float(quarter) / 4.0
+		Kit.plate(
+			tool,
+			Kit.at_rotated(Vector3(x + cos(angle) * 0.132, y + sin(angle) * 0.132,
+					INNER_Z + 0.078), facing),
+			Kit.circle(0.017, 8), 0.014, hand, 0.004
+		)
+	# Ten past ten, because that is the shape a clock face is drawn in: two hands
+	# low and together read as one stroke.
+	for arm: Array in [[0.098, 62.0, 0.020], [0.132, 155.0, 0.016]]:
+		var reach: float = float(arm[0])
+		var turn: float = deg_to_rad(float(arm[1]))
+		Kit.plate(
+			tool,
+			Kit.at_rotated(Vector3(x + cos(turn) * reach * 0.5, y + sin(turn) * reach * 0.5,
+					INNER_Z + 0.082), Vector3(-90.0, 0.0, float(arm[1]))),
+			Kit.rounded_rect(Vector2(reach, float(arm[2])), float(arm[2]) * 0.5, 2),
+			0.014, hand, 0.004
+		)
 
 
 ## Where floor dressing stands: hard against the two side walls, in the front
@@ -985,14 +1274,157 @@ func _build_floor_dressing(tool: SurfaceTool) -> void:
 		)
 
 
-func _mirror(tool: SurfaceTool, x: float, y: float) -> void:
+## -- The bathroom's fixtures ----------------------------------------------------
+##
+## This was the plainest room in the house, and it was plain for one measurable
+## reason: `mint` is its §3 accent and the only mint anywhere in it was the paler
+## field of the rug. Sink, bath, towel rail, mirror glass and wainscot were all
+## cream or dusty blue, so the room had one hue and two values.
+##
+## Four things fix it, and every one of them is what a real bathroom has:
+##
+##   * **A tiled band behind the basin.** The strongest "this room is a bathroom"
+##     cue there is, the room's accent finally doing some work, and flat geometry
+##     on a wall -- no collider, nothing to tap, nothing in the child's way.
+##   * **Bubbles over the bath**, on the emptiest wall in the house.
+##   * **A bath mat**, on the floor in front of the tub, exactly where the child
+##     stands to use it. The bathroom's rug is the smallest in the house and the
+##     far half of its floor was bare boards.
+##   * **A bigger mirror with a coloured frame.** A 0.27 m cream disc on a cream
+##     wall measured, cold, as a smudge.
+func _bathroom_fixtures(tool: SurfaceTool) -> void:
+	var accent: Color = HouseLayout.accent_color(room_id)
+	# Behind the basin. Sized off the furniture table rather than typed out twice,
+	# so a sink that moves takes its tiles with it.
+	#
+	# ## Wide and low -- it was tall and square first
+	#
+	# The first version tiled behind the BATH as well, each in a 0.42 m panel three
+	# tiles across. Both came back reading as a grid of squares hung on the wall
+	# rather than as a tiled surface, and the bath's was the worse of the two: the
+	# tub stands half a metre proud of the wall it was tiled against, so its panel
+	# floated in the air above it. The kitchen's splashback is the same function
+	# and reads correctly for one reason -- it is long and low and it sits directly
+	# on the worktop. A tiled panel has to be a BAND.
+	#
+	# So: one band, behind the basin only, much wider than the basin, starting just
+	# above the chair rail -- whose top is at 0.75 and which stands 6.5 cm proud of
+	# the wall, so anything lower is pierced by it. The bath wall gets bubbles
+	# instead, which is the better answer for it anyway.
+	for row: Dictionary in HouseLayout.furniture(room_id):
+		if String(row["targetId"]) != "sink":
+			continue
+		var size: Vector3 = row["size"]
+		var centre: Vector3 = row["position"]
+		_tiles(tool, Vector2(centre.x, 0.925), Vector2(size.x + 0.52, 0.31), accent, 4)
+	_bubbles(tool)
+	# The mat. A flat plate at floor level, so it costs the navigation bake nothing
+	# at all -- and it belongs precisely where the bath's authored stand point is,
+	# which is the one place in this room where a mat is not an obstacle but the
+	# whole reason you put one down.
+	Kit.plate(
+		tool,
+		Kit.at(Vector3(0.95, HouseLayout.FLOOR_Y + 0.008, -0.72)),
+		Kit.rounded_rect(Vector2(0.92, 0.52), 0.16, 4), 0.016, accent, 0.005
+	)
+	Kit.plate(
+		tool,
+		Kit.at(Vector3(0.95, HouseLayout.FLOOR_Y + 0.013, -0.72)),
+		Kit.rounded_rect(Vector2(0.76, 0.36), 0.12, 4), 0.010,
+		Palette.light(accent), 0.004
+	)
+	_mirror(tool, -1.20, 1.58, accent)
+
+
+## Soap bubbles drifting up the wall over the bath.
+##
+## The bathroom's back wall to the right of the window is 1.0 m wide and 1.3 m
+## tall and carried nothing at all -- the emptiest surface in the house. It is
+## also the one wall a tiled band cannot help, because the tub stands half a
+## metre proud of it.
+##
+## Bubbles are the right answer for three reasons. They are what this room is
+## ABOUT, so they reinforce the words the level teaches rather than competing
+## with them; "bubble" is not itself a word the vocabulary owns (it has `soap`,
+## `water`, `bath`, `clean`, `wet` and `dry`), so §6's one-object-one-word rule
+## is safe; and the nursery already establishes the house's convention that a
+## wall may carry a soft drawn shape -- this is that room's cloud, for this room.
+##
+## Five, at five sizes, on a rising diagonal, for the reason the nursery's
+## sparkles are written down with: a row of equal marks is a pattern and a
+## scatter is a mess. Every one of them stays right of x = 1.00, clear of both
+## the window (which ends at 0.80) and the right-hand curtain (which ends at
+## 0.95).
+##
+## Each gets one cream catchlight, upper-left -- the same single-highlight rule
+## §4 puts on the character's eyes, and what stops five flat discs reading as
+## five holes.
+func _bubbles(tool: SurfaceTool) -> void:
 	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
+	var skin: Color = Palette.light(Palette.DUSTY_BLUE)
+	for bubble: Array in [
+		[1.16, 1.16, 0.088], [1.44, 1.48, 0.135], [1.76, 1.22, 0.068],
+		[1.62, 1.84, 0.098], [1.14, 1.72, 0.056],
+	]:
+		var radius: float = float(bubble[2])
+		var at := Vector3(float(bubble[0]), float(bubble[1]), INNER_Z + 0.03)
+		Kit.plate(tool, Kit.at_rotated(at, facing), Kit.circle(radius, 16), 0.04,
+				skin, 0.010)
+		Kit.plate(
+			tool,
+			Kit.at_rotated(at + Vector3(-radius * 0.34, radius * 0.34, 0.022), facing),
+			Kit.circle(radius * 0.26, 10), 0.016, Palette.CREAM, 0.005
+		)
+
+
+## A tiled panel: a field of colour with a grid of paler tiles standing proud of
+## it, so the grout lines are real grooves that the one directional light can
+## find. `columns` tiles across, two courses high.
+##
+## Deliberately a small number of big tiles. At this camera distance a real tile
+## pattern merges into noise, and §7 has no textures to draw one with anyway.
+##
+## The tiles are the field's own `light()` step and NOT `cream`, which is what
+## they were on the first render. Cream tiles on a cream wall left only the grout
+## lines visible, and a panel of mint grout lines with nothing behind them reads
+## as wire mesh -- the bathroom came back looking like it had two racks bolted to
+## the wall. The field has to be the mass and the tiles the highlight, not the
+## other way round.
+func _tiles(
+	tool: SurfaceTool, centre: Vector2, size: Vector2, color: Color, columns: int
+) -> void:
+	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
+	Kit.plate(
+		tool,
+		Kit.at_rotated(Vector3(centre.x, centre.y, INNER_Z + 0.02), facing),
+		Kit.rounded_rect(size, 0.035, 2), 0.04, color, 0.012
+	)
+	var wide: float = size.x / float(columns)
+	var high: float = size.y * 0.5
+	for column: int in range(columns):
+		for course: int in range(2):
+			Kit.plate(
+				tool,
+				Kit.at_rotated(Vector3(
+					centre.x - size.x * 0.5 + wide * (float(column) + 0.5),
+					centre.y - size.y * 0.5 + high * (float(course) + 0.5),
+					INNER_Z + 0.045), facing),
+				Kit.rounded_rect(Vector2(wide - 0.028, high - 0.028), 0.022, 2),
+				0.018, Palette.light(color), 0.008
+			)
+
+
+func _mirror(tool: SurfaceTool, x: float, y: float, frame: Color) -> void:
+	var facing: Vector3 = Vector3(-90.0, 0.0, 0.0)
+	# The frame takes the room's accent. A cream disc on a cream wall was, cold,
+	# a smudge -- the mirror is the only thing on this wall at eye height and it
+	# has to be found before it can read as a mirror.
 	Kit.plate(tool, Kit.at_rotated(Vector3(x, y, INNER_Z + 0.03), facing),
-			Kit.circle(0.27, 20), 0.055, Palette.CREAM, 0.018)
+			Kit.circle(0.31, 20), 0.055, frame, 0.018)
 	# No reflection, no transparency (§7): a pale flat disc reads as a mirror
 	# because of where it is, not because of what it does.
 	Kit.plate(tool, Kit.at_rotated(Vector3(x, y, INNER_Z + 0.062), facing),
-			Kit.circle(0.222, 20), 0.024, Palette.DUSTY_BLUE, 0.008)
+			Kit.circle(0.252, 20), 0.024, Palette.light(Palette.DUSTY_BLUE), 0.008)
 
 
 ## Each door is a closed slab (so the child cannot walk through it) plus an
@@ -1253,6 +1685,7 @@ func _build_storages() -> void:
 		for sz: int in [-1, 1]:
 			Kit.box(body_tool, Kit.at(Vector3(0.0, 0.0, float(sz) * (size.z - wall) * 0.5)),
 					Vector3(size.x - wall * 2.0, size.y, wall), color)
+		_storage_front(body_tool, size, color)
 		var body: MeshInstance3D = _add_mesh("Storage_%s" % storage_id, Kit.commit(body_tool))
 		if body != null:
 			body.position = centre
@@ -1294,6 +1727,45 @@ func _build_storages() -> void:
 			row["stand"] as Vector3,
 			["open", "putAway"]
 		)
+
+
+## The front of a container, painted.
+##
+## A toy box is a container the child is meant to want to open, and both of them
+## were drawn as five slabs of one flat colour with a knob on the lid. Cold, the
+## bedroom's read as a green crate and the living room's as a pink crate -- the
+## two most saturated objects in their rooms, each carrying no information at all
+## about what it is for.
+##
+## A recessed panel and a painted motif on the face the camera sees costs nothing
+## that matters: it is inside the container's existing collider and its existing
+## `ActivityTarget` box, so the tap target is still the whole box, and it goes
+## into the body's own `SurfaceTool`, so it is still one draw call.
+##
+## The motif is a plain disc. It cannot be a picture of a toy -- §6 is explicit
+## that two nouns must never share a shape, and `ball`, `blocks`, `teddy` and
+## `toy` are all words this game teaches elsewhere.
+func _storage_front(tool: SurfaceTool, size: Vector3, color: Color) -> void:
+	var front: float = size.z * 0.5 + 0.004
+	Kit.plate(
+		tool,
+		Kit.at_rotated(Vector3(0.0, -0.01, front), Vector3(-90.0, 0.0, 0.0)),
+		Kit.rounded_rect(Vector2(size.x - 0.20, size.y - 0.14), 0.05, 3), 0.03,
+		Palette.light(color), 0.012
+	)
+	Kit.plate(
+		tool,
+		Kit.at_rotated(Vector3(0.0, -0.01, front + 0.018), Vector3(-90.0, 0.0, 0.0)),
+		Kit.circle(size.y * 0.20, 16), 0.018, Palette.CREAM, 0.006
+	)
+	# A plinth band, so the box stands on something instead of just stopping at
+	# the floor. Two centimetres proud is all a bevelled edge needs to catch the
+	# sun, and it is the same trick the wall units' underside lip uses.
+	Kit.box(
+		tool,
+		Kit.at(Vector3(0.0, -size.y * 0.5 + 0.035, 0.0)),
+		Vector3(size.x + 0.02, 0.07, size.z + 0.02), Palette.deep(color), 0.016
+	)
 
 
 ## The storage domain objects this room owns, keyed by local id. The activity

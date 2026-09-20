@@ -103,11 +103,31 @@ environment = SubResource("Environment_1")
 [node name="Camera3D" type="Camera3D" parent="."]
 fov = 50.0
 
+; Shadows OFF, 2026-09-20, LOOK pass -- and this is the section 7 amendment of
+; 2026-09-18 being APPLIED here rather than overturned anywhere.
+;
+; That amendment removed the house's directional shadows after an owner review
+; on a physical iPhone: at this camera pitch the props threw hard diagonal
+; shapes that read as an artefact rather than as grounding. The menu was left
+; alone at the time on the argument that its shadow falls on "one large open
+; plane rather than across pastel walls". Rendered at 1334x750 and 2340x1080
+; and looked at, that argument does not survive the picture: the shadow the menu
+; actually casts is Aliz's own, a hard grey-green diagonal slab laid across the
+; peach rug, HER OWN LEGS and the baby beside her -- the same artefact, on the
+; first screen a child ever sees, at the largest on-screen size any character
+; reaches in this game.
+;
+; The measured before/after is in `docs/LOOK_PASS.md`; the cost REMOVED is a
+; directional shadow map plus its depth-only geometry pass every frame, which is
+; the one real per-frame saving available in either of these two scenes.
+;
+; The settings below are KEPT, unchanged and inert, exactly as the amendment
+; asks of the house: re-enabling is one character.
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.8296, -0.4356, 0.3494, 0, 0.6248, 0.7808, -0.5583, -0.6479, 0.5185, 0, 3, 0)
 light_color = Color(1, 0.93464, 0.85752, 1)
 light_energy = 0.92
-shadow_enabled = true
+shadow_enabled = false
 shadow_opacity = 0.45
 directional_shadow_max_distance = 18.0
 

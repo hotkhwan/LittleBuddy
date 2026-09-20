@@ -37,6 +37,8 @@ extends SceneTree
 const OUT_DIR: String = "docs/shots/"
 const Lighting := preload("res://scripts/house/lighting.gd")
 const CameraFocus := preload("res://scripts/camera/camera_focus.gd")
+const CameraFraming := preload("res://scripts/camera/camera_framing.gd")
+const Insets := preload("res://scripts/camera/safe_area_insets.gd")
 const HouseLayout := preload("res://scripts/house/house_layout.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 
@@ -50,10 +52,21 @@ const FRAMES: Dictionary = {
 	"iphone": Vector2i(2340, 1080),
 }
 
+## The four rooms, in the order the house lays them out. All four are
+## photographed at BOTH resolutions: the light is global, so a change made for
+## the kitchen is a change made to the bathroom, and the two aspects compose
+## differently enough (`solve()` fits the distance FROM the aspect) that a room
+## judged on one of them has not been judged.
+const ROOMS: Array[String] = [
+	HouseLayout.KITCHEN, HouseLayout.BEDROOM,
+	HouseLayout.BATHROOM, HouseLayout.LIVING_ROOM,
+]
+
 var _world: Node = null
 var _values: Dictionary = {}
 var _tag: String = "after"
 var _device: String = "ipad"
+var _prefix: String = "light"
 var _frame: Vector2i = FRAMES["ipad"]
 var _viewport: SubViewport = null
 
@@ -66,8 +79,18 @@ func _run() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	_tag = String(args[0]) if args.size() > 0 else "after"
 	_device = String(args[1]) if args.size() > 1 else "ipad"
+	_prefix = String(args[2]) if args.size() > 2 else "light"
 	_frame = FRAMES.get(_device, FRAMES["ipad"])
 	_values = Lighting.setup(_tag)
+
+	# `frame` takes no pictures at all: it prints the camera solution for every
+	# room at every shipped aspect. Judging composition from a screenshot alone
+	# is how 5.13 m survived for as long as it did -- the eye cannot tell a
+	# camera that is 8% too far back from a room that is 8% too small.
+	if _tag == "frame":
+		_report_framing()
+		quit(0)
+		return
 
 	await process_frame
 	var packed: PackedScene = load("res://scenes/house/house_world.tscn")
@@ -84,29 +107,20 @@ func _run() -> void:
 	_apply_lighting()
 	_report_setup()
 
-	# The two rooms the brief names, each with the characters in them: the
-	# nursery holds Little Buddy and the baby, the kitchen holds Little Buddy
-	# against the room's largest cream fields.
-	for room_id: String in [HouseLayout.KITCHEN, HouseLayout.BEDROOM]:
+	# Every room, at this resolution. One `DirectionalLight3D` is global, so a
+	# change made for the kitchen is a change made to the bathroom, and each room
+	# puts a different set of albedos under it.
+	for room_id: String in ROOMS:
 		_world.call("place_in_room", room_id, "default")
 		await _enter(room_id)
 		_report_characters()
-		await _shot("light_%s_%s" % [room_id, _device])
+		await _shot("%s_%s_%s" % [_prefix, room_id, _device])
 
 	# Character readability, close up, where a face either separates from the
 	# wall behind it or does not.
 	_world.call("place_in_room", HouseLayout.BEDROOM, "default")
-	await _settle(0.4)
-	await _focus_shot("bedroom.littleBuddy", "light_focus_buddy_%s" % _device)
-
-	# The two rooms this pass is not about, at iPad only: one light is global, so
-	# a change made for the kitchen is a change made to the bathroom, and the
-	# bathroom is where the unlit -X wall has a prop hanging on it.
-	if _device == "ipad":
-		for room_id: String in [HouseLayout.BATHROOM, HouseLayout.LIVING_ROOM]:
-			_world.call("place_in_room", room_id, "default")
-			await _settle(0.6)
-			await _shot("light_%s_%s" % [room_id, _device])
+	await _enter(HouseLayout.BEDROOM)
+	await _focus_shot("bedroom.littleBuddy", "%s_focus_buddy_%s" % [_prefix, _device])
 
 	await _menu_shot()
 
@@ -130,28 +144,70 @@ func _menu_shot() -> void:
 	# dusty-blue one, and the house's fill instead of the menu's. Both the before
 	# and the after were wrong in the same direction, which is exactly the kind
 	# of consistent-looking nonsense a controlled pair is supposed to catch.
-	_viewport.remove_child(_world)
+	# FREED, not merely removed -- and this is the second time this one line has
+	# produced a menu shot that was really a photograph of something else.
+	#
+	# The first time, the house was hidden rather than removed, and two
+	# `WorldEnvironment` nodes in one `World3D` meant the HOUSE's beige fill won:
+	# both the before and the after came out wrong in the same direction, which
+	# is exactly the consistent-looking nonsense a controlled pair is supposed to
+	# catch. `remove_child()` fixed the environment. It did not fix the geometry:
+	# parts of the house are parented outside the `HouseWorld` node by the time
+	# it has been through `place_in_room()` and a close-up, so removing the root
+	# left the bedroom standing in the viewport, and the menu's own `Camera3D` --
+	# which sits at the world origin, where the bedroom is -- photographed it,
+	# with the menu's buttons neatly on top. 18.8% of that frame was "clipped",
+	# and it was the nursery.
+	#
+	# So: free everything the viewport holds, wait for the frees to land, and
+	# then say out loud how many children are left. A number that is not 1 means
+	# the picture about to be taken is not the menu.
+	for child: Node in _viewport.get_children():
+		_viewport.remove_child(child)
+		child.queue_free()
+	_world = null
+	await process_frame
+	await process_frame
 	var menu: Node = packed.instantiate()
 	_viewport.add_child(menu)
 	await _settle(0.8)
+	if _viewport.get_child_count() != 1:
+		print("  WARN: the menu viewport holds %d root nodes, not 1 -- something from "
+				% _viewport.get_child_count() + "the house is still in this frame")
+	# The menu's camera does not declare itself current, and it only becomes so
+	# by default if nothing else has claimed the viewport. `room_camera.gd` sets
+	# `current = true` on every fit, so something else has.
+	var menu_camera: Camera3D = menu.get_node_or_null("Camera3D") as Camera3D
+	if menu_camera != null:
+		menu_camera.current = true
+		await process_frame
 	var light: DirectionalLight3D = menu.get_node_or_null(
 			"DirectionalLight3D") as DirectionalLight3D
 	var environment_node: WorldEnvironment = menu.get_node_or_null(
 			"WorldEnvironment") as WorldEnvironment
-	if _tag == "before" and light != null and environment_node != null:
-		# The menu's own previous fill: `#F5F0E5` at 0.55, a desaturated
-		# near-neutral that is not in the palette at all.
-		environment_node.environment.ambient_light_color = Color(0.96, 0.94, 0.9)
-		environment_node.environment.ambient_light_energy = 0.55
-		light.light_color = Color(1.0, 0.976, 0.925)
-		light.light_energy = 1.0
+	if light != null and environment_node != null:
+		if _tag == "before":
+			# The menu's own original fill: `#F5F0E5` at 0.55, a desaturated
+			# near-neutral that is not in the palette at all.
+			environment_node.environment.ambient_light_color = Color(0.96, 0.94, 0.9)
+			environment_node.environment.ambient_light_energy = 0.55
+			light.light_color = Color(1.0, 0.976, 0.925)
+			light.light_energy = 1.0
+		# Both `before` and `previous` predate the LOOK pass, and the LOOK pass's
+		# only change to this scene is the SHADOW. Restoring it here is what makes
+		# the menu pair a controlled one -- same scene, same colours, same camera,
+		# the shadow the only difference.
+		if _tag == "before" or _tag == "previous":
+			light.shadow_enabled = true
+			light.shadow_opacity = 0.45
 		await _settle(0.3)
 	if light != null and environment_node != null:
-		print("  live  menu ambient %s @ %.2f  key %s @ %.2f" % [
+		print("  live  menu ambient %s @ %.2f  key %s @ %.2f  shadows=%s" % [
 			environment_node.environment.ambient_light_color.to_html(false),
 			environment_node.environment.ambient_light_energy,
-			light.light_color.to_html(false), light.light_energy])
-	await _shot("light_menu_%s" % _device)
+			light.light_color.to_html(false), light.light_energy,
+			str(light.shadow_enabled)])
+	await _shot("%s_menu_%s" % [_prefix, _device])
 
 
 ## Re-attaches a room whose geometry was built but never parented.
@@ -206,6 +262,87 @@ func _apply_lighting() -> void:
 		light.light_color.to_html(false), light.light_energy,
 		light.global_transform.basis.z.x, light.global_transform.basis.z.y,
 		light.global_transform.basis.z.z])
+
+
+## The camera solution for every room at every shipped aspect, with the number
+## that decides whether a shot is "as tight as it can be" or merely "fitting".
+##
+## `solve()` returns the closest distance at which every fit point is still
+## inside the safe window, so the frame is by construction never TOO tight. What
+## it cannot tell you is how much of the screen the result actually uses: on a
+## 2.17 aspect the vertical (the room's depth, seen down a 32 degree pitch) runs
+## out first, the horizontal constraint is then nowhere near binding, and the
+## room sits as an island in the middle of a wide frame with void down both
+## sides. That is geometry, not a bug -- but it is only arguable with the number
+## in front of you, so `fillX` / `fillY` are the fraction of the usable window
+## the fit points really span on each axis. A well-framed shot reads ~1.00 on
+## whichever axis is binding, and the other axis is the slack.
+func _report_framing() -> void:
+	print("camera framing -- distance, what bound it, and how much screen it uses")
+	for device: String in FRAMES:
+		var size: Vector2i = FRAMES[device]
+		var aspect: float = CameraFraming.aspect_from_size(Vector2(size))
+		print("\n  %s  %dx%d  aspect %.3f" % [device, size.x, size.y, aspect])
+		for room_id: String in ROOMS:
+			_print_solution("room  %-11s" % room_id,
+					HouseLayout.camera_framing(room_id), aspect)
+		# The close-up the HUD reads its presentation mode from. Both classes,
+		# because `hud_presentation.gd` switches at 1.30 m and a change to the
+		# framing that moved the radius would move the HUD with it.
+		var base: Dictionary = HouseLayout.camera_framing(HouseLayout.BEDROOM)
+		for radius: float in [0.90, 1.88]:
+			var focus: Vector3 = base["focus"]
+			_print_solution("focus r=%.2f     " % radius,
+					CameraFraming.focus_framing(base, focus, radius), aspect)
+
+
+func _print_solution(label: String, framing: Dictionary, aspect: float) -> void:
+	var chrome: Variant = framing.get("chromeInsets", Vector4.ZERO)
+	var insets: Vector4 = Insets.current_insets()
+	if chrome is Vector4 and (chrome as Vector4) != Vector4.ZERO:
+		insets = Insets.current_insets(chrome)
+	var solution: Dictionary = CameraFraming.solve(framing, aspect, insets)
+	var fill: Vector2 = _screen_fill(framing, solution, aspect, insets)
+	var binding_point: Vector3 = solution["bindingPoint"]
+	print(("    %s d=%.2f m (raw %.2f%s)  bound by %-10s at (%.2f, %.2f, %.2f)"
+			+ "  fillX=%.2f fillY=%.2f") % [
+		label, float(solution["distance"]), float(solution["required"]),
+		", CLAMPED" if bool(solution["clamped"]) else "",
+		String(solution["binding"]),
+		binding_point.x, binding_point.y, binding_point.z, fill.x, fill.y])
+
+
+## How much of the usable (post-inset) window the fit points span, per axis.
+func _screen_fill(framing: Dictionary, solution: Dictionary, aspect: float,
+		insets: Vector4) -> Vector2:
+	var f: Dictionary = CameraFraming.normalise_framing(framing)
+	var half_height: float = tan(deg_to_rad(float(f["fov"])) * 0.5)
+	var half_width: float = half_height * aspect
+	var limits: Vector4 = CameraFraming.ndc_limits(insets)
+	var basis: Basis = CameraFraming.camera_basis(f)
+	var forward: Vector3 = -basis.z
+	var position: Vector3 = solution["position"]
+	var min_x: float = INF
+	var max_x: float = -INF
+	var min_y: float = INF
+	var max_y: float = -INF
+	for point: Vector3 in CameraFraming.fit_points(f):
+		var offset: Vector3 = point - position
+		var depth: float = offset.dot(forward)
+		if depth <= 0.0:
+			continue
+		var ndc_x: float = (offset.dot(basis.x) / depth) / half_width
+		var ndc_y: float = (offset.dot(basis.y) / depth) / half_height
+		min_x = minf(min_x, ndc_x)
+		max_x = maxf(max_x, ndc_x)
+		min_y = minf(min_y, ndc_y)
+		max_y = maxf(max_y, ndc_y)
+	if not is_finite(min_x) or not is_finite(min_y):
+		return Vector2.ZERO
+	return Vector2(
+		(max_x - min_x) / maxf(limits.x + limits.z, 0.0001),
+		(max_y - min_y) / maxf(limits.y + limits.w, 0.0001)
+	)
 
 
 ## The setup, and what it does to the three planes a doll's-house room shows the
@@ -280,9 +417,30 @@ func _focus_shot(semantic_id: String, out_name: String) -> void:
 		CameraFocus.MIN_RADIUS, CameraFocus.MAX_RADIUS,
 		HouseLayout.world_floor_bounds(room_id)
 	)
-	camera.call("focus_activity", shot["focus"], float(shot["radius"]))
+	if _tag == "previous" or _tag == "before":
+		# The close-up as it was composed BEFORE `camera_framing.FOCUS_LOOKAHEAD`:
+		# the same box, aimed at its own centre. Built here rather than by
+		# flipping a constant, because a constant cannot be flipped at runtime and
+		# two screenshots taken from two builds are not a controlled pair.
+		# `frame_room()` applies a framing dictionary verbatim and as a cut, so
+		# this is the old shot exactly -- same bounds, same pitch, same clamps,
+		# old look-at point.
+		var old: Dictionary = CameraFraming.focus_framing(
+			camera.call("get_room_framing"), shot["focus"], float(shot["radius"]))
+		old["focus"] = shot["focus"]
+		# ...and before `CLOSE_UP_SUBJECT_HEIGHT`, which is the other half of the
+		# same change: the old close-up modelled the character as 1.0 m of generic
+		# headroom on the box's corners and named nothing at all at its centre.
+		old["extraPoints"] = []
+		camera.call("frame_room", old)
+	else:
+		camera.call("focus_activity", shot["focus"], float(shot["radius"]))
 	camera.call("settle")
 	await _settle(0.5)
+	var solution: Dictionary = camera.call("get_last_solution")
+	print("  close-up radius %.2f m  distance %.2f m  bound by %s" % [
+		float(shot["radius"]), float(solution.get("distance", 0.0)),
+		String(solution.get("binding", "?"))])
 	await _shot(out_name)
 
 
@@ -290,7 +448,7 @@ func _shot(out_name: String) -> void:
 	await RenderingServer.frame_post_draw
 	var image: Image = _viewport.get_texture().get_image()
 	var file_name: String = "%s%s.png" % [out_name,
-			"_BEFORE" if _tag == "before" else ""]
+			"_BEFORE" if (_tag == "before" or _tag == "previous") else ""]
 	var path: String = ProjectSettings.globalize_path("res://../" + OUT_DIR + file_name)
 	var err: int = image.save_png(path)
 	if err != OK:

@@ -24,6 +24,8 @@ extends RefCounted
 const Needs := preload("res://scripts/care/child_needs.gd")
 const Present := preload("res://scripts/care/child_presentation.gd")
 const StatsScript := preload("res://scripts/care/child_stats.gd")
+const Life := preload("res://scripts/care/child_life.gd")
+const LifeClips := preload("res://scripts/characters/little_buddy/baby_life_clips.gd")
 
 ## Words an infant must never be made to say about itself.
 const BANNED: Array[String] = ["bad", "naughty", "wrong", "fail", "stupid", "dirty child"]
@@ -165,11 +167,26 @@ func _test_dirty_and_bath_are_one_axis():
 ## because `hungry` implies `feeding`, it was what stood in the bedroom for the
 ## whole opening of the game -- unable to breathe, fuss or react.
 ##
-## The rule now is the stronger one: **a pose-locked export may only be chosen
-## where it says something the rigged model cannot.** There is exactly one such
-## thing, lying down, so `bedtime` is the only activity allowed to leave the rig.
-## The old invariant it replaced -- that an explicit activity beats a drifting
-## stat -- is still asserted, on the same fixture, below.
+## The rule then became: **a pose-locked export may only be chosen where it says
+## something the rigged model cannot.** There was exactly one such thing, lying
+## down, so `bedtime` was the only activity allowed to leave the rig.
+##
+## **Tightened again 2026-09-20, and the exception is now gone.**
+## `baby_life_clips.gd::_sleep()` lies the rigged child down with a root-bone
+## rotation and a measured hip drop, so "the rigged model cannot show this" is no
+## longer true of anything. The assertion below is therefore the strongest form
+## of the same rule -- **no activity leaves the rig, at all** -- and it is paired
+## with a check that the `sleep` clip really exists, because dropping the
+## exception without the clip would swap a wrong-looking child for a rigid one.
+##
+## Why it is worth this much: the three exports are three separate generations of
+## a baby, not three poses of one. `docs/shots/bunny_sleepy_near_before.png` is
+## the `sleeping` one in the shipping bedroom, and it has different hair, a
+## different nappy and different proportions. Going to bed did not pose Bunny; it
+## replaced him.
+##
+## The old invariant this all replaced -- that an explicit activity beats a
+## drifting stat -- is still asserted, on the same fixture, below.
 func _test_poses_follow_activity_not_need():
 	var failures: Array = []
 
@@ -189,22 +206,33 @@ func _test_poses_follow_activity_not_need():
 				+ "feeding is the one moment the whole mission is about -- cutting to a mesh "
 				+ "that cannot move there is what made Bunny a statue.") % String(feeding["pose"]))
 
-	# Bedtime lies it down: the one thing the rig genuinely cannot show.
-	if String(Present.describe(_content(), Present.ACTIVITY_BEDTIME)["pose"]) != Present.POSE_SLEEPING:
-		failures.append("bedtime must use the sleeping pose")
+	# Bedtime lies him down ON THE RIG. This is the assertion that keeps a future
+	# "the sleeping export looks nicer here" from silently swapping the character
+	# for a different child again.
+	if String(Present.describe(_content(), Present.ACTIVITY_BEDTIME)["pose"]) != Present.POSE_RIGGED:
+		failures.append(("bedtime selected the '%s' pose. The rigged model has a `sleep` clip now, "
+				+ "and the pose-locked exports are visibly a DIFFERENT baby -- cutting to one is "
+				+ "not posing the child, it is replacing him.")
+				% String(Present.describe(_content(), Present.ACTIVITY_BEDTIME)["pose"]))
 
-	# ...and it is the ONLY activity allowed off the rigged model. This is the
-	# assertion that keeps a future "sitting looks nicer here" from silently
-	# re-freezing the character.
+	# ...and NO activity is allowed off the rigged model.
 	for activity: String in Present.ACTIVITIES:
 		var pose: String = Present.pose_for_activity(activity)
-		if activity == Present.ACTIVITY_BEDTIME:
-			continue
 		if pose != Present.POSE_RIGGED:
-			failures.append(("activity '%s' selects the '%s' pose. Only `sleeping` says something "
-					+ "the rigged model cannot; every other pose-locked export is a mesh with no "
-					+ "skeleton, so choosing one here freezes the child for the whole activity.")
-					% [activity, pose])
+			failures.append(("activity '%s' selects the '%s' pose. Every pose-locked export is a "
+					+ "mesh with no skeleton and no clips, so choosing one here freezes the child "
+					+ "for the whole activity -- and they are three separate generations, so it "
+					+ "also changes which child it is.") % [activity, pose])
+
+	# Dropping the bedtime exception is only honest while the rig can actually
+	# lie down. Asserted here rather than only in `test_bunny_life.gd`, because
+	# THIS is the file that stopped selecting the supine export.
+	if not LifeClips.CLIP_NAMES.has(Life.LIFE_SLEEP):
+		failures.append(("no '%s' clip is authored, but bedtime no longer leaves the rigged model. "
+				+ "That combination is a child standing to attention at bedtime.") % Life.LIFE_SLEEP)
+	if Life.clip_for(_content(), Present.ACTIVITY_BEDTIME, false, 0.0) != Life.LIFE_SLEEP:
+		failures.append("bedtime plays '%s' rather than the sleep clip"
+				% Life.clip_for(_content(), Present.ACTIVITY_BEDTIME, false, 0.0))
 
 	# And every activity still resolves to a pose that exists.
 	var known: Array = [Present.POSE_STANDING, Present.POSE_SITTING,

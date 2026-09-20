@@ -37,9 +37,48 @@ const GRAB_SIZE_M: float = 0.34
 ## collider: the collider is forgiving, the art stays cute and uncluttered.
 const VISUAL_SIZE_M: float = 0.16
 
-## Height of the object's centre above its origin, so it rests on the floor/table
-## plane rather than being half-buried.
+## Where the GRAB COLLIDER's centre sits above the object's origin.
+##
+## ## This used to be where the VISUAL's centre sat, and that is the bug
+##
+## The comment here read *"so it rests on the floor/table plane rather than being
+## half-buried"*, and for the one primitive it was tuned against -- a 16 cm
+## sphere, half of it 8 cm, close enough to 10 -- it did. Every model since is
+## normalised to its longest axis and then centred on this height, so how far a
+## pickup floats became a function of **how tall it happens to be**:
+##
+## | measured in the real game, at the row's 1.8-2.3x presentation scale |
+## |---|
+## | a milk carton (tall, 26 cm presented) | sat 1 cm INTO the floor |
+## | a bar of soap | hovered 7 cm |
+## | a shape-sorter circle (a flat plate, presented face-on) | hovered 9 cm |
+## | a spoon | hovered 13 cm |
+## | **a banana, lying across the screen** | **hovered 18 cm** |
+##
+## Eighteen centimetres is a banana floating at a four-year-old's knee height,
+## and it is `FOUNDER_PREVIEW_RC_CHECKLIST.md` open issue 5. It is a different
+## fault from the kitchen's floating bowl, which was an ANCHOR in the wrong place
+## (`kitchen_view.gd::_anchor()`); here every anchor was right and the mesh was
+## hung off it by half of whatever it measured.
+##
+## So `model_transform()` and `build_primitive_visual()` now **stand the visual on
+## the object's origin** (§6: "pivot at base centre" -- the same rule the kitchen
+## props are authored to), and whoever positions the object decides the resting
+## plane. This constant keeps only its second job: the middle of the grab box.
+##
+## **It is deliberately NOT changed**, because the grab box is the touch target
+## and its size and position are what `grab_size_px()` measures and what
+## `test_gameplay_object_spawner` asserts clears 220 px. A visual standing on
+## y = 0 and no taller than `MODEL_MAX_SIZE_M` (0.26) still sits entirely inside
+## a 0.34 box centred here, which spans -0.07 to +0.27 -- so nothing about what a
+## child can hit has moved. Only the art came down to the floor.
 const VISUAL_CENTRE_Y: float = 0.1
+
+## Lifts a mesh of bounds `source` so it stands on y = 0 and is centred on x/z.
+## Pure, and the one place the "props stand on their own base" rule is written.
+static func base_offset(source: AABB) -> Vector3:
+	var centre: Vector3 = source.get_center()
+	return Vector3(-centre.x, -source.position.y, -centre.z)
 
 ## How far each colour is pushed toward white. Keeps everything soft and pastel
 ## even when the authored hex is a strong primary.
@@ -395,8 +434,9 @@ static func model_presentation(model_name: String) -> Dictionary:
 
 ## The presentation transform for a model of bounds `source`: authored rotation,
 ## uniform scale onto the authored longest-axis size, then a translation that
-## centres the resulting shape inside the grab collider. Pure, so the test can
-## assert containment without a renderer.
+## STANDS the resulting shape on the object's origin, centred on x and z. Pure,
+## so the test can assert both the grounding and the containment without a
+## renderer. See `VISUAL_CENTRE_Y` for why this used to centre instead.
 static func model_transform(source: AABB, size_m: float, rotation_deg: Vector3) -> Transform3D:
 	var basis: Basis = Basis.from_euler(Vector3(
 		deg_to_rad(rotation_deg.x), deg_to_rad(rotation_deg.y), deg_to_rad(rotation_deg.z)))
@@ -404,7 +444,7 @@ static func model_transform(source: AABB, size_m: float, rotation_deg: Vector3) 
 	var factor: float = 1.0 if longest <= 0.0 else size_m / longest
 	var oriented: Transform3D = Transform3D(basis.scaled(Vector3(factor, factor, factor)), Vector3.ZERO)
 	var presented: AABB = oriented * source
-	oriented.origin = Vector3(0.0, VISUAL_CENTRE_Y, 0.0) - presented.get_center()
+	oriented.origin = base_offset(presented)
 	return oriented
 
 
@@ -507,7 +547,10 @@ static func build_primitive_visual(spec: Dictionary) -> MeshInstance3D:
 	visual.name = "Visual"
 	visual.mesh = build_mesh(String(spec.get("primitive", DEFAULT_PRIMITIVE)))
 	visual.material_override = material
-	visual.position = Vector3(0.0, VISUAL_CENTRE_Y, 0.0)
+	# Standing on the object's origin, exactly like the model path: a `torus` is
+	# 3 cm thick and used to hover 8 cm, a `sphere` 2 cm, and the difference was
+	# invisible in code and obvious on the floor.
+	visual.position = base_offset(visual.mesh.get_aabb())
 	return visual
 
 

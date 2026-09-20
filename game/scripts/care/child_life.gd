@@ -45,10 +45,31 @@ const LIFE_FUSS: String = "fuss"
 const LIFE_EAT: String = "eat"
 const LIFE_DRINK: String = "drink"
 const LIFE_HAPPY: String = "celebrate"
+const LIFE_SLEEP: String = "sleep"
 const LIFE_WALK: String = "walk"
 
 const LIFE_CLIPS: Array[String] = [
-	LIFE_IDLE, LIFE_FUSS, LIFE_EAT, LIFE_DRINK, LIFE_HAPPY, LIFE_WALK,
+	LIFE_IDLE, LIFE_FUSS, LIFE_EAT, LIFE_DRINK, LIFE_HAPPY, LIFE_SLEEP, LIFE_WALK,
+]
+
+## -- The face --------------------------------------------------------------------
+##
+## The rigged model has NO facial bones -- the rig ends at `headfront` and the
+## eyes, brows and mouth are painted into the albedo -- so the face cannot be
+## animated. It can be REPAINTED, which is a different and much cheaper thing:
+## `baby_face_moods.gd` redraws the eye and mouth islands of the atlas and the
+## wrapper swaps the texture. Four variants, no per-frame work, nothing to
+## interpolate.
+##
+## Named here as plain Strings, like the clips, because this file must stay free
+## of anything that loads a model or an `Image`.
+const FACE_CONTENT: String = "content"
+const FACE_UNHAPPY: String = "unhappy"
+const FACE_DELIGHTED: String = "delighted"
+const FACE_ASLEEP: String = "asleep"
+
+const FACE_MOODS: Array[String] = [
+	FACE_CONTENT, FACE_UNHAPPY, FACE_DELIGHTED, FACE_ASLEEP,
 ]
 
 ## How long Bunny stays visibly pleased after being cared for. Long enough to be
@@ -91,8 +112,9 @@ const ATTEND_LIMIT_DEG: float = 45.0
 ## Precedence, and every step of it is deliberate:
 ##   1. **walking wins over everything** -- a fussing child sliding across the
 ##      floor in a fuss pose is the worst thing on this list;
-##   2. then the explicit activity, because a mission that has seated Bunny to
-##      feed him has said what is happening and must not be argued with;
+##   2. then the explicit activity, because a mission that has put Bunny down to
+##      feed him or to sleep has said what is happening and must not be argued
+##      with;
 ##   3. then the happy window, so being cared for is visible for its own sake;
 ##   4. then a real unmet need;
 ##   5. then idle.
@@ -102,11 +124,39 @@ static func clip_for(stats: Dictionary, activity: String, walking: bool,
 		return LIFE_WALK
 	if activity == Present.ACTIVITY_FEEDING:
 		return feeding_clip(stats, detail)
+	# Bedtime beats the happy window as well as the need. Being tucked in IS the
+	# care act, so a child who celebrates it by standing up again has undone the
+	# thing the player just did.
+	if activity == Present.ACTIVITY_BEDTIME:
+		return LIFE_SLEEP
 	if happy_left > 0.0:
 		return LIFE_HAPPY
 	if _is_uncomfortable(Needs.dominant(stats)):
 		return LIFE_FUSS
 	return LIFE_IDLE
+
+
+## **The face that goes with the body.** One answer, derived from the clip that
+## was already chosen, so the mouth can never disagree with the arms.
+##
+## Deliberately NOT a fifth reaction axis of its own: every route into a mood
+## goes through `clip_for()` first, which is the function the whole care model
+## already agrees on. A face that could be set independently is a face that would
+## end up smiling through a fuss the first time somebody added a branch.
+##
+## `eat` and `drink` keep the resting face. A child mid-spoonful is neither
+## delighted nor upset, and swapping the mouth for an open grin exactly when a
+## bottle is covering it buys nothing.
+static func face_for(clip: String) -> String:
+	match clip:
+		LIFE_FUSS:
+			return FACE_UNHAPPY
+		LIFE_HAPPY:
+			return FACE_DELIGHTED
+		LIFE_SLEEP:
+			return FACE_ASLEEP
+		_:
+			return FACE_CONTENT
 
 
 ## **A bottle or a spoon?** They are different motions -- two hands and a head

@@ -418,12 +418,30 @@ static func furniture(room_id: String) -> Array:
 				# with daylight under it.
 				_prop("bath", "bath", Vector3(1.26, 0.68, 0.72), Vector3(0.95, 0.34, -1.48),
 						Vector3(0.95, FLOOR_Y, -0.78), ["wash", "play"], Palette.DUSTY_BLUE),
-				# Half again as large as it was, because it hangs on the -X wall --
-				# which the three-quarter camera sees at a steep angle and the one
-				# directional light never reaches at all (its inner face points +X and
-				# the sun's X component is negative). A 0.52 m towel there measured
-				# 25 px across on a landscape iPhone.
-				_prop("towel", "towel", Vector3(0.17, 0.88, 0.74), Vector3(-1.93, 1.06, -0.52),
+				# ## This comment used to contain a wrong diagnosis, and the towel was
+				# ## sized to compensate for it
+				#
+				# It read: "the one directional light never reaches [the -X wall] at
+				# all (its inner face points +X and the sun's X component is
+				# negative)", and the towel was grown by half again to be legible in
+				# a darkness it was never actually in.
+				#
+				# That is not what was wrong. The sun's `Transform3D` basis was
+				# TRANSPOSED, which put it 36.8 degrees BELOW the floor -- so nothing
+				# in the house was lit by it, not this wall in particular. With the
+				# basis fixed the -X wall catches the sun like everything else and
+				# the towel no longer needs to shout.
+				#
+				# It is back to a towel-shaped towel: 0.74 m of drop on a 2.2 m wall,
+				# which is roughly what a bath towel is against a room, rather than
+				# 0.88 m. It is still comfortably the largest soft object on that
+				# wall and it still measures well over 40 px on a landscape iPhone.
+				#
+				# The collider shrinks with it and the navigation bake does not
+				# notice: at x = -1.93 the whole prop lies inside the 0.20 m agent
+				# radius already eroded away from the -2.0 m wall, so it has never
+				# contributed a single walkable cell.
+				_prop("towel", "towel", Vector3(0.17, 0.74, 0.62), Vector3(-1.93, 1.14, -0.52),
 						Vector3(-1.35, FLOOR_Y, -0.5), ["pickUp", "dry"], Palette.SOFT_PINK),
 			]
 		KITCHEN:

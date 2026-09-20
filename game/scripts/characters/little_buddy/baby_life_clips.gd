@@ -87,6 +87,33 @@ extends RefCounted
 ## bone unit is therefore 0.01 m of model, which the wrapper then scales by
 ## ~0.459 to reach a 0.78 m child: **1 bone unit ~= 4.6 mm on screen.** Every
 ## translation below is small for that reason, not by timidity.
+##
+## Skeleton +Y = 0 IS THE FLOOR, exactly. Worth writing down because `_sleep()`
+## depends on it: the wrapper recentres the GLB by half its own height and then
+## lifts the holder by the same amount, so the two cancel and a bone at y = 0
+## renders at the wrapper's origin. Measured, not assumed -- the toe bones sit at
+## y = 3.75 and the hips at y = 50.05, which at 4.59 mm a unit is a 23 cm hip
+## height on a 78 cm child.
+##
+## ## How big is legible
+##
+## **Every amplitude in this file was raised on 2026-09-20, after rendering the
+## reactions at the real gameplay framing** (`docs/shots/bunny_*_near_before.png`
+## against `_after`). The camera cannot get closer than
+## `camera_framing.gd::FOCUS_MIN_DISTANCE` (1.9 m) and Bunny is 0.78 m tall, so
+## in a 1334x750 frame he is about 230 px and his whole forearm is about 25 px.
+## The first pass's fuss rocked the hips 3.5 degrees; at that size the difference
+## between it and the idle is under two pixels, which is not a reaction, it is a
+## rounding error. The rule that came out of looking:
+##
+##   * a rotation under about 10 degrees on a limb is invisible at this framing;
+##   * a reach must actually ARRIVE -- a hand that stops at the chest reads as a
+##     shrug, not as eating, and the first `eat` did exactly that;
+##   * silhouette beats detail. What survives 230 px is where the arms are
+##     against the background, not what the hands are doing.
+##
+## None of which means fast. This is a gentle game for a three-year-old: the
+## poses are bigger, the timings are not, and nothing gained a shake or a jitter.
 
 ## Skeleton-space rotation axes. See the class doc for the derivation.
 const NOD := Vector3(1.0, 0.0, 0.0)
@@ -109,6 +136,10 @@ const FOREARM_L: String = "LeftForeArm"
 const FOREARM_R: String = "RightForeArm"
 const HAND_L: String = "LeftHand"
 const HAND_R: String = "RightHand"
+const THIGH_L: String = "LeftUpLeg"
+const THIGH_R: String = "RightUpLeg"
+const SHIN_L: String = "LeftLeg"
+const SHIN_R: String = "RightLeg"
 
 ## The clips this file authors, and the semantic actions they answer to through
 ## `animation_player_action_driver.gd`'s `ACTION_CLIPS` table:
@@ -120,15 +151,24 @@ const HAND_R: String = "RightHand"
 ## | `eat`       | `eat`           | being fed a spoon of something          |
 ## | `drink`     | `drink`         | being given the bottle                  |
 ## | `celebrate` | `celebrate`     | just been cared for                     |
+## | `sleep`     | `sleep`         | bedtime -- see `_sleep()`               |
 const CLIP_IDLE: String = "idle"
 const CLIP_FUSS: String = "fuss"
 const CLIP_EAT: String = "eat"
 const CLIP_DRINK: String = "drink"
 const CLIP_CELEBRATE: String = "celebrate"
+const CLIP_SLEEP: String = "sleep"
 
 const CLIP_NAMES: Array[String] = [
-	CLIP_IDLE, CLIP_FUSS, CLIP_EAT, CLIP_DRINK, CLIP_CELEBRATE,
+	CLIP_IDLE, CLIP_FUSS, CLIP_EAT, CLIP_DRINK, CLIP_CELEBRATE, CLIP_SLEEP,
 ]
+
+## How far the back of a sleeping child sits above the floor, in bone units
+## (~4.6 mm each), so ~5.5 cm. Used by `_sleep()` together with the hips' own
+## measured rest height -- the drop is DERIVED from the rig rather than typed in,
+## so a re-rig with a different hip height still lands the child on the floor
+## instead of sinking it through one or floating it above one.
+const LYING_CLEARANCE: float = 12.0
 
 
 ## Adds every clip this file authors to `library`, addressed against `prefix`
@@ -167,6 +207,8 @@ static func build(clip_name: String, skeleton: Skeleton3D, prefix: String) -> An
 			return _drink(skeleton, prefix)
 		CLIP_CELEBRATE:
 			return _celebrate(skeleton, prefix)
+		CLIP_SLEEP:
+			return _sleep(skeleton, prefix)
 		_:
 			return null
 
@@ -245,56 +287,111 @@ static func _idle(skeleton: Skeleton3D, prefix: String) -> Animation:
 ## Short (1.5 s) and looping, so `child_life.gd` can drive its PACE from the real
 ## hunger value: the same clip played faster reads as more urgent, which is a
 ## gradient a four-year-old understands without a bar, a number or a red X.
+##
+## **Doubled on 2026-09-20, because it did not read.** The first pass rocked the
+## hips 3.5 degrees and shook the head 7. `docs/shots/bunny_hungry_near_before.png`
+## and `bunny_content_near_before.png` are those two states at the real framing:
+## put side by side they are the same picture, and "is Bunny all right?" is the
+## one question the body is there to answer. Everything below is roughly twice
+## the size it was, plus two things that were missing entirely -- the hips step
+## sideways over the supporting foot, and the knees take the weight -- because at
+## 230 px it is the SILHOUETTE that carries a reaction, and a rock that never
+## moves the outline is a rock the player cannot see.
+##
+## What deliberately did NOT change is the timing. 1.5 s per sway is a slow,
+## heavy shift, not a fidget, and the clip gained no shake, no vibration and no
+## extra beat: a bigger pose at the same speed reads as unhappy, the same pose
+## faster reads as agitated, and this is a game for a three-year-old.
 static func _fuss(skeleton: Skeleton3D, prefix: String) -> Animation:
 	var animation: Animation = _looping(1.5)
 
 	# The rock. Opposite tilts at the hips and the low spine so Bunny sways over
-	# his feet instead of leaning like a felled tree.
+	# his feet instead of leaning like a felled tree -- and the hips now TRANSLATE
+	# with the lean (2.4 bone units, ~11 mm), which is what actually moves the
+	# outline. A pure rotation about a hip joint barely moves the silhouette at
+	# all; shifting the weight onto one foot moves the whole child.
 	_hips(animation, skeleton, prefix, [
-		[0.0, [-0.6, [[TILT, 3.5], [TURN, -3.0]]]],
-		[0.75, [-0.6, [[TILT, -3.5], [TURN, 3.0]]]],
-		[1.5, [-0.6, [[TILT, 3.5], [TURN, -3.0]]]]])
-	# The lean is small on purpose. The bedroom camera looks DOWN on Bunny, so
-	# every degree of forward lean is a degree of his face the player loses --
-	# the first pass leaned 13 degrees across the three spine bones and rendered
-	# as the top of a head. Seen in `docs/shots/`, not in an assertion.
+		[0.0, [Vector3(2.4, -1.4, 0.0), [[TILT, 7.0], [TURN, -6.0]]]],
+		[0.75, [Vector3(-2.4, -1.4, 0.0), [[TILT, -7.0], [TURN, 6.0]]]],
+		[1.5, [Vector3(2.4, -1.4, 0.0), [[TILT, 7.0], [TURN, -6.0]]]]])
+	# The lean stays small on purpose, and this is the one number that was NOT
+	# raised. The bedroom camera looks DOWN on Bunny, so every degree of forward
+	# lean is a degree of his face the player loses -- an earlier pass leaned 13
+	# degrees across the three spine bones and rendered as the top of a head.
+	# Seen in `docs/shots/`, not in an assertion.
 	_bone(animation, skeleton, prefix, SPINE_LOW, [
-		[0.0, [[TILT, -3.0], [NOD, 1.5]]],
-		[0.75, [[TILT, 3.0], [NOD, 1.5]]],
-		[1.5, [[TILT, -3.0], [NOD, 1.5]]]])
-	_bone(animation, skeleton, prefix, SPINE_MID, [[0.0, [[NOD, 2.0]]]])
-	_bone(animation, skeleton, prefix, SPINE_TOP, [[0.0, [[NOD, 1.5]]]])
+		[0.0, [[TILT, -6.0], [NOD, 2.0]]],
+		[0.75, [[TILT, 6.0], [NOD, 2.0]]],
+		[1.5, [[TILT, -6.0], [NOD, 2.0]]]])
+	_bone(animation, skeleton, prefix, SPINE_MID, [
+		[0.0, [[TILT, -2.5], [NOD, 2.0]]],
+		[0.75, [[TILT, 2.5], [NOD, 2.0]]],
+		[1.5, [[TILT, -2.5], [NOD, 2.0]]]])
+	_bone(animation, skeleton, prefix, SPINE_TOP, [[0.0, [[NOD, 1.0]]]])
 
-	# Chin tucked, head shaking the small unhappy shake.
-	_bone(animation, skeleton, prefix, NECK, [[0.0, [[NOD, 2.0]]]])
+	# The knees take the weight. Toddlers do not stand on locked legs when they
+	# are unhappy about something, and a leg that bends is 30 px of silhouette
+	# that the arms cannot supply. Small: the feet are not animated and must stay
+	# on the floor, so the hips drop 1.4 units to pay for the bend rather than
+	# the shins pushing the feet through it.
+	for side: int in [-1, 1]:
+		_bone(animation, skeleton, prefix, _thigh(side), [
+			[0.0, [[NOD, -7.0 - side * 4.0]]],
+			[0.75, [[NOD, -7.0 + side * 4.0]]],
+			[1.5, [[NOD, -7.0 - side * 4.0]]]])
+		_bone(animation, skeleton, prefix, _shin(side), [
+			[0.0, [[NOD, 13.0 + side * 6.0]]],
+			[0.75, [[NOD, 13.0 - side * 6.0]]],
+			[1.5, [[NOD, 13.0 + side * 6.0]]]])
+
+	# The head shake, twice the swing it had -- and the chin now comes UP rather
+	# than tucking down, which is a reversal and worth the paragraph.
+	#
+	# The tuck existed to tell `fuss` from `celebrate`: one looked at the floor,
+	# the other at you. The FACE now tells them apart instead
+	# (`baby_face_moods.gd` -- half-lidded eyes and a downturned mouth against
+	# closed arches and an open smile), so the tuck is paying for nothing and
+	# costing a great deal: the bedroom camera looks DOWN on a 0.78 m child, so
+	# six degrees of tuck is most of the expression hidden behind a forehead.
+	# Rendered at +6, at +2 and at -5; -5 is the only one where you can see what
+	# he is feeling, and a hungry toddler looks UP at the person who feeds it.
+	_bone(animation, skeleton, prefix, NECK, [[0.0, [[NOD, -2.0]]]])
 	_bone(animation, skeleton, prefix, HEAD, [
-		[0.0, [[NOD, 3.0], [TURN, -7.0], [TILT, 4.0]]],
-		[0.4, [[NOD, 4.0], [TURN, 7.0], [TILT, -4.0]]],
-		[0.9, [[NOD, 3.0], [TURN, -6.0], [TILT, 4.0]]],
-		[1.5, [[NOD, 3.0], [TURN, -7.0], [TILT, 4.0]]]])
+		[0.0, [[NOD, -5.0], [TURN, -14.0], [TILT, 8.0]]],
+		[0.4, [[NOD, -4.0], [TURN, 14.0], [TILT, -8.0]]],
+		[0.9, [[NOD, -5.0], [TURN, -12.0], [TILT, 8.0]]],
+		[1.5, [[NOD, -5.0], [TURN, -14.0], [TILT, 8.0]]]])
 
 	# Shoulders up around the ears, both hands held in front of the TUMMY.
 	#
-	# They were at the chin in the first pass and had to come down, for a reason
+	# They were at the chin in an earlier pass and had to come down, for a reason
 	# that is only visible with both clips side by side: hands-at-the-chin is
 	# almost exactly `celebrate`'s silhouette, and the two states a child most
 	# needs to tell apart -- "I need something" and "thank you" -- read the same
 	# in a still frame. Hands low and drawn in also happens to be what a hungry
-	# toddler does, so the readable answer is the truthful one.
+	# toddler does, so the readable answer is the truthful one. Raising the
+	# amplitude does not change that: the elbows now fold far enough to be an
+	# unmistakable shape, and the hands still stop at the tummy.
+	#
+	# The inward `TILT` is the one number here that had to come back DOWN after a
+	# render. At 19 on the arm and 34 on the forearm the hands cross far enough
+	# over the belly that from the three-quarter angle the attention turn puts
+	# him at, the far hand pushes through his own hip and the near one lands on
+	# his cheek. Hands in FRONT of the tummy, not across it.
 	for side: int in [-1, 1]:
 		_bone(animation, skeleton, prefix, _shoulder(side), [
-			[0.0, [[TILT, -side * 7.0]]],
-			[0.75, [[TILT, -side * 10.0]]],
-			[1.5, [[TILT, -side * 7.0]]]])
+			[0.0, [[TILT, -side * 10.0]]],
+			[0.75, [[TILT, -side * 14.0]]],
+			[1.5, [[TILT, -side * 10.0]]]])
 		_bone(animation, skeleton, prefix, _arm(side), [
-			[0.0, [[NOD, -20.0], [TILT, side * 7.0]]],
-			[0.75, [[NOD, -25.0], [TILT, side * 10.0]]],
-			[1.5, [[NOD, -20.0], [TILT, side * 7.0]]]])
+			[0.0, [[NOD, -32.0], [TILT, side * 9.0]]],
+			[0.75, [[NOD, -39.0], [TILT, side * 12.0]]],
+			[1.5, [[NOD, -32.0], [TILT, side * 9.0]]]])
 		_bone(animation, skeleton, prefix, _forearm(side), [
-			[0.0, [[NOD, -44.0], [TILT, side * 22.0]]],
-			[0.75, [[NOD, -50.0], [TILT, side * 25.0]]],
-			[1.5, [[NOD, -44.0], [TILT, side * 22.0]]]])
-		_bone(animation, skeleton, prefix, _hand(side), [[0.0, [[NOD, -12.0]]]])
+			[0.0, [[NOD, -62.0], [TILT, side * 20.0]]],
+			[0.75, [[NOD, -70.0], [TILT, side * 23.0]]],
+			[1.5, [[NOD, -62.0], [TILT, side * 20.0]]]])
+		_bone(animation, skeleton, prefix, _hand(side), [[0.0, [[NOD, -18.0]]]])
 
 	_rest_the_others(animation, skeleton, prefix)
 	return animation
@@ -302,41 +399,68 @@ static func _fuss(skeleton: Skeleton3D, prefix: String) -> Animation:
 
 ## **Being fed.** Right hand up to the mouth, head dipped a little to meet it,
 ## two small chews, hand down. One-shot: it is an act, not a state.
+##
+## **The reach was aimed at the wrong place, and then it could not get there.**
+##
+## The first pass had the hand stop at chest height and it read as a shrug
+## (`docs/shots/bunny_eating_near_before.png`). Raising it by eye made it worse
+## -- the arm went out sideways -- so the angles below were SOLVED instead:
+## forward kinematics down `Hips -> ... -> RightHand`, using this file's own
+## `_bone_pose()`, searched over the four angles for the pose that gets the hand
+## closest to the mouth socket.
+##
+## **That search turned up a fact about the model worth writing down: this
+## character cannot reach its own mouth.** The shoulder-to-mouth distance is
+## 41.7 bone units and the whole arm, hand socket included, is 33. It is the
+## chibi head that does it -- 1:3.5 head-to-height, per
+## `CHARACTER_AGE_STAGES.md` -- and no keyframe fixes it. So the clip aims for
+## the mouth and stops where the arm stops: hand at chin height, 12 units off
+## centre, in front of the face. The head then dips the last little way, which
+## is what the original comment always claimed it was doing.
+##
+## The elbow goes OUT while the forearm comes IN, which looks odd written down
+## and is exactly how a small child holds something up to its face.
 static func _eat(skeleton: Skeleton3D, prefix: String) -> Animation:
 	var animation: Animation = _once(2.0)
 
+	# The leading hand. `-side` on the arm is outward, `+side` on the forearm is
+	# inward across the face -- see the sign table in the class doc.
 	_bone(animation, skeleton, prefix, _arm(1), [
 		[0.0, [[NOD, -2.0], [TILT, 4.0]]],
-		[0.5, [[NOD, -34.0], [TILT, 14.0]]],
-		[1.5, [[NOD, -36.0], [TILT, 15.0]]],
+		[0.5, [[NOD, -90.0], [TILT, -32.0]]],
+		[1.5, [[NOD, -94.0], [TILT, -34.0]]],
 		[2.0, [[NOD, -2.0], [TILT, 4.0]]]])
 	_bone(animation, skeleton, prefix, _forearm(1), [
-		[0.0, [[NOD, -6.0]]], [0.5, [[NOD, -76.0], [TILT, 22.0]]],
-		[1.5, [[NOD, -80.0], [TILT, 22.0]]], [2.0, [[NOD, -6.0]]]])
+		[0.0, [[NOD, -6.0]]], [0.5, [[NOD, -32.0], [TILT, 46.0]]],
+		[1.5, [[NOD, -34.0], [TILT, 48.0]]], [2.0, [[NOD, -6.0]]]])
 	# The other hand comes half way up too. Not symmetry for its own sake: the
 	# bedroom camera can be on either side of Bunny, and a one-armed reach is
 	# invisible from the wrong one -- which is exactly how the first render of
 	# this clip looked, a child apparently doing nothing at all.
 	_bone(animation, skeleton, prefix, _arm(-1), [
 		[0.0, [[NOD, -3.0], [TILT, -4.0]]],
-		[0.6, [[NOD, -20.0], [TILT, -8.0]]],
-		[1.5, [[NOD, -22.0], [TILT, -8.0]]],
+		[0.6, [[NOD, -54.0], [TILT, 20.0]]],
+		[1.5, [[NOD, -58.0], [TILT, 22.0]]],
 		[2.0, [[NOD, -3.0], [TILT, -4.0]]]])
 	_bone(animation, skeleton, prefix, _forearm(-1), [
-		[0.0, [[NOD, -8.0]]], [0.6, [[NOD, -46.0], [TILT, -12.0]]],
-		[1.5, [[NOD, -48.0], [TILT, -12.0]]], [2.0, [[NOD, -8.0]]]])
+		[0.0, [[NOD, -8.0]]], [0.6, [[NOD, -40.0], [TILT, -34.0]]],
+		[1.5, [[NOD, -42.0], [TILT, -36.0]]], [2.0, [[NOD, -8.0]]]])
 
 	# The chew. There is no jaw bone, so this is the head bobbing on the neck --
 	# which is what a chewing toddler's head does anyway, and is the only thing
 	# this rig can honestly show. It is NOT a mouth opening.
-	_bone(animation, skeleton, prefix, NECK, [[0.0, [[NOD, 2.0]]]])
+	#
+	# The bob is small, and smaller than the first pass's, for the reason the
+	# fuss's chin tuck shrank: the camera is above him and the face now carries
+	# a repainted mood, so a deep dip trades an expression for a forehead.
+	_bone(animation, skeleton, prefix, NECK, [[0.0, [[NOD, 1.0]]]])
 	_bone(animation, skeleton, prefix, HEAD, [
-		[0.0, [[NOD, 0.0]]], [0.5, [[NOD, 7.0]]], [0.75, [[NOD, 2.0]]],
-		[1.0, [[NOD, 7.0]]], [1.25, [[NOD, 2.0]]], [1.5, [[NOD, 6.0]]],
+		[0.0, [[NOD, 0.0]]], [0.5, [[NOD, 5.0]]], [0.75, [[NOD, 0.0]]],
+		[1.0, [[NOD, 5.0]]], [1.25, [[NOD, 0.0]]], [1.5, [[NOD, 4.0]]],
 		[2.0, [[NOD, 0.0]]]])
 	_bone(animation, skeleton, prefix, SPINE_TOP, [
-		[0.0, [[NOD, 0.0]]], [0.6, [[NOD, 3.0]]], [1.5, [[NOD, 3.0]]], [2.0, [[NOD, 0.0]]]])
-	_hips(animation, skeleton, prefix, [[0.0, [0.0, []]], [0.9, [0.4, []]], [2.0, [0.0, []]]])
+		[0.0, [[NOD, 0.0]]], [0.6, [[NOD, 5.0]]], [1.5, [[NOD, 5.0]]], [2.0, [[NOD, 0.0]]]])
+	_hips(animation, skeleton, prefix, [[0.0, [0.0, []]], [0.9, [0.6, []]], [2.0, [0.0, []]]])
 
 	_rest_the_others(animation, skeleton, prefix)
 	return animation
@@ -348,26 +472,31 @@ static func _eat(skeleton: Skeleton3D, prefix: String) -> Animation:
 static func _drink(skeleton: Skeleton3D, prefix: String) -> Animation:
 	var animation: Animation = _once(2.2)
 
+	# Both hands, to the same solved reach `_eat()` uses on one -- see its doc for
+	# why the elbow goes out while the forearm comes in, and for the measurement
+	# that says this character's arms cannot reach its own mouth.
 	for side: int in [-1, 1]:
 		_bone(animation, skeleton, prefix, _arm(side), [
 			[0.0, [[NOD, -2.0], [TILT, side * 4.0]]],
-			[0.55, [[NOD, -32.0], [TILT, side * 12.0]]],
-			[1.7, [[NOD, -34.0], [TILT, side * 13.0]]],
+			[0.55, [[NOD, -84.0], [TILT, -side * 30.0]]],
+			[1.7, [[NOD, -88.0], [TILT, -side * 32.0]]],
 			[2.2, [[NOD, -2.0], [TILT, side * 4.0]]]])
 		_bone(animation, skeleton, prefix, _forearm(side), [
 			[0.0, [[NOD, -6.0]]],
-			[0.55, [[NOD, -74.0], [TILT, side * 20.0]]],
-			[1.7, [[NOD, -78.0], [TILT, side * 20.0]]],
+			[0.55, [[NOD, -38.0], [TILT, side * 46.0]]],
+			[1.7, [[NOD, -40.0], [TILT, side * 48.0]]],
 			[2.2, [[NOD, -6.0]]]])
 
-	# Negative NOD is chin up: the head tips back over the bottle.
+	# Negative NOD is chin up: the head tips back over the bottle. This is the
+	# ONE cue that separates drinking from eating at a glance -- `eat` dips the
+	# chin DOWN by the same sort of angle -- so it is worth being generous with.
 	_bone(animation, skeleton, prefix, NECK, [
-		[0.0, [[NOD, 0.0]]], [0.65, [[NOD, -6.0]]], [1.7, [[NOD, -7.0]]], [2.2, [[NOD, 0.0]]]])
+		[0.0, [[NOD, 0.0]]], [0.65, [[NOD, -9.0]]], [1.7, [[NOD, -10.0]]], [2.2, [[NOD, 0.0]]]])
 	_bone(animation, skeleton, prefix, HEAD, [
-		[0.0, [[NOD, 0.0]]], [0.65, [[NOD, -11.0]]], [1.7, [[NOD, -13.0]]], [2.2, [[NOD, 0.0]]]])
+		[0.0, [[NOD, 0.0]]], [0.65, [[NOD, -17.0]]], [1.7, [[NOD, -20.0]]], [2.2, [[NOD, 0.0]]]])
 	_bone(animation, skeleton, prefix, SPINE_TOP, [
-		[0.0, [[NOD, 0.0]]], [0.65, [[NOD, -3.0]]], [1.7, [[NOD, -3.0]]], [2.2, [[NOD, 0.0]]]])
-	_hips(animation, skeleton, prefix, [[0.0, [0.0, []]], [1.1, [0.5, []]], [2.2, [0.0, []]]])
+		[0.0, [[NOD, 0.0]]], [0.65, [[NOD, -5.0]]], [1.7, [[NOD, -5.0]]], [2.2, [[NOD, 0.0]]]])
+	_hips(animation, skeleton, prefix, [[0.0, [0.0, []]], [1.1, [0.8, []]], [2.2, [0.0, []]]])
 
 	_rest_the_others(animation, skeleton, prefix)
 	return animation
@@ -396,17 +525,25 @@ static func _celebrate(skeleton: Skeleton3D, prefix: String) -> Animation:
 		# A forward reach with a bent elbow stays inside the range the weights
 		# survive, and it is the gesture a real toddler makes at the person who
 		# just helped them: arms up, pick me up.
+		# **Raised from -62 to -84 on 2026-09-20.** At -62 the hands come up only
+		# to hip height and `docs/shots/bunny_happy_near_before.png` reads as a
+		# shrug rather than as "pick me up". -84 is a near-vertical FORWARD raise,
+		# which is inside what the weights survive -- the tearing the earlier pass
+		# hit was a LATERAL raise (`TILT`), and the lateral component here is held
+		# at 30, below the 64 that first folded badly.
 		_bone(animation, skeleton, prefix, _arm(side), [
 			[0.0, [[NOD, -2.0], [TILT, -side * 6.0]]],
-			[0.35, [[NOD, -56.0], [TILT, -side * 32.0]]],
-			[0.9, [[NOD, -62.0], [TILT, -side * 36.0]]],
-			[1.2, [[NOD, -56.0], [TILT, -side * 32.0]]],
+			[0.35, [[NOD, -78.0], [TILT, -side * 26.0]]],
+			[0.9, [[NOD, -84.0], [TILT, -side * 30.0]]],
+			[1.2, [[NOD, -78.0], [TILT, -side * 26.0]]],
 			[1.8, [[NOD, -2.0], [TILT, -side * 6.0]]]])
 		# Only a light elbow bend. Folding it to -56 put both hands over his own
-		# face, which is peekaboo, not delight.
+		# face, which is peekaboo, not delight -- and with the shoulder now 22
+		# degrees higher there is even less room before that happens, so the
+		# elbow OPENS here rather than closing.
 		_bone(animation, skeleton, prefix, _forearm(side), [
-			[0.0, [[NOD, -6.0]]], [0.35, [[NOD, -18.0], [TILT, -side * 12.0]]],
-			[1.2, [[NOD, -22.0], [TILT, -side * 14.0]]], [1.8, [[NOD, -6.0]]]])
+			[0.0, [[NOD, -6.0]]], [0.35, [[NOD, -14.0], [TILT, -side * 10.0]]],
+			[1.2, [[NOD, -18.0], [TILT, -side * 12.0]]], [1.8, [[NOD, -6.0]]]])
 
 	# Chin UP, which is the other half of telling `celebrate` from `fuss` at a
 	# glance: one looks at you, the other looks at the floor.
@@ -420,11 +557,116 @@ static func _celebrate(skeleton: Skeleton3D, prefix: String) -> Animation:
 	_bone(animation, skeleton, prefix, SPINE_TOP, [
 		[0.0, [[NOD, 0.0]]], [0.35, [[NOD, -4.0]]], [1.2, [[NOD, -4.0]]], [1.8, [[NOD, 0.0]]]])
 
-	# Two hops. 1.6 bone units is ~7 mm of lift -- a bounce on the spot, not a
-	# jump, because the feet are not animated and must not leave the floor.
+	# Two hops. 2.8 bone units is ~13 mm of lift -- still a bounce on the spot
+	# and not a jump, because the feet are not animated and must not leave the
+	# floor; the knees below absorb the rest so the lift does not read as the
+	# whole child being slid upward.
 	_hips(animation, skeleton, prefix, [
-		[0.0, [0.0, []]], [0.25, [1.6, []]], [0.5, [0.0, []]],
-		[0.75, [1.4, []]], [1.0, [0.0, []]], [1.8, [0.0, []]]])
+		[0.0, [0.0, []]], [0.25, [2.8, []]], [0.5, [0.0, []]],
+		[0.75, [2.4, []]], [1.0, [0.0, []]], [1.8, [0.0, []]]])
+	for side: int in [-1, 1]:
+		_bone(animation, skeleton, prefix, _thigh(side), [
+			[0.0, [[NOD, -10.0]]], [0.25, [[NOD, 0.0]]], [0.5, [[NOD, -10.0]]],
+			[0.75, [[NOD, -1.0]]], [1.0, [[NOD, -10.0]]], [1.8, [[NOD, -10.0]]]])
+		_bone(animation, skeleton, prefix, _shin(side), [
+			[0.0, [[NOD, 18.0]]], [0.25, [[NOD, 1.0]]], [0.5, [[NOD, 18.0]]],
+			[0.75, [[NOD, 3.0]]], [1.0, [[NOD, 18.0]]], [1.8, [[NOD, 18.0]]]])
+
+	_rest_the_others(animation, skeleton, prefix)
+	return animation
+
+
+## **Asleep on his back -- and this is the clip that removes the last pose cut in
+## the game.**
+##
+## Until now `bedtime` was the one activity that left the rigged model, because
+## "lying down is a whole-body pose no arm animation implies" -- true, and it was
+## the right call while the alternative was inventing one. What it cost is only
+## obvious once it is rendered: `docs/shots/bunny_sleepy_near_before.png` is the
+## unrigged supine export, and it is **not the same child**. Different hair,
+## different nappy, different proportions, a 373,090-triangle statue that cannot
+## breathe. A player watching Bunny go to bed watched Bunny be replaced.
+##
+## A whole-body pose is exactly what a root-bone rotation IS, so it turns out the
+## rig can say this after all:
+##
+##   * `NOD -90` at the hips tips the spine from +Y to -Z: flat on his back, face
+##     to the ceiling. Every bone below the hips comes with it, so this is one
+##     rigid rotation of the whole child and the skin cannot tear on it.
+##   * `TURN 90` then swings him about the vertical so he lies ACROSS the frame
+##     rather than pointing away from a camera that is fixed at +Z. The same
+##     framing decision the unrigged export's own `rotationDeg` was making.
+##   * the hips then TRANSLATE down by their own measured rest height, so his
+##     back is on the floor rather than his body floating at hip level. Derived
+##     from `get_bone_global_rest()`, not typed in -- see `LYING_CLEARANCE`.
+##
+## The rest is what makes it a sleeping child rather than a felled one: knees
+## dropped open the way a baby's are, arms loose and turned out, head rolled to
+## one side, and a slow breath at 5.6 s a cycle -- deliberately slower than the
+## idle's 5.2 s, because the one thing everybody can read across a room is that
+## a sleeping thing breathes more slowly than a waking one.
+##
+## Looping, and a `sleep` name so `character_action_driver.gd` picks it up: the
+## action vocabulary already lists `sleep` as a HOLD posture with `wake` as its
+## release, and `can_play_action("sleep")` starts answering true by itself.
+static func _sleep(skeleton: Skeleton3D, prefix: String) -> Animation:
+	var animation: Animation = _looping(5.6)
+	var lay: Array = [[NOD, -90.0], [TURN, 90.0]]
+
+	# Measured off the rig. The hips sit 50.05 units up on today's skeleton; a
+	# re-rig at a different height still lands because the number is read, never
+	# written down.
+	var hips: int = skeleton.find_bone(HIPS)
+	var drop: float = 0.0
+	if hips != -1:
+		drop = LYING_CLEARANCE - skeleton.get_bone_global_rest(hips).origin.y
+	_hips(animation, skeleton, prefix, [
+		[0.0, [Vector3(0.0, drop, 0.0), lay]],
+		[2.8, [Vector3(0.0, drop + 0.5, 0.0), lay]],
+		[5.6, [Vector3(0.0, drop, 0.0), lay]]])
+
+	# The breath. Three spine bones again, and smaller than the idle's: a
+	# sleeping chest moves, it does not heave.
+	_bone(animation, skeleton, prefix, SPINE_LOW, [
+		[0.0, [[NOD, 1.0]]], [2.8, [[NOD, -0.8]]], [5.6, [[NOD, 1.0]]]])
+	_bone(animation, skeleton, prefix, SPINE_MID, [
+		[0.0, [[NOD, 0.8]]], [2.8, [[NOD, -1.1]]], [5.6, [[NOD, 0.8]]]])
+	_bone(animation, skeleton, prefix, SPINE_TOP, [
+		[0.0, [[NOD, 0.6]]], [2.8, [[NOD, -1.4]]], [5.6, [[NOD, 0.6]]]])
+
+	# Head rolled a LITTLE onto one ear. The axes are always resolved against the
+	# bone's own rest, so once the body is supine `TILT` -- ear to shoulder when
+	# standing -- turns the face sideways in plan view, and `TURN` rolls it about
+	# the head-to-toe axis. Rendered at 13 degrees of tilt and at 4: 13 pointed
+	# the face away from a camera that is above and in front of him, and a
+	# sleeping face nobody can see is the whole feature thrown away.
+	_bone(animation, skeleton, prefix, NECK, [[0.0, [[NOD, 2.0], [TILT, 3.0]]]])
+	_bone(animation, skeleton, prefix, HEAD, [
+		[0.0, [[NOD, 4.0], [TILT, 4.0], [TURN, -8.0]]],
+		[2.8, [[NOD, 5.0], [TILT, 5.0], [TURN, -9.0]]],
+		[5.6, [[NOD, 4.0], [TILT, 4.0], [TURN, -8.0]]]])
+
+	# Arms loose and turned out, elbows softly bent, one a little higher than the
+	# other -- a sleeping child is not symmetrical.
+	for side: int in [-1, 1]:
+		_bone(animation, skeleton, prefix, _shoulder(side), [
+			[0.0, [[TILT, -side * 5.0]]]])
+		_bone(animation, skeleton, prefix, _arm(side), [
+			[0.0, [[NOD, -8.0 + side * 6.0], [TILT, -side * 22.0]]],
+			[2.8, [[NOD, -10.0 + side * 6.0], [TILT, -side * 24.0]]],
+			[5.6, [[NOD, -8.0 + side * 6.0], [TILT, -side * 22.0]]]])
+		_bone(animation, skeleton, prefix, _forearm(side), [
+			[0.0, [[NOD, -30.0 - side * 8.0], [TILT, -side * 10.0]]]])
+		_bone(animation, skeleton, prefix, _hand(side), [[0.0, [[NOD, -10.0]]]])
+
+		# Knees dropped open, and only just. A negative `NOD` on a leg swings it
+		# FORWARD, which once he is on his back means UPWARD -- so the same number
+		# that is a relaxed stance standing up is knees-to-the-ceiling lying down.
+		# 16 rendered as a child doing sit-ups; 7 is a baby asleep.
+		_bone(animation, skeleton, prefix, _thigh(side), [
+			[0.0, [[NOD, -7.0], [TILT, -side * 8.0]]]])
+		_bone(animation, skeleton, prefix, _shin(side), [
+			[0.0, [[NOD, 15.0]]]])
 
 	_rest_the_others(animation, skeleton, prefix)
 	return animation
@@ -473,7 +715,10 @@ static func _bone(animation: Animation, skeleton: Skeleton3D, prefix: String,
 
 ## The hips carry both the breath/bounce (position) and the weight shift
 ## (rotation), so they get their own helper. `keys` is
-## `[[time, [lift_in_bone_units, [[axis, degrees], ...]]], ...]`.
+## `[[time, [offset, [[axis, degrees], ...]]], ...]`, where `offset` is either a
+## plain float -- a vertical lift, which is all most of these clips want -- or a
+## full `Vector3` in bone units for the two that also step sideways (`fuss`) or
+## lay the whole child down (`sleep`).
 static func _hips(animation: Animation, skeleton: Skeleton3D, prefix: String,
 		keys: Array) -> void:
 	var index: int = skeleton.find_bone(HIPS)
@@ -491,8 +736,9 @@ static func _hips(animation: Animation, skeleton: Skeleton3D, prefix: String,
 	for key: Array in keys:
 		var at: float = float(key[0])
 		var spec: Array = key[1] as Array
-		animation.position_track_insert_key(moved, at,
-				rest.origin + Vector3(0.0, float(spec[0]), 0.0))
+		var offset: Vector3 = spec[0] if spec[0] is Vector3 \
+				else Vector3(0.0, float(spec[0]), 0.0)
+		animation.position_track_insert_key(moved, at, rest.origin + offset)
 		animation.rotation_track_insert_key(turned, at,
 				_bone_pose(skeleton, index, spec[1] as Array))
 
@@ -556,3 +802,11 @@ static func _hand(side: int) -> String:
 
 static func _shoulder(side: int) -> String:
 	return SHOULDER_L if side < 0 else SHOULDER_R
+
+
+static func _thigh(side: int) -> String:
+	return THIGH_L if side < 0 else THIGH_R
+
+
+static func _shin(side: int) -> String:
+	return SHIN_L if side < 0 else SHIN_R

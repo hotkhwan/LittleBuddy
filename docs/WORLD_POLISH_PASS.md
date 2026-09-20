@@ -214,6 +214,33 @@ Godot --path game --resolution 1334x750 --script res://tests/shots_world.gd -- p
 
 ## 8. What still looks wrong, honestly
 
+> ### Correction, 2026-09-20 — item 1's lighting diagnosis was wrong, and has been fixed
+>
+> **Item 1 below is left as written, and its second bullet is not true.** It says *"the sun's
+> azimuth puts its X component negative, so the `-X` wall never catches it at all"*. The X
+> component was **+0.623**: the `-X` wall was the **lit** one. The matrix in
+> `house_world.tscn` had been read column-major when `Transform3D(...)` takes it row-major, and
+> the transpose of a rotation is another valid rotation, so nothing errored. Read back live off
+> the running light, the real sun was at elevation **−36.8°** — *below the floor, shining
+> upwards* — which is why every up-facing surface sat at flat ambient and 18.8% of the kitchen
+> frame was clipped to near-white. That, not the ambient colour, was the "milky" look.
+>
+> Item 1's **first** bullet was directionally right and was adopted: ambient is now `#FFEAD5` at
+> 0.52, mixed toward `peach`. The sun is at **+48°, azimuth +61°**, and key energy came *down*
+> 1.12 → 0.61, because five times as much surface now catches it. Clipping is 0.1%.
+>
+> Item 1's last line — *"a ~20° swing would light both side walls unequally rather than one not
+> at all"* — is geometrically impossible. The two side walls have exactly opposite inner normals,
+> so one `dot(normal, toSun)` is the negation of the other: **with one directional light, one
+> side wall is always at pure ambient.** What the azimuth buys is the ratio between the lit side
+> wall and the back wall.
+>
+> Full evidence in `docs/LIGHTING_PASS.md`; the camera/materials follow-up and the measured
+> rejection of lifting the fill further are in `docs/LOOK_PASS.md`. The same wrong reading is
+> still written in `scripts/house/house_layout.gd`'s towel comment.
+>
+> *(Nothing else in this section has been edited.)*
+
 1. **The lighting is unchanged, and it is the biggest remaining gap.** The brief asked for warmth
    and allowed "a warmer light colour, better angle, and ambient/environment tuning". Both the one
    `DirectionalLight3D` and the `WorldEnvironment` live in `scenes/house/house_world.tscn`, which

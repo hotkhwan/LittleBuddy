@@ -32,10 +32,11 @@ extends RefCounted
 ## RARE and tied to a real beat -- the brief's "make transitions deliberate" --
 ## rather than letting a drifting stat flip the mesh mid-step.
 ##
-## **And rarer still since the rig landed.** A pose cut now also costs the
-## character its motion: only the `rigged` export has a skeleton, so every cut
-## away from it is a cut to something that cannot breathe, fuss or be fed. See
-## `pose_for_activity()`, which is down to one such cut.
+## **And there are none left, as of 2026-09-20.** A pose cut also costs the
+## character its motion -- only the `rigged` export has a skeleton -- and, worse,
+## it costs the character its IDENTITY: the three exports are three separate
+## generations and visibly three different babies. `pose_for_activity()` is now
+## down to zero such cuts. See it, and `baby_life_clips.gd::_sleep()`.
 
 const Needs := preload("res://scripts/care/child_needs.gd")
 
@@ -83,18 +84,30 @@ const ACTIVITIES: Array[String] = [
 ## the one the paragraph above always claimed: **a pose-locked export is used only
 ## where it says something the rigged model cannot.**
 ##
-## That leaves exactly one: `sleeping`. Lying supine is a whole-body pose with no
-## clip behind it, and no amount of arm animation implies it. `sitting` and
-## `standing` stay in the vocabulary as the graceful degradation -- a build
-## without the rigged export resolves `rigged` down to `sitting` inside
-## `baby_little_buddy.gd::resolve_pose()`, so this mapping does not need to know
-## which files shipped.
-static func pose_for_activity(activity: String) -> String:
-	match activity:
-		ACTIVITY_BEDTIME:
-			return POSE_SLEEPING
-		_:
-			return POSE_RIGGED
+## **Changed again 2026-09-20: there is now NO activity that leaves the rig.**
+##
+## `bedtime` was the last exception, on the grounds that "lying supine is a
+## whole-body pose with no clip behind it, and no amount of arm animation implies
+## it". The first half was right and the second half was the wrong conclusion: a
+## whole-body pose is precisely what a rotation of the ROOT bone is, and
+## `baby_life_clips.gd::_sleep()` is that rotation plus the hips' own measured
+## rest height as a drop. It is one rigid transform of every bone at once, so the
+## skin cannot tear on it.
+##
+## What the exception actually cost is only visible in a render.
+## `docs/shots/bunny_sleepy_near_before.png` is the `sleeping` export in the
+## shipping bedroom, and **it is not the same child**: different hair, different
+## nappy, different proportions, 373,090 triangles, no skeleton, no breath. Going
+## to bed replaced Bunny with somebody else, and nothing in the code said so
+## because "a pose cut" sounds like a camera term.
+##
+## `sitting`, `standing` and `sleeping` stay in the vocabulary as the graceful
+## degradation: a build without the rigged export resolves `rigged` down through
+## `baby_little_buddy.gd::POSE_FALLBACK_ORDER`, so this mapping still does not
+## need to know which files shipped. Nothing in the game selects one on purpose
+## any more, and `test_child_needs.gd` now asserts that.
+static func pose_for_activity(_activity: String) -> String:
+	return POSE_RIGGED
 
 
 ## The activity a need implies when the caregiver has not started one. Only used

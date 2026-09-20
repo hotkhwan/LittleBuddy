@@ -205,9 +205,19 @@ func _on_openness_changed(station_id: String, open: bool) -> void:
 func _refresh() -> void:
 	if _state == null or _items_root == null:
 		return
+	# DETACHED first, then freed. `queue_free()` alone leaves the node parented
+	# until the end of the frame, so the replacement built two lines below finds
+	# its own name already taken and Godot renames it -- to `@MeshInstance3D@25`,
+	# not to `Item_bowl2`. The mesh still draws, which is why this was invisible:
+	# the kitchen looked right and every one of its nodes had lost its name, so
+	# anything that looks an item up by name (a test, a tool, a future hit test)
+	# found an empty room while the render showed a bowl on the table. Found
+	# exactly that way, by `tests/shots_props.gd`.
 	for child: Node in _items_root.get_children():
+		_items_root.remove_child(child)
 		child.queue_free()
 	for child: Node in _hand_root.get_children():
+		_hand_root.remove_child(child)
 		child.queue_free()
 
 	for station_id: Variant in Rules.STATIONS.keys():
@@ -384,43 +394,83 @@ func _find_carrier() -> Node3D:
 
 
 # ---------------------------------------------------------------------------
-# Item meshes -- five shapes, because five silhouettes are five words
+# Item meshes -- one silhouette per word
 # ---------------------------------------------------------------------------
 
-## ART_BIBLE section 6: an object must be recognisable by outline alone. A child who
+## HOW AN ITEM IS DRAWN, by id -- which is NOT the same question as what it is.
+##
+## `kitchen_items.gd` is read-only data and it is right: a banana and a spoon are
+## both `flat`, because both lie down and both are longer than they are tall. It
+## is a correct answer to "what class of thing is this", and it is not enough to
+## DRAW one. Taken literally -- which is what this file used to do -- `flat`
+## produced one rounded lozenge for both, so a banana and a spoon were the same
+## outline in two colours, 14 cm against 13 cm. ART_BIBLE §6 forbids exactly that
+## ("**One object teaches one word. Two nouns must never share a shape**"), and it
+## is a teaching bug rather than a taste one: a child asked for the spoon has no
+## way to know which lozenge is meant. The same held for the three bowls, which
+## were one vessel in three interior colours, and for the two bottles.
+##
+## So the SHAPE stays the class and this table names the FORM -- the drawing. An
+## id with no row here falls back to its shape, so a new ingredient still appears
+## the day it is added to the data, as one of the five generic silhouettes, and
+## can be given a form of its own later without anything else changing.
+const ITEM_FORM: Dictionary = {
+	"apple": "apple",
+	"banana": "banana",
+	"bottle": "bottle",
+	"bottleOfMilk": "milkBottle",
+	"bowl": "bowl",
+	"spoon": "spoon",
+	"mashedBanana": "mash",
+	"fruitBowl": "fruitDish",
+}
+
+## The banana's curve, as an arc: centre-line radius, how wide the fruit is at
+## its middle, how much of the circle it covers, and how far the two tips taper
+## in. A banana is the one food in the kitchen whose whole identity is a curve.
+const BANANA_RADIUS: float = 0.82
+const BANANA_WIDTH: float = 0.36
+const BANANA_ARC_DEGREES: float = 62.0
+const BANANA_TIP_TAPER: float = 0.40
+const BANANA_STEPS: int = 7
+
+
+## ART_BIBLE §6: an object must be recognisable by outline alone. A child who
 ## cannot tell the bowl from the apple cannot be asked for either by name, so the
-## shapes are deliberately unalike rather than five tinted spheres.
+## forms are deliberately unalike rather than eight tinted blobs.
 func _make_item(item_id: String, at: Vector3, draw_scale: float = 1.0) -> MeshInstance3D:
 	var size: float = Items.size_for(item_id)
 	var color: Color = Items.color_for(item_id)
 	var tool: SurfaceTool = Kit.begin()
 
-	match Items.shape_for(item_id):
-		"ball":
-			Kit.box(tool, Kit.at(Vector3(0.0, size, 0.0)),
-					Vector3(size * 2.0, size * 2.0, size * 2.0), color, size * 0.9, 3)
-			# A stalk, so an apple is not a ball.
-			Kit.cylinder(tool, Kit.at(Vector3(0.0, size * 2.1, 0.0)),
-					size * 0.10, size * 0.42, Palette.deep(Palette.MINT), 6)
-		"cup":
-			# A bottle: body, shoulder, teat. Unmistakable against a bowl.
-			Kit.cylinder(tool, Kit.at(Vector3(0.0, size * 0.85, 0.0)),
-					size * 0.62, size * 1.7, color, 12)
-			Kit.cylinder(tool, Kit.at(Vector3(0.0, size * 1.90, 0.0)),
-					size * 0.34, size * 0.40, Palette.SOFT_PINK, 10)
-			Kit.box(tool, Kit.at(Vector3(0.0, size * 2.24, 0.0)),
-					Vector3(size * 0.44, size * 0.30, size * 0.44), Palette.SOFT_PINK, size * 0.14, 2)
+	match String(ITEM_FORM.get(item_id, Items.shape_for(item_id))):
+		"apple":
+			_draw_apple(tool, size, color)
+		"bottle":
+			_draw_bottle(tool, size, color, false)
+		"milkBottle":
+			_draw_bottle(tool, size, color, true)
 		"bowl":
-			Kit.vessel(tool, Kit.at(Vector3(0.0, size * 0.42, 0.0)),
-					Kit.circle(size, 14), size * 0.84, size * 0.16, size * 0.16,
-					Palette.CREAM, color)
+			_draw_bowl(tool, size, color)
+		"mash":
+			_draw_dish(tool, size, color, false)
+		"fruitDish":
+			_draw_dish(tool, size, color, true)
+		"banana":
+			_draw_banana(tool, size, color)
+		"spoon":
+			_draw_spoon(tool, size, color)
+		# -- The five generic silhouettes, for an item with no form of its own --
+		"ball":
+			_draw_apple(tool, size, color)
+		"cup":
+			_draw_bottle(tool, size, color, false)
 		"flat":
-			# A banana or a spoon: long, low and curved-ended.
 			Kit.plate(tool, Kit.at(Vector3(0.0, size * 0.18, 0.0)),
-					Kit.rounded_rect(Vector2(size * 1.9, size * 0.72), size * 0.34, 4),
-					size * 0.34, color)
+					Kit.rounded_rect(Vector2(size * 1.9, size * 0.72), size * 0.34, 3),
+					size * 0.36, color)
 		_:
-			Kit.box(tool, Kit.at(Vector3(0.0, size, 0.0)),
+			Kit.box(tool, Kit.at(Vector3(0.0, size * 0.8, 0.0)),
 					Vector3(size * 1.6, size * 1.6, size * 1.6), color, size * 0.2, 2)
 
 	var node := MeshInstance3D.new()
@@ -430,6 +480,193 @@ func _make_item(item_id: String, at: Vector3, draw_scale: float = 1.0) -> MeshIn
 	node.position = at
 	node.scale = Vector3.ONE * draw_scale
 	return node
+
+
+## -- The forms ----------------------------------------------------------------
+##
+## Every one of these is authored STANDING ON ITS OWN ORIGIN (§6, "pivot at base
+## centre"), which is what lets `_anchor()` put a thing on a surface by naming the
+## surface, and what `HAND_BONE_OFFSET` compensates for when the surface is a
+## hand. `test_kitchen_view_placement.gd` asserts it for every id.
+##
+## Colours come from the item's own `color` and the two steps §3 allows
+## (`light()` 45% toward cream, `deep()` 22% toward ink) or from the seven
+## tokens. Nothing here invents a value, and nothing is darkened by value alone.
+
+## An apple: a slightly squashed ball, a stalk and ONE leaf.
+##
+## The leaf is the whole change. Before this the apple was a sphere with a short
+## mint pin on top, and cold, at the distance the kitchen is really seen from, it
+## read as a pink ball -- which matters, because `ball` is a word this game
+## teaches elsewhere. A leaf is 30 triangles and it is the difference between
+## "apple" and "a round thing".
+func _draw_apple(tool: SurfaceTool, size: float, color: Color) -> void:
+	# Wider than it is tall, which is the proportion that says fruit rather than
+	# ball, and cheaper than the 3-step rounded box this replaces.
+	Kit.sphere(tool, Transform3D(
+			Basis.from_scale(Vector3(1.0, 0.86, 1.0)), Vector3(0.0, size * 0.86, 0.0)),
+			size, color, 10, 5)
+	# The dimple the stalk sits in.
+	Kit.cylinder(tool, Kit.at(Vector3(0.0, size * 1.62, 0.0)),
+			size * 0.24, size * 0.08, Palette.deep(color), 8, 0.004)
+	# Stalk: a warm tan, because `deep(peach)` is the palette's wood note and an
+	# apple stalk is a twig.
+	Kit.cylinder(tool, Kit.at_rotated(Vector3(size * 0.04, size * 1.80, 0.0),
+			Vector3(0.0, 0.0, -9.0)), size * 0.075, size * 0.40,
+			Palette.deep(Palette.PEACH), 6, 0.005)
+	# Leaf, turned toward the room rather than edge-on to it: the house camera
+	# looks down from the front, and a leaf in profile is a green line.
+	Kit.plate(tool, Kit.at_rotated(Vector3(size * 0.34, size * 1.70, size * 0.18),
+			Vector3(-16.0, -38.0, -30.0)),
+			Kit.rounded_rect(Vector2(size * 0.76, size * 0.34), size * 0.17, 2),
+			size * 0.05, Palette.MINT, 0.004)
+
+
+## A baby bottle: body, shoulder, collar, teat -- and, when it is full, a milk
+## line.
+##
+## `bottle` and `bottleOfMilk` are two different words (`bottle` / `milk`) drawn
+## from one form, and before this they were the same cream cylinder: the item
+## that teaches "milk" looked exactly like the item that teaches "bottle". The
+## fill band is drawn a hair proud of the body in the item's own `deep()` step,
+## so it reads as milk standing in the bottle without inventing a colour and
+## without a transparent surface.
+func _draw_bottle(tool: SurfaceTool, size: float, color: Color, filled: bool) -> void:
+	var body_top: float = size * 1.44
+	Kit.cylinder(tool, Kit.at(Vector3(0.0, body_top * 0.5, 0.0)),
+			size * 0.62, body_top, color, 10, size * 0.16)
+	if filled:
+		var fill: float = body_top * 0.62
+		Kit.cylinder(tool, Kit.at(Vector3(0.0, fill * 0.5, 0.0)),
+				size * 0.645, fill, Palette.deep(color), 10, size * 0.10)
+	# A shoulder, so the bottle is not a tube.
+	Kit.cylinder(tool, Kit.at(Vector3(0.0, body_top + size * 0.11, 0.0)),
+			size * 0.46, size * 0.22, color, 8, size * 0.07)
+	# The collar, and then the teat: the two shapes that say "a baby drinks from
+	# this" rather than "this is a jar".
+	Kit.cylinder(tool, Kit.at(Vector3(0.0, body_top + size * 0.30, 0.0)),
+			size * 0.38, size * 0.16, Palette.SOFT_PINK, 8, size * 0.05)
+	Kit.sphere(tool, Transform3D(
+			Basis.from_scale(Vector3(1.0, 1.45, 1.0)),
+			Vector3(0.0, body_top + size * 0.50, 0.0)),
+			size * 0.21, Palette.SOFT_PINK, 8, 3)
+
+
+## An EMPTY bowl: a foot, a wall and a visible hollow.
+##
+## §6 asks a container to have visible interior depth. It had that already; what
+## it did not have was a base narrower than its rim, and without one a bowl seen
+## from the house camera's three-quarter view is a disc.
+func _draw_bowl(tool: SurfaceTool, size: float, color: Color) -> void:
+	_draw_vessel(tool, size, color, Palette.CREAM)
+
+
+## A dish of FOOD: the same bowl in cream, with the food itself heaped in it.
+##
+## `bowl`, `mashedBanana` and `fruitBowl` were one vessel in three interior
+## colours -- three different words, one shape, which is §6's forbidden case and
+## the reason a child could not be asked for any of them. A prepared dish is now
+## food you can see, in a container that is plainly a container: the bowl is
+## cream (it is not what is being taught), and the item's own colour is the food.
+func _draw_dish(tool: SurfaceTool, size: float, color: Color, chunky: bool) -> void:
+	_draw_vessel(tool, size, Palette.CREAM, Palette.light(color))
+	if chunky:
+		# Whole fruit, three pieces, sitting proud of the rim. Three because one
+		# is a ball in a bowl and two is a pair; three reads as "some fruit".
+		var spots: Array[Vector3] = [
+			Vector3(-size * 0.34, size * 0.94, size * 0.16),
+			Vector3(size * 0.32, size * 0.92, -size * 0.14),
+			Vector3(size * 0.02, size * 1.08, size * 0.30),
+		]
+		var shades: Array[Color] = [color, Palette.deep(color), Palette.light(color)]
+		for i: int in range(spots.size()):
+			Kit.sphere(tool, Kit.at(spots[i]), size * 0.30, shades[i], 8, 3)
+		return
+	# Mashed: one soft mound, flattened, the way a spoonful of anything settles.
+	# Wide and low rather than round -- a ball in a bowl reads as fruit in a bowl,
+	# which is the other dish.
+	Kit.sphere(tool, Transform3D(
+			Basis.from_scale(Vector3(1.0, 0.34, 1.0)), Vector3(0.0, size * 0.82, 0.0)),
+			size * 0.66, color, 10, 4)
+
+
+## The vessel both of the above are built on: a foot ring and a walled bowl.
+func _draw_vessel(tool: SurfaceTool, size: float, color: Color, inner: Color) -> void:
+	Kit.cylinder(tool, Kit.at(Vector3(0.0, size * 0.05, 0.0)),
+			size * 0.50, size * 0.10, Palette.deep(color), 8, size * 0.03)
+	Kit.vessel(tool, Kit.at(Vector3(0.0, size * 0.56, 0.0)),
+			Kit.circle(size, 12), size * 0.92, size * 0.15, size * 0.15, color, inner)
+
+
+## A banana: a tapered crescent with two dark tips.
+##
+## Drawn as one extruded outline rather than as a lozenge, because the curve IS
+## the word. The tips are separate because a banana's two brown ends are the
+## second cue, and a child who cannot see the curve from directly above can still
+## see them.
+func _draw_banana(tool: SurfaceTool, size: float, color: Color) -> void:
+	var plan: Dictionary = _banana_plan(size)
+	Kit.plate(tool, Kit.at(Vector3(0.0, size * 0.20, 0.0)),
+			plan["outline"], size * 0.40, color, size * 0.09)
+	for spot: Variant in (plan["tips"] as Array):
+		Kit.box(tool, Kit.at(Vector3((spot as Vector2).x, size * 0.20, (spot as Vector2).y)),
+				Vector3(size * 0.18, size * 0.22, size * 0.18),
+				Palette.deep(color), size * 0.06, 1)
+
+
+## A spoon: a bowl and a handle, which is all ART_BIBLE §6 asks of one, and all
+## a spoon is. It used to be the same lozenge as the banana.
+func _draw_spoon(tool: SurfaceTool, size: float, color: Color) -> void:
+	# The handle, lifted clear of the table the way a real spoon's is.
+	Kit.box(tool, Kit.at(Vector3(-size * 0.52, size * 0.09, 0.0)),
+			Vector3(size * 1.06, size * 0.14, size * 0.20), color, size * 0.06, 1)
+	# The bowl of it.
+	Kit.plate(tool, Kit.at(Vector3(size * 0.58, size * 0.09, 0.0)),
+			Kit.rounded_rect(Vector2(size * 0.80, size * 0.54), size * 0.27, 2),
+			size * 0.18, color, size * 0.045)
+	# And the hollow: a paler inset, because a spoon with a flat top is a paddle.
+	Kit.plate(tool, Kit.at(Vector3(size * 0.58, size * 0.175, 0.0)),
+			Kit.rounded_rect(Vector2(size * 0.56, size * 0.34), size * 0.17, 2),
+			size * 0.04, Palette.light(color), size * 0.01)
+
+
+## The banana's outline in the local XZ plane, centred on its own origin, plus
+## the two tip positions in that same frame.
+##
+## The arc is centred on "straight up" in outline space, which `plate()` maps to
+## +Z, so the fruit lies along X -- the axis the worktop, the shelf and the prep
+## board all spread things along.
+func _banana_plan(size: float) -> Dictionary:
+	var radius: float = size * BANANA_RADIUS
+	var width: float = size * BANANA_WIDTH
+	var half: float = deg_to_rad(BANANA_ARC_DEGREES)
+	var outline := PackedVector2Array()
+	var inner := PackedVector2Array()
+	for step: int in range(BANANA_STEPS + 1):
+		var t: float = -1.0 + 2.0 * float(step) / float(BANANA_STEPS)
+		var angle: float = PI * 0.5 + t * half
+		var taper: float = lerpf(1.0, BANANA_TIP_TAPER, absf(t))
+		var direction := Vector2(cos(angle), sin(angle))
+		outline.append(direction * (radius + width * 0.5 * taper))
+		inner.append(direction * (radius - width * 0.5 * taper))
+	for step: int in range(inner.size() - 1, -1, -1):
+		outline.append(inner[step])
+
+	var lowest := Vector2(INF, INF)
+	var highest := Vector2(-INF, -INF)
+	for point: Vector2 in outline:
+		lowest = Vector2(minf(lowest.x, point.x), minf(lowest.y, point.y))
+		highest = Vector2(maxf(highest.x, point.x), maxf(highest.y, point.y))
+	var centre: Vector2 = (lowest + highest) * 0.5
+
+	var centred := PackedVector2Array()
+	for point: Vector2 in outline:
+		centred.append(point - centre)
+	var tips: Array = []
+	for side: float in [-1.0, 1.0]:
+		var angle: float = PI * 0.5 + side * half
+		tips.append(Vector2(cos(angle), sin(angle)) * radius - centre)
+	return {"outline": centred, "tips": tips}
 
 
 ## -- The inside of a cupboard that opens -----------------------------------------

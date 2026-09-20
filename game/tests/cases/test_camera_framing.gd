@@ -393,8 +393,33 @@ func _test_activity_focus():
 	if float(focus_solution["distance"]) >= float(room_solution["distance"]):
 		failures.append("focusing an activity should move the camera CLOSER (%.2f vs %.2f)"
 				% [focus_solution["distance"], room_solution["distance"]])
-	if Vector3(focus_solution["focus"]).distance_to(target) > 0.0001:
-		failures.append("the focused camera does not look at the activity")
+	# The camera aims slightly IN FRONT of the activity, not at it: see
+	# `camera_framing.FOCUS_LOOKAHEAD`. Pitched down, a box's near edge falls much
+	# further below a centred look-at point than its far edge rises above one, so
+	# aiming dead centre spends distance on the near edge and leaves the top of
+	# the frame empty -- the same arithmetic `HouseLayout.CAMERA_FOCUS_Z` already
+	# corrects for the whole-room shot.
+	#
+	# This is asserted more tightly than "looks at the activity" was, not less:
+	# the exact offset, the direction of it, and -- the part that actually
+	# matters and was never checked -- that the BOX is still centred on the
+	# activity, so nothing the close-up promised to keep on screen has moved.
+	var aim: Vector3 = focus_solution["focus"]
+	var expected_slide: float = 1.2 * Framing.FOCUS_LOOKAHEAD
+	var slide: Vector3 = aim - target
+	if absf(slide.length() - expected_slide) > 0.0001:
+		failures.append("the close-up's look-at point is %.3f m from the activity; "
+				% slide.length() + "FOCUS_LOOKAHEAD says it should be %.3f" % expected_slide)
+	var toward_camera: Vector3 = Framing.view_direction(focused)
+	var horizontal := Vector3(toward_camera.x, 0.0, toward_camera.z).normalized()
+	if slide.normalized().dot(horizontal) < 0.999:
+		failures.append("the close-up's look-at point slid somewhere other than toward the "
+				+ "camera; it must move along the view direction, never sideways or down")
+	var box: Rect2 = focused["bounds"]
+	if box.get_center().distance_to(Vector2(target.x, target.z)) > 0.0001:
+		failures.append("the close-up's BOX moved off the activity. Only the aim may slide: "
+				+ "the bounds are what `camera_focus.gd` guarantees containment against, and "
+				+ "what `room_camera.get_focus_radius()` reports to the HUD.")
 
 	# Same shot: only the tightness may change.
 	var room_basis: Basis = room_solution["transform"].basis

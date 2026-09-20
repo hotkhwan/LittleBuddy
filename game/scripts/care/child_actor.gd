@@ -659,11 +659,20 @@ func _find_caregiver() -> Node3D:
 ## Plays whatever `child_life.gd` says Bunny should be doing, at the pace his
 ## real stats call for.
 func _apply_life() -> void:
-	if _player == null or _state == null:
+	if _state == null:
 		return
 	var stats: Dictionary = _state.call("describe")
 	var wanted: String = Life.clip_for(
 			stats, _activity, _walking, _happy_left, _activity_detail)
+	# **The face first, and outside every early return below.** It is a texture
+	# swap, not a clip, so it is available on a build whose model has no
+	# `AnimationPlayer` at all -- and a Bunny who cannot move but can at least
+	# look unhappy is strictly better than one who can do neither. Putting it
+	# after the `has_animation()` check was the first version, and it meant the
+	# face silently stopped following the mood the moment a clip went missing.
+	_apply_face(wanted)
+	if _player == null:
+		return
 	if not _player.has_animation(wanted):
 		# Honest degradation: a build whose model has no such clip plays nothing
 		# rather than substituting a clip that means something else.
@@ -685,10 +694,37 @@ func _apply_life() -> void:
 const LIFE_BLEND_SEC: float = 0.22
 
 
+## Repaints the face to match the body.
+##
+## **This is not facial animation and must not be described as any.** The rigged
+## model has no facial bones -- the skeleton ends at `headfront` -- and the eyes
+## and mouth are painted into the albedo. `baby_face_moods.gd` redraws those two
+## regions of the texture and the wrapper uploads the result. Four variants, no
+## interpolation, nothing per frame.
+##
+## Derived from the CLIP rather than from the need, so the mouth can never
+## disagree with the arms: there is one decision, in `child_life.gd`, and both
+## halves of the reaction read it.
+func _apply_face(clip: String) -> void:
+	if _wrapper == null or not _wrapper.has_method("set_face_mood"):
+		return
+	_wrapper.call("set_face_mood", Life.face_for(clip))
+
+
 ## The clip Bunny's body is playing, for tests and for the production report.
 func get_life_clip() -> String:
 	build()
 	return _life_clip
+
+
+## The face currently painted on Bunny -- `content`, `unhappy`, `delighted` or
+## `asleep`. `content` is also the honest answer on a build whose texture the
+## mood painter did not recognise, because the shipped face IS the content one.
+func get_face_mood() -> String:
+	build()
+	if _wrapper != null and _wrapper.has_method("get_face_mood"):
+		return String(_wrapper.call("get_face_mood"))
+	return Life.FACE_CONTENT
 
 
 ## How hard Bunny is finding it, 0.0 to 1.0, straight off his real stats.

@@ -227,6 +227,10 @@ const AnimationDriverScript := preload("res://scripts/character/animation_player
 ## The hand-authored reaction clips. See `_author_life_clips()` for why the
 ## keyframes live in their own file rather than in this one.
 const LifeClipsScript := preload("res://scripts/characters/little_buddy/baby_life_clips.gd")
+## The repainted faces. See `_prepare_face()`; the same reasoning applies -- this
+## file's job is filenames, normalisation and the §7 material policy, and the
+## drawing belongs beside the drawing.
+const FaceMoodsScript := preload("res://scripts/characters/little_buddy/baby_face_moods.gd")
 
 ## Emitted when a requested action begins. Emitted even though nothing is shown,
 ## so a caller's await is symmetric with `LittleBuddyCharacter`'s.
@@ -428,6 +432,17 @@ var _view_state: String = FALLBACK_VIEW_STATE
 var _driver: RefCounted = null
 var _pending_action: String = ""
 var _built: bool = false
+
+## -- The face ---------------------------------------------------------------
+## See `_prepare_face()`. `_face_canvas` is the one working copy of the albedo
+## that is ever uploaded; the moods are small patches blitted into it, so four
+## expressions cost four 80 KB patches rather than four megabyte textures.
+var _face_mood: String = FaceMoodsScript.MOOD_CONTENT
+var _face_canvas: Image = null
+var _face_texture: ImageTexture = null
+var _face_patches: Dictionary = {}
+var _face_rect: Rect2i = Rect2i()
+var _face_material: StandardMaterial3D = null
 
 
 func _ready() -> void:
@@ -886,6 +901,12 @@ func _ensure_pose(pose_name: String) -> bool:
 	var mesh_instance: MeshInstance3D = _find_mesh(instance)
 	_loaded[pose_name] = {"root": holder, "mesh": mesh_instance, "sockets": []}
 	_apply_art_bible_material(mesh_instance)
+	# AFTER the §7 material pass, because the face is repainted onto the surface
+	# OVERRIDE that pass creates -- the imported material and the GLB on disk are
+	# both left exactly as the owner supplied them, for the face as for
+	# everything else.
+	if pose_name == PREFERRED_POSE:
+		_prepare_face(mesh_instance)
 	_normalise(pose_name, holder, oriented, instance as Node3D, mesh_instance)
 	_merge_clips(instance)
 	_author_life_clips(instance)
@@ -1110,6 +1131,132 @@ func _apply_art_bible_material(mesh_instance: MeshInstance3D) -> void:
 		fixed.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 		fixed.emission_enabled = false
 		mesh_instance.set_surface_override_material(surface, fixed)
+
+
+# ---------------------------------------------------------------------------
+# The face
+# ---------------------------------------------------------------------------
+
+## **The one expression route this character has.**
+##
+## There are no facial bones -- the skeleton ends at `headfront`, there is no
+## jaw and no eyelid -- so the face cannot be animated and this file will not
+## pretend it can. What it CAN do is repaint the face region of the albedo, and
+## `baby_face_moods.gd` does exactly that: four variants of one texture,
+## differing only inside the eye and mouth islands.
+##
+## Set up once, here, and then costed at almost nothing:
+##
+##   * ONE extra texture, a working copy of the albedo, which is what gets
+##     uploaded. Four full mood atlases would have been four megabytes of nearly
+##     identical pixels.
+##   * FOUR small patches, ~80 KB each, painted lazily -- a build that never
+##     puts Bunny to bed never pays for the sleeping face.
+##   * NOTHING per frame. A mood change is a blit and a texture upload and
+##     happens a handful of times in a session.
+##
+## It stands down completely, and silently as far as the caller is concerned, if
+## the texture is not the face `baby_face_moods.gd` was measured against -- a
+## re-unwrap, a re-skin, a compressed image it cannot read back. `has_face_moods()`
+## answers honestly and `set_face_mood()` becomes a no-op, which leaves Bunny
+## with the single face he was exported with rather than with a smile painted
+## across his ear.
+func _prepare_face(mesh_instance: MeshInstance3D) -> void:
+	if mesh_instance == null:
+		return
+	var material: StandardMaterial3D = \
+		mesh_instance.get_surface_override_material(0) as StandardMaterial3D
+	if material == null or material.albedo_texture == null:
+		return
+	var source: Image = material.albedo_texture.get_image()
+	if source == null:
+		return
+	if source.is_compressed():
+		# A VRAM-compressed albedo cannot be read back pixel by pixel on every
+		# platform, so decompression is attempted once and a failure simply ends
+		# the feature. Never guessed at, never half-applied.
+		if source.decompress() != OK or source.is_compressed():
+			return
+	if not FaceMoodsScript.can_paint(source):
+		return
+
+	_face_rect = FaceMoodsScript.patch_rect(source)
+	_face_canvas = source.duplicate()
+	_face_texture = ImageTexture.create_from_image(_face_canvas)
+	material.albedo_texture = _face_texture
+	_face_material = material
+	# The resting face is a patch like any other, so going BACK to it is the same
+	# code path as leaving it -- there is no "restore the original" branch that
+	# could rot.
+	_face_patches[FaceMoodsScript.MOOD_CONTENT] = FaceMoodsScript.paint(
+		source, FaceMoodsScript.MOOD_CONTENT)
+	_face_mood = FaceMoodsScript.MOOD_CONTENT
+
+
+## True when this build's albedo is one the mood painter recognised.
+func has_face_moods() -> bool:
+	build()
+	return _face_texture != null
+
+
+## Every mood that could be shown. Empty when the feature stood down, which is
+## the honest answer and the one a test should assert against.
+func available_face_moods() -> Array:
+	build()
+	return FaceMoodsScript.MOODS.duplicate() if has_face_moods() else []
+
+
+## **Repaint Bunny's face.** Returns false for a mood outside the vocabulary or
+## when this build has no repaintable face, and changes nothing in either case.
+##
+## Idempotent: asking for the mood already shown does no work at all, which is
+## what lets `child_actor.gd` call this every time it refreshes the body without
+## having to remember what it asked for last time.
+func set_face_mood(mood: String) -> bool:
+	build()
+	if not FaceMoodsScript.MOODS.has(mood):
+		return false
+	if _face_texture == null:
+		return false
+	if mood == _face_mood:
+		return true
+	if not _face_patches.has(mood):
+		# Painted on first use. `paint()` reads the UNTOUCHED albedo through the
+		# resting patch rather than the canvas, so a mood is never painted on top
+		# of another mood.
+		_face_patches[mood] = FaceMoodsScript.paint(_restored_source(), mood)
+	var patch: Image = _face_patches[mood] as Image
+	if patch == null:
+		return false
+	_face_canvas.blit_rect(patch, Rect2i(Vector2i.ZERO, patch.get_size()), _face_rect.position)
+	# `blit_rect` writes the base level only; without this the character keeps the
+	# PREVIOUS face at every distance except point blank, which is the one
+	# distance this game never uses.
+	if _face_canvas.has_mipmaps():
+		_face_canvas.generate_mipmaps()
+	_face_texture.update(_face_canvas)
+	_face_mood = mood
+	return true
+
+
+## The face currently painted. `content` both when nothing has been asked for and
+## when the feature is unavailable -- in the second case it is literally true:
+## the shipped face is the content one.
+func get_face_mood() -> String:
+	return _face_mood
+
+
+## The albedo as EXPORTED, reassembled from the canvas plus the resting patch.
+##
+## Keeping a second full copy of the source image just to paint from would cost a
+## megabyte for something needed three times in a session; the resting patch is
+## the only region any mood touches, so restoring it restores everything.
+func _restored_source() -> Image:
+	var source: Image = _face_canvas.duplicate()
+	var resting: Image = _face_patches.get(FaceMoodsScript.MOOD_CONTENT) as Image
+	if resting != null:
+		source.blit_rect(resting, Rect2i(Vector2i.ZERO, resting.get_size()), _face_rect.position)
+	return source
 
 
 # ---------------------------------------------------------------------------

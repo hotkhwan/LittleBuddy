@@ -102,6 +102,118 @@ const DEFAULT_ACTIVITY_RADIUS: float = 1.2
 ## a box larger than the minimum still fits from wherever the maths says.
 const FOCUS_MIN_DISTANCE: float = 1.9
 
+## How far the CLOSE-UP's look-at point slides toward the camera, as a fraction
+## of the box's own half-depth.
+##
+## ## Why a close-up needs the same trick the room shot already has
+##
+## `HouseLayout.CAMERA_FOCUS_Z = 0.42` exists because a camera pitched 32 degrees
+## down at the centre of a box spends its distance asymmetrically: the NEAR edge
+## falls a long way below the look-at point while the far edge rises only a
+## little above it, so the near edge binds and the far one is nowhere close.
+## Measured on the real house by `tests/shots_lighting.gd -- frame`, **every shot
+## in this game, in every room, at both shipped aspects, is bound by the
+## VERTICAL constraint** -- the horizontal one is never within 6% of binding. The
+## whole system is a vertical fit, and this asymmetry is the whole of it.
+##
+## The room shot buys that distance back. The close-up did not, and the
+## consequence was not subtle: a `choose` beat composes a 1.88 m box, which
+## fitted from **4.87 m** while the whole-room shot it replaced stood at 4.23 to
+## 4.56 m. The camera "moved in" on the activity by **moving 7 to 15% further
+## out**. With the lookahead it fits from **4.03 m** and is a pull-in again.
+##
+## On the 0.90 m `goAndDo` box the same asymmetry was wasting 0.41 m -- but that
+## shot does not get it, because rendering it showed the slack was not slack:
+## see `CLOSE_UP_SUBJECT_HEIGHT`. It ends up at 2.80 m against 2.77 m, unmoved.
+##
+## 0.21 is not a new taste: it is `CAMERA_FOCUS_Z / 2.0`, the room's own bias
+## divided by the room's own half-depth, so a close-up and the room shot it
+## interrupts are now composed by one rule instead of two. Expressed as a
+## FRACTION rather than a distance because the box's size is the thing that
+## varies -- a 0.9 m box and a 2.2 m one need proportionally different slides,
+## and a fixed metre value would over-slide the small one straight past the
+## clamp.
+##
+## ## What this deliberately does NOT change
+##
+## The BOX. `bounds` stays centred on the point the caller asked for, so
+## everything `camera_focus.gd` guaranteed to be on screen is still on screen
+## (and `room_camera.get_focus_radius()`, which the HUD reads its presentation
+## mode from, reads `bounds` and is therefore untouched). Only where the camera
+## AIMS moves. The near edge of the box sat exactly on the bottom safe-area
+## limit before this change and sits exactly on it after -- that is what "bound
+## by vertical" means -- so no new void appears at the bottom of the frame.
+const FOCUS_LOOKAHEAD: float = 0.21
+
+## How tall the thing standing in a close-up box is assumed to be, in metres
+## above the floor.
+##
+## ## The bug this exists for, found by rendering the close-up and looking at it
+##
+## `DEFAULT_HEADROOM` is 1.0 m and its comment says "the toddler is ~0.85 m".
+## That describes the BABY. The character the child drives is Aliz, whose
+## collision capsule in `scenes/house/house_world.tscn` is **1.5 m tall**, and
+## her hair reaches higher still. The fit therefore believed it had a metre of
+## air above her head when it had 0.12 in normalised device coordinates: at the
+## old 2.77 m standoff the top of her hair already sat at ndc_y **0.88**, past
+## the top safe-area limit of 0.80 and a hand's breadth from the edge of the
+## screen. It survived only because nothing had ever moved the camera in.
+##
+## `FOCUS_LOOKAHEAD` moved the camera in, and the first render cropped the top
+## of her head. The honest repair is not to back the camera off again but to
+## stop the solver believing a false height.
+##
+## **Why not simply raise `DEFAULT_HEADROOM`.** Measured: 1.0 -> 1.55 demands
+## that much air above all FOUR corners of the box, most of which is empty
+## floor, and the far pair then bind. The 0.90 m close-up goes 2.37 m -> **3.26
+## m** -- further out than it was before any of this, with `fillX` falling to
+## 0.44 on a phone. Raising the headroom to fix a cropped head makes the shot
+## wider than the shot that did not crop it.
+##
+## So the subject is named as a POINT instead: one extra fit point, at the box's
+## centre (which is where `camera_focus.frame_points()` centres the extent
+## between the child and the station he is walking to), at this height. It costs
+## distance only when the character would really have been cropped.
+##
+## 1.55 m is `LittleBuddy/CollisionShape3D`'s capsule in
+## `scenes/house/house_world.tscn` -- `height = 1.5`, centred at `y = 0.75`, so
+## it spans the floor to 1.5 m -- plus five centimetres of air. It is held inside
+## the TOP CHROME inset (0.80 of the half-height, not the screen edge), and her
+## hair, measured off the render at **1.66 m above the floor**, then lands just
+## inside the screen with the same margin it has today.
+##
+## ## This constant is a GUARD, not a tightener, and the distinction is the
+## finding
+##
+## Calibrated: at 1.55 m the `goAndDo` close-up solves to **2.80 m** against the
+## 2.77 m it ships at. It does not move the shot. That is the honest result --
+## **the tight close-up cannot be tightened at all.** `FOCUS_LOOKAHEAD` recovers
+## 0.41 m of standoff that the near-bottom corner was wasting, and rendering it
+## showed where all of that 0.41 m was already going: into the 16 cm of Aliz's
+## head that the solver could not see. The first render at 2.37 m cut the top of
+## her hair clean off.
+##
+## So the value of naming her here is not scale. It is that the number is now a
+## constraint instead of a coincidence: before this, "the player character's head
+## is on screen during a close-up" was true only because two unrelated numbers
+## happened to cancel, and the next person to tighten the camera by 15 cm would
+## have cropped her with every test still green.
+##
+## The `choose` close-up is where the pass is actually worth something: its 1.88
+## m box is bound by its own near floor corner, not by her, so it takes the whole
+## of the lookahead -- **4.87 m -> 4.03 m**, and for the first time it is closer
+## than the whole-room shot it interrupts (4.23 to 4.56 m) rather than further
+## out.
+##
+## ## Why not simply raise `DEFAULT_HEADROOM`
+##
+## Measured: 1.0 -> 1.55 demands that much air above all FOUR corners of the box,
+## most of which is empty floor, and the far pair then bind. The 0.90 m close-up
+## goes to **3.26 m** -- wider than it has ever been, with `fillX` falling to
+## 0.44 on a phone. Raising the headroom to protect a head makes the shot wider
+## than the shot that was cropping it.
+const CLOSE_UP_SUBJECT_HEIGHT: float = 1.55
+
 ## Nothing may sit closer to the camera plane than this. Also what stops the
 ## "behind the focus" case: the focus itself sits at `depth == d`, so a positive
 ## distance already puts it in front, and this guards every other point too.
@@ -212,10 +324,23 @@ static func focus_framing(
 	base["bounds"] = Rect2(
 		centre.x - safe_radius, centre.z - safe_radius, safe_radius * 2.0, safe_radius * 2.0
 	)
-	base["focus"] = centre
+	# The box is centred on what the caller asked for; the AIM slides toward the
+	# camera. See `FOCUS_LOOKAHEAD`. Along the view direction's horizontal
+	# component rather than along world `+Z`, so a room that ever authored a yaw
+	# gets the slide in its own forward rather than in the world's.
+	var toward_camera: Vector3 = view_direction(base)
+	var along := Vector3(toward_camera.x, 0.0, toward_camera.z)
+	if along.length() < 0.0001:
+		along = Vector3(0.0, 0.0, 1.0)
+	base["focus"] = centre + along.normalized() * (safe_radius * FOCUS_LOOKAHEAD)
 	# The room's own extra "must be visible" points are a room-scale concern; an
 	# activity close-up deliberately does not have to keep the far wall on screen.
-	base["extraPoints"] = []
+	# What it DOES have to keep on screen is the person standing in it, whom the
+	# generic 1.0 m headroom under-measures by more than half a metre. See
+	# `CLOSE_UP_SUBJECT_HEIGHT`.
+	base["extraPoints"] = [Vector3(
+		centre.x, float(base["floorY"]) + CLOSE_UP_SUBJECT_HEIGHT, centre.z
+	)]
 	# ...and for the same reason it is not held out at the room's own standoff.
 	# See `FOCUS_MIN_DISTANCE`: this one line is the difference between a close-up
 	# and a slightly-less-wide shot.

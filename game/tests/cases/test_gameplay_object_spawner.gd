@@ -36,6 +36,7 @@ func run():
 	failures.append_array(_test_real_node_construction(spawner))
 	failures.append_array(_test_model_visual(spawner))
 	failures.append_array(_test_model_fits_inside_grab_area(spawner))
+	failures.append_array(_test_every_pickup_stands_on_the_floor(spawner))
 	failures.append_array(_test_missing_model_falls_back(spawner))
 	failures.append_array(_test_model_names(spawner))
 	failures.append_array(_test_untextured_model_parts(spawner))
@@ -250,12 +251,26 @@ func _test_model_visual(spawner: GDScript):
 	return failures
 
 
-## The visible mesh must stay INSIDE the grab collider. A visual larger than its
-## touch target would invite a child to aim at something the picker cannot hit.
+## Two rules about where a pickup's art ends up, and both were real defects.
+##
+## 1. **It stands on the object's origin**, x/z centred. It used to be CENTRED on
+##    `VISUAL_CENTRE_Y` instead, so how far a pickup floated was a function of how
+##    tall it was: measured in the real game, a milk carton sat 1 cm into the
+##    floor and a banana hovered 18 cm above it. The equality below is what makes
+##    that impossible to reintroduce quietly -- it is the same assertion as
+##    before, moved from "centre" to "base", and it is strictly tighter, because
+##    it now also pins the height.
+## 2. **It stays inside the grab collider.** A visual larger than its touch target
+##    would invite a child to aim at something the picker cannot hit. Asserted as
+##    real containment of the box rather than as a size comparison, since a shape
+##    standing on y = 0 is no longer concentric with the collider.
 func _test_model_fits_inside_grab_area(spawner: GDScript):
 	var failures: Array = []
 	var grab: float = float(spawner.GRAB_SIZE_M)
-	var centre: Vector3 = Vector3(0.0, float(spawner.VISUAL_CENTRE_Y), 0.0)
+	var half: float = grab * 0.5
+	var box := AABB(
+		Vector3(-half, float(spawner.VISUAL_CENTRE_Y) - half, -half),
+		Vector3(grab, grab, grab))
 
 	for model_name: String in spawner.MODEL_PRESENTATION.keys():
 		var mesh: Mesh = spawner.load_model_mesh(model_name)
@@ -273,13 +288,56 @@ func _test_model_fits_inside_grab_area(spawner: GDScript):
 		var placed: AABB = spawner.model_transform(
 				mesh.get_aabb(), float(presentation["size"]), presentation["rotation"]) * mesh.get_aabb()
 
-		if not placed.get_center().is_equal_approx(centre):
-			failures.append("model '%s' is not centred in its grab collider (centre %s)"
-					% [model_name, str(placed.get_center())])
-		var biggest: float = maxf(placed.size.x, maxf(placed.size.y, placed.size.z))
-		if biggest > grab:
-			failures.append("model '%s' presents at %.3f m, larger than the %.3f m grab collider"
-					% [model_name, biggest, grab])
+		if absf(placed.position.y) > 0.0005:
+			failures.append(("model '%s' does not stand on its own origin: its base is "
+					+ "%+.3f m, which is %.1f cm of daylight under it once the row's "
+					+ "1.8-2.3x scale is applied")
+					% [model_name, placed.position.y, absf(placed.position.y) * 100.0 * 2.0])
+		var flat: Vector2 = Vector2(placed.get_center().x, placed.get_center().z)
+		if flat.length() > 0.0005:
+			failures.append("model '%s' is not centred on its own origin in x/z (%s)"
+					% [model_name, str(flat)])
+		if not box.encloses(placed.grow(-0.0005)):
+			failures.append(("model '%s' presents %s, which does not fit inside the %.2f m "
+					+ "grab collider at %s") % [model_name, str(placed), grab, str(box)])
+	return failures
+
+
+## END TO END: every shipped record, spawned for real, must put its art on the
+## floor -- whichever of the three visual routes it takes.
+##
+## `_test_model_fits_inside_grab_area()` above proves the arithmetic for the
+## models that have a presentation entry. This proves the OBJECTS, including the
+## ones that fall through to a built-in primitive, where the same fault lived
+## separately: a `torus` is 3 cm thick and hovered 8 cm, and a `sphere` 2 cm.
+##
+## The tolerance is a third of a millimetre in the object's own space, which the
+## house stage multiplies by 1.8 to 2.3 -- still under a millimetre on screen.
+func _test_every_pickup_stands_on_the_floor(spawner: GDScript):
+	var failures: Array = []
+	var library_script: GDScript = load(LIBRARY_PATH) as GDScript
+	if library_script == null:
+		return ["could not load %s" % LIBRARY_PATH]
+	var library: Object = library_script.new()
+	library.call("load_all")
+
+	for record: Variant in library.call("get_objects"):
+		var node: Area3D = spawner.spawn(record as Dictionary, "tap")
+		if node == null:
+			failures.append("'%s' spawned nothing" % String((record as Dictionary).get("objectId", "?")))
+			continue
+		var visual: MeshInstance3D = node.get_node_or_null("Visual") as MeshInstance3D
+		if visual == null or visual.mesh == null:
+			failures.append("'%s' spawned no visible mesh"
+					% String((record as Dictionary).get("objectId", "?")))
+			node.free()
+			continue
+		var placed: AABB = visual.transform * visual.mesh.get_aabb()
+		if absf(placed.position.y) > 0.0003:
+			failures.append(("'%s' rests %+.3f m from its own origin; a pickup is laid out by "
+					+ "its base, so that is daylight under it or floor through it")
+					% [String((record as Dictionary).get("objectId", "?")), placed.position.y])
+		node.free()
 	return failures
 
 
