@@ -60,13 +60,17 @@ Feed Bunny → Mission Complete → **Snack Time**.
 
 | # | Do this | PASS looks like | ☐ |
 |---|---|---|---|
-| 1 | Launch, hold landscape | No crash, no black frame, no sideways UI | ☐ |
-| 2 | Listen | **Music now plays**: the Little Days theme on the menu, the I'm Hungry! track in the mission (owner cleared the rights 2026-09-20). Effects and the spoken prompt too. Music stops on mute; it must not restart when Aliz changes room. | ☐ |
+| 1 | Launch, hold landscape | Cream boot image with the logo, then the splash (logo + three dots) hands over to the menu within 3 s. No crash, no sideways UI | ☐ |
+| 1b | Menu | Storybook cottage garden, trees/flowers/clouds gently moving, Aliz and Bunny centred, the Little Days logo on top, four pastel buttons. Tap **Dress Up**: swatches recolour Aliz's bow, Back returns. Tap **Grown-ups**: a gate card with a 3 s hold, Back returns. Nothing freezes | ☐ |
+| 1c | Start | Aliz walks to Bunny, picks him up, carries him to the door, the door opens, a cream curtain, then the game. A tap skips it | ☐ |
+| 2 | Listen | **Music plays**: the Little Days theme on the menu AND in the house (a little quieter), the I'm Hungry! track in the mission. Effects and the spoken prompt too. It must not restart when Aliz changes room or when you go from the menu into the house | ☐ |
 | 3 | Look at Aliz | Pink hair, striped dress, on screen, not in the floor. Her rough hair and chin are already known. | ☐ |
 | 4 | Look at Bunny | A clearly different, smaller character, upright, "I'm hungry, Aliz!" in a cream speech bubble that never covers a face | ☐ |
 | 5 | Read the room signs | KITCHEN / BATHROOM readable from arm's length | ☐ |
 | 6 | Walk, then run | Tap the floor to walk. Push the joystick past its inner ring: she **runs clearly faster** (about 1.5x). Legs match the pace, no sliding | ☐ |
-| 6b | Badges | Near the fridge, a door, the toy box or Bunny a round coloured badge appears (OPEN / ENTER / TAKE / HUG / CARRY). Tapping it acts. It never sits on the joystick, Home or Next | ☐ |
+| 6b | Badges | Near the fridge, a door, the toy box, the wardrobe, the sofa, the bed or Bunny a small round badge appears (OPEN / ENTER / TAKE / HUG / CARRY / SIT / WASH / COOK). Tapping it acts. It never covers the joystick, Home, Next or Bunny's speech bubble | ☐ |
+| 6e | Free Play furniture | Wardrobe doors swing open; toy box lid opens and a carried teddy goes in; carry Bunny to the bed and tap PLACE: he lies down; carry him to the sink and tap WASH: the wash close-up opens; the bathroom and living-room doors show a "Soon! Ask a grown-up" sign and nothing kicks you out | ☐ |
+| 6f | Tap to walk | Tap the floor anywhere, even the edge in front of the room: Aliz walks to the nearest spot and never freezes; one tap = one walk | ☐ |
 | 6c | Carry Bunny | Near Bunny, tap CARRY: she picks him up and holds him in front of her body; walk a few steps; tap PLACE: he stands where you put him. Exactly one Bunny at all times | ☐ |
 | 6d | Carry a toy | TAKE the teddy (or a bottle), see it in her hand, PLACE it on its spot | ☐ |
 | 7 | Camera | Room framed, nothing important off the edge or under the rounded corners | ☐ |
@@ -76,7 +80,9 @@ Feed Bunny → Mission Complete → **Snack Time**.
 | 11 | Feed Bunny | Bottle at his mouth, he reacts, progress visible | ☐ |
 | 12 | Mission complete | Reward shown, Bunny happy and his line is "Thank you, Aliz!" | ☐ |
 | 12b | Home | Tap the round Home button (top right): "Take a break?" card with Continue / Home / Grown-ups. Continue resumes exactly; Home returns to the title and "Continue" brings you back to the same room | ☐ |
-| 12c | Version | Tiny "0.1.0" bottom-right, not under Next or the joystick | ☐ |
+| 12c | Version | Tiny "v0.1.0" bottom-right on the TITLE screen and splash only, never in the rooms | ☐ |
+| 12d | Highchair feeding (Start on a normal profile) | Prompt bar "Give the baby the apple." with the helper line under it. Drag the apple to his mouth: he bites three times with sparkles. Banana: tap to peel first, then drag. Cup: drag up and hold while he drinks. Bring the wrong one: he turns away with a pout, "Try the apple!", the star turns half. Bunny smiles at the end | ☐ |
+| 12e | Grown-ups settings | Opens fast; music and voice sliders change the sound at once; Helper language buttons (Off / ไทย / 中文 / العربية / हिन्दी / 日本語) change the second line under the English immediately; Close top-right and Done at the bottom both leave; scrolling works | ☐ |
 | 13 | Reward once | Stars go up **once**. Leave and come back: they must not go up again | ☐ |
 | 14 | Snack Time | Fridge → banana → counter → spoon → mash → feed | ☐ |
 | 15 | HUD | Text never covers Bunny's face; every word readable | ☐ |
@@ -108,6 +114,6 @@ xcrun devicectl device copy from --device <UDID> \
 |---|---|
 | Date | |
 | Device (iPad / iPhone 14 Pro Max) + OS version | |
-| Passed | ___ / 26 (iPad) · ___ / 28 (iPhone) |
+| Passed | ___ / 33 (iPad) · ___ / 35 (iPhone) |
 | Speech heard "milk"? | ☐ Yes ☐ Unavailable ☐ Accepted a word I did not say |
 | **Ship the Founder Preview to the family?** | ☐ Yes ☐ No ☐ Fix first |
