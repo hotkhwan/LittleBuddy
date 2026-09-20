@@ -652,7 +652,13 @@ func _layout() -> void:
 	var target: Variant = _current.get("target", null)
 	var character: bool = is_character_target(target)
 	var keep_outs: Array = get_keep_out_rects()
+	# A speech line is a keep-out for EVERY badge, not only for a badge about
+	# its speaker: a SIT badge for the bed sat squarely on "I'm hungry, Aliz!"
+	# with Bunny standing on the rug beside it. His bubble first when he is the
+	# target; otherwise any visible bubble in the room.
 	_bubble_rect = _bubble_keep_out(camera, target) if character else Rect2()
+	if _bubble_rect.size.x <= 0.0:
+		_bubble_rect = _any_bubble_keep_out(camera)
 	if _bubble_rect.size.x > 0.0:
 		keep_outs.append(_bubble_rect)
 	var verb: String = String(_current.get("verb", ""))
@@ -722,6 +728,25 @@ func _bubble_keep_out(camera: Camera3D, target: Variant) -> Rect2:
 			else:
 				rect = rect.expand(point)
 	return rect.grow(8.0)
+
+
+## The bubble of any speaking character in the same room as the actor, when the
+## current target is not a character itself. Found through the world's current
+## room so a bubble in the room next door never pushes a badge around.
+func _any_bubble_keep_out(camera: Camera3D) -> Rect2:
+	if camera == null or _world == null:
+		return Rect2()
+	var room: Node = null
+	if _world.has_method("get_current_room"):
+		room = _world.call("get_current_room")
+	if room == null:
+		return Rect2()
+	for child: Node in room.get_children():
+		if child.has_method("get_need_bubble"):
+			var rect: Rect2 = _bubble_keep_out(camera, child)
+			if rect.size.x > 0.0:
+				return rect
+	return Rect2()
 
 
 ## The bubble rect the last layout kept out of, for a harness to assert against.
