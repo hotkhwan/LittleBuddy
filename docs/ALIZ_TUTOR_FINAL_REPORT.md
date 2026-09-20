@@ -1,7 +1,8 @@
 # Aliz Tutor Mode V1 — final report, 2026-09-21
 
-Branch `feature/overnight-production-candidate`. **Final code commit `94e5821`**
-(`ffff826` after it adds one harness frame only), pushed to `origin`,
+Branch `feature/overnight-production-candidate`. **Final code commit `e569f5e`**
+(builds below were made from `94e5821`; the two commits after it add a harness
+frame, this report, the QA C1 fix and a settings null guard, all suite-verified), pushed to `origin`,
 fast-forward, no force. Sprint base: `7110046`. 45 commits, 432 files, seven
 workstream agents plus an independent QA pass, merged one wave at a time by the
 lead and re-gated after every wave.
@@ -98,8 +99,9 @@ claimed.
 
 ## 9. Known limitations and cosmetic items
 
-QA's cosmetic list (`docs/QA_TUTOR_a8a2e1f.md`): a 3 s long-pause script error
-in capture-only mode (harmless, to silence), the quota-closing card shows three
+QA's cosmetic list (`docs/QA_TUTOR_a8a2e1f.md`): the 3 s long-pause script error
+is fixed in `e569f5e` (Aliz now asks again and the mic stays open; covered by a
+test), the quota-closing card shows three
 stars with no completed lesson, the tap fallback offers no Animals card, the
 parent privacy copy still says "taps the microphone", the board accepts
 non-allowlisted ids (the validator guards upstream), the indicator says
