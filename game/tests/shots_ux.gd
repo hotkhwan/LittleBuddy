@@ -246,7 +246,7 @@ func _run_bedroom() -> void:
 ##   <prefix>_bed_bunny       Bunny laid on the bed (bedtime)
 ##   <prefix>_table_bunny     Bunny set at his table spot
 ##   <prefix>_sink_wash       the washFace close-up open from Free Play, Bunny in her arms
-##   <prefix>_locked_sign     the SOON sign on the bathroom door
+##   <prefix>_bathroom_enter  the bathroom door: ENTER (V1 is free; the SOON seam is off)
 func _run_free_play_acts() -> void:
 	_world.call("set_progression_mode", 1)
 	_viewport.add_child(_world)
@@ -394,15 +394,18 @@ func _run_free_play_acts() -> void:
 		aliz.call("put_down_carried")
 		await _settle(0.6)
 
-	# -- The locked door's sign ------------------------------------------------------------
+	# -- The bathroom door: open in V1 --------------------------------------------------------
+	# Little Days V1 is free (owner decision, 2026-09-20): the door that used to
+	# photograph SOON now says ENTER. The seam is exercised with the constant off
+	# in test_freeplay_acts.gd.
 	_world.call("place_in_room", "bedroom", "")
 	await _settle(0.5)
 	_quiet()
 	_stand_at("bedroom.doorToBathroom")
 	await _settle(0.6)
 	_quiet()
-	_expect("SOON", "bedroom.doorToBathroom", "locked_sign")
-	await _shot("%s_locked_sign" % _prefix)
+	_expect("ENTER", "bedroom.doorToBathroom", "bathroom_enter")
+	await _shot("%s_bathroom_enter" % _prefix)
 	_finish()
 
 
@@ -476,9 +479,8 @@ func _stand_at(semantic_id: String) -> void:
 	character.rotation.y = NavMath.yaw_towards(stand, face, character.rotation.y)
 
 
-## A kitchen door that is OPEN to a free-starter profile. The living-room door
-## is locked in Free Play (it shows SOON, which `_locked_sign` photographs), so
-## the ENTER frame uses the door back to the bedroom.
+## A kitchen door. Every door is open in V1; the ENTER frame keeps using the
+## door back to the bedroom so the picture stays comparable with earlier runs.
 func _first_door_id() -> String:
 	var candidates: Array = []
 	for id: Variant in _world.call("get_semantic_target_ids"):
