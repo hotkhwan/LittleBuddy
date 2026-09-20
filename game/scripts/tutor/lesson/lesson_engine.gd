@@ -23,6 +23,7 @@ extends RefCounted
 ##                 speak(result.line)                        # success / encouragement / hint / answer line
 ##                 if result.lessonAction in ["next_question", "complete"]: engine.advance()
 ##                 # "retry" and "give_hint" stay on the same step: listen again
+##                 # Tap fallback (speech off/denied): evaluate(step.expectedAnswers[0])
 ##         engine.save_progress(SaveService)             # cheap; also grants the completion reward once
 ##
 ## ## Retry policy (never a fail state)
