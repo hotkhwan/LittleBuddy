@@ -16,6 +16,23 @@ extends Control
 ## to be the 3D model doing something it cannot. The 3D child is right there
 ## behind the overlay and reacts in the ways it genuinely can (pose, bubble).
 ##
+## ## Except `FEED`, which is the real Bunny
+##
+## The bottle is the one act whose subject can be shown as himself: the rigged
+## runtime has a `drink` clip (two hands, head tipped back) and a `mouth` socket
+## on the head bone, so there is a real face to aim at and a real reaction to
+## see. Drawing a disc over him there did active harm -- the character on the
+## rug and the character being fed did not look like the same child. So `FEED`
+## draws NO face. The director frames a portrait of Bunny (`focus_portrait()`),
+## hands this overlay a way to ask where his mouth is in the world, and the hold
+## target follows that point on screen every frame -- through the drink clip's
+## head-tip, through camera easing, at any viewport. The scrim becomes two
+## bands, top and bottom, so the text stays readable and Bunny stays lit.
+##
+## `MOUTH_OFFSET` remains the fallback for a build with no camera or no socket
+## (a headless test, an unrigged pose), so the gesture can never become
+## impossible.
+##
 ## ## The three acts are different verbs, not one tap counter
 ##
 ## The brief calls this out specifically, so each is a different GESTURE with
@@ -107,6 +124,11 @@ const TOOL_SIZE: float = 96.0
 ## this is the opening of its neck, relative to the same centre.
 const BOTTLE_NECK := Vector2(0.0, -120.0)
 const BOTTLE_SIZE := Vector2(132.0, 210.0)
+## FEED: the two scrim bands. Tall enough for the title and hint at the top and
+## for the child line, the bar and the `Next` button at the bottom; the space
+## between them is Bunny's.
+const BAND_TOP_HEIGHT: float = 176.0
+const BAND_BOTTOM_HEIGHT: float = 196.0
 
 var _kind: String = BRUSH
 var _progress: float = 0.0
@@ -128,6 +150,14 @@ var _fed: float = 0.0
 
 var _face: Control = null
 var _tool: Control = null
+var _scrim: ColorRect = null
+var _band_top: ColorRect = null
+var _band_bottom: ColorRect = null
+## FEED: answers with the world-space `Vector3` of Bunny's mouth, or null.
+var _mouth_provider: Callable = Callable()
+## FEED: the last on-screen mouth target, so drawing and the hold test agree
+## within a frame.
+var _mouth_screen: Vector2 = Vector2.ZERO
 var _bar: ProgressBar = null
 var _title: Label = null
 var _hint: Label = null
@@ -146,12 +176,31 @@ func build() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
-	var scrim := ColorRect.new()
-	scrim.name = "Scrim"
-	scrim.color = Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.42)
-	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(scrim)
+	_scrim = ColorRect.new()
+	_scrim.name = "Scrim"
+	_scrim.color = Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.42)
+	_scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_scrim)
+
+	# FEED only: the world stays visible in the middle, and the two strips of
+	# copy get their own darkening so cream text is never laid on a cream wall.
+	_band_top = ColorRect.new()
+	_band_top.name = "BandTop"
+	_band_top.color = _scrim.color
+	_band_top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_band_top.offset_bottom = BAND_TOP_HEIGHT
+	_band_top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_band_top.visible = false
+	add_child(_band_top)
+	_band_bottom = ColorRect.new()
+	_band_bottom.name = "BandBottom"
+	_band_bottom.color = _scrim.color
+	_band_bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_band_bottom.offset_top = -BAND_BOTTOM_HEIGHT
+	_band_bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_band_bottom.visible = false
+	add_child(_band_bottom)
 
 	_face = Control.new()
 	_face.name = "Face"
@@ -246,8 +295,66 @@ func begin(care_kind: String) -> void:
 	_hint.text = String(copy["hint"])
 	_child_line.text = String(copy["childLine"])
 	_bar.value = 0.0
+	_mouth_screen = Vector2.ZERO
+	var portrait: bool = _kind == FEED
+	if _scrim != null:
+		_scrim.visible = not portrait
+	if _band_top != null:
+		_band_top.visible = portrait
+	if _band_bottom != null:
+		_band_bottom.visible = portrait
 	visible = true
 	_redraw()
+
+
+## FEED: how the overlay finds Bunny's mouth. `provider` returns a world-space
+## `Vector3` (or null when it cannot answer). Set by the director for the
+## duration of the bottle and cleared afterwards; the overlay never holds a
+## reference to the character itself.
+func set_mouth_provider(provider: Callable) -> void:
+	_mouth_provider = provider
+
+
+func clear_mouth_provider() -> void:
+	_mouth_provider = Callable()
+
+
+## Where the bottle has to be held, in this overlay's own coordinates.
+##
+## For `FEED` with a live provider and a camera, that is Bunny's real mouth
+## projected to the screen -- so it is wherever his head actually is this frame.
+## Everything else, and every fallback, is the drawn face's mouth. Public so the
+## smoke test aims at the same point the child does.
+func get_mouth_target() -> Vector2:
+	var centre: Vector2 = size * 0.5
+	if _kind != FEED:
+		return centre + MOUTH_OFFSET
+	var projected: Variant = _project_mouth()
+	if projected is Vector2:
+		_mouth_screen = projected
+		return projected
+	return centre + MOUTH_OFFSET
+
+
+func _project_mouth() -> Variant:
+	if not _mouth_provider.is_valid():
+		return null
+	var world: Variant = _mouth_provider.call()
+	if not (world is Vector3):
+		return null
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return null
+	var camera: Camera3D = viewport.get_camera_3d()
+	if camera == null or camera.is_position_behind(world):
+		return null
+	var on_screen: Vector2 = camera.unproject_position(world)
+	if not (is_finite(on_screen.x) and is_finite(on_screen.y)):
+		return null
+	# Viewport pixels -> this control's local frame. The overlay is a full-rect
+	# child of a CanvasLayer, so this is normally the identity, but it is not
+	# assumed to be.
+	return get_global_transform_with_canvas().affine_inverse() * on_screen
 
 
 func get_care_kind() -> String:
@@ -388,7 +495,7 @@ func apply_hold(delta: float, at: Vector2) -> void:
 			if _foam.size() < 20:
 				_add_foam(centre + BOTTLE_NECK + Vector2(randf_range(-22.0, 22.0), 0.0))
 		FEED:
-			if at.distance_to(centre + MOUTH_OFFSET) <= MOUTH_RADIUS:
+			if at.distance_to(get_mouth_target()) <= MOUTH_RADIUS:
 				_fed = minf(_fed + delta, FEED_SECONDS)
 			else:
 				# Leaks back. Holding the bottle in the wrong place is not feeding.
@@ -405,6 +512,10 @@ func apply_hold(delta: float, at: Vector2) -> void:
 
 
 func _process(delta: float) -> void:
+	if _kind == FEED and not _finished:
+		# The ring sits on a head that is animating and a camera that is easing;
+		# it has to be re-placed whether or not a finger is down.
+		_redraw()
 	if _finished or not _dragging:
 		return
 	apply_hold(delta, _last_pos)
@@ -469,6 +580,9 @@ func _draw_face(_unused: Variant = null) -> void:
 	if _kind == MIX:
 		_draw_bottle(c, o)
 		return
+	if _kind == FEED:
+		_draw_feed_target(c)
+		return
 	c.draw_circle(o, FACE_RADIUS, Color(1.0, 0.886, 0.839))
 	# cheeks
 	c.draw_circle(o + Vector2(-112.0, 40.0), 34.0, Color(1.0, 0.776, 0.776, 0.75))
@@ -490,13 +604,6 @@ func _draw_face(_unused: Variant = null) -> void:
 		# an open mouth with teeth to brush
 		c.draw_circle(mouth, MOUTH_RADIUS * 0.62, Color(0.85, 0.44, 0.44))
 		c.draw_rect(Rect2(mouth + Vector2(-46.0, -26.0), Vector2(92.0, 30.0)), Palette.CREAM, true)
-	elif _kind == FEED:
-		# A round open mouth waiting for the bottle, and a ring that shows where it
-		# has to be held -- the only guidance a child gets, since there is no fail.
-		c.draw_circle(mouth, MOUTH_RADIUS * 0.44, Color(0.85, 0.44, 0.44))
-		c.draw_arc(mouth, MOUTH_RADIUS, 0.0, TAU, 40,
-				Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b,
-						0.5 - 0.3 * _progress), 5.0)
 	else:
 		c.draw_arc(mouth, 44.0, 0.15 * PI, 0.85 * PI, 18, Palette.INK, 8.0)
 
@@ -518,6 +625,46 @@ func _draw_face(_unused: Variant = null) -> void:
 	# BRUSH / WASH: foam
 	for blob: Dictionary in _foam:
 		c.draw_circle(blob["pos"], float(blob["r"]), Color(1.0, 1.0, 1.0, 0.85))
+
+
+## FEED: no face -- Bunny is the face. Only the guidance a child gets, drawn
+## around his REAL mouth: a soft ring that shows where the bottle has to be held
+## (the only cue there is, since there is no fail), which brightens while the
+## bottle is there and shrinks away as he drinks; then a few drops of milk while
+## it flows, and hearts once he is full.
+func _draw_feed_target(c: Control) -> void:
+	var mouth: Vector2 = get_mouth_target() - _face.position
+	if _finished:
+		for i: int in range(3):
+			var at: Vector2 = mouth + Vector2(-54.0 + 54.0 * float(i), -70.0 - 18.0 * float(i % 2))
+			_draw_heart(c, at, 13.0)
+		return
+	var holding: bool = _dragging and _last_pos.distance_to(mouth + _face.position) <= MOUTH_RADIUS
+	var ring_alpha: float = (0.85 if holding else 0.55) * (1.0 - 0.45 * _progress)
+	var ring_radius: float = MOUTH_RADIUS * (1.0 - 0.25 * _progress)
+	# a soft halo first, so the ring reads over a pale face as well as a dark wall
+	c.draw_circle(mouth, ring_radius + 10.0, Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.10))
+	c.draw_arc(mouth, ring_radius, 0.0, TAU, 48,
+			Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, ring_alpha), 6.0)
+	# the filled part of the ring is the progress, so the child sees the drink
+	# happening on Bunny rather than only on the bar at the bottom
+	if _progress > 0.0:
+		c.draw_arc(mouth, ring_radius, -PI * 0.5, -PI * 0.5 + TAU * _progress, 48,
+				Palette.MINT, 8.0)
+	if holding and _fed > 0.0:
+		var t: float = float(Time.get_ticks_msec() % 900) / 900.0
+		for i: int in range(3):
+			var phase: float = fmod(t + float(i) / 3.0, 1.0)
+			var at: Vector2 = mouth + Vector2(-16.0 + 16.0 * float(i), 18.0 + 34.0 * phase)
+			c.draw_circle(at, 5.0 * (1.0 - phase) + 2.0, Color(1.0, 0.988, 0.949, 0.9 * (1.0 - phase)))
+
+
+func _draw_heart(c: Control, at: Vector2, r: float) -> void:
+	c.draw_circle(at + Vector2(-r * 0.55, -r * 0.35), r * 0.62, Palette.SOFT_PINK)
+	c.draw_circle(at + Vector2(r * 0.55, -r * 0.35), r * 0.62, Palette.SOFT_PINK)
+	c.draw_colored_polygon(PackedVector2Array([
+		at + Vector2(-r * 1.12, -r * 0.2), at + Vector2(r * 1.12, -r * 0.2), at + Vector2(0.0, r * 1.05),
+	]), Palette.SOFT_PINK)
 
 
 ## The bottle being filled, standing in for the face during `MIX`. The milk level

@@ -300,8 +300,15 @@ func _play_gesture(overlay: Node, kind: String) -> bool:
 			for i: int in range(24):
 				overlay.call("apply_stroke", centre + Vector2(60.0 if i % 2 == 0 else -60.0, 0.0))
 		"giveBottle":
+			# Aims where the overlay says Bunny's mouth IS -- his projected socket
+			# when the real character and camera are up, the drawn fallback when
+			# they are not -- rather than at a constant, which is the point of the
+			# portrait: the target moves with his head.
 			for _i: int in range(40):
-				overlay.call("apply_hold", 0.1, mouth)
+				var target: Vector2 = mouth
+				if overlay.has_method("get_mouth_target"):
+					target = overlay.call("get_mouth_target")
+				overlay.call("apply_hold", 0.1, target)
 		"brushTeeth":
 			for i: int in range(40):
 				overlay.call("apply_stroke", mouth + Vector2(30.0 if i % 2 == 0 else -30.0, 0.0))

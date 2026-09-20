@@ -214,6 +214,17 @@ const FOCUS_LOOKAHEAD: float = 0.21
 ## than the shot that was cropping it.
 const CLOSE_UP_SUBJECT_HEIGHT: float = 1.55
 
+## The feeding portrait -- see `portrait_framing()`. Half a metre of radius is a
+## toddler's shoulders with a hand's width of air; 1.05 m above the floor clears
+## the top of Bunny's head (0.85 m standing, less when seated) by the same
+## margin `CLOSE_UP_SUBJECT_HEIGHT` gives Aliz; 1.2 m is just under the ~1.3 m
+## that `CAMERA_CLEARANCE` permits at this pitch, so the clearance rule -- not
+## this number -- is what actually decides the standoff.
+const PORTRAIT_RADIUS: float = 0.42
+const PORTRAIT_SUBJECT_HEIGHT: float = 1.05
+const PORTRAIT_MIN_DISTANCE: float = 1.2
+const PORTRAIT_HEADROOM: float = 0.45
+
 ## Nothing may sit closer to the camera plane than this. Also what stops the
 ## "behind the focus" case: the focus itself sits at `depth == d`, so a positive
 ## distance already puts it in front, and this guards every other point too.
@@ -318,6 +329,47 @@ static func normalise_framing(framing: Dictionary) -> Dictionary:
 static func focus_framing(
 	framing: Dictionary, focus: Vector3, radius: float = DEFAULT_ACTIVITY_RADIUS
 ) -> Dictionary:
+	return _fit_framing(framing, focus, radius, CLOSE_UP_SUBJECT_HEIGHT, FOCUS_MIN_DISTANCE)
+
+
+## A PORTRAIT: the same pitch, yaw and clamps as `focus_framing()`, fitted to a
+## box small enough to be one child's head and shoulders.
+##
+## `focus_framing()` is deliberately a two-shot -- it keeps the caregiver's 1.55 m
+## head and a 1.9 m standoff, because every beat it frames has Aliz standing in
+## it. The feeding close-up is the one beat that does not: Aliz is behind the
+## camera holding the bottle, and the subject is a 0.85 m toddler whose head the
+## player has to be able to aim at. Fitting HIM with HER constraints leaves him a
+## third of the frame, which is exactly the shot the flat placeholder face was
+## papering over.
+##
+## `subject_height` is the tallest point that must stay on screen, above the
+## room's floor, and `min_distance` the closest the camera may stand. Both are
+## floors, never targets: a box that needs more air still gets it, and
+## `CAMERA_CLEARANCE` still keeps the camera out of the child's head.
+static func portrait_framing(
+	framing: Dictionary, focus: Vector3, radius: float = PORTRAIT_RADIUS,
+	subject_height: float = PORTRAIT_SUBJECT_HEIGHT, min_distance: float = PORTRAIT_MIN_DISTANCE
+) -> Dictionary:
+	var fitted: Dictionary = _fit_framing(
+		framing, focus, radius,
+		maxf(_number(subject_height, PORTRAIT_SUBJECT_HEIGHT), 0.2),
+		maxf(_number(min_distance, PORTRAIT_MIN_DISTANCE), MIN_DEPTH)
+	)
+	# The room's headroom (1.0 m) is demanded above all FOUR corners of the box,
+	# and on a half-metre box around a toddler's mouth that air -- not the child --
+	# is what binds: measured at 1.80 m with the far-top corner as the binding
+	# point, and Bunny a third of the frame. The subject point already guarantees
+	# the top of his head; the corners only need enough to keep the shot from
+	# composing on his shoes.
+	fitted["headroom"] = minf(float(fitted["headroom"]), PORTRAIT_HEADROOM)
+	return fitted
+
+
+static func _fit_framing(
+	framing: Dictionary, focus: Vector3, radius: float,
+	subject_height: float, min_distance: float
+) -> Dictionary:
 	var base: Dictionary = normalise_framing(framing)
 	var safe_radius: float = maxf(_number(radius, DEFAULT_ACTIVITY_RADIUS), 0.1)
 	var centre: Vector3 = _vec3(focus, base["focus"])
@@ -339,13 +391,13 @@ static func focus_framing(
 	# generic 1.0 m headroom under-measures by more than half a metre. See
 	# `CLOSE_UP_SUBJECT_HEIGHT`.
 	base["extraPoints"] = [Vector3(
-		centre.x, float(base["floorY"]) + CLOSE_UP_SUBJECT_HEIGHT, centre.z
+		centre.x, float(base["floorY"]) + subject_height, centre.z
 	)]
 	# ...and for the same reason it is not held out at the room's own standoff.
 	# See `FOCUS_MIN_DISTANCE`: this one line is the difference between a close-up
 	# and a slightly-less-wide shot.
 	base["minDistance"] = maxf(
-		minf(float(base["minDistance"]), FOCUS_MIN_DISTANCE), MIN_DEPTH
+		minf(float(base["minDistance"]), min_distance), MIN_DEPTH
 	)
 	base["maxDistance"] = maxf(float(base["maxDistance"]), float(base["minDistance"]))
 	return base

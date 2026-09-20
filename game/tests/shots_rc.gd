@@ -94,6 +94,26 @@ func _run() -> void:
 		_fail.append("never reached the feeding close-up; the shot would prove nothing")
 	await _shot("%s_feed" % _prefix)
 
+	# The same beat PLAYED: the bottle held at Bunny's real mouth until the drink
+	# is half done, then finished. Proves the reaction is on the character, not
+	# on a card -- the mid frame has the ring filling on his face, the done frame
+	# his hearts and the completion line, with the camera still on him.
+	var overlay: Node = director.get("_care_overlay")
+	if overlay != null and overlay.has_method("apply_hold") and overlay.has_method("get_mouth_target"):
+		overlay.set("_dragging", true)
+		for _i in range(11):
+			overlay.call("apply_hold", 0.1, overlay.call("get_mouth_target"))
+			overlay.set("_last_pos", overlay.call("get_mouth_target"))
+			await process_frame
+		if float(overlay.call("get_progress")) <= 0.0:
+			_fail.append("holding the bottle at get_mouth_target() fed nothing")
+		await _shot("%s_feed_mid" % _prefix)
+		while not bool(overlay.call("is_finished")):
+			overlay.call("apply_hold", 0.1, overlay.call("get_mouth_target"))
+			await process_frame
+		await _settle(0.6)
+		await _shot("%s_feed_done" % _prefix)
+
 	if _fail.is_empty():
 		print("\nRC SHOTS OK")
 		quit(0)

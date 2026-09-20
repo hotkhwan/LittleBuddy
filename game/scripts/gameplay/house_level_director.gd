@@ -98,6 +98,10 @@ const ACTION_WALK: String = "walk"
 
 ## Air kept around everything a close-up has to hold. See `camera_focus.gd`.
 const FOCUS_MARGIN: float = 0.3
+## The feeding portrait's box: half a metre around Bunny's mouth, and enough air
+## above it for the top of his head plus a hand's width. See `_begin_portrait()`.
+const PORTRAIT_RADIUS: float = 0.42
+const PORTRAIT_HEAD_CLEARANCE: float = 0.30
 
 ## How far the composed shot has to drift before the camera is re-aimed. Below
 ## this the move would be invisible and the solve would be wasted, and the
@@ -164,6 +168,10 @@ var _summary_open: bool = false
 ## in shot when he wanders off mid-task.
 var _focus_on: bool = false
 var _focus_anchor: Variant = null
+## True while the feeding PORTRAIT owns the camera (see `_begin_portrait()`).
+## The per-frame `_track_focus()` re-aim is suspended for exactly that long, or
+## it would pull the camera straight back out to the two-shot.
+var _portrait_on: bool = false
 var _focus_point: Vector3 = Vector3.ZERO
 var _focus_radius: float = 0.0
 
@@ -715,6 +723,12 @@ func _open_care(plan: Dictionary) -> void:
 	# The overlay narrates the act itself -- title, hint, child line, progress --
 	# so the HUD's copy of the same two lines is silenced underneath it.
 	_hud.call("set_narration_covered", true)
+	# ...and so is Bunny's own line: the close-up puts his head, and the 3D label
+	# over it, right behind the overlay's title band.
+	if child != null and child.has_method("set_bubble_suppressed"):
+		child.call("set_bubble_suppressed", true)
+	if kind == "giveBottle":
+		_begin_portrait()
 	_care_overlay.visible = true
 	_care_overlay.call("begin", kind)
 
@@ -724,10 +738,13 @@ func _on_care_completed(care_kind: String) -> void:
 		return
 	if _care_overlay != null:
 		_care_overlay.visible = false
+	_end_portrait()
 	_hud.call("set_narration_covered", false)
 	# The child's REAL stats move, so the need the mission was about actually
 	# goes away rather than a message claiming it did.
 	var child: Node = _find_child_actor()
+	if child != null and child.has_method("set_bubble_suppressed"):
+		child.call("set_bubble_suppressed", false)
 	if child != null and child.has_method("satisfy"):
 		match care_kind:
 			"brushTeeth", "washFace", "dryFace":
@@ -737,6 +754,74 @@ func _on_care_completed(care_kind: String) -> void:
 	if child != null and child.has_method("set_activity") and care_kind != "prepareMilk":
 		child.call("set_activity", "idle")
 	_pending_complete = true
+
+
+## -- The feeding portrait ---------------------------------------------------------
+##
+## The bottle is the only care act performed on Bunny's real face, so it is the
+## only one that puts the camera on him. `focus_portrait()` fits his head and
+## shoulders instead of the two-shot every other beat composes, and the overlay is
+## handed `_mouth_world_point` so its hold target is his actual mouth, projected,
+## every frame. Both are undone the moment the act completes, and `_release_focus()`
+## clears the flag too, so a task that ends any other way cannot leave the camera
+## parked on his nose.
+##
+## Nothing here is required for the act to be playable: with no rig, no socket or
+## no camera, the overlay falls back to its drawn mouth position and the camera
+## stays wherever the beat put it.
+func _begin_portrait() -> void:
+	_portrait_on = false
+	var mouth: Variant = _mouth_world_point()
+	if _care_overlay != null and _care_overlay.has_method("set_mouth_provider"):
+		_care_overlay.call("set_mouth_provider", Callable(self, "_mouth_world_point"))
+	var camera: Object = _room_camera()
+	if camera == null or not camera.has_method("focus_portrait") or not (mouth is Vector3):
+		return
+	var floor_y: float = _room_floor_y(camera)
+	var subject_height: float = maxf(
+		float((mouth as Vector3).y) - floor_y + PORTRAIT_HEAD_CLEARANCE,
+		CameraFocus.MIN_RADIUS * 0.5)
+	camera.call("focus_portrait", mouth, PORTRAIT_RADIUS, subject_height)
+	_portrait_on = true
+	# So the beat's own two-shot is recomputed, not skipped as "unchanged", when
+	# the portrait lets go.
+	_focus_point = Vector3.ZERO
+	_focus_radius = 0.0
+
+
+func _end_portrait() -> void:
+	if _care_overlay != null and _care_overlay.has_method("clear_mouth_provider"):
+		_care_overlay.call("clear_mouth_provider")
+	if not _portrait_on:
+		return
+	_portrait_on = false
+	if _focus_on:
+		_update_focus()
+
+
+## Bunny's mouth in world space, or null when the character on screen cannot
+## answer (no rig, no socket). Bound into the overlay as a `Callable`, so it is
+## re-asked every frame rather than sampled once.
+func _mouth_world_point() -> Variant:
+	var child: Node = _find_child_actor()
+	if child == null:
+		return null
+	var model: Node = child.get_node_or_null("Model")
+	if model == null or not model.has_method("get_mouth_position"):
+		return null
+	if model.has_method("has_socket") and not bool(model.call("has_socket", "mouth")):
+		return null
+	var at: Vector3 = model.call("get_mouth_position")
+	if not (is_finite(at.x) and is_finite(at.y) and is_finite(at.z)):
+		return null
+	return at
+
+
+func _room_floor_y(camera: Object) -> float:
+	if camera != null and camera.has_method("get_room_framing"):
+		var framing: Dictionary = camera.call("get_room_framing")
+		return float(framing.get("floorY", 0.0))
+	return 0.0
 
 
 ## The Little Buddy actor in whichever room it is currently in.
@@ -1106,6 +1191,10 @@ func _track_focus() -> void:
 	# job, so neither would really be under test. `house_world.gd` learned the
 	# same lesson about its two overlapping room fallbacks. One exit, one place
 	# to break.
+	if _portrait_on:
+		# The feeding portrait owns the camera until the act completes; see
+		# `_begin_portrait()`. Re-aiming here would undo it every frame.
+		return
 	_update_focus()
 
 
@@ -1135,6 +1224,7 @@ func _update_focus() -> void:
 ## Back to the whole-room shot. Idempotent, and safe at any time.
 func _release_focus() -> void:
 	_focus_anchor = null
+	_portrait_on = false
 	if not _focus_on:
 		return
 	_focus_on = false

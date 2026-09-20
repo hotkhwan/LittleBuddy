@@ -186,6 +186,25 @@ func focus_activity(focus: Vector3, radius: float = Framing.DEFAULT_ACTIVITY_RAD
 	refresh(true)
 
 
+## A head-and-shoulders portrait of one small subject -- the feeding close-up.
+## Same easing and the same room framing underneath as `focus_activity()`; only
+## the box being fitted is a child's rather than a two-shot's. See
+## `camera_framing.portrait_framing()` for why that needs its own entry point.
+## `restore_room_frame()` releases it exactly as it releases an activity focus.
+func focus_portrait(
+	focus: Vector3, radius: float = Framing.PORTRAIT_RADIUS,
+	subject_height: float = Framing.PORTRAIT_SUBJECT_HEIGHT,
+	min_distance: float = Framing.PORTRAIT_MIN_DISTANCE
+) -> void:
+	_ensure_wired()
+	if _room_framing.is_empty():
+		_room_framing = Framing.normalise_framing({"focus": focus})
+	_active_framing = Framing.portrait_framing(
+		_room_framing, focus, radius, subject_height, min_distance)
+	_focused = true
+	refresh(true)
+
+
 ## Back to the whole-room shot. Eased, for the same reason moving in is: letting
 ## go of an activity should look like the camera relaxing, not like a cut.
 func restore_room_frame() -> void:
