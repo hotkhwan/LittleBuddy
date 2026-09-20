@@ -243,6 +243,8 @@ func get_elapsed() -> float:
 
 ## How far the cover is up, 0..1.
 func get_cover_alpha() -> float:
+	if _branding != null and is_instance_valid(_branding) and _branding.has_method("get_opacity"):
+		return float(_branding.call("get_opacity"))
 	if _cover_rect != null and is_instance_valid(_cover_rect):
 		return _cover_rect.modulate.a
 	return 0.0
@@ -360,6 +362,9 @@ func _apply_door(t: float) -> void:
 func _apply_cover(t: float) -> void:
 	var k: float = clampf((t - COVER_START_SEC) / (TOTAL_SEC - COVER_START_SEC), 0.0, 1.0)
 	if _branding != null and is_instance_valid(_branding):
+		# Never let the driven curtain go backwards: the branding node parks in
+		# HOLDING at 1.0 and ignores later set_progress() calls anyway.
+		_branding.call("set_progress", _ease(k))
 		return
 	if _cover_rect != null and is_instance_valid(_cover_rect):
 		_cover_rect.modulate.a = _ease(k)
@@ -369,6 +374,8 @@ func _finish() -> void:
 	if _finished_emitted:
 		return
 	_finished_emitted = true
+	if _branding != null and is_instance_valid(_branding):
+		_branding.call("set_progress", 1.0)
 	if _cover_rect != null and is_instance_valid(_cover_rect):
 		_cover_rect.modulate.a = 1.0
 	if _aliz != null:
@@ -445,11 +452,17 @@ func _make_cover() -> void:
 		var script: Resource = load(SCENE_TRANSITION_SCRIPT_PATH)
 		if script is GDScript and ClassDB.is_parent_class((script as GDScript).get_instance_base_type(), "Node"):
 			var candidate: Object = (script as GDScript).new()
-			if candidate is Node and candidate.has_method("cover") and candidate.has_method("reveal"):
+			if candidate is Node and candidate.has_method("begin_driven") \
+					and candidate.has_method("set_progress") and candidate.has_method("reveal"):
+				# Driven by this timeline: `_apply_cover()` moves it, `_finish()`
+				# parks it at 1.0, and the curtain lifts itself once the scene
+				# has changed (or reveal() is called).
 				_branding = candidate as Node
-				_branding.name = "SceneTransition"
+				# Same name as the fallback cover, so anything that sweeps or
+				# ignores "the departure's cover" treats both curtains alike.
+				_branding.name = COVER_NAME
 				tree.root.add_child(_branding)
-				_call_timed(_branding, "cover", TOTAL_SEC - COVER_START_SEC)
+				_branding.call("begin_driven", tree.current_scene)
 				return
 			elif candidate != null:
 				candidate.free()

@@ -196,6 +196,9 @@ const VERSION_MARGIN: Vector2 = Vector2(14.0, 10.0)
 ## place and the text panel is hidden. Without it the text panel stays -- the
 ## fallback is what shipped before.
 const LOGO_TITLE_SCRIPT_PATH: String = "res://scripts/branding/logo_title.gd"
+const LOGO_HALF_WIDTH: float = 230.0
+const LOGO_TOP: float = 0.0
+const LOGO_BOTTOM: float = 228.0
 
 ## The walk home (`scripts/menu/menu_departure.gd`): what Start and Free Play
 ## play before the hand-off. `load()`ed like everything optional here.
@@ -805,10 +808,13 @@ func _place_logo() -> void:
 	control.anchor_top = panel.anchor_top
 	control.anchor_right = panel.anchor_right
 	control.anchor_bottom = panel.anchor_bottom
-	control.offset_left = panel.offset_left
-	control.offset_top = panel.offset_top
-	control.offset_right = panel.offset_right
-	control.offset_bottom = panel.offset_bottom
+	# The logo is a 1024x616 picture, not a 640x142 text plaque: give it the
+	# taller slot Agent A specified (see logo_title.gd) or it renders postcard
+	# sized inside the panel's height. Same centre; it stays above the heads.
+	control.offset_left = -LOGO_HALF_WIDTH
+	control.offset_top = LOGO_TOP
+	control.offset_right = LOGO_HALF_WIDTH
+	control.offset_bottom = LOGO_BOTTOM
 	control.grow_horizontal = panel.grow_horizontal
 	control.grow_vertical = panel.grow_vertical
 	panel.visible = false

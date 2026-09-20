@@ -782,17 +782,18 @@ static func _opened_scene(tree: SceneTree, before: Array) -> Node:
 	for child: Node in tree.root.get_children():
 		if before.has(child):
 			continue
-		if child is CanvasLayer and String(child.name) == COVER_NAME:
+		if child is CanvasLayer and String(child.name) in [COVER_NAME, "SceneTransition"]:
 			continue
 		return child
 	return null
 
 
 static func _sweep_cover(tree: SceneTree) -> void:
-	var cover: Node = tree.root.get_node_or_null(COVER_NAME)
-	if cover != null:
-		tree.root.remove_child(cover)
-		cover.free()
+	for cover_name: String in [COVER_NAME, "SceneTransition"]:
+		var cover: Node = tree.root.get_node_or_null(cover_name)
+		if cover != null:
+			tree.root.remove_child(cover)
+			cover.free()
 
 
 func _cleanup(tree: SceneTree, menu: Node, previous_scene: Node, before: Array) -> void:

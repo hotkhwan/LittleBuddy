@@ -51,7 +51,7 @@ const HOLD_TIMEOUT: float = 2.5
 const LAYER_INDEX: int = 120
 const NODE_NAME: String = "SceneTransition"
 
-enum Phase { IDLE, COVERING, HOLDING, REVEALING, DONE }
+enum Phase { IDLE, COVERING, HOLDING, REVEALING, DONE, DRIVEN }
 
 var _phase: int = Phase.IDLE
 var _progress: float = 0.0
@@ -114,6 +114,29 @@ func reveal() -> Signal:
 
 func is_covered() -> bool:
 	return _phase == Phase.HOLDING
+
+
+## DRIVEN mode: a caller with its own timeline (the menu's walk-home departure)
+## moves the curtain itself with `set_progress()`. Reaching 1.0 hands over to
+## the normal HOLDING phase, so the auto-lift when the scene changes still
+## applies and nobody has to remember to reveal.
+func begin_driven(scene_at_cover: Node) -> void:
+	_scene_at_cover = scene_at_cover
+	_phase = Phase.DRIVEN
+	_progress = 0.0
+	set_process(true)
+	_apply()
+
+
+func set_progress(value: float) -> void:
+	if _phase != Phase.DRIVEN:
+		return
+	_progress = clampf(value, 0.0, 1.0)
+	_apply()
+	if _progress >= 1.0:
+		_phase = Phase.HOLDING
+		_hold_elapsed = 0.0
+		covered.emit()
 
 
 func get_phase() -> int:
@@ -179,6 +202,9 @@ func _process(delta: float) -> void:
 					and tree.current_scene != null
 			if scene_changed or _hold_elapsed >= HOLD_TIMEOUT:
 				_phase = Phase.REVEALING
+		Phase.DRIVEN:
+			_heart_time += delta
+			_apply()
 		Phase.REVEALING:
 			_progress = maxf(0.0, _progress - delta / DURATION_OUT)
 			_apply()
