@@ -100,8 +100,25 @@ func build() -> void:
 func set_prompt(english: String, helper: String) -> void:
 	build()
 	_prompt_label.text = english
-	_helper_label.text = helper
-	_helper_label.visible = not helper.strip_edges().is_empty()
+	# The helper line follows the family's chosen helper language (Agent F's
+	# Localization service). `helper` is the authored Thai hint, which stays the
+	# Thai answer and the fallback; loaded by path so the HUD still builds
+	# without the service.
+	var line: String = helper
+	var rtl: bool = false
+	var loc: Resource = load("res://scripts/localization/localization.gd") \
+			if ResourceLoader.exists("res://scripts/localization/localization.gd") else null
+	if loc is GDScript and (loc as GDScript).has_method("helper_line"):
+		line = String((loc as GDScript).call("helper_line", english, helper))
+		if (loc as GDScript).has_method("is_rtl"):
+			rtl = bool((loc as GDScript).call("is_rtl"))
+	var font_helper: Resource = load("res://scripts/localization/helper_font.gd") \
+			if ResourceLoader.exists("res://scripts/localization/helper_font.gd") else null
+	if font_helper is GDScript and (font_helper as GDScript).has_method("apply"):
+		(font_helper as GDScript).call("apply", _helper_label)
+	_helper_label.text = line
+	_helper_label.text_direction = Control.TEXT_DIRECTION_RTL if rtl else Control.TEXT_DIRECTION_AUTO
+	_helper_label.visible = not line.strip_edges().is_empty()
 
 
 func get_prompt() -> String:
