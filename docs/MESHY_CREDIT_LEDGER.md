@@ -197,7 +197,7 @@ gone.
 | Authorised ceiling | **100 new credits** |
 | Spent | **0** |
 | Remaining | **100, unspent** |
-| Balance change | none — no API call was made |
+| Balance change | none from us. Zero-credit `GET /openapi/v1/balance` reads on 2026-09-20: 3134 (morning), 3184 (afternoon) — the account was credited, nothing was spent. No paid endpoint was called; all Aliz work was local (`ALIZ_POLISH_PASS.md`). |
 
 **Nothing was spent because nothing could be.** `MESHY_API_KEY` is not present in
 the build environment, so no request of any kind was issued. This is a fact about

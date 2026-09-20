@@ -1,5 +1,13 @@
 # Google Play release readiness — Little Days (`com.pointit.littlebuddy`)
 
+> **Integrated build 2026-09-20 (lead):** `build/android/LittleDays-debug.apk` rebuilt
+> from commit `fa650bd` with the toolchain below: 36,802,352 B, SHA-256
+> `9b6b5f038ba19a26c0c0e3b163a4d881f0eae02c3a7a1d637627a0d9820f1758`,
+> `com.pointit.littlebuddy` 0.1.0 (versionCode 1), minSdk 24, targetSdk 36,
+> arm64-v8a, zero permissions, signed v2+v3 with the local debug key. Music now
+> plays in this build (owner rights confirmation, `docs/licences/music/`).
+> Still no release keystore, no AAB release artefact, no Play Console app.
+
 **Prepared:** 2026-09-20, from worktree `wt/android` (base `cca0198`), on the MacBook.
 **Scope:** what Play Console will ask for, answered from the **actual exported
 APK and the actual code**, not from intent. Every claim below names where it was
