@@ -46,6 +46,7 @@ public:
 	// the GDScript-facing API.
 	void _emit_permission_result(bool granted);
 	void _emit_recognized(const godot::String &text);
+	void _emit_partial_result(const godot::String &text);
 	void _emit_recognition_failed(const godot::String &reason);
 	void _emit_listening_started();
 	void _emit_listening_stopped();

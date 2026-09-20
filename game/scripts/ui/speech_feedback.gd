@@ -14,11 +14,11 @@ extends Control
 ## | State | What the child sees |
 ## |---|---|
 ## | `IDLE` | nothing; the Speak button is the whole UI |
-## | `LISTENING` | a pulsing microphone and "I'm listening..." |
+## | `LISTENING` | a pulsing microphone and "I'm listening..."; once the recogniser has a first guess, "I hear: milk" under it |
 ## | `PROCESSING` | "One moment..." |
-## | `HEARD` | "You said: milk" |
-## | `MATCHED` | "Great!" and a star |
-## | `NOT_UNDERSTOOD` | "Try again!" plus the reminder that tapping works |
+## | `HEARD` | "I heard: milk" |
+## | `MATCHED` | "Great!" with the word that earned it |
+## | `NOT_UNDERSTOOD` | "Try again!" (with what was heard, if anything) plus the reminder that tapping works |
 ## | `PERMISSION_NEEDED` | a grown-up needs to turn the microphone on |
 ## | `UNAVAILABLE` | voice is off, tapping still works |
 ## | `ERROR` | "Let's try again." |
@@ -68,10 +68,12 @@ const DETAIL_FONT_SIZE: int = 26
 const ICON_RADIUS: float = 30.0
 
 ## How long a transient state stays up before it falls back to IDLE. `HEARD` is
-## deliberately brief -- it is a receipt, not a reading exercise.
+## deliberately brief -- it is a receipt, not a reading exercise. `RETRY` is
+## longer than it was: it now carries the heard word and the tap reminder, and
+## the child's grown-up needs a moment to read both.
 const HEARD_SECONDS: float = 1.5
 const MATCHED_SECONDS: float = 1.8
-const RETRY_SECONDS: float = 2.4
+const RETRY_SECONDS: float = 3.0
 
 ## Pulse, in Hz and in amplitude. Slow and shallow on purpose: a fast throb on a
 ## microphone reads as urgency, and nothing about talking to a baby is urgent.
@@ -244,14 +246,18 @@ func _build_mic_glyph() -> void:
 ## `{title, detail, color}` for a state. Static, total and tree-free, so the
 ## words a child reads are assertable in a unit test.
 ##
-## `heard` is the recognised transcript; it is only used by `HEARD`, and is shown
-## verbatim so the parent can see exactly what the recogniser returned.
+## `heard` is the recogniser's text, shown verbatim so the parent can see
+## exactly what came back. `LISTENING` shows it as the live guess while the
+## microphone is still open; `HEARD`, `MATCHED` and `NOT_UNDERSTOOD` show what
+## the attempt ended on. A child who mumbled "banana" at a milk prompt sees
+## "I heard: banana" -- a fact, not a verdict -- and the tap reminder.
 static func copy_for_state(state: int, heard: String = "") -> Dictionary:
+	var words: String = heard.strip_edges()
 	match state:
 		State.LISTENING:
 			return {
 				"title": "I'm listening...",
-				"detail": "Say the word!",
+				"detail": ("I hear: %s" % words) if not words.is_empty() else "Go on, say it!",
 				"color": Palette.MINT,
 			}
 		State.PROCESSING:
@@ -262,14 +268,14 @@ static func copy_for_state(state: int, heard: String = "") -> Dictionary:
 			}
 		State.HEARD:
 			return {
-				"title": "You said: %s" % heard.strip_edges(),
+				"title": "I heard: %s" % words,
 				"detail": "",
 				"color": Palette.DUSTY_BLUE,
 			}
 		State.MATCHED:
 			return {
 				"title": "Great!",
-				"detail": "",
+				"detail": ("You said: %s" % words) if not words.is_empty() else "",
 				"color": Palette.MINT,
 			}
 		State.NOT_UNDERSTOOD:
@@ -277,7 +283,8 @@ static func copy_for_state(state: int, heard: String = "") -> Dictionary:
 			# a child who cannot be heard must still be able to finish.
 			return {
 				"title": "Try again!",
-				"detail": "You can tap it too.",
+				"detail": ("I heard: %s. You can tap it too." % words) if not words.is_empty()
+						else "Say it once more, or tap it.",
 				"color": Palette.PEACH,
 			}
 		State.PERMISSION_NEEDED:
@@ -293,9 +300,10 @@ static func copy_for_state(state: int, heard: String = "") -> Dictionary:
 				"color": Palette.LAVENDER,
 			}
 		State.ERROR:
+			# Also the timeout: nothing was heard within the listening window.
 			return {
 				"title": "Let's try again",
-				"detail": "You can tap it too.",
+				"detail": "Tap Speak and say it, or just tap it.",
 				"color": Palette.PEACH,
 			}
 		_:

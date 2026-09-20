@@ -22,6 +22,9 @@ signal availability_changed(available: bool)
 signal permission_result(granted: bool)
 signal listening_started()
 signal listening_stopped()
+## Interim hypothesis while the microphone is still open. UI may show it;
+## gameplay acts only on `recognized`. Never counted, never written anywhere.
+signal partial_recognized(text: String)
 signal recognized(text: String)
 signal recognition_failed(reason: String)
 
@@ -112,6 +115,25 @@ func _tts_available() -> bool:
 	return false
 
 
+## Which voice speaks, e.g. "Samantha (compact)". Diagnostics only (the live
+## panel, not the persisted file).
+func _tts_voice() -> String:
+	var tts: Node = get_node_or_null("/root/TtsService")
+	if tts != null and tts.has_method("describe_voice"):
+		return String(tts.call("describe_voice"))
+	return ""
+
+
+## The game's own voice must be quiet before the microphone opens: on a device
+## the speaker and the mic are inches apart, and a prompt still being spoken is
+## the likeliest thing to be transcribed. Stopping it also makes the loop feel
+## immediate -- the child pressed Speak, so the game listens now.
+func _hush_tts() -> void:
+	var tts: Node = get_node_or_null("/root/TtsService")
+	if tts != null and tts.has_method("stop"):
+		tts.call("stop")
+
+
 func is_available() -> bool:
 	if not _speech_enabled():
 		return false
@@ -134,6 +156,7 @@ func start_listening(locale: String = "en-US") -> void:
 	if not is_available():
 		recognition_failed.emit("unavailable")
 		return
+	_hush_tts()
 	_backend.start_listening(locale)
 
 
@@ -172,6 +195,7 @@ func describe_diagnostics() -> Dictionary:
 		"isListening": is_listening(),
 		"speechEnabledSetting": _speech_enabled(),
 		"ttsAvailable": _tts_available(),
+		"ttsVoice": _tts_voice(),
 		"locale": _last_locale,
 		"lastFailureReason": _last_failure_reason,
 		"listenCount": _listen_count,
@@ -251,6 +275,7 @@ func _connect_backend_signals() -> void:
 	_backend.permission_result.connect(_on_permission_result)
 	_backend.listening_started.connect(_on_listening_started)
 	_backend.listening_stopped.connect(_on_listening_stopped)
+	_backend.partial_recognized.connect(_on_partial_recognized)
 	_backend.recognized.connect(_on_recognized)
 	_backend.recognition_failed.connect(_on_recognition_failed)
 
@@ -266,6 +291,8 @@ func _disconnect_backend_signals() -> void:
 		_backend.listening_started.disconnect(_on_listening_started)
 	if _backend.listening_stopped.is_connected(_on_listening_stopped):
 		_backend.listening_stopped.disconnect(_on_listening_stopped)
+	if _backend.partial_recognized.is_connected(_on_partial_recognized):
+		_backend.partial_recognized.disconnect(_on_partial_recognized)
 	if _backend.recognized.is_connected(_on_recognized):
 		_backend.recognized.disconnect(_on_recognized)
 	if _backend.recognition_failed.is_connected(_on_recognition_failed):
@@ -288,6 +315,11 @@ func _on_listening_started() -> void:
 
 func _on_listening_stopped() -> void:
 	listening_stopped.emit()
+
+
+## Passed straight through: not counted, not written, not remembered.
+func _on_partial_recognized(text: String) -> void:
+	partial_recognized.emit(text)
 
 
 func _on_recognized(text: String) -> void:

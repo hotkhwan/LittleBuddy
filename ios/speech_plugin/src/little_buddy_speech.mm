@@ -384,10 +384,11 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 #endif
 
 	self.request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
-	// Partial results are used only to capture a best-effort transcript for
-	// the ~5s timeout path below; the `recognized` signal itself only ever
-	// fires with a final result or the last partial captured at timeout,
-	// matching the "final transcript" contract in docs/INTEGRATION_CONTRACT.md.
+	// Interim hypotheses are surfaced as `partial_result` (see the result
+	// handler below) and remembered as the best-effort transcript for the
+	// ~5s timeout and manual-stop paths. `recognized` itself fires with a
+	// final result, or with that best-effort partial when the session is
+	// ended before Apple finalises -- never with an interim result on its own.
 	self.request.shouldReportPartialResults = YES;
 	// Hard privacy requirement: never send audio off-device. Deliberately
 	// not relaxed even when on-device recognition is unsupported for the
@@ -517,11 +518,27 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 							   }
 							   NSString *transcript = result.bestTranscription.formattedString;
 							   if (!result.isFinal) {
-								   // Interim result: remember it as a fallback
-								   // for the timeout path only. Never emitted
-								   // as `recognized` on its own.
+								   // Interim hypothesis. Remembered so the timeout
+								   // and manual-stop paths can report what was heard,
+								   // and surfaced to GDScript as `partial_result` so
+								   // the game can (a) show the child the words as
+								   // they land and (b) end the session the moment a
+								   // hypothesis already satisfies the prompt instead
+								   // of waiting for Apple's end-of-utterance
+								   // detection, which on-device can take seconds.
+								   // Never emitted as `recognized` on its own: the
+								   // game decides what to do with it.
 								   dispatch_async(dispatch_get_main_queue(), ^{
+									 if (!strongSelf.isListening) {
+										 return;
+									 }
+									 BOOL changed = strongSelf.lastPartialTranscript == nil ||
+											 ![strongSelf.lastPartialTranscript isEqualToString:transcript];
 									 strongSelf.lastPartialTranscript = transcript;
+									 if (changed && transcript.length > 0 && strongSelf.owner != nullptr) {
+										 strongSelf.owner->_emit_partial_result(
+												 String([transcript UTF8String]));
+									 }
 								   });
 								   return;
 							   }
@@ -568,11 +585,26 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	}
 }
 
+// Manual stop (GDScript `stop_listening()`), which the game now calls the
+// moment a `partial_result` already satisfies the prompt. `_finishListening`
+// cancels the task, so no final result will ever follow -- previously that
+// threw away a transcript the child had genuinely produced. Apply the same
+// policy as the ~5s timeout: report the best-effort partial we already have
+// as `recognized` (the game still runs it through its phrase matcher), and
+// if nothing was heard just stop quietly. A child cancelling is not a failure.
 - (void)stopListening {
 	if (!self.isListening) {
 		return;
 	}
+	NSString *transcript = self.lastPartialTranscript;
+	BOOL hasTranscript = transcript != nil && transcript.length > 0;
+	if (hasTranscript) {
+		self.hasReportedResult = YES;
+	}
 	[self _finishListening];
+	if (hasTranscript && self.owner != nullptr) {
+		self.owner->_emit_recognized(String([transcript UTF8String]));
+	}
 }
 
 // Shared by both notification handlers below. Tears down through the single
@@ -726,6 +758,7 @@ void LittleBuddySpeech::_bind_methods() {
 
 	ADD_SIGNAL(MethodInfo("permission_result", PropertyInfo(Variant::BOOL, "granted")));
 	ADD_SIGNAL(MethodInfo("recognized", PropertyInfo(Variant::STRING, "text")));
+	ADD_SIGNAL(MethodInfo("partial_result", PropertyInfo(Variant::STRING, "text")));
 	ADD_SIGNAL(MethodInfo("recognition_failed", PropertyInfo(Variant::STRING, "reason")));
 	ADD_SIGNAL(MethodInfo("listening_started"));
 	ADD_SIGNAL(MethodInfo("listening_stopped"));
@@ -762,7 +795,7 @@ void LittleBuddySpeech::stop_listening() {
 	}
 }
 
-// All five _emit_* methods below marshal into Godot via `call_deferred`
+// All six _emit_* methods below marshal into Godot via `call_deferred`
 // rather than calling `emit_signal` directly. They can be invoked from
 // Objective-C completion handlers/blocks that Apple documents as running on
 // an arbitrary (non-main) queue/thread -- e.g. SFSpeechRecognizer's
@@ -777,6 +810,10 @@ void LittleBuddySpeech::_emit_permission_result(bool granted) {
 
 void LittleBuddySpeech::_emit_recognized(const String &text) {
 	call_deferred("emit_signal", StringName("recognized"), text);
+}
+
+void LittleBuddySpeech::_emit_partial_result(const String &text) {
+	call_deferred("emit_signal", StringName("partial_result"), text);
 }
 
 void LittleBuddySpeech::_emit_recognition_failed(const String &reason) {

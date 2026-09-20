@@ -26,9 +26,20 @@
 ##
 ## Lines are always QUEUED (`interrupt = false`), never interrupting -- an intro
 ## phrase must not chop off the first task prompt, and vice versa.
+##
+## ## Encouragement is spoken too (voice pass, 2026-09-20)
+##
+## "Great!", "Nice!", "Try again!" were drawn on the HUD and never voiced, so
+## the child's action got a silent caption and the next prompt. If `source`
+## has an `encouragement` signal it is connected as well, and those lines go
+## through `TtsService.react()`: spoken at once, and protected so the prompt
+## that follows in the same breath queues behind them instead of cutting them
+## off. That is what turns "drag the bottle -> next instruction" into
+## "drag the bottle -> 'Great!' -> next instruction".
 extends Node
 
 const DEFAULT_SIGNAL: String = "prompt_changed"
+const ENCOURAGEMENT_SIGNAL: String = "encouragement"
 
 var _tts: Object = null
 var _pending: Array[String] = []
@@ -48,6 +59,8 @@ static func attach(source: Object, tts: Object, signal_name: String = DEFAULT_SI
 	speaker.name = "PromptSpeaker"
 	speaker.set_tts(tts)
 	source.connect(signal_name, speaker.on_prompt)
+	if source.has_signal(ENCOURAGEMENT_SIGNAL):
+		source.connect(ENCOURAGEMENT_SIGNAL, speaker.on_encouragement)
 	if source is Node:
 		(source as Node).add_child(speaker)
 	return speaker
@@ -68,6 +81,18 @@ func on_prompt(text: String, _thai_hint: String = "") -> void:
 	if not _flush_scheduled:
 		_flush_scheduled = true
 		call_deferred("flush")
+
+
+## Signal target for `encouragement`. Spoken immediately as a reaction (see
+## `TtsService.react()`), or plainly queued on a voice that has no `react`.
+func on_encouragement(text: String) -> void:
+	var line: String = text.strip_edges()
+	if line.is_empty() or _tts == null:
+		return
+	if _tts.has_method("react"):
+		_tts.call("react", line)
+	elif _tts.has_method("speak"):
+		_tts.call("speak", line, false)
 
 
 ## Speaks whatever nobody else picked up. Called automatically at the end of the

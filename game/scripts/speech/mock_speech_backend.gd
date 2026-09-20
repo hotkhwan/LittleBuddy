@@ -14,6 +14,15 @@ var next_transcript: String = "milk"
 ## Delay before the canned result is delivered, in seconds. Kept short so
 ## manual testing in the editor stays snappy.
 var response_delay: float = 0.6
+## Fraction of `response_delay` after which the canned transcript is first
+## offered as a PARTIAL hypothesis, mirroring the native plugin's
+## `partial_result`, so the early-stop path is exercised in the editor too.
+var partial_at: float = 0.5
+## Whether a partial is offered at all. Off: only the final arrives, which is
+## how an older native binary behaves.
+var emit_partial: bool = true
+
+var _partial_offered: bool = false
 
 var _has_permission: bool = true
 var _is_listening: bool = false
@@ -50,23 +59,42 @@ func start_listening(_locale: String = "en-US") -> void:
 	if _is_listening:
 		return
 	_is_listening = true
+	_partial_offered = false
 	listening_started.emit()
 
 	var main_loop := Engine.get_main_loop()
 	if main_loop is SceneTree:
+		if emit_partial and not _simulate_failure:
+			var partial_timer := (main_loop as SceneTree).create_timer(response_delay * partial_at)
+			partial_timer.timeout.connect(_on_partial_due)
 		var timer := (main_loop as SceneTree).create_timer(response_delay)
 		timer.timeout.connect(_on_delay_finished)
 	else:
 		# No SceneTree available (e.g. running under --script tests) — resolve
 		# immediately rather than hanging forever.
+		if emit_partial and not _simulate_failure:
+			_on_partial_due()
 		_on_delay_finished()
 
 
+## Manual stop. Same contract as the native plugin: a hypothesis already offered
+## is reported as `recognized` (the game still runs it through its matcher); a
+## stop before anything was heard is a quiet cancel, not a failure.
 func stop_listening() -> void:
 	if not _is_listening:
 		return
 	_is_listening = false
 	listening_stopped.emit()
+	if _partial_offered:
+		_partial_offered = false
+		recognized.emit(next_transcript)
+
+
+func _on_partial_due() -> void:
+	if not _is_listening or _partial_offered:
+		return
+	_partial_offered = true
+	partial_recognized.emit(next_transcript)
 
 
 func is_listening() -> bool:
@@ -81,6 +109,7 @@ func _on_delay_finished() -> void:
 	if not _is_listening:
 		return
 	_is_listening = false
+	_partial_offered = false
 	listening_stopped.emit()
 
 	if _simulate_failure:

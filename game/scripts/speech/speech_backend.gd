@@ -10,6 +10,10 @@ signal availability_changed(available: bool)
 signal permission_result(granted: bool)
 signal listening_started()
 signal listening_stopped()
+## An interim hypothesis while still listening. Optional: a backend that only
+## ever produces final results simply never emits it. Never a success on its
+## own -- gameplay acts on `recognized`.
+signal partial_recognized(text: String)
 signal recognized(text: String)
 signal recognition_failed(reason: String)
 

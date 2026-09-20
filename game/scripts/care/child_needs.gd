@@ -169,9 +169,11 @@ static func answering_action(state: String) -> String:
 
 
 ## What the child "says", in the game's own voice. Short, warm, and never a
-## complaint -- a child who is hungry asks, it does not accuse.
+## complaint -- a child who is hungry asks, it does not accuse. Bunny asks Aliz
+## by name when he is hungry: that is Mission 01's opening line, and the same
+## words on the bubble and in the voice is what makes it one conversation.
 const LINES: Dictionary = {
-	HUNGRY: "I'm hungry!",
+	HUNGRY: "I'm hungry, Aliz!",
 	THIRSTY: "I'm thirsty!",
 	NEEDS_CHANGING: "I need changing.",
 	NEEDS_BATH: "I need a bath!",

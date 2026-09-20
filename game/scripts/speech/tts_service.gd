@@ -24,8 +24,37 @@
 ##
 ## Default adult TTS is too fast for a four-year-old meeting a word for the first
 ## time, so the default rate is deliberately below 1.0 and the parent-facing
-## `ttsSpeed = "slow"` setting slows it further. Pitch is nudged very slightly up
-## -- warm, not cartoonish.
+## `ttsSpeed = "slow"` setting slows it further. Pitch is lifted a little --
+## bright, not cartoonish.
+##
+## ## Which voice speaks (2026-09-20 voice pass)
+##
+## This used to hand the platform `tts_get_voices_for_language("en")[0]`, which
+## on every Apple device is `com.apple.voice.compact.en-US.Samantha` -- the
+## lowest-quality tier Apple ships, and exactly the "robot" the owner heard.
+##
+## `choose_voice()` now walks a documented preference chain (see
+## `PREFERRED_VOICE_IDS`): the brightest, youngest-sounding female en-US voices
+## Apple offers, best quality tier first, then any natural-tier en-US voice
+## (female names first), then any natural-tier English voice, then anything
+## English at all. The novelty (`com.apple.speech.synthesis.voice.*`) and
+## Eloquence (`com.apple.eloquence.*`) engines are last resort only: "Junior"
+## and "Superstar" are child-*named*, not child-*sounding*.
+##
+## Plainly: no Apple device ships a true child voice, and this service does not
+## pretend otherwise. The premium/enhanced voices in the chain are a one-time
+## download in Settings > Accessibility > Spoken Content > Voices; once present
+## they are picked up automatically, fully on-device. The real path to a small,
+## cheerful girl voice is recorded lines from a voice actor bundled as OGG -- see
+## `docs/VOICE_HONESTY_PASS.md`.
+##
+## ## Reactions
+##
+## `react("Great!")` is for the short answers to something the child just did.
+## A reaction starts at once (it may cut a prompt: the child has acted), and for
+## `REACTION_PROTECT_SECONDS` a following `speak(text, true)` QUEUES behind it
+## instead of truncating it -- so "Great!" is heard in full before the next
+## prompt, and "Try again!" is heard before the repeated ask.
 ##
 ## ## Degrading
 ##
@@ -38,13 +67,56 @@ extends Node
 
 ## Multiplier applied to the platform's default speaking rate.
 ## Slower than an adult default: the child is learning these words, not
-## reviewing them. 1.0 would be the platform default.
-const NORMAL_SPEECH_RATE: float = 0.85
+## reviewing them. 1.0 would be the platform default. Raised from 0.85 in the
+## voice pass: the prompts are two to five words, and at 0.85 the loop felt
+## sluggish rather than careful.
+const NORMAL_SPEECH_RATE: float = 0.92
 ## Parent setting `ttsSpeed = "slow"`. Noticeably slower, still natural.
-const SLOW_SPEECH_RATE: float = 0.70
+const SLOW_SPEECH_RATE: float = 0.78
 
-## Slightly-lifted pitch reads as friendly without sounding like a chipmunk.
-const SPEECH_PITCH: float = 1.05
+## Lifted pitch reads as bright and young without turning into a chipmunk.
+## 1.05 was inaudible as a change on the compact voice; 1.15 is clearly
+## lighter. The test band is 0.9-1.2.
+const SPEECH_PITCH: float = 1.15
+
+## Voice preference chain, best first. Identifiers are Apple's stable voice
+## ids (the same on macOS and iOS). Only voices the device actually has are
+## ever chosen; a missing one is simply skipped. Zoe and Nicky are the
+## youngest, brightest en-US female voices Apple ships; Ava and Allison are
+## warm; Samantha is the always-present default (enhanced beats compact).
+const PREFERRED_VOICE_IDS: Array[String] = [
+	"com.apple.voice.premium.en-US.Zoe",
+	"com.apple.voice.enhanced.en-US.Zoe",
+	"com.apple.voice.premium.en-US.Nicky",
+	"com.apple.voice.enhanced.en-US.Nicky",
+	"com.apple.voice.premium.en-US.Ava",
+	"com.apple.voice.enhanced.en-US.Ava",
+	"com.apple.voice.enhanced.en-US.Allison",
+	"com.apple.voice.premium.en-US.Samantha",
+	"com.apple.voice.enhanced.en-US.Samantha",
+	"com.apple.voice.enhanced.en-US.Joelle",
+	"com.apple.voice.enhanced.en-US.Susan",
+	"com.apple.voice.compact.en-US.Samantha",
+]
+
+## Female English voice names Apple ships, for the "any female en-US voice"
+## rung of the chain on a device whose list holds none of the ids above.
+const FEMALE_VOICE_NAMES: Array[String] = [
+	"zoe", "nicky", "ava", "allison", "samantha", "joelle", "susan", "kathy",
+	"karen", "catherine", "moira", "tessa", "kate", "serena", "martha", "stephanie",
+	"fiona", "veena", "flo", "sandy", "shelley", "grandma",
+]
+
+## Engines that are last resort only: they sound mechanical or are novelties.
+const LAST_RESORT_ID_PREFIXES: Array[String] = [
+	"com.apple.eloquence.",
+	"com.apple.speech.synthesis.voice.",
+]
+
+## How long a reaction is protected from being cut by the next prompt. Long
+## enough for "Well done!" on the slow setting, short enough that a stuck
+## utterance can never hold a prompt hostage.
+const REACTION_PROTECT_SECONDS: float = 2.5
 
 ## 0-100. Prompts must sit clearly above the sound effects (which peak at
 ## -6 dBFS or lower); the platform default of 50 is easy to miss in a room with
@@ -89,6 +161,12 @@ var _current_used_native: bool = false
 ## `SceneTreeTimer`. The headless test runner has no frame loop, so this is how
 ## the tests drive the queue one utterance at a time; production leaves it unset.
 var _timer_factory: Callable = Callable()
+## True while the current utterance is a protected reaction (see `react()`).
+var _current_is_reaction: bool = false
+## Engine ticks (msec) at which the current reaction's protection lapses.
+var _reaction_protected_until_msec: int = 0
+## The voice id handed to the platform for the last utterance, for diagnostics.
+var _last_voice_id: String = ""
 
 
 func _ready() -> void:
@@ -129,6 +207,12 @@ func speak(text: String, interrupt: bool = true) -> void:
 		return
 
 	if interrupt:
+		if _reaction_is_protected():
+			# The new prompt supersedes everything queued, but not the reaction
+			# the child is being answered with right now: it goes next instead.
+			_queue.clear()
+			_queue.append(line)
+			return
 		stop()
 		_begin(line)
 		return
@@ -147,6 +231,33 @@ func enqueue(text: String) -> void:
 	speak(text, false)
 
 
+## A short answer to something the child just did: "Great!", "Try again!".
+##
+## Starts immediately -- cutting a prompt mid-word is right here, because the
+## child has acted and is waiting to hear how it went -- and is then protected:
+## a `speak(text, true)` arriving within `REACTION_PROTECT_SECONDS` queues behind
+## it rather than truncating it. A second reaction arriving during a protected
+## one does not cut it either; it is spoken next, ahead of any prompt, so
+## "Try again!" then "You can tap it too!" arrive in that order.
+func react(text: String) -> void:
+	_ensure_initialised()
+	var line: String = text.strip_edges()
+	if line.is_empty():
+		return
+	if _reaction_is_protected():
+		if _queue.size() >= MAX_QUEUED:
+			return
+		_queue.push_front(line)
+		return
+	stop()
+	_begin(line, true)
+
+
+## True while a reaction is being spoken and its protection has not lapsed.
+func is_reaction_protected() -> bool:
+	return _reaction_is_protected()
+
+
 ## Stops the current utterance and drops everything queued behind it.
 ## `speech_finished` still fires for the interrupted line so anything awaiting it
 ## is released rather than left hanging.
@@ -158,6 +269,7 @@ func stop() -> void:
 	if _is_speaking:
 		var text: String = _current_text
 		_is_speaking = false
+		_current_is_reaction = false
 		_current_utterance_id = 0  # voids any in-flight safety timer
 		_current_text = ""
 		speech_finished.emit(text)
@@ -200,6 +312,144 @@ func get_speech_rate() -> float:
 	return _speech_rate()
 
 
+## The voice this service would speak with right now: `{id, name, language,
+## tier}`, or an empty Dictionary when the platform has no English voice.
+## `tier` is one of premium / enhanced / compact / super-compact / eloquence /
+## novelty / other, read off Apple's id so a parent panel can say which.
+func get_selected_voice() -> Dictionary:
+	if not _has_tts_feature():
+		return {}
+	return choose_voice(DisplayServer.tts_get_voices())
+
+
+## One line for the parent diagnostic: "Samantha (compact)" or "none".
+func describe_voice() -> String:
+	var voice: Dictionary = get_selected_voice()
+	if voice.is_empty():
+		return "none"
+	return "%s (%s)" % [String(voice.get("name", "?")), String(voice.get("tier", "?"))]
+
+
+## The voice id used for the most recent utterance ("" if none spoke natively).
+func get_last_voice_id() -> String:
+	return _last_voice_id
+
+
+## Picks the voice to speak with from a platform voice list (dictionaries with
+## `id`, `name`, `language`, as `DisplayServer.tts_get_voices()` returns them).
+##
+## Static and pure so the chain can be tested against any list without a
+## platform. The order is the documented fallback chain:
+##   1. `PREFERRED_VOICE_IDS`, in order;
+##   2. any natural-tier (`com.apple.voice.*`) en-US voice, female names first;
+##   3. any natural-tier voice in any English locale, female names first;
+##   4. any en-US voice, then any English voice, avoiding last-resort engines;
+##   5. any English voice at all.
+## Returns {} when the list holds no English voice.
+static func choose_voice(voices: Array) -> Dictionary:
+	var english: Array = []
+	for entry in voices:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var voice: Dictionary = entry
+		var language: String = String(voice.get("language", "")).replace("_", "-").to_lower()
+		if language.begins_with("en"):
+			english.append(voice)
+	if english.is_empty():
+		return {}
+
+	for wanted: String in PREFERRED_VOICE_IDS:
+		for voice: Dictionary in english:
+			if String(voice.get("id", "")) == wanted:
+				return _describe(voice)
+
+	var natural_us: Array = english.filter(func(v: Dictionary) -> bool:
+		return _is_natural_apple_id(String(v.get("id", ""))) and _is_en_us(v))
+	var pick: Dictionary = _first_female_else_first(natural_us)
+	if not pick.is_empty():
+		return _describe(pick)
+
+	var natural_any: Array = english.filter(func(v: Dictionary) -> bool:
+		return _is_natural_apple_id(String(v.get("id", ""))))
+	pick = _first_female_else_first(natural_any)
+	if not pick.is_empty():
+		return _describe(pick)
+
+	var plain_us: Array = english.filter(func(v: Dictionary) -> bool:
+		return _is_en_us(v) and not _is_last_resort_id(String(v.get("id", ""))))
+	pick = _first_female_else_first(plain_us)
+	if not pick.is_empty():
+		return _describe(pick)
+
+	var plain_any: Array = english.filter(func(v: Dictionary) -> bool:
+		return not _is_last_resort_id(String(v.get("id", ""))))
+	pick = _first_female_else_first(plain_any)
+	if not pick.is_empty():
+		return _describe(pick)
+
+	return _describe(english[0])
+
+
+## The quality tier encoded in an Apple voice id, for diagnostics.
+static func voice_tier(voice_id: String) -> String:
+	if voice_id.begins_with("com.apple.voice.premium."):
+		return "premium"
+	if voice_id.begins_with("com.apple.voice.enhanced."):
+		return "enhanced"
+	if voice_id.begins_with("com.apple.voice.super-compact."):
+		return "super-compact"
+	if voice_id.begins_with("com.apple.voice.compact."):
+		return "compact"
+	if voice_id.begins_with("com.apple.eloquence."):
+		return "eloquence"
+	if voice_id.begins_with("com.apple.speech.synthesis.voice."):
+		return "novelty"
+	return "other"
+
+
+static func _describe(voice: Dictionary) -> Dictionary:
+	var voice_id: String = String(voice.get("id", ""))
+	return {
+		"id": voice_id,
+		"name": String(voice.get("name", voice_id)),
+		"language": String(voice.get("language", "")),
+		"tier": voice_tier(voice_id),
+	}
+
+
+static func _is_en_us(voice: Dictionary) -> bool:
+	var language: String = String(voice.get("language", "")).replace("_", "-").to_lower()
+	return language == "en-us"
+
+
+static func _is_natural_apple_id(voice_id: String) -> bool:
+	return voice_id.begins_with("com.apple.voice.")
+
+
+static func _is_last_resort_id(voice_id: String) -> bool:
+	for prefix: String in LAST_RESORT_ID_PREFIXES:
+		if voice_id.begins_with(prefix):
+			return true
+	return false
+
+
+static func _is_female_name(voice: Dictionary) -> bool:
+	var name: String = String(voice.get("name", "")).to_lower()
+	for female: String in FEMALE_VOICE_NAMES:
+		if name == female or name.begins_with(female + " "):
+			return true
+	return false
+
+
+static func _first_female_else_first(candidates: Array) -> Dictionary:
+	if candidates.is_empty():
+		return {}
+	for voice: Dictionary in candidates:
+		if _is_female_name(voice):
+			return voice
+	return candidates[0]
+
+
 ## Replaces the `SceneTreeTimer` used for the "utterance finished" safety net
 ## with `factory.call(duration: float, callback: Callable)`. A seam for the
 ## headless tests (no frame loop there, so a real timer would never fire).
@@ -212,13 +462,17 @@ func set_timer_factory(factory: Callable) -> void:
 # -----------------------------------------------------------------------------
 
 
-func _begin(text: String) -> void:
+func _begin(text: String, is_reaction: bool = false) -> void:
 	_utterance_id += 1
 	var utterance_id: int = _utterance_id
 	_current_utterance_id = utterance_id
 	_current_text = text
 	_is_speaking = true
 	_current_used_native = false
+	_current_is_reaction = is_reaction
+	if is_reaction:
+		_reaction_protected_until_msec = Time.get_ticks_msec() \
+				+ int(REACTION_PROTECT_SECONDS * 1000.0)
 
 	speech_started.emit(text)
 
@@ -231,9 +485,10 @@ func _begin(text: String) -> void:
 
 
 func _try_speak_native(text: String, utterance_id: int) -> bool:
-	var voices: PackedStringArray = _english_voices()
-	if voices.is_empty():
+	var voice: Dictionary = get_selected_voice()
+	if voice.is_empty():
 		return false
+	_last_voice_id = String(voice["id"])
 
 	# Argument order is (text, voice, volume, PITCH, RATE, utterance_id,
 	# interrupt). Getting pitch and rate the wrong way round silently produces a
@@ -241,7 +496,7 @@ func _try_speak_native(text: String, utterance_id: int) -> bool:
 	# exactly the opposite of what a child learning the word needs.
 	DisplayServer.tts_speak(
 		text,
-		voices[0],
+		_last_voice_id,
 		SPEECH_VOLUME,
 		SPEECH_PITCH,
 		_speech_rate(),
@@ -249,6 +504,12 @@ func _try_speak_native(text: String, utterance_id: int) -> bool:
 		true,  # ordering is owned here; only ever one utterance in flight
 	)
 	return true
+
+
+func _reaction_is_protected() -> bool:
+	if not _is_speaking or not _current_is_reaction:
+		return false
+	return Time.get_ticks_msec() < _reaction_protected_until_msec
 
 
 func _english_voices() -> PackedStringArray:
@@ -315,6 +576,7 @@ func _complete_utterance(utterance_id: int) -> void:
 		return
 	var text: String = _current_text
 	_is_speaking = false
+	_current_is_reaction = false
 	_current_utterance_id = 0
 	_current_text = ""
 	speech_finished.emit(text)

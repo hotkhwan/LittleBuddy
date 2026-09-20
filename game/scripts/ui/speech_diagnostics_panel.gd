@@ -44,6 +44,7 @@ const ROWS: Array[Dictionary] = [
 	{"key": "hasPermission", "label": "Microphone permission"},
 	{"key": "speechEnabledSetting", "label": "Speech turned on"},
 	{"key": "ttsAvailable", "label": "Voice (speaking)"},
+	{"key": "ttsVoice", "label": "Voice name"},
 	{"key": "isListening", "label": "Listening now"},
 	{"key": "locale", "label": "Language"},
 	{"key": "lastTranscript", "label": "Last heard"},

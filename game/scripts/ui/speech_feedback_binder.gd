@@ -31,6 +31,9 @@ static func classify_failure(reason: String) -> int:
 	if text.contains("no match") or text.contains("nomatch") \
 			or text.contains("not understood") or text.contains("empty"):
 		return Feedback.State.NOT_UNDERSTOOD
+	# "timeout": the window closed with nothing heard. Not a misunderstanding
+	# (nothing was said) and not a broken microphone -- ERROR's copy is the
+	# gentle "Let's try again" with the tap reminder, which is right for it.
 	return Feedback.State.ERROR
 
 
@@ -50,6 +53,7 @@ func bind(panel: Node, service: Object, matched_checker: Callable = Callable()) 
 		return
 	_connect("listening_started", _on_listening_started)
 	_connect("listening_stopped", _on_listening_stopped)
+	_connect("partial_recognized", _on_partial)
 	_connect("recognized", _on_recognized)
 	_connect("recognition_failed", _on_failed)
 	_connect("permission_result", _on_permission)
@@ -89,9 +93,32 @@ func _on_listening_started() -> void:
 func _on_listening_stopped() -> void:
 	# Only the LISTENING state is cleared here. A transcript or a failure has
 	# already replaced it by the time this arrives in the usual order, and
-	# stomping those would flash the answer away.
+	# stomping those would flash the answer away. The stop that follows an
+	# early match leaves PROCESSING up, and the final replaces that.
 	if _state() == Feedback.State.LISTENING:
 		_show(Feedback.State.PROCESSING)
+
+
+## An interim guess while the microphone is still open.
+##
+## Two jobs. The child sees the words land ("I hear: milk") instead of a
+## silent pulse, and -- the responsiveness fix -- if the guess already satisfies
+## the prompt, listening is ended right now. Waiting for the recogniser's own
+## end-of-utterance decision can take seconds on-device; ending the session
+## makes the backend report what it has as the final transcript (both the
+## native plugin and the mock do this), which then flows through `recognized`
+## and the runner exactly as a natural final would. Nothing is invented: the
+## words are the recogniser's, and the runner still runs its own matcher.
+func _on_partial(text: String) -> void:
+	var heard: String = text.strip_edges()
+	if heard.is_empty():
+		return
+	if _matched_checker.is_valid() and bool(_matched_checker.call(heard)):
+		_show(Feedback.State.PROCESSING)
+		if _service != null and _service.has_method("stop_listening"):
+			_service.call("stop_listening")
+		return
+	_show(Feedback.State.LISTENING, heard)
 
 
 func _on_recognized(text: String) -> void:
@@ -99,9 +126,14 @@ func _on_recognized(text: String) -> void:
 	if heard.is_empty():
 		_show(Feedback.State.NOT_UNDERSTOOD)
 		return
-	_show(Feedback.State.HEARD, heard)
-	if _matched_checker.is_valid() and bool(_matched_checker.call(heard)):
+	if not _matched_checker.is_valid():
+		# Nobody can say whether it was right, so nobody claims it was.
+		_show(Feedback.State.HEARD, heard)
+		return
+	if bool(_matched_checker.call(heard)):
 		_show(Feedback.State.MATCHED, heard)
+	else:
+		_show(Feedback.State.NOT_UNDERSTOOD, heard)
 
 
 func _on_failed(reason: String) -> void:

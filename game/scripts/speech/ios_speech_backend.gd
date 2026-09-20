@@ -65,6 +65,9 @@ func get_backend_name() -> String:
 func _connect_native_signals() -> void:
 	_safe_connect("permission_result", Callable(self, "_on_permission_result"))
 	_safe_connect("recognized", Callable(self, "_on_recognized"))
+	# Added in the 2026-09-20 plugin build; an older binary without the signal
+	# is skipped by `_safe_connect`, and the game then simply waits for finals.
+	_safe_connect("partial_result", Callable(self, "_on_partial_result"))
 	_safe_connect("recognition_failed", Callable(self, "_on_recognition_failed"))
 	_safe_connect("listening_started", Callable(self, "_on_listening_started"))
 	_safe_connect("listening_stopped", Callable(self, "_on_listening_stopped"))
@@ -86,6 +89,10 @@ func _on_permission_result(granted: bool) -> void:
 
 func _on_recognized(text: String) -> void:
 	recognized.emit(text)
+
+
+func _on_partial_result(text: String) -> void:
+	partial_recognized.emit(text)
 
 
 func _on_recognition_failed(reason: String) -> void:
