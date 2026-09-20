@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "lessonId": "welcome_choose",
+  "subjectId": "menu",
+  "title": "What would you like to learn?",
+  "ageBand": "3-6",
+  "targetDurationSeconds": 30,
+  "language": "en",
+  "helperLanguageKeys": ["hi_what_would_you_like_to_learn_today", "you_can_say_animals_fruits_and_colours_numbers_or_everyday_things"],
+  "steps": [
+    {
+      "stepId": "s01_choose",
+      "kind": "choose",
+      "questionText": "Hi! What would you like to learn today?",
+      "hint": "You can say animals, fruits and colours, numbers, or everyday things!",
+      "encouragement": "Let's try together! Animals, fruits and colours, numbers, or everyday things?",
+      "choices": [
+        {"subjectId": "animals", "line": "Yay! Animals!"},
+        {"subjectId": "english_basics", "line": "Yay! Fruits and colours!"},
+        {"subjectId": "numbers", "line": "Yay! Numbers!"},
+        {"subjectId": "colors", "line": "Yay! Red and blue!"},
+        {"subjectId": "everyday_life", "line": "Yay! Everyday things!"}
+      ],
+      "defaultLessonId": "english_colors_fruits",
+      "defaultAnswers": ["anything", "you choose", "you pick", "i don't know", "dont know", "i dunno", "whatever", "surprise me", "anything is fine", "something"],
+      "defaultLine": "Okay! Let's start with fruits and colours!"
+    }
+  ],
+  "completion": {
+    "stars": 0
+  }
+}

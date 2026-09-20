@@ -1,12 +1,15 @@
 {
-  "contentVersion": 1,
-  "note": "Subject index for Aliz Tutor Mode. Every lessonId resolves to res://content/tutor/lessons/<lessonId>.json and every subject lists at least one lesson so the selector never dead-ends.",
+  "contentVersion": 2,
+  "note": "Subject index for Aliz Tutor Mode. Every lessonId resolves to res://content/tutor/lessons/<lessonId>.json and every subject lists at least one lesson so the selector never dead-ends. entryLessonId is the menu Aliz opens with (a single choose step); defaultLessonId is where 'anything' / 'I don't know' goes. keywords are what a child says to pick or switch to the subject (choose steps and handle_interjection); a keyword may belong to one subject only.",
+  "entryLessonId": "welcome_choose",
+  "defaultLessonId": "english_colors_fruits",
   "subjects": [
     {
       "subjectId": "english_basics",
-      "title": "English Basics",
+      "title": "Fruits and Colours",
       "description": "Everyday words with pictures: fruits and their colours.",
       "ageBand": "3-6",
+      "keywords": ["fruits", "fruit", "colours", "colors", "colour", "color", "fruits and colours", "apple", "banana", "orange", "grapes", "english"],
       "lessonIds": ["english_colors_fruits"]
     },
     {
@@ -14,27 +17,31 @@
       "title": "Numbers",
       "description": "Count together: one, two, three.",
       "ageBand": "3-6",
+      "keywords": ["numbers", "number", "counting", "count", "one two three", "1 2 3"],
       "lessonIds": ["numbers_one_two_three"]
     },
     {
       "subjectId": "colors",
-      "title": "Colors",
-      "description": "Name the colours you see: red, blue, yellow, green.",
+      "title": "Red and Blue",
+      "description": "Name the colours you see: red and blue.",
       "ageBand": "3-6",
+      "keywords": ["red and blue", "blue", "paint", "painting", "rainbow"],
       "lessonIds": ["colors_red_blue"]
     },
     {
       "subjectId": "animals",
       "title": "Animals",
-      "description": "Meet the pets: cat and dog.",
+      "description": "Meet the pets: cat and dog, and the sounds they make.",
       "ageBand": "3-6",
+      "keywords": ["animals", "animal", "cat", "dog", "cats", "dogs", "kitty", "puppy", "pets", "pet"],
       "lessonIds": ["animals_cat_dog"]
     },
     {
       "subjectId": "everyday_life",
-      "title": "Everyday Life",
+      "title": "Everyday Things",
       "description": "Things we use every day: a cup and a spoon.",
       "ageBand": "3-6",
+      "keywords": ["everyday", "everyday things", "everyday life", "cup", "spoon", "snack", "snack time", "eating", "drinking", "kitchen"],
       "lessonIds": ["everyday_cup_spoon"]
     }
   ]

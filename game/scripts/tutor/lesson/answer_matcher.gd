@@ -41,8 +41,9 @@ const FILLER_WORDS: Array[String] = [
 
 ## Result: `{matched: String, kind: "exact"|"contains"|"fuzzy"|""}`. `matched`
 ## is the expected answer (as written in the lesson) that the transcript hit,
-## or "" when nothing matched.
-static func match_answer(transcript: String, expected_answers: Array) -> Dictionary:
+## or "" when nothing matched. `allow_fuzzy` is off for keyword routing
+## (interjections, subject names) where "step" must never become "stop".
+static func match_answer(transcript: String, expected_answers: Array, allow_fuzzy: bool = true) -> Dictionary:
 	var spoken: String = normalize(transcript)
 	if spoken.is_empty():
 		return {"matched": "", "kind": ""}
@@ -68,6 +69,8 @@ static func match_answer(transcript: String, expected_answers: Array) -> Diction
 			return {"matched": String(raw), "kind": "contains"}
 
 	# 3. fuzzy -- one-letter slip on a long enough word
+	if not allow_fuzzy:
+		return {"matched": "", "kind": ""}
 	for raw: Variant in expected_answers:
 		var expected: String = strip_filler(normalize(String(raw)))
 		if expected.is_empty():

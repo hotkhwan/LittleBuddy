@@ -6,7 +6,11 @@
   "ageBand": "3-6",
   "targetDurationSeconds": 60,
   "language": "en",
-  "helperLanguageKeys": ["lets_count_together_one_two_three", "how_many_is_this", "you_can_count_to_three"],
+  "helperLanguageKeys": [
+    "lets_count_together_one_two_three",
+    "how_many_is_this",
+    "you_can_count_to_three"
+  ],
   "steps": [
     {
       "stepId": "s01_hello",
@@ -17,9 +21,16 @@
     {
       "stepId": "s02_one",
       "kind": "ask",
+      "itemId": "one",
+      "itemLabel": "number one",
       "questionText": "How many is this?",
       "visualAssetId": "number_1",
-      "expectedAnswers": ["one", "1", "it's one", "number one"],
+      "expectedAnswers": [
+        "one",
+        "1",
+        "it's one",
+        "number one"
+      ],
       "objective": "Recognise the number one",
       "hint": "Just one. Hold up one finger. One!",
       "encouragement": "Let's try together! How many is this?",
@@ -29,9 +40,18 @@
     {
       "stepId": "s03_two",
       "kind": "ask",
+      "itemId": "two",
+      "itemLabel": "number two",
       "questionText": "How many is this?",
       "visualAssetId": "number_2",
-      "expectedAnswers": ["two", "2", "it's two", "number two", "to", "too"],
+      "expectedAnswers": [
+        "two",
+        "2",
+        "it's two",
+        "number two",
+        "to",
+        "too"
+      ],
       "objective": "Recognise the number two",
       "hint": "One more than one. Hold up two fingers. Two!",
       "encouragement": "Let's try together! How many is this?",

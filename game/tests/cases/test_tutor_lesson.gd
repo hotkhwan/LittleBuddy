@@ -10,7 +10,9 @@ extends RefCounted
 ## - evaluate() truth table (correct / synonym / slip / wrong / unclear / empty);
 ## - retry escalation: retry -> give_hint -> next_question, never a fail;
 ## - progress save/load round trip under settings.tutorProgress;
-## - completion awards its stars exactly once, across saves and reloads.
+## - completion awards its stars exactly once, across saves and reloads;
+## - the evening addendum: choose routing, sound steps with reactions, the
+##   interjection table, and the owner's acceptance dialogue end to end.
 
 const LessonEngineScript := preload("res://scripts/tutor/lesson/lesson_engine.gd")
 const LessonValidatorScript := preload("res://scripts/tutor/lesson/lesson_validator.gd")
@@ -22,6 +24,8 @@ const CONTRACT_ALLOWLIST: Array[String] = [
 	"color_blue", "color_green", "color_red", "color_yellow", "orange_orange", "grapes_purple",
 ]
 const EXPECTED_SUBJECTS: Array[String] = ["english_basics", "numbers", "colors", "animals", "everyday_life"]
+const ENTRY_LESSON_ID: String = "welcome_choose"
+const ANIMALS_LESSON_ID: String = "animals_cat_dog"
 
 
 ## Stand-in for the SaveService autoload (detached under the runner). Counts
@@ -63,6 +67,11 @@ func run():
 	failures.append_array(_test_completion_awards_exactly_once())
 	failures.append_array(_test_every_lesson_completes_both_ways())
 	failures.append_array(_test_engine_edge_cases())
+	failures.append_array(_test_choose_routing())
+	failures.append_array(_test_sound_steps())
+	failures.append_array(_test_interjection_table())
+	failures.append_array(_test_owner_dialogue())
+	failures.append_array(_test_schema_rejects_bad_new_kinds())
 	return failures
 
 
@@ -74,8 +83,10 @@ func _test_shipped_content_validates():
 	for problem: Variant in problems:
 		failures.append("shipped tutor content: %s" % str(problem))
 	var ids: Array = LessonValidatorScript.shipped_lesson_ids()
-	if ids.size() < 5:
-		failures.append("expected at least 5 shipped lessons (one per subject), found %d" % ids.size())
+	if ids.size() < 6:
+		failures.append("expected at least 6 shipped lessons (menu plus one per subject), found %d" % ids.size())
+	if not ids.has(ENTRY_LESSON_ID) or LessonEngineScript.entry_lesson_id() != ENTRY_LESSON_ID:
+		failures.append("subjects.json must point the entry at %s" % ENTRY_LESSON_ID)
 	if not ids.has(FIRST_LESSON_ID):
 		failures.append("first lesson %s is not shipped" % FIRST_LESSON_ID)
 	var subjects: Array = LessonEngineScript.load_subjects()
@@ -519,6 +530,8 @@ func _test_completion_awards_exactly_once():
 func _test_every_lesson_completes_both_ways():
 	var failures: Array = []
 	for lesson_id: Variant in LessonValidatorScript.shipped_lesson_ids():
+		if String(lesson_id) == ENTRY_LESSON_ID:
+			continue  # the menu routes; _test_choose_routing covers it
 		# All correct.
 		var save_ok: FakeSave = FakeSave.new()
 		var engine: RefCounted = LessonEngineScript.new()
@@ -657,3 +670,399 @@ func _any_contains(problems: Array, needle: String) -> bool:
 		if str(problem).contains(needle):
 			return true
 	return false
+
+
+# --- addendum: choose, sound, interjections, owner dialogue ---------------------------
+
+func _test_choose_routing():
+	var failures: Array = []
+	var table: Array = [
+		# transcript, expected nextLessonId, expected outcome
+		["Animals!", ANIMALS_LESSON_ID, "correct"],
+		["I want the cat", ANIMALS_LESSON_ID, "correct"],
+		["dog", ANIMALS_LESSON_ID, "correct"],
+		["fruits", FIRST_LESSON_ID, "correct"],
+		["colours please", FIRST_LESSON_ID, "correct"],
+		["numbers", "numbers_one_two_three", "correct"],
+		["I want to count", "numbers_one_two_three", "correct"],
+		["everyday things", "everyday_cup_spoon", "correct"],
+		["red and blue", "colors_red_blue", "correct"],
+		["anything", FIRST_LESSON_ID, "correct"],
+		["you choose", FIRST_LESSON_ID, "correct"],
+		["I don't know", FIRST_LESSON_ID, "correct"],
+	]
+	for row: Variant in table:
+		var engine: RefCounted = LessonEngineScript.new()
+		if not engine.load_lesson(ENTRY_LESSON_ID):
+			return ["could not load %s" % ENTRY_LESSON_ID]
+		var step: Dictionary = engine.current_step()
+		if String(step.get("kind", "")) != "choose" or String(step.get("questionText", "")) != "Hi! What would you like to learn today?":
+			failures.append("entry lesson should open with the choose question, got %s" % str(step))
+			break
+		var result: Dictionary = engine.evaluate(String(row[0]))
+		if String(result.get("lessonAction", "")) != "switch_lesson":
+			failures.append("choose('%s') expected switch_lesson, got %s" % [str(row[0]), str(result.get("lessonAction"))])
+		if String(result.get("nextLessonId", "")) != String(row[1]):
+			failures.append("choose('%s') expected %s, got %s" % [str(row[0]), str(row[1]), str(result.get("nextLessonId"))])
+		if String(result.get("outcome", "")) != String(row[2]):
+			failures.append("choose('%s') outcome expected %s, got %s" % [str(row[0]), str(row[2]), str(result.get("outcome"))])
+		if String(result.get("line", "")).is_empty():
+			failures.append("choose('%s') must give Aliz a line" % str(row[0]))
+		# The engine can load the target and continue.
+		if not engine.switch_lesson(String(result.get("nextLessonId", ""))):
+			failures.append("switch_lesson(%s) failed" % str(result.get("nextLessonId")))
+		elif engine.lesson_id() != String(row[1]) or engine.is_complete():
+			failures.append("after switch the engine should be at the start of %s" % str(row[1]))
+
+	# Escalation on the menu: retry -> hint (lists the subjects) -> default lesson.
+	var stuck: RefCounted = LessonEngineScript.new()
+	stuck.load_lesson(ENTRY_LESSON_ID)
+	var first: Dictionary = stuck.evaluate("zebra")
+	var second: Dictionary = stuck.evaluate("")
+	var third: Dictionary = stuck.evaluate("zebra")
+	if String(first.get("lessonAction", "")) != "retry" or String(second.get("lessonAction", "")) != "give_hint":
+		failures.append("menu escalation should be retry then give_hint, got %s then %s" % [str(first.get("lessonAction")), str(second.get("lessonAction"))])
+	if not String(second.get("line", "")).contains("animals") or not String(second.get("line", "")).contains("numbers"):
+		failures.append("the menu hint should list the subjects, got '%s'" % str(second.get("line")))
+	if String(third.get("lessonAction", "")) != "switch_lesson" or String(third.get("nextLessonId", "")) != FIRST_LESSON_ID or String(third.get("outcome", "")) != "unclear":
+		failures.append("third unclear on the menu should route to the default lesson as unclear, got %s" % str(third))
+	if String(third.get("line", "")) != "Okay! Let's start with fruits and colours!":
+		failures.append("default route should speak defaultLine, got '%s'" % str(third.get("line")))
+	# The menu pays nothing, ever.
+	var save: FakeSave = FakeSave.new()
+	stuck.advance()
+	if stuck.save_progress(save) != 0 or save.add_calls != 0:
+		failures.append("the menu lesson must never grant stars")
+	# Options for the subject cards.
+	var menu: RefCounted = LessonEngineScript.new()
+	menu.load_lesson(ENTRY_LESSON_ID)
+	var options: Array = menu.choose_options()
+	if options.size() != 5:
+		failures.append("choose_options() should list the five subjects, got %d" % options.size())
+	var expected_union: Array = menu.current_step().get("expectedAnswers", [])
+	if not expected_union.has("animals") or not expected_union.has("anything"):
+		failures.append("a choose step's expectedAnswers should be the union of routes and defaults")
+	# switch_lesson with a save service resumes; a completed lesson restarts without paying again.
+	var progress_save: FakeSave = FakeSave.new()
+	var played: RefCounted = LessonEngineScript.new()
+	played.load_lesson(ANIMALS_LESSON_ID)
+	played.advance()
+	played.advance()
+	played.save_progress(progress_save)
+	var resume: RefCounted = LessonEngineScript.new()
+	resume.load_lesson(ENTRY_LESSON_ID)
+	resume.evaluate("animals")
+	resume.switch_lesson(ANIMALS_LESSON_ID, progress_save)
+	if resume.step_index() != 2:
+		failures.append("switch_lesson with a save service should resume at the saved step, got %d" % resume.step_index())
+	while not played.is_complete():
+		played.advance()
+	played.save_progress(progress_save)
+	var replay: RefCounted = LessonEngineScript.new()
+	replay.switch_lesson(ANIMALS_LESSON_ID, progress_save)
+	if replay.is_complete() or replay.step_index() != 0:
+		failures.append("switching into a completed lesson should restart it")
+	while not replay.is_complete():
+		replay.advance()
+	replay.save_progress(progress_save)
+	if progress_save.add_calls != 1:
+		failures.append("a replay reached through switch_lesson must not pay twice (%d)" % progress_save.add_calls)
+	return failures
+
+
+func _test_sound_steps():
+	var failures: Array = []
+	var cat_sounds: Array = ["meow", "Meow!", "miaow", "mew", "meow meow", "um meow", "MEOW"]
+	for sound: Variant in cat_sounds:
+		var engine: RefCounted = _engine_at_step(ANIMALS_LESSON_ID, "s03_cat_sound")
+		if engine == null:
+			return ["could not reach the cat sound step"]
+		var result: Dictionary = engine.evaluate(String(sound))
+		if String(result.get("outcome", "")) != "correct":
+			failures.append("cat sound '%s' should be accepted, got %s" % [str(sound), str(result.get("outcome"))])
+			continue
+		if String(result.get("line", "")) != "Meow! You're amazing!":
+			failures.append("cat sound success line wrong: '%s'" % str(result.get("line")))
+		var reaction: Dictionary = result.get("reaction", {})
+		if String(reaction.get("gesture", "")) != "clap" or String(reaction.get("sfx", "")) != "laugh" or String(reaction.get("alizSound", "")) != "Meow!":
+			failures.append("cat sound reaction expected clap/laugh/Meow!, got %s" % str(reaction))
+	var dog_sounds: Array = ["woof", "bark", "ruff", "arf", "bow wow", "woof woof"]
+	for sound: Variant in dog_sounds:
+		var engine: RefCounted = _engine_at_step(ANIMALS_LESSON_ID, "s05_dog_sound")
+		var result: Dictionary = engine.evaluate(String(sound))
+		if String(result.get("outcome", "")) != "correct" or String(result.get("reaction", {}).get("alizSound", "")) != "Woof!":
+			failures.append("dog sound '%s' should be accepted with Woof!, got %s" % [str(sound), str(result)])
+	# A wrong animal sound is a miss, not a fail, and no reaction plays.
+	var wrong: RefCounted = _engine_at_step(ANIMALS_LESSON_ID, "s03_cat_sound")
+	var miss: Dictionary = wrong.evaluate("woof")
+	if String(miss.get("lessonAction", "")) != "retry" or not (miss.get("reaction", {}) as Dictionary).is_empty():
+		failures.append("a dog sound on the cat step should retry with no reaction, got %s" % str(miss))
+	wrong.evaluate("woof")
+	var taught: Dictionary = wrong.evaluate("woof")
+	if String(taught.get("line", "")) != "A cat says meow! Say meow." or String(taught.get("lessonAction", "")) != "next_question":
+		failures.append("third miss on a sound step teaches the sound, got %s" % str(taught))
+	# Sound steps are scored like asks and the current_step() exposes the reaction.
+	var step: Dictionary = _engine_at_step(ANIMALS_LESSON_ID, "s03_cat_sound").current_step()
+	if String(step.get("kind", "")) != "sound" or String((step.get("reaction", {}) as Dictionary).get("gesture", "")) != "clap":
+		failures.append("current_step() on a sound step should expose kind and reaction: %s" % str(step))
+	var animals: Dictionary = _load_lesson_dict(ANIMALS_LESSON_ID)
+	var estimate: int = LessonValidatorScript.estimate_duration_seconds(animals, LessonValidatorScript.load_schema())
+	if estimate > 90:
+		failures.append("animals lesson estimate %d s exceeds the 90 s budget" % estimate)
+	var kinds: Array = []
+	for raw: Variant in animals.get("steps", []):
+		kinds.append(String((raw as Dictionary).get("kind", "")))
+	if kinds != ["teach", "ask", "sound", "ask", "sound", "celebrate"]:
+		failures.append("animals lesson should be teach/ask/sound/ask/sound/celebrate, got %s" % str(kinds))
+	if String((animals["steps"][0] as Dictionary).get("teachText", "")) != "Yay! Let's learn about animals!":
+		failures.append("animals lesson must open with the owner's line")
+	return failures
+
+
+func _test_interjection_table():
+	var failures: Array = []
+	# On the cat question of the animals lesson.
+	var table: Array = [
+		# transcript, handled, lessonAction, target (stepId or lessonId), isAnswer
+		["Wait! I want a dog!", true, "jump_step", "s04_dog", false],
+		["puppy", true, "jump_step", "s04_dog", false],
+		["I want numbers", true, "switch_lesson", "numbers_one_two_three", false],
+		["can we do fruits", true, "switch_lesson", FIRST_LESSON_ID, false],
+		["stop", true, "end_session", "", false],
+		["I'm done", true, "end_session", "", false],
+		["bye bye Aliz", true, "end_session", "", false],
+		["cat", false, "", "", true],
+		["it's a kitty", false, "", "", true],
+		["zebra", false, "", "", false],
+		["", false, "", "", false],
+		["step", false, "", "", false],
+	]
+	for row: Variant in table:
+		var engine: RefCounted = _engine_at_step(ANIMALS_LESSON_ID, "s02_cat")
+		if engine == null:
+			return ["could not reach the cat step"]
+		var result: Dictionary = engine.handle_interjection(String(row[0]))
+		if bool(result.get("handled", false)) != bool(row[1]):
+			failures.append("interjection('%s') handled expected %s, got %s" % [str(row[0]), str(row[1]), str(result)])
+			continue
+		if String(result.get("lessonAction", "")) != String(row[2]):
+			failures.append("interjection('%s') action expected '%s', got '%s'" % [str(row[0]), str(row[2]), str(result.get("lessonAction"))])
+		var target: String = String(result.get("nextStepId", result.get("nextLessonId", "")))
+		if target != String(row[3]):
+			failures.append("interjection('%s') target expected '%s', got '%s'" % [str(row[0]), str(row[3]), target])
+		if bool(result.get("isAnswer", false)) != bool(row[4]):
+			failures.append("interjection('%s') isAnswer expected %s" % [str(row[0]), str(row[4])])
+		if bool(row[1]) and String(result.get("line", "")).is_empty():
+			failures.append("interjection('%s') needs a line" % str(row[0]))
+		if String(row[2]) == "jump_step":
+			if String(engine.current_step().get("stepId", "")) != String(row[3]):
+				failures.append("jump_step should have moved the engine to %s" % str(row[3]))
+			if String(result.get("line", "")) != "Okay! Let's see the dog!":
+				failures.append("jump line expected 'Okay! Let's see the dog!', got '%s'" % str(result.get("line")))
+		else:
+			if String(engine.current_step().get("stepId", "")) != "s02_cat":
+				failures.append("interjection('%s') must not move the engine" % str(row[0]))
+		if engine.attempts() != 0:
+			failures.append("interjections never count as attempts")
+		if String(result.get("lessonAction", "")).contains("fail") or String(result.get("outcome", "")) == "incorrect":
+			failures.append("interjections never fail")
+	# In the fruits lesson: another fruit jumps; an animal switches; the current answer is an answer.
+	var fruits: RefCounted = _engine_at_step(FIRST_LESSON_ID, "s03_apple_colour")
+	var banana: Dictionary = fruits.handle_interjection("I want the banana")
+	if String(banana.get("lessonAction", "")) != "jump_step" or String(banana.get("nextStepId", "")) != "s05_banana_name" or String(banana.get("line", "")) != "Okay! Let's see the banana!":
+		failures.append("fruits interjection should jump to the banana: %s" % str(banana))
+	var red: Dictionary = _engine_at_step(FIRST_LESSON_ID, "s03_apple_colour").handle_interjection("red")
+	if bool(red.get("handled", true)) or not bool(red.get("isAnswer", false)):
+		failures.append("'red' during the red question is an answer, not a topic switch: %s" % str(red))
+	var to_animals: Dictionary = _engine_at_step(FIRST_LESSON_ID, "s03_apple_colour").handle_interjection("I want a dog")
+	if String(to_animals.get("lessonAction", "")) != "switch_lesson" or String(to_animals.get("nextLessonId", "")) != ANIMALS_LESSON_ID:
+		failures.append("naming an animal in the fruits lesson should switch to animals: %s" % str(to_animals))
+	# Jumping back keeps the lesson completable and paid once.
+	var back: RefCounted = _engine_at_step(ANIMALS_LESSON_ID, "s04_dog")
+	back.handle_interjection("I want the cat")
+	if String(back.current_step().get("stepId", "")) != "s02_cat":
+		failures.append("interjection should jump back to the cat")
+	var save: FakeSave = FakeSave.new()
+	while not back.is_complete():
+		var step: Dictionary = back.current_step()
+		if step.get("kind", "") in ["ask", "sound"]:
+			back.evaluate(String((step.get("expectedAnswers", []) as Array)[0]))
+		back.advance()
+	back.save_progress(save)
+	back.save_progress(save)
+	if save.add_calls != 1:
+		failures.append("after a jump the lesson still pays exactly once")
+	return failures
+
+
+## The owner's acceptance dialogue, as the scene will drive it.
+func _test_owner_dialogue():
+	var failures: Array = []
+	var save: FakeSave = FakeSave.new()
+	var engine: RefCounted = LessonEngineScript.new()
+	var transcript_log: Array = []
+	var aliz: Callable = func(text: String) -> void:
+		transcript_log.append("Aliz: %s" % text)
+	var child: Callable = func(text: String) -> void:
+		transcript_log.append("Child: %s" % text)
+
+	var expect: Callable = func(condition: bool, message: String) -> void:
+		if not condition:
+			failures.append("owner dialogue: %s (log so far: %s)" % [message, str(transcript_log)])
+
+	if not engine.load_lesson(LessonEngineScript.entry_lesson_id()):
+		return ["owner dialogue: entry lesson did not load"]
+	aliz.call(engine.current_step().get("questionText", ""))
+	child.call("Animals!")
+	var pick: Dictionary = engine.evaluate("Animals!")
+	expect.call(String(pick.get("lessonAction", "")) == "switch_lesson" and String(pick.get("nextLessonId", "")) == ANIMALS_LESSON_ID, "'Animals!' routes to the animals lesson")
+	aliz.call(pick.get("line", ""))
+	engine.switch_lesson(String(pick.get("nextLessonId", "")), save)
+
+	var greet: Dictionary = engine.current_step()
+	expect.call(String(greet.get("teachText", "")) == "Yay! Let's learn about animals!", "the animals lesson greets")
+	aliz.call(greet.get("teachText", ""))
+	engine.advance()
+
+	var cat: Dictionary = engine.current_step()
+	expect.call(String(cat.get("questionText", "")) == "What animal is this?" and String(cat.get("visualAssetId", "")) == "cat", "cat question with the cat card")
+	aliz.call(cat.get("questionText", ""))
+	# The child barges in before Aliz finishes: a topic switch, not an answer.
+	child.call("Wait! I want a dog!")
+	var barge: Dictionary = engine.handle_interjection("Wait! I want a dog!")
+	expect.call(bool(barge.get("handled", false)) and String(barge.get("lessonAction", "")) == "jump_step" and String(barge.get("nextStepId", "")) == "s04_dog", "'Wait! I want a dog!' jumps to the dog item")
+	expect.call(String(barge.get("line", "")) == "Okay! Let's see the dog!", "jump line")
+	aliz.call(barge.get("line", ""))
+
+	var dog: Dictionary = engine.current_step()
+	expect.call(String(dog.get("stepId", "")) == "s04_dog" and String(dog.get("visualAssetId", "")) == "dog", "dog question with the dog card")
+	aliz.call(dog.get("questionText", ""))
+	child.call("Dog!")
+	var dog_answer: Dictionary = engine.evaluate("Dog!")
+	expect.call(String(dog_answer.get("outcome", "")) == "correct" and String(dog_answer.get("line", "")) == "Great! It's a dog!", "'Dog!' is correct")
+	aliz.call(dog_answer.get("line", ""))
+	engine.advance()
+
+	var dog_sound: Dictionary = engine.current_step()
+	expect.call(String(dog_sound.get("questionText", "")) == "Can you make a dog sound?", "dog sound question")
+	aliz.call(dog_sound.get("questionText", ""))
+	child.call("Woof woof!")
+	var woof: Dictionary = engine.evaluate("Woof woof!")
+	expect.call(String(woof.get("line", "")) == "Woof! You're amazing!", "woof success line")
+	var woof_reaction: Dictionary = woof.get("reaction", {})
+	expect.call(String(woof_reaction.get("gesture", "")) == "clap" and String(woof_reaction.get("sfx", "")) == "laugh" and String(woof_reaction.get("alizSound", "")) == "Woof!", "Aliz claps, laughs and says Woof!")
+	expect.call(String(woof.get("lessonAction", "")) == "next_question", "the cat is still waiting, so not complete yet")
+	aliz.call("%s (%s, %s) %s" % [woof_reaction.get("alizSound", ""), woof_reaction.get("gesture", ""), woof_reaction.get("sfx", ""), woof.get("line", "")])
+	engine.advance()
+
+	# Back to the cat the jump left behind.
+	var back: Dictionary = engine.current_step()
+	expect.call(String(back.get("stepId", "")) == "s02_cat", "advance() returns to the skipped cat question, not the celebrate")
+	aliz.call(back.get("questionText", ""))
+	child.call("Cat")
+	var cat_answer: Dictionary = engine.evaluate("Cat")
+	expect.call(String(cat_answer.get("outcome", "")) == "correct", "'Cat' is correct")
+	aliz.call(cat_answer.get("line", ""))
+	engine.advance()
+
+	var cat_sound: Dictionary = engine.current_step()
+	expect.call(String(cat_sound.get("questionText", "")) == "Can you make a cat sound?", "cat sound question")
+	aliz.call(cat_sound.get("questionText", ""))
+	child.call("Meow")
+	var meow: Dictionary = engine.evaluate("Meow")
+	expect.call(String(meow.get("line", "")) == "Meow! You're amazing!", "meow success line")
+	var reaction: Dictionary = meow.get("reaction", {})
+	expect.call(String(reaction.get("gesture", "")) == "clap" and String(reaction.get("sfx", "")) == "laugh" and String(reaction.get("alizSound", "")) == "Meow!", "Aliz claps, laughs and says Meow!")
+	expect.call(String(meow.get("lessonAction", "")) == "complete", "the last open question completes")
+	aliz.call("%s (%s, %s) %s" % [reaction.get("alizSound", ""), reaction.get("gesture", ""), reaction.get("sfx", ""), meow.get("line", "")])
+	engine.advance()
+
+	var celebrate: Dictionary = engine.current_step()
+	expect.call(String(celebrate.get("kind", "")) == "celebrate", "celebrate step reached")
+	aliz.call(celebrate.get("teachText", ""))
+	engine.advance()
+	expect.call(engine.is_complete(), "lesson complete")
+	var stars: int = engine.save_progress(save)
+	expect.call(stars == 1 and save.add_calls == 1, "one star paid once")
+	child.call("I'm done")
+	var done: Dictionary = engine.handle_interjection("I'm done")
+	expect.call(String(done.get("lessonAction", "")) == "end_session", "'I'm done' ends the session")
+	aliz.call(done.get("line", ""))
+	expect.call(engine.progress().get("correctFirstTry", 0) == 4, "every answer counted first try")
+	if failures.is_empty():
+		print("      owner dialogue:")
+		for line: Variant in transcript_log:
+			print("        %s" % str(line))
+	return failures
+
+
+func _test_schema_rejects_bad_new_kinds():
+	var failures: Array = []
+	var schema: Dictionary = LessonValidatorScript.load_schema()
+	var allowlist: Array = LessonValidatorScript.load_allowlist()
+	var lessons: Dictionary = LessonValidatorScript.load_shipped_lessons()
+	var subjects: Variant = LessonValidatorScript.load_json(LessonValidatorScript.SUBJECTS_PATH)
+	var context: Dictionary = {"lessons": lessons, "subjects": subjects}
+	var animals: Dictionary = _load_lesson_dict(ANIMALS_LESSON_ID)
+	var menu: Dictionary = _load_lesson_dict(ENTRY_LESSON_ID)
+	if not LessonValidatorScript.validate_lesson(animals, schema, allowlist, [], context).is_empty() \
+			or not LessonValidatorScript.validate_lesson(menu, schema, allowlist, [], context).is_empty():
+		failures.append("baseline animals/menu lessons must validate before the negative cases mean anything")
+		return failures
+	var cases: Array = [
+		{"base": animals, "name": "sound without reaction", "mutate": func(l: Dictionary) -> void: (l["steps"][2] as Dictionary).erase("reaction"), "expect": "reaction"},
+		{"base": animals, "name": "bad gesture", "mutate": func(l: Dictionary) -> void: ((l["steps"][2] as Dictionary)["reaction"] as Dictionary)["gesture"] = "backflip", "expect": "backflip"},
+		{"base": animals, "name": "bad sfx", "mutate": func(l: Dictionary) -> void: ((l["steps"][2] as Dictionary)["reaction"] as Dictionary)["sfx"] = "explosion", "expect": "explosion"},
+		{"base": animals, "name": "success line without the sound", "mutate": func(l: Dictionary) -> void: (l["steps"][2] as Dictionary)["successLine"] = "Great job!", "expect": "echo the sound"},
+		{"base": animals, "name": "choose inside a lesson", "mutate": func(l: Dictionary) -> void: (l["steps"] as Array).insert(1, (menu["steps"][0] as Dictionary).duplicate(true)), "expect": "menu"},
+		{"base": animals, "name": "bad itemId", "mutate": func(l: Dictionary) -> void: (l["steps"][1] as Dictionary)["itemId"] = "The Cat", "expect": "itemId"},
+		{"base": animals, "name": "over budget", "mutate": func(l: Dictionary) -> void: l["targetDurationSeconds"] = 300, "expect": "estimated duration"},
+		{"base": menu, "name": "menu with two steps", "mutate": func(l: Dictionary) -> void: (l["steps"] as Array).append({"stepId": "x", "kind": "teach", "teachText": "Hi"}), "expect": "menu lesson"},
+		{"base": menu, "name": "route to unknown subject", "mutate": func(l: Dictionary) -> void: ((l["steps"][0] as Dictionary)["choices"] as Array).append({"subjectId": "space"}), "expect": "space"},
+		{"base": menu, "name": "route to missing lesson", "mutate": func(l: Dictionary) -> void: ((l["steps"][0] as Dictionary)["choices"] as Array).append({"lessonId": "ghost", "answers": ["ghost"]}), "expect": "ghost"},
+		{"base": menu, "name": "ambiguous answer", "mutate": func(l: Dictionary) -> void: (((l["steps"][0] as Dictionary)["choices"] as Array)[0] as Dictionary)["answers"] = ["numbers"], "expect": "also routes"},
+		{"base": menu, "name": "menu with stars", "mutate": func(l: Dictionary) -> void: (l["completion"] as Dictionary)["stars"] = 2, "expect": "stickerId"},
+		{"base": menu, "name": "choose missing default", "mutate": func(l: Dictionary) -> void: (l["steps"][0] as Dictionary).erase("defaultLessonId"), "expect": "defaultLessonId"},
+		{"base": menu, "name": "menu wrong subjectId", "mutate": func(l: Dictionary) -> void: l["subjectId"] = "animals", "expect": "menu"},
+	]
+	for entry: Variant in cases:
+		var case_data: Dictionary = entry
+		var tampered: Dictionary = (case_data["base"] as Dictionary).duplicate(true)
+		(case_data["mutate"] as Callable).call(tampered)
+		var problems: Array = LessonValidatorScript.validate_lesson(tampered, schema, allowlist, [], context)
+		if problems.is_empty():
+			failures.append("validator accepted '%s'" % str(case_data["name"]))
+		elif not _any_contains(problems, String(case_data["expect"])):
+			failures.append("'%s': expected a problem mentioning '%s', got %s" % [str(case_data["name"]), str(case_data["expect"]), str(problems)])
+	# Subjects index: duplicate keyword across subjects is rejected.
+	var doc: Dictionary = (subjects as Dictionary).duplicate(true)
+	((doc["subjects"][0] as Dictionary)["keywords"] as Array).append("dog")
+	if not _any_contains(LessonValidatorScript.validate_subjects(doc, lessons), "belongs to both"):
+		failures.append("a keyword shared by two subjects must be rejected")
+	var no_entry: Dictionary = (subjects as Dictionary).duplicate(true)
+	no_entry.erase("entryLessonId")
+	if not _any_contains(LessonValidatorScript.validate_subjects(no_entry, lessons), "entryLessonId"):
+		failures.append("subjects.json without entryLessonId must be rejected")
+	return failures
+
+
+func _load_lesson_dict(lesson_id: String) -> Dictionary:
+	var data: Variant = LessonValidatorScript.load_json("%s/%s.json" % [LessonValidatorScript.LESSONS_DIR, lesson_id])
+	return data if typeof(data) == TYPE_DICTIONARY else {}
+
+
+## An engine positioned on `step_id` of `lesson_id`, every earlier question answered correctly.
+func _engine_at_step(lesson_id: String, step_id: String) -> RefCounted:
+	var engine: RefCounted = LessonEngineScript.new()
+	if not engine.load_lesson(lesson_id):
+		return null
+	var guard: int = 0
+	while not engine.is_complete() and String(engine.current_step().get("stepId", "")) != step_id and guard < 100:
+		guard += 1
+		var step: Dictionary = engine.current_step()
+		if step.get("kind", "") in ["ask", "sound"]:
+			engine.evaluate(String((step.get("expectedAnswers", []) as Array)[0]))
+		engine.advance()
+	if engine.is_complete():
+		return null
+	return engine

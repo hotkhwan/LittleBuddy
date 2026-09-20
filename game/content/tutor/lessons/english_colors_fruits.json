@@ -28,9 +28,18 @@
     {
       "stepId": "s02_apple_name",
       "kind": "ask",
+      "itemId": "apple",
+      "itemLabel": "the apple",
       "questionText": "What is this?",
       "visualAssetId": "apple_red",
-      "expectedAnswers": ["apple", "an apple", "it's an apple", "a apple", "red apple", "apples"],
+      "expectedAnswers": [
+        "apple",
+        "an apple",
+        "it's an apple",
+        "a apple",
+        "red apple",
+        "apples"
+      ],
       "objective": "Name the fruit: apple",
       "hint": "It's round and red. You can eat it. It's an ap-ple!",
       "encouragement": "Let's try together! What is this?",
@@ -40,9 +49,16 @@
     {
       "stepId": "s03_apple_colour",
       "kind": "ask",
+      "itemId": "apple",
+      "itemLabel": "the apple",
       "questionText": "Great job! What colour is it?",
       "visualAssetId": "apple_red",
-      "expectedAnswers": ["red", "it's red", "red apple", "a red apple"],
+      "expectedAnswers": [
+        "red",
+        "it's red",
+        "red apple",
+        "a red apple"
+      ],
       "objective": "Name the colour: red",
       "hint": "It's the colour of a strawberry and a fire truck. R-r-red!",
       "encouragement": "Nice try! Look at the apple. What colour is it?",
@@ -52,15 +68,25 @@
     {
       "stepId": "s04_apple_recap",
       "kind": "teach",
+      "itemId": "apple",
+      "itemLabel": "the apple",
       "teachText": "Yes! It's a red apple!",
       "visualAssetId": "apple_red"
     },
     {
       "stepId": "s05_banana_name",
       "kind": "ask",
+      "itemId": "banana",
+      "itemLabel": "the banana",
       "questionText": "What is this?",
       "visualAssetId": "banana_yellow",
-      "expectedAnswers": ["banana", "a banana", "it's a banana", "bananas", "yellow banana"],
+      "expectedAnswers": [
+        "banana",
+        "a banana",
+        "it's a banana",
+        "bananas",
+        "yellow banana"
+      ],
       "objective": "Name the fruit: banana",
       "hint": "It's long and yellow. Monkeys love it. It's a ba-na-na!",
       "encouragement": "Let's try together! What is this?",
@@ -70,9 +96,16 @@
     {
       "stepId": "s06_banana_colour",
       "kind": "ask",
+      "itemId": "banana",
+      "itemLabel": "the banana",
       "questionText": "Great job! What colour is it?",
       "visualAssetId": "banana_yellow",
-      "expectedAnswers": ["yellow", "it's yellow", "yellow banana", "a yellow banana"],
+      "expectedAnswers": [
+        "yellow",
+        "it's yellow",
+        "yellow banana",
+        "a yellow banana"
+      ],
       "objective": "Name the colour: yellow",
       "hint": "It's the colour of the sun. Yel-low!",
       "encouragement": "Nice try! Look at the banana. What colour is it?",
@@ -82,15 +115,25 @@
     {
       "stepId": "s07_banana_recap",
       "kind": "teach",
+      "itemId": "banana",
+      "itemLabel": "the banana",
       "teachText": "Yes! It's a yellow banana!",
       "visualAssetId": "banana_yellow"
     },
     {
       "stepId": "s08_orange_name",
       "kind": "ask",
+      "itemId": "orange",
+      "itemLabel": "the orange",
       "questionText": "What is this?",
       "visualAssetId": "orange_orange",
-      "expectedAnswers": ["orange", "an orange", "it's an orange", "a orange", "oranges"],
+      "expectedAnswers": [
+        "orange",
+        "an orange",
+        "it's an orange",
+        "a orange",
+        "oranges"
+      ],
       "objective": "Name the fruit: orange",
       "hint": "It's round and juicy. Its name is its colour. It's an o-range!",
       "encouragement": "Let's try together! What is this?",
@@ -100,9 +143,16 @@
     {
       "stepId": "s09_orange_colour",
       "kind": "ask",
+      "itemId": "orange",
+      "itemLabel": "the orange",
       "questionText": "Great job! What colour is it?",
       "visualAssetId": "orange_orange",
-      "expectedAnswers": ["orange", "it's orange", "an orange", "orange orange"],
+      "expectedAnswers": [
+        "orange",
+        "it's orange",
+        "an orange",
+        "orange orange"
+      ],
       "objective": "Name the colour: orange",
       "hint": "Its colour has the same name as the fruit. O-range!",
       "encouragement": "Nice try! Look at the orange. What colour is it?",
@@ -112,15 +162,26 @@
     {
       "stepId": "s10_orange_recap",
       "kind": "teach",
+      "itemId": "orange",
+      "itemLabel": "the orange",
       "teachText": "Yes! An orange is orange!",
       "visualAssetId": "orange_orange"
     },
     {
       "stepId": "s11_grapes_name",
       "kind": "ask",
+      "itemId": "grapes",
+      "itemLabel": "the grapes",
       "questionText": "What is this?",
       "visualAssetId": "grapes_purple",
-      "expectedAnswers": ["grapes", "grape", "a grape", "some grapes", "they're grapes", "purple grapes"],
+      "expectedAnswers": [
+        "grapes",
+        "grape",
+        "a grape",
+        "some grapes",
+        "they're grapes",
+        "purple grapes"
+      ],
       "objective": "Name the fruit: grapes",
       "hint": "They're small, round and purple. Lots of them together. Grapes!",
       "encouragement": "Let's try together! What is this?",
@@ -130,9 +191,17 @@
     {
       "stepId": "s12_grapes_colour",
       "kind": "ask",
+      "itemId": "grapes",
+      "itemLabel": "the grapes",
       "questionText": "Great job! What colour are they?",
       "visualAssetId": "grapes_purple",
-      "expectedAnswers": ["purple", "it's purple", "they're purple", "purple grapes", "violet"],
+      "expectedAnswers": [
+        "purple",
+        "it's purple",
+        "they're purple",
+        "purple grapes",
+        "violet"
+      ],
       "objective": "Name the colour: purple",
       "hint": "It's a mix of red and blue. Pur-ple!",
       "encouragement": "Nice try! Look at the grapes. What colour are they?",
@@ -142,6 +211,8 @@
     {
       "stepId": "s13_grapes_recap",
       "kind": "teach",
+      "itemId": "grapes",
+      "itemLabel": "the grapes",
       "teachText": "Yes! Purple grapes! Now let's play a game with all the fruits!",
       "visualAssetId": "grapes_purple"
     },
@@ -150,7 +221,13 @@
       "kind": "ask",
       "questionText": "Which one is yellow?",
       "visualAssetId": "banana_yellow",
-      "expectedAnswers": ["banana", "the banana", "a banana", "it's the banana", "bananas"],
+      "expectedAnswers": [
+        "banana",
+        "the banana",
+        "a banana",
+        "it's the banana",
+        "bananas"
+      ],
       "objective": "Review: match the colour yellow to the banana",
       "hint": "It's long and monkeys love it. The ba-na-na!",
       "encouragement": "Let's try together! Which fruit is yellow?",
@@ -162,7 +239,13 @@
       "kind": "ask",
       "questionText": "Which one is red?",
       "visualAssetId": "apple_red",
-      "expectedAnswers": ["apple", "the apple", "an apple", "it's the apple", "apples"],
+      "expectedAnswers": [
+        "apple",
+        "the apple",
+        "an apple",
+        "it's the apple",
+        "apples"
+      ],
       "objective": "Review: match the colour red to the apple",
       "hint": "It's round and crunchy. The ap-ple!",
       "encouragement": "Let's try together! Which fruit is red?",
@@ -174,7 +257,13 @@
       "kind": "ask",
       "questionText": "Which one is purple?",
       "visualAssetId": "grapes_purple",
-      "expectedAnswers": ["grapes", "the grapes", "grape", "they're the grapes", "purple grapes"],
+      "expectedAnswers": [
+        "grapes",
+        "the grapes",
+        "grape",
+        "they're the grapes",
+        "purple grapes"
+      ],
       "objective": "Review: match the colour purple to the grapes",
       "hint": "They're small and round, lots together. The grapes!",
       "encouragement": "Let's try together! Which fruit is purple?",
@@ -186,7 +275,11 @@
       "kind": "ask",
       "questionText": "What colour is the orange?",
       "visualAssetId": "orange_orange",
-      "expectedAnswers": ["orange", "it's orange", "orange orange"],
+      "expectedAnswers": [
+        "orange",
+        "it's orange",
+        "orange orange"
+      ],
       "objective": "Review: the orange is orange",
       "hint": "Same name, same colour. O-range!",
       "encouragement": "Let's try together! What colour is the orange?",

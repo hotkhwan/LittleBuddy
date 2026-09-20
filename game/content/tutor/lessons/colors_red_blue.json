@@ -6,7 +6,11 @@
   "ageBand": "3-6",
   "targetDurationSeconds": 60,
   "language": "en",
-  "helperLanguageKeys": ["lets_look_at_colours", "what_colour_is_this", "you_know_red_and_blue"],
+  "helperLanguageKeys": [
+    "lets_look_at_colours",
+    "what_colour_is_this",
+    "you_know_red_and_blue"
+  ],
   "steps": [
     {
       "stepId": "s01_hello",
@@ -17,9 +21,16 @@
     {
       "stepId": "s02_red",
       "kind": "ask",
+      "itemId": "red",
+      "itemLabel": "red",
       "questionText": "What colour is this?",
       "visualAssetId": "color_red",
-      "expectedAnswers": ["red", "it's red", "the colour red", "the color red"],
+      "expectedAnswers": [
+        "red",
+        "it's red",
+        "the colour red",
+        "the color red"
+      ],
       "objective": "Name the colour red",
       "hint": "It's the colour of an apple and a fire truck. R-r-red!",
       "encouragement": "Let's try together! What colour is this?",
@@ -29,9 +40,16 @@
     {
       "stepId": "s03_blue",
       "kind": "ask",
+      "itemId": "blue",
+      "itemLabel": "blue",
       "questionText": "What colour is this?",
       "visualAssetId": "color_blue",
-      "expectedAnswers": ["blue", "it's blue", "the colour blue", "the color blue"],
+      "expectedAnswers": [
+        "blue",
+        "it's blue",
+        "the colour blue",
+        "the color blue"
+      ],
       "objective": "Name the colour blue",
       "hint": "It's the colour of the sky and the sea. Blue!",
       "encouragement": "Let's try together! What colour is this?",

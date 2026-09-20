@@ -6,7 +6,11 @@
   "ageBand": "3-6",
   "targetDurationSeconds": 60,
   "language": "en",
-  "helperLanguageKeys": ["what_do_we_drink_from", "what_do_we_eat_soup_with", "you_know_a_cup_and_a_spoon"],
+  "helperLanguageKeys": [
+    "what_do_we_drink_from",
+    "what_do_we_eat_soup_with",
+    "you_know_a_cup_and_a_spoon"
+  ],
   "steps": [
     {
       "stepId": "s01_hello",
@@ -16,8 +20,17 @@
     {
       "stepId": "s02_cup",
       "kind": "ask",
+      "itemId": "cup",
+      "itemLabel": "the cup",
       "questionText": "What do we drink from?",
-      "expectedAnswers": ["cup", "a cup", "the cup", "from a cup", "cups", "mug"],
+      "expectedAnswers": [
+        "cup",
+        "a cup",
+        "the cup",
+        "from a cup",
+        "cups",
+        "mug"
+      ],
       "objective": "Recall the everyday word: cup",
       "hint": "You hold it with your hand and drink your milk from it. A cup!",
       "encouragement": "Let's try together! We drink from a...?",
@@ -27,8 +40,16 @@
     {
       "stepId": "s03_spoon",
       "kind": "ask",
+      "itemId": "spoon",
+      "itemLabel": "the spoon",
       "questionText": "What do we eat soup with?",
-      "expectedAnswers": ["spoon", "a spoon", "the spoon", "with a spoon", "spoons"],
+      "expectedAnswers": [
+        "spoon",
+        "a spoon",
+        "the spoon",
+        "with a spoon",
+        "spoons"
+      ],
       "objective": "Recall the everyday word: spoon",
       "hint": "It's small and round at the end. You scoop with it. A spoon!",
       "encouragement": "Let's try together! We eat soup with a...?",

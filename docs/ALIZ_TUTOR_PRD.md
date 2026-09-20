@@ -57,13 +57,19 @@ coming back resumes the same step.
 
 ## 4. Subjects and lessons (`game/content/tutor/subjects.json`)
 
+Aliz opens with the menu lesson `welcome_choose` (one `choose` step: "Hi! What
+would you like to learn today?"). What the child says routes by the subject's
+`keywords` ("animals", "cat", "dog" → Animals; "fruits", "colours" → Fruits and
+Colours; "numbers", "count"; "everyday", "cup"; "red and blue"); "anything",
+"you choose", "I don't know" or a third unclear answer go to the default lesson.
+
 | Subject | First lesson | Steps | Sticker |
 |---|---|---|---|
-| English Basics | `english_colors_fruits` — Colors and Fruits (complete) | 18 | appleSticker, 3 stars |
+| Fruits and Colours (`english_basics`) | `english_colors_fruits` (complete, default) | 18 | appleSticker, 3 stars |
 | Numbers | `numbers_one_two_three` (starter) | 4 | starSticker, 1 star |
-| Colors | `colors_red_blue` (starter) | 4 | rainbowSticker, 1 star |
-| Animals | `animals_cat_dog` (starter) | 4 | heartSticker, 1 star |
-| Everyday Life | `everyday_cup_spoon` (starter) | 4 | milkSticker, 1 star |
+| Red and Blue (`colors`) | `colors_red_blue` (starter) | 4 | rainbowSticker, 1 star |
+| Animals | `animals_cat_dog` (owner's acceptance dialogue, ≤ 90 s) | 6 | heartSticker, 1 star |
+| Everyday Things | `everyday_cup_spoon` (starter) | 4 | milkSticker, 1 star |
 
 Every subject has at least one real lesson so the selector never dead-ends.
 Lessons are data (`lesson_schema.json`, camelCase, English-only answers with
@@ -80,6 +86,22 @@ grapes? → s12 purple? → s13 recap → s14 "Which one is yellow?" → s15 "Wh
 one is red?" → s16 "Which one is purple?" → s17 "What colour is the orange?" →
 s18 celebrate (3 stars, appleSticker).
 
+### Animals — the owner's acceptance dialogue
+
+"Yay! Let's learn about animals!" → "What animal is this?" (cat) → `sound`
+"Can you make a cat sound?" (meow / miaow / mew) → Aliz claps, laughs and says
+"Meow! You're amazing!" → dog → "Can you make a dog sound?" (woof / bark /
+ruff / arf) → celebrate. Estimate 88 s.
+
+### Barge-in (hands-free)
+
+While Aliz speaks the child may interrupt. `LessonEngine.handle_interjection()`
+turns the words into one of: **jump** to another item of this lesson ("Wait! I
+want a dog!" → "Okay! Let's see the dog!"; the skipped question comes back
+before the celebrate), **switch** to another subject ("I want numbers"),
+**end** ("stop", "I'm done", "bye"), or nothing (an answer is an answer; anything
+else makes Aliz repeat the question). Interjections never count as attempts.
+
 ## 5. Turn UX states
 
 | State | Banner | Aliz | Rule |
@@ -90,6 +112,8 @@ s18 celebrate (3 stars, appleSticker).
 | Success | "Great!" | `happy`, clap/nod | success line, then next question |
 | Incorrect | "Let's try together!" | `encouraging`, tilt | 1st miss: encouragement; 2nd: hint; 3rd: teach the answer and move on |
 | Timeout / unclear | "Let's try together!" | `encouraging` | same escalation as a miss; never says "wrong" |
+| Reaction (sound step) | "Great!" | gesture + sfx + Aliz's own sound ("Meow!") | from the step's `reaction`, only on a match |
+| Interrupted | "Listening" | stop mouth, turn to the child | then jump / switch / end / repeat |
 
 Every ask also has a **tap fallback**: tapping the picture card counts as the
 answer, so the lesson completes with speech off, denied or unavailable.
@@ -132,7 +156,8 @@ answer, so the lesson completes with speech off, denied or unavailable.
 
 ## 8. What V1 explicitly does not do
 
-- No free conversation, no open-ended questions, no generative dialogue.
+- No free conversation, no open-ended questions, no generative dialogue
+  (the choose menu and interjections route by keywords, deterministically).
 - No LLM in the loop (the flag is off); no rewording of lesson lines.
 - No pronunciation scoring, percentages, streaks, leaderboards or timers.
 - No reading or writing; no letters on screen as the task.
