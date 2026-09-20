@@ -8,6 +8,14 @@
 # ZERO declared permissions. Before that date the script had never produced an
 # APK and only ever printed its blocking list.
 #
+# 2026-09-20: `--aab` added. Google Play only accepts an Android App Bundle, and
+# Godot can only produce one through the Gradle build, which needs the NDK and
+# the Android build template on top of everything below. The committed preset
+# stays a plain-template APK preset on purpose (that path needs neither); with
+# `--aab` this script patches the two Gradle keys into a TEMPORARY copy of the
+# preset for the duration of the export and restores the file afterwards, so
+# `git diff game/export_presets.cfg` is clean whether the build succeeds or not.
+#
 # It still fails loudly and usefully on a machine that is missing a piece: it
 # collects EVERY missing prerequisite rather than dying on the first, and prints
 # a numbered list with copy-pasteable commands instead of dying inside Gradle
@@ -38,25 +46,40 @@
 #   tools/export_android.sh [debug|release]   (default: debug)
 #   tools/export_android.sh debug --install   (also `adb install -r` the result)
 #   tools/export_android.sh --check           (run the checks, export nothing)
+#   tools/export_android.sh debug --aab       (Gradle build -> debug-signed .aab;
+#                                              a pipeline proof, NOT uploadable)
+#   tools/export_android.sh release --aab     (the Play upload artefact; needs the
+#                                              owner's RELEASE keystore, supplied
+#                                              ONLY via environment variables:
+#                                                GODOT_ANDROID_KEYSTORE_RELEASE_PATH
+#                                                GODOT_ANDROID_KEYSTORE_RELEASE_USER
+#                                                GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD
+#                                              never in the repo, never in the preset)
 
 set -uo pipefail
 
 MODE="debug"
 DO_INSTALL=0
 CHECK_ONLY=0
+AAB=0
 for ARG in "$@"; do
 	case "$ARG" in
 		debug|release) MODE="$ARG" ;;
 		--install)     DO_INSTALL=1 ;;
 		--check)       CHECK_ONLY=1 ;;
+		--aab)         AAB=1 ;;
 		-h|--help)
-			echo "usage: $0 [debug|release] [--install] [--check]"
+			echo "usage: $0 [debug|release] [--install] [--check] [--aab]"
 			exit 0 ;;
 		*) echo "unknown argument: $ARG" >&2
-		   echo "usage: $0 [debug|release] [--install] [--check]" >&2
+		   echo "usage: $0 [debug|release] [--install] [--check] [--aab]" >&2
 		   exit 2 ;;
 	esac
 done
+if [ "$AAB" -eq 1 ] && [ "$DO_INSTALL" -eq 1 ]; then
+	echo "--install needs an APK; an .aab cannot be adb-installed directly (bundletool builds APKs from it)." >&2
+	exit 2
+fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GAME_DIR="$REPO_ROOT/game"
@@ -66,7 +89,11 @@ OUT_DIR="$REPO_ROOT/build/android"
 # Mode-suffixed on purpose. A debug and a release APK are NOT interchangeable
 # (the debug one is signed with a throwaway key and is android:debuggable), and
 # a single filename lets one silently overwrite the other.
-OUT_APK="$OUT_DIR/LittleDays-$MODE.apk"
+if [ "$AAB" -eq 1 ]; then
+	OUT_APK="$OUT_DIR/LittleDays-$MODE.aab"
+else
+	OUT_APK="$OUT_DIR/LittleDays-$MODE.apk"
+fi
 
 GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
 if [ ! -x "$GODOT" ]; then
@@ -95,7 +122,8 @@ ok()      { printf '  \033[32mok\033[0m    %s\n' "$1"; }
 bad()     { printf '  \033[31mMISSING\033[0m %s\n' "$1"; }
 note()    { printf '  \033[33mwarn\033[0m  %s\n' "$1"; }
 
-echo "==> Little Buddy Android export preflight ($MODE)"
+FORMAT_LABEL="apk"; [ "$AAB" -eq 1 ] && FORMAT_LABEL="aab (Gradle build)"
+echo "==> Little Buddy Android export preflight ($MODE, $FORMAT_LABEL)"
 echo ""
 
 # -- 1. Godot editor binary ----------------------------------------------------
@@ -199,12 +227,19 @@ if [ -d "$SDK_DIR/platforms" ] || [ -d "$SDK_DIR/build-tools" ]; then
 
 	if [ -d "$SDK_DIR/ndk/$REQUIRED_NDK" ]; then
 		ok "NDK: $REQUIRED_NDK"
+	elif [ "$AAB" -eq 1 ]; then
+		bad "NDK $REQUIRED_NDK (required for the Gradle build behind --aab)"
+		blocker "NDK $REQUIRED_NDK is absent. The Gradle build (the only way Godot
+     produces an .aab) pins it in config.gradle. It is a ~1 GB download, ~3.1 GB
+     installed, and needs no sudo:
+         yes | \"$SDK_DIR/cmdline-tools/latest/bin/sdkmanager\" --sdk_root=\"$SDK_DIR\" 'ndk;$REQUIRED_NDK'"
 	else
 		note "NDK $REQUIRED_NDK not installed"
 		warn "NDK $REQUIRED_NDK is absent. This is NOT a blocker for a plain APK
      export from the prebuilt template, which ships its own native libraries.
-     It IS required the moment you turn on gradle_build/use_gradle_build (for a
-     custom build or an Android plugin -- e.g. an Android speech plugin):
+     It IS required for --aab (Gradle build) and the moment you turn on
+     gradle_build/use_gradle_build (a custom build or an Android plugin -- e.g.
+     an Android speech plugin):
          sdkmanager 'ndk;$REQUIRED_NDK'"
 	fi
 else
@@ -217,6 +252,86 @@ else
          sdkmanager 'platform-tools' 'platforms;android-36' \\
                     'build-tools;$REQUIRED_BUILD_TOOLS' 'cmdline-tools;latest'
      (Android Studio also installs all of this, to ~/Library/Android/sdk.)"
+fi
+
+# -- 4b. Android build template (Gradle build only) ---------------------------
+#
+# The Gradle build compiles Godot's Android Java/Kotlin project from source. That
+# source ships inside the export templates as android_source.zip and has to be
+# unpacked into res://android/build with a .build_version stamp matching the
+# editor. The editor's Project > Install Android Build Template does exactly
+# this; the headless --install-android-build-template flag hangs in 4.7.2 (it
+# waits for an editor dialog), so the unzip is spelled out.
+
+BUILD_TEMPLATE_DIR="$GAME_DIR/android/build"
+if [ "$AAB" -eq 1 ]; then
+	TEMPLATE_STAMP=""
+	[ -f "$BUILD_TEMPLATE_DIR/.build_version" ] && TEMPLATE_STAMP="$(head -1 "$BUILD_TEMPLATE_DIR/.build_version" | tr -d '\r')"
+	if [ -n "$TEMPLATE_STAMP" ] && [ "$TEMPLATE_STAMP" = "${TEMPLATE_VERSION:-}" ] && [ -x "$BUILD_TEMPLATE_DIR/gradlew" ]; then
+		ok "Android build template: $BUILD_TEMPLATE_DIR ($TEMPLATE_STAMP)"
+	else
+		bad "Android build template in game/android/build (found stamp \"${TEMPLATE_STAMP:-none}\", need \"${TEMPLATE_VERSION:-?}\")"
+		blocker "The Android build template is not installed in the project (or is for a
+     different Godot version). game/android/ is git-ignored, so this is
+     per-checkout. Unpack it from the export templates:
+         mkdir -p \"$BUILD_TEMPLATE_DIR\"
+         unzip -q -o \"${TEMPLATE_DIR:-<editor data dir>/export_templates/<ver>}/android_source.zip\" -d \"$BUILD_TEMPLATE_DIR\"
+         printf '%s\\n' '${TEMPLATE_VERSION:-<ver>}' > \"$BUILD_TEMPLATE_DIR/.build_version\"
+         printf 'build/\\n' > \"$GAME_DIR/android/.gitignore\""
+	fi
+fi
+
+# -- 4c. RELEASE keystore (release mode only) ---------------------------------
+#
+# A release artefact is signed with the owner's upload key. That key is a
+# credential: it is never generated here, never committed, and never written
+# into export_presets.cfg. Godot 4.7 reads it from these environment variables
+# whenever the preset's keystore/release* fields are empty (they are):
+#   GODOT_ANDROID_KEYSTORE_RELEASE_PATH / _USER / _PASSWORD
+# Nothing below prints the password.
+
+if [ "$MODE" = "release" ]; then
+	RELEASE_KS="${GODOT_ANDROID_KEYSTORE_RELEASE_PATH:-}"
+	PRESET_RELEASE_KS="$(sed -n 's|^keystore/release="\(.*\)"$|\1|p' "$PRESETS" 2>/dev/null | tail -1)"
+	if [ -n "$PRESET_RELEASE_KS" ]; then
+		bad "keystore/release is set INSIDE game/export_presets.cfg"
+		blocker "game/export_presets.cfg carries a keystore/release path. Keystore
+     material and passwords must never live in the repo -- clear the three
+     keystore/release* fields (leave them as \"\") and supply the key through the
+     environment instead (see below)."
+	fi
+	if [ -n "$RELEASE_KS" ] && [ -f "$RELEASE_KS" ] \
+			&& [ -n "${GODOT_ANDROID_KEYSTORE_RELEASE_USER:-}" ] \
+			&& [ -n "${GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD:-}" ]; then
+		ok "release keystore: $RELEASE_KS (alias ${GODOT_ANDROID_KEYSTORE_RELEASE_USER}, password: set, not shown)"
+		case "$RELEASE_KS" in
+			*debug.keystore) bad "release keystore IS the debug keystore"
+			   blocker "GODOT_ANDROID_KEYSTORE_RELEASE_PATH points at a debug keystore. A
+     debug key must never sign a Play build (Play rejects it, and if it did
+     not, the app could never be updated)." ;;
+		esac
+		case "$RELEASE_KS" in
+			"$REPO_ROOT"/*) bad "release keystore lives inside the repository"
+			   blocker "The release keystore is inside the working tree. Move it outside the
+     repo (e.g. ~/Library/Application Support/Godot/keystores/) -- .gitignore
+     blocks *.keystore/*.jks, but a credential inside a checkout is one
+     'git add -f' from disaster." ;;
+		esac
+	else
+		bad "release keystore (GODOT_ANDROID_KEYSTORE_RELEASE_PATH/_USER/_PASSWORD)"
+		blocker "No release keystore supplied. A release build is refused rather than
+     signed with the debug key. The owner creates the upload key ONCE, keeps it
+     outside the repo, backs it up, and exports it in the shell that runs this
+     script (nothing is written to disk by this script):
+         keytool -genkeypair -v -keystore ~/Library/Application\\ Support/Godot/keystores/littledays-upload.jks \\
+           -alias littledays-upload -keyalg RSA -keysize 2048 -validity 10000
+         export GODOT_ANDROID_KEYSTORE_RELEASE_PATH=\"\$HOME/Library/Application Support/Godot/keystores/littledays-upload.jks\"
+         export GODOT_ANDROID_KEYSTORE_RELEASE_USER=littledays-upload
+         read -s GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD && export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD
+     With Play App Signing (the default for new apps) this is the UPLOAD key;
+     Google holds the app signing key. Losing the upload key is recoverable
+     through Play Console support; a leaked one must be reset the same way."
+	fi
 fi
 
 # -- 5. Debug keystore ---------------------------------------------------------
@@ -375,14 +490,52 @@ case "$MODE" in
 esac
 
 echo ""
-echo "==> Exporting Android APK ($MODE)"
+echo "==> Exporting Android $( [ "$AAB" -eq 1 ] && echo AAB || echo APK ) ($MODE)"
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_APK"
 # Force a rescan so GDExtension libraries are re-detected, exactly as the iOS
 # script does and for the same reason.
 rm -f "$GAME_DIR/.godot/extension_list.cfg"
 
-if ! "$GODOT" --headless --path "$GAME_DIR" "$EXPORT_FLAG" "$PRESET_NAME" "$OUT_APK"; then
+# An .aab only comes out of the Gradle build, and Godot decides the format from
+# the preset, not from the output filename. Rather than commit a second preset
+# (or flip the APK preset and break the no-NDK path), patch the two keys into
+# the preset for the duration of this one export and put the original back --
+# on success, on failure, and on Ctrl-C alike.
+PRESETS_BACKUP=""
+restore_presets() {
+	if [ -n "$PRESETS_BACKUP" ] && [ -f "$PRESETS_BACKUP" ]; then
+		cp -p "$PRESETS_BACKUP" "$PRESETS"
+		rm -f "$PRESETS_BACKUP"
+		PRESETS_BACKUP=""
+	fi
+}
+if [ "$AAB" -eq 1 ]; then
+	PRESETS_BACKUP="$(mktemp "${TMPDIR:-/tmp}/export_presets.cfg.XXXXXX")"
+	cp -p "$PRESETS" "$PRESETS_BACKUP"
+	trap restore_presets EXIT INT TERM
+	sed -i '' \
+		-e 's|^gradle_build/use_gradle_build=false$|gradle_build/use_gradle_build=true|' \
+		-e 's|^gradle_build/export_format=0$|gradle_build/export_format=1|' \
+		"$PRESETS"
+	if ! grep -q '^gradle_build/use_gradle_build=true$' "$PRESETS" \
+			|| ! grep -q '^gradle_build/export_format=1$' "$PRESETS"; then
+		echo "Could not switch the Android preset to Gradle/AAB (expected the two gradle_build keys at their APK defaults)." >&2
+		exit 1
+	fi
+	# Godot launches gradlew itself and passes java_sdk_path as JAVA_HOME, but
+	# gradlew also honours the caller's JAVA_HOME; make them agree.
+	export JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$JAVA_BIN")")}"
+fi
+
+PRESETS_SUM_BEFORE="$(shasum -a 256 "${PRESETS_BACKUP:-$PRESETS}" | cut -d' ' -f1)"
+EXPORT_OK=1
+"$GODOT" --headless --path "$GAME_DIR" "$EXPORT_FLAG" "$PRESET_NAME" "$OUT_APK" || EXPORT_OK=0
+restore_presets
+if [ "$(shasum -a 256 "$PRESETS" | cut -d' ' -f1)" != "$PRESETS_SUM_BEFORE" ]; then
+	echo "WARNING: game/export_presets.cfg is not byte-identical to what it was before the export -- run 'git diff game/export_presets.cfg' before committing." >&2
+fi
+if [ "$EXPORT_OK" -ne 1 ]; then
 	echo "Godot export failed. Its last error above is the real one." >&2
 	exit 1
 fi
@@ -391,6 +544,28 @@ fi
 
 echo ""
 echo "==> Built $OUT_APK ($(du -h "$OUT_APK" | cut -f1))"
+
+if [ "$AAB" -eq 1 ]; then
+	# An .aab is JAR-signed (v1); apksigner does not apply. jarsigner ships with
+	# the JDK found above.
+	JARSIGNER="$(dirname "$JAVA_BIN")/jarsigner"
+	if [ -x "$JARSIGNER" ]; then
+		echo ""
+		echo "==> Bundle signature:"
+		"$JARSIGNER" -verify -verbose:summary -certs "$OUT_APK" 2>&1 | grep -E "jar verified|X.509|CN=|not signed|error" | sed 's/^/    /' | head -6
+	fi
+	echo "    SHA-256: $(shasum -a 256 "$OUT_APK" | cut -d' ' -f1)"
+	if [ "$MODE" = "debug" ]; then
+		echo ""
+		echo "    NOTE: this .aab is DEBUG-signed. It proves the Gradle/AAB pipeline"
+		echo "    works on this machine; Play Console will reject it. The upload"
+		echo "    artefact is 'tools/export_android.sh release --aab' with the"
+		echo "    owner's release keystore in the environment."
+	fi
+	echo ""
+	echo "==> Done."
+	exit 0
+fi
 
 # Show what the APK actually asks for. On a children's app the permission list
 # is not a detail -- see docs/ANDROID_READINESS.md section 2.
