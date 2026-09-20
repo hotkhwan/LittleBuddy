@@ -4,16 +4,23 @@ One page for Khwan. Ten minutes on the real iPad, no coaching. Full sheet with
 every step and the sign-off block: `docs/DEVICE_QA_CHECKLIST.md`. This card only
 adds what the MacBook found on 2026-09-20.
 
-## Before you can install — two things only you can do
+## Before you can install
 
-1. **Sign in to Xcode.** On this MacBook Xcode has **no Apple ID, no signing
-   certificate and no provisioning profile** (`security find-identity` reports
-   zero identities). Xcode → Settings → Accounts → **+** → your Apple ID. Then
-   open the project, select the LittleBuddy target → Signing & Capabilities,
-   and pick your team. Xcode creates the certificate and profile itself.
-2. **Plug in the iPad.** Only an iPhone 14 Pro Max was attached when this was
-   written; no iPad has been seen by this Mac yet. Unlock it, tap Trust, and
-   turn on Settings → Privacy & Security → **Developer Mode** (restart).
+**Signing is now set up** (checked 2026-09-20 midday): one identity,
+`Apple Development: hotkhwan@gmail.com`, team **`YZSLV4272S`**. The iPhone 14
+Pro Max is connected. No iPad has been seen by this Mac yet.
+
+**One thing to expect in Xcode.** The exported project carries
+`DEVELOPMENT_TEAM = JZDAUN45CF` from `game/export_presets.cfg` (the Mac Mini's
+setting). If your Apple ID is a member of that team, Xcode will be quiet. If it
+is not, Signing & Capabilities shows a red "No account for team JZDAUN45CF":
+pick **your** team from the Team dropdown and carry on. That choice lives in
+`build/ios`, which `tools/export_ios.sh` deletes on every export, so after any
+re-export you pick it again, or tell me to change `application/app_store_team_id`
+in the preset to `YZSLV4272S`. Nothing here was changed for you.
+
+Then: unlock the device, tap Trust, and turn on Settings → Privacy & Security →
+**Developer Mode** (it restarts).
 
 Then:
 
@@ -27,6 +34,24 @@ your Apple ID, then tap the **Little Days** icon.
 
 `tools/export_ios.sh` deletes and recreates `build/ios`, so choose the team in
 Xcode **after** the last export, or set it once in `game/export_presets.cfg`.
+
+## iPhone 14 Pro Max first — same build, same steps
+
+The iPhone that is already plugged in is a valid first device: the export
+targets iPhone + iPad (`TARGETED_DEVICE_FAMILY 1,2`), iOS 15+, landscape only.
+Pick "iPhone" in the run-destination menu instead of the iPad and ⌘R. Developer
+Mode and the "Untrusted Developer" trust step are identical.
+
+Two things to judge on the phone that the iPad cannot show you, then carry on
+with the same table below:
+
+| # | On the iPhone | PASS looks like | ☐ |
+|---|---|---|---|
+| P1 | Notch / Dynamic Island side | No text or button under the island or the rounded corners; the star count and the `Grown-ups` chip are fully visible | ☐ |
+| P2 | Home indicator | The progress bar and `Next` sit above it, not under it | ☐ |
+
+Everything else on the phone is the iPad list. The layout was designed for the
+4:3 iPad; note anything that looks cramped, it is useful information, not a FAIL.
 
 ## The walk — expected flow
 
@@ -77,7 +102,7 @@ xcrun devicectl device copy from --device <UDID> \
 | | |
 |---|---|
 | Date | |
-| iPad model + iPadOS | |
-| Passed | ___ / 20 |
+| Device (iPad / iPhone 14 Pro Max) + OS version | |
+| Passed | ___ / 20 (iPad) · ___ / 22 (iPhone) |
 | Speech heard "milk"? | ☐ Yes ☐ Unavailable ☐ Accepted a word I did not say |
 | **Ship the Founder Preview to the family?** | ☐ Yes ☐ No ☐ Fix first |
