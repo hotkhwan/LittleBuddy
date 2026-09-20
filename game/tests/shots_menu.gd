@@ -5,6 +5,15 @@ extends SceneTree
 ##   Godot --path game --script res://tests/shots_menu.gd -- menu_wow_ipad 1334x750
 ##   Godot --path game --script res://tests/shots_menu.gd -- menu_wow_iphone 2340x1080
 ##   Godot --path game --script res://tests/shots_menu.gd -- menu_wow_pressed 1334x750 pressed
+##   Godot --path game --script res://tests/shots_menu.gd -- menu_depart_walk 1334x750 depart 0.3
+##   Godot --path game --script res://tests/shots_menu.gd -- menu_depart_carry 1334x750 depart 1.0
+##   Godot --path game --script res://tests/shots_menu.gd -- menu_depart_door 1334x750 depart 2.05
+##   Godot --path game --script res://tests/shots_menu.gd -- dress_up_mint 1334x750 dressup mint
+##
+## `depart <seconds>` presses Start and then drives the walk home by hand to
+## that moment (`menu_departure.gd::advance()`), so the frame is the same one
+## a child sees at that second. `dressup <swatch>` photographs the Dress Up
+## screen with that swatch applied.
 ##
 ## ## Why a SubViewport, and why `size_2d_override`
 ##
@@ -31,6 +40,7 @@ const DESIGN_HEIGHT: int = 1024
 var _name: String = "menu_wow"
 var _frame: Vector2i = Vector2i(1334, 750)
 var _mode: String = ""
+var _mode_arg: String = ""
 var _viewport: SubViewport = null
 var _menu: Node = null
 var _fail: Array = []
@@ -50,6 +60,8 @@ func _run() -> void:
 			_frame = Vector2i(int(wide[0]), int(wide[1]))
 	if args.size() > 2:
 		_mode = String(args[2]).strip_edges()
+	if args.size() > 3:
+		_mode_arg = String(args[3]).strip_edges()
 	print("=== title screen, %dx%d -> %s%s.png ===" % [_frame.x, _frame.y, OUT_DIR, _name])
 
 	await process_frame
@@ -66,12 +78,55 @@ func _run() -> void:
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	root.add_child(_viewport)
 
-	var packed: PackedScene = load("res://scenes/main/main.tscn")
+	var scene_path: String = "res://scenes/main/main.tscn"
+	if _mode == "dressup":
+		scene_path = "res://scenes/dress_up/dress_up.tscn"
+	var packed: PackedScene = load(scene_path)
 	if packed == null:
-		return _die("main.tscn will not load")
+		return _die("%s will not load" % scene_path)
 	_menu = packed.instantiate()
 	_viewport.add_child(_menu)
 	await _settle(1.2)
+
+	if _mode == "dressup":
+		if not _mode_arg.is_empty() and _menu.has_method("apply_swatch"):
+			if not bool(_menu.call("apply_swatch", _mode_arg, false)):
+				_fail.append("'%s' is not a swatch" % _mode_arg)
+		await _settle(0.3)
+		_report_dress_up()
+		await _shot(_name)
+		if save != null:
+			root.add_child(save)
+		_finish()
+		return
+
+	if _mode == "depart":
+		var play: Button = _menu.get_node_or_null("UI/SafeArea/PlayButton") as Button
+		if play == null:
+			_fail.append("no PlayButton to press")
+		else:
+			# The real press, then the walk driven by hand to the asked-for
+			# second. `_process` is switched off so it does not ALSO advance it.
+			_menu.set_process(false)
+			play.pressed.emit()
+			var departure: Node = _menu.call("get_departure") if _menu.has_method("get_departure") else null
+			if departure == null:
+				_fail.append("pressing Start started no departure")
+			else:
+				var at: float = float(_mode_arg) if _mode_arg.is_valid_float() else 1.0
+				var stepped: float = 0.0
+				while stepped < at:
+					var step: float = minf(1.0 / 60.0, at - stepped)
+					departure.call("advance", step)
+					stepped += step
+					if stepped >= at:
+						break
+				print("  departure: phase=%s elapsed=%.2f carried=%s cover=%.2f" % [
+					String(departure.call("get_phase")), float(departure.call("get_elapsed")),
+					str(departure.call("is_bunny_carried")), float(departure.call("get_cover_alpha"))])
+				# The wrappers' animation players advance with the frames the
+				# settle below gives them; the walk itself is parked at `at`.
+			await _settle(0.35)
 
 	if _mode == "pressed":
 		# Hold Play down for the picture: the squish and the pressed frame are
@@ -89,6 +144,10 @@ func _run() -> void:
 
 	if save != null:
 		root.add_child(save)
+	_finish()
+
+
+func _finish() -> void:
 	if _fail.is_empty():
 		print("\nMENU SHOT OK")
 		quit(0)
@@ -97,6 +156,19 @@ func _run() -> void:
 		for problem: String in _fail:
 			print("  - %s" % problem)
 		quit(1)
+
+
+func _report_dress_up() -> void:
+	if _menu.has_method("is_model_available"):
+		print("  Aliz model available = %s" % str(_menu.call("is_model_available")))
+		if not bool(_menu.call("is_model_available")):
+			_fail.append("Dress Up has no Aliz model in this checkout")
+	if _menu.has_method("get_current_swatch"):
+		print("  swatch: %s  accent colour: %s" % [
+			String(_menu.call("get_current_swatch")), str(_menu.call("get_accent_colour"))])
+	var back: Button = _menu.get_node_or_null("UI/SafeArea/BackButton") as Button
+	if back == null:
+		_fail.append("Dress Up has no Back button")
 
 
 ## What is actually in the frame, printed, so the picture carries its own label.

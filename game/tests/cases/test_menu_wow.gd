@@ -16,18 +16,35 @@ extends RefCounted
 ##     row, heads below the title, inside the narrowest iPad frame;
 ##   * all four buttons -- Start, Free Play, Dress Up, Grown-ups -- are big
 ##     enough, carry a picture and a word, get a shadow and press feedback, and
-##     each one PRESSED hands the tree the scene it promises.
+##     each one PRESSED hands the tree the scene it promises;
+##   * the garden MOVES (canopies, flowers, clouds, butterflies, the cat) when
+##     time passes, and stands still when it does not;
+##   * Start and Free Play play THE WALK HOME first -- Aliz picks Bunny up and
+##     carries him to the door -- which completes inside 2.5 s, can be skipped
+##     by a tap, and then runs exactly the hand-off it always ran;
+##   * the version reads "v" + `GameVersion.BUILD`, bottom-right, quiet;
+##   * Dress Up opens a screen that works on its own: Aliz, swatches that
+##     recolour her, and a Back button that returns to this menu.
 
 const MainScript := preload("res://scenes/main/main.gd")
 const Garden := preload("res://scripts/menu/menu_garden.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 
 const MENU_SCENE: String = "res://scenes/main/main.tscn"
+const DRESS_UP_SCENE: String = "res://scenes/dress_up/dress_up.tscn"
+const GameVersion := preload("res://scripts/content_packs/game_version.gd")
+
+## The walk home must be over inside this, tap or no tap.
+const DEPARTURE_MAX_SEC: float = 2.5
+## The cover the departure leaves under the root, swept up by every case here.
+const COVER_NAME: String = "SceneCover"
 
 ## Section 10 of the art bible budgets a hero character at 4,000 triangles; the
-## whole garden is allowed ten of those, which is generous for a menu and still
-## a tenth of what one unoptimised prop export costs.
-const GARDEN_TRIANGLE_CAP: int = 40000
+## whole garden is allowed fifteen of those (the playtest brief of 2026-09-20
+## set 60k for the richer garden: trees in layers, a blossom tree, a cat, a
+## bird, butterflies, round-petalled flowers, far cottages). Still a fraction
+## of what one unoptimised prop export costs.
+const GARDEN_TRIANGLE_CAP: int = 60000
 
 ## The layout the scene stores, in the 1024-tall design space.
 const DESIGN_HEIGHT: float = 1024.0
@@ -40,7 +57,7 @@ const MIN_TOUCH_SIDE: float = 240.0
 const BUTTONS: Dictionary = {
 	"PlayButton": "res://scenes/baby_room/baby_room.tscn",
 	"FreePlayButton": "res://scenes/house/house_world.tscn",
-	"DressUpButton": "res://scenes/activities/dressing.tscn",
+	"DressUpButton": "res://scenes/dress_up/dress_up.tscn",
 	"ParentButton": "res://scenes/parent/parent_settings.tscn",
 }
 
@@ -57,6 +74,11 @@ func run():
 	failures.append_array(_test_characters_are_framed())
 	failures.append_array(_test_four_buttons_dressed())
 	failures.append_array(_test_each_button_opens_its_scene())
+	failures.append_array(_test_the_garden_moves())
+	failures.append_array(_test_departure_completes())
+	failures.append_array(_test_departure_can_be_skipped())
+	failures.append_array(_test_version_label())
+	failures.append_array(_test_dress_up_round_trip())
 	return failures
 
 
@@ -70,8 +92,9 @@ func _test_the_garden_is_built():
 	garden.build()
 	var counts: Dictionary = garden.describe()
 	var minimums: Dictionary = {
-		"doors": 1, "windows": 3, "trees": 3, "flowers": 12, "clouds": 3,
+		"doors": 1, "windows": 3, "trees": 6, "flowers": 30, "clouds": 4,
 		"stones": 8, "hills": 2, "fencePosts": 8, "toys": 3,
+		"butterflies": 2, "cats": 1, "signs": 1, "birds": 1, "farCottages": 2, "bushes": 6,
 	}
 	for kind: String in minimums.keys():
 		if int(counts.get(kind, 0)) < int(minimums[kind]):
@@ -79,14 +102,21 @@ func _test_the_garden_is_built():
 					% [int(counts.get(kind, 0)), kind, int(minimums[kind])])
 	if int(counts.get("suns", 0)) != 1:
 		failures.append("the garden has %d suns; there is one" % int(counts.get("suns", 0)))
-	for node_name: String in ["House", "Path", "Trees", "Flowerbeds", "Fence", "Clouds", "SkyDome", "Grass"]:
+	for node_name: String in ["House", "Path", "Trees", "Flowerbeds", "Fence", "Clouds", "SkyDome", "Grass",
+			"Stump", "Butterflies", "CornerBushes", "Hedge", "FarCottages"]:
 		if garden.get_node_or_null(node_name) == null:
 			failures.append("the garden has no %s node" % node_name)
 	var house: Node = garden.get_node_or_null("House")
 	if house != null:
-		for part: String in ["Walls", "Roof", "Door", "Window", "AtticWindow", "Chimney"]:
+		for part: String in ["Walls", "Roof", "Door", "Window", "AtticWindow", "Chimney", "Door/Hinge/Heart"]:
 			if house.get_node_or_null(part) == null:
 				failures.append("the house has no %s" % part)
+	if garden.get_node_or_null("Toys/Mailbox/Bird") == null:
+		failures.append("there is no bluebird on the mailbox")
+	if garden.get_node_or_null("Stump/Cat") == null:
+		failures.append("there is no cat asleep on the stump")
+	if garden.get_node_or_null("Trees/HeroTree/Sign") == null:
+		failures.append("there is no sign hanging from the big tree")
 	# Built twice, built once: the second call must be a no-op.
 	var before: int = garden.get_child_count()
 	garden.build()
@@ -389,11 +419,20 @@ func _test_each_button_opens_its_scene():
 			failures.append("no %s to press" % button_name)
 		else:
 			button.pressed.emit()
+			# Start and Free Play walk home first; nothing must have opened yet,
+			# and a tap (skip) must open it at once. The other two go straight.
+			var departing: bool = bool(menu.call("is_departing"))
+			var walks: bool = button_name in ["PlayButton", "FreePlayButton"]
+			if walks and not departing:
+				failures.append("pressing %s did not start the walk home" % button_name)
+			if not walks and departing:
+				failures.append("pressing %s started the walk home; only Start and Free Play do" % button_name)
+			if departing:
+				if _opened_scene(tree, before) != null:
+					failures.append("pressing %s opened the scene before the walk home had finished" % button_name)
+				menu.call("skip_departure")
 
-		var opened: Node = null
-		for child: Node in tree.root.get_children():
-			if not before.has(child):
-				opened = child
+		var opened: Node = _opened_scene(tree, before)
 		if opened == null:
 			failures.append("pressing %s put nothing into the tree; a child pressed a button and got nothing"
 					% button_name)
@@ -410,10 +449,315 @@ func _test_each_button_opens_its_scene():
 			opened.free()
 
 		tree.current_scene = previous_scene
+		_sweep_cover(tree)
 		if is_instance_valid(menu):
 			if menu.get_parent() == tree.root:
 				tree.root.remove_child(menu)
 			menu.free()
+	return failures
+
+
+# ---------------------------------------------------------------------------
+# The garden moves
+# ---------------------------------------------------------------------------
+
+func _test_the_garden_moves():
+	var failures: Array = []
+	var garden: Node3D = Garden.new()
+	garden.build()
+	if int(garden.count_moving_parts()) < 20:
+		failures.append("only %d things in the garden move; a breeze touches the canopies, the flowers, the clouds, the butterflies and the cat"
+				% int(garden.count_moving_parts()))
+	var canopy: Node3D = garden.get_node_or_null("Trees/Tree0/Canopy") as Node3D
+	var cloud: Node3D = garden.get_node_or_null("Clouds/Cloud0") as Node3D
+	var butterfly: Node3D = garden.get_node_or_null("Butterflies/Butterfly0") as Node3D
+	var flower: Node3D = garden.get_node_or_null("Flowerbeds/Bed0/Flower0") as Node3D
+	var cat_body: Node3D = garden.get_node_or_null("Stump/Cat/Body") as Node3D
+	if canopy == null or cloud == null or butterfly == null or flower == null or cat_body == null:
+		garden.free()
+		return ["the garden is missing a canopy, a cloud, a butterfly, a flower or the cat to move"]
+	var canopy_before: Vector3 = canopy.rotation
+	var cloud_before: Vector3 = cloud.position
+	var fly_before: Vector3 = butterfly.position
+	var flower_before: Vector3 = flower.rotation
+	var cat_before: Vector3 = cat_body.scale
+	# Stood still: nothing moves.
+	garden.set_ambient_enabled(false)
+	garden.tick(0.8)
+	if canopy.rotation != canopy_before or cloud.position != cloud_before:
+		failures.append("the garden moved with ambient motion switched off")
+	garden.set_ambient_enabled(true)
+	garden.tick(0.8)
+	if canopy.rotation.is_equal_approx(canopy_before):
+		failures.append("the canopy did not sway after 0.8 s")
+	if cloud.position.is_equal_approx(cloud_before):
+		failures.append("the cloud did not drift after 0.8 s")
+	if butterfly.position.is_equal_approx(fly_before):
+		failures.append("the butterfly did not flutter after 0.8 s")
+	if flower.rotation.is_equal_approx(flower_before):
+		failures.append("the flower did not sway after 0.8 s")
+	if cat_body.scale.is_equal_approx(cat_before):
+		failures.append("the cat did not breathe after 0.8 s")
+	# Gentle: a sway is a few degrees, never a lurch.
+	garden.tick(1.3)
+	for t: int in range(40):
+		garden.tick(0.1)
+		if absf(rad_to_deg(canopy.rotation.z)) > 4.0 or absf(rad_to_deg(canopy.rotation.x)) > 4.0:
+			failures.append("the canopy leans %.1f degrees; the breeze is two to three" % rad_to_deg(canopy.rotation.z))
+			break
+	garden.free()
+	return failures
+
+
+# ---------------------------------------------------------------------------
+# The walk home
+# ---------------------------------------------------------------------------
+
+## Start pressed: the walk runs through its phases, Bunny is lifted, the door
+## opens, the cover comes up, and inside 2.5 s the promised scene is in the
+## tree -- all driven by hand, frame by frame, as `_process()` would.
+func _test_departure_completes():
+	var failures: Array = []
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return ["menu_wow: no SceneTree"]
+	var menu: Node = _instantiate(failures)
+	if menu == null:
+		return failures
+	_add_and_ready(tree, menu)
+	var before: Array = tree.root.get_children().duplicate()
+	var previous_scene: Node = tree.current_scene
+
+	var play: Button = menu.get_node_or_null("UI/SafeArea/PlayButton") as Button
+	play.pressed.emit()
+	var departure: Node = menu.call("get_departure")
+	if departure == null:
+		_cleanup(tree, menu, previous_scene, before)
+		return ["pressing Start started no walk home"]
+	var phases: Array = []
+	departure.phase_changed.connect(func(p: String) -> void: phases.append(p))
+	phases.append(String(departure.call("get_phase")))
+
+	var bunny: Node3D = menu.get_node_or_null("Bunny") as Node3D
+	var bunny_start: Vector3 = bunny.position if bunny != null else Vector3.ZERO
+	var hinge: Node3D = menu.get_node_or_null("Garden/House/Door/Hinge") as Node3D
+	var safe_area: Control = menu.get_node_or_null("UI/SafeArea") as Control
+	if safe_area != null and safe_area.modulate.a > 0.99:
+		failures.append("the buttons are still fully visible while the walk home plays")
+	if menu.get_node_or_null("UI/SkipCatcher") == null:
+		failures.append("there is nothing catching the tap that skips the walk")
+
+	var elapsed: float = 0.0
+	var steps: int = 0
+	var bunny_lifted_at: float = -1.0
+	var cover_peak: float = 0.0
+	var cover_early: float = 0.0
+	while not bool(departure.call("is_done")) and steps < 400:
+		departure.call("advance", 1.0 / 60.0)
+		elapsed += 1.0 / 60.0
+		steps += 1
+		if bunny_lifted_at < 0.0 and bool(departure.call("is_bunny_carried")):
+			bunny_lifted_at = elapsed
+		# The cover is read WHILE the walk runs: once `finished` fires the menu
+		# hands off and the departure lets go of the cover to reveal the new scene.
+		cover_peak = maxf(cover_peak, float(departure.call("get_cover_alpha")))
+		if elapsed < 1.5:
+			cover_early = maxf(cover_early, float(departure.call("get_cover_alpha")))
+	if not bool(departure.call("is_done")):
+		failures.append("the walk home never finished")
+	if elapsed > DEPARTURE_MAX_SEC + 0.05:
+		failures.append("the walk home took %.2f s; it must be over inside %.1f s" % [elapsed, DEPARTURE_MAX_SEC])
+	for wanted: String in ["turn", "pickUp", "walkHome", "cover", "done"]:
+		if not phases.has(wanted):
+			failures.append("the walk home never reached its '%s' phase (saw %s)" % [wanted, str(phases)])
+	if bunny_lifted_at < 0.0:
+		failures.append("Bunny was never picked up")
+	elif bunny_lifted_at > 1.0:
+		failures.append("Bunny was picked up at %.2f s; the lift starts before 0.8 s" % bunny_lifted_at)
+	if bunny != null and bunny.position.distance_to(bunny_start) < 0.5:
+		failures.append("Bunny is still where he started; he should have been carried toward the door")
+	if bunny != null and bunny.position.y < 0.3:
+		failures.append("Bunny ends at y=%.2f; carried, he rides at her chest, not on the ground" % bunny.position.y)
+	if hinge != null and absf(rad_to_deg(hinge.rotation.y)) < 60.0:
+		failures.append("the front door only opened %.0f degrees" % rad_to_deg(hinge.rotation.y))
+	if cover_peak < 0.99:
+		failures.append("the cover only reached %.2f before the walk ended; it must cover the cut" % cover_peak)
+	if cover_early > 0.01:
+		failures.append("the cover was already at %.2f in the first 1.5 s; the walk must be SEEN" % cover_early)
+
+	var opened: Node = _opened_scene(tree, before)
+	if opened == null:
+		failures.append("the walk home finished and no scene was opened")
+	else:
+		if opened.scene_file_path != BUTTONS["PlayButton"]:
+			failures.append("the walk home opened %s; Start promises %s" % [opened.scene_file_path, BUTTONS["PlayButton"]])
+		if tree.current_scene != opened:
+			failures.append("the opened scene was not made current")
+	_cleanup(tree, menu, previous_scene, before)
+	return failures
+
+
+## A tap during the walk goes straight to the game: the scene is in the tree
+## the moment `skip()` returns.
+func _test_departure_can_be_skipped():
+	var failures: Array = []
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return ["menu_wow: no SceneTree"]
+	var menu: Node = _instantiate(failures)
+	if menu == null:
+		return failures
+	_add_and_ready(tree, menu)
+	var before: Array = tree.root.get_children().duplicate()
+	var previous_scene: Node = tree.current_scene
+
+	var free_play: Button = menu.get_node_or_null("UI/SafeArea/FreePlayButton") as Button
+	free_play.pressed.emit()
+	var departure: Node = menu.call("get_departure")
+	if departure == null:
+		_cleanup(tree, menu, previous_scene, before)
+		return ["pressing Free Play started no walk home"]
+	departure.call("advance", 0.5)
+	if _opened_scene(tree, before) != null:
+		failures.append("the scene opened half a second into the walk, before any skip")
+	# The tap, as the catcher would deliver it.
+	var tap := InputEventScreenTouch.new()
+	tap.pressed = true
+	var catcher: Control = menu.get_node_or_null("UI/SkipCatcher") as Control
+	if catcher == null:
+		failures.append("no SkipCatcher to tap")
+		menu.call("skip_departure")
+	else:
+		catcher.gui_input.emit(tap)
+	if not bool(departure.call("is_done")):
+		failures.append("a tap did not end the walk home")
+	var opened: Node = _opened_scene(tree, before)
+	if opened == null:
+		failures.append("a tap ended the walk and no scene was opened")
+	elif opened.scene_file_path != BUTTONS["FreePlayButton"]:
+		failures.append("the skipped walk opened %s; Free Play promises %s" % [opened.scene_file_path, BUTTONS["FreePlayButton"]])
+	# A second press while walking is a skip, never a second scene.
+	_cleanup(tree, menu, previous_scene, before)
+	return failures
+
+
+# ---------------------------------------------------------------------------
+# The version, and Dress Up
+# ---------------------------------------------------------------------------
+
+func _test_version_label():
+	var failures: Array = []
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return ["menu_wow: no SceneTree"]
+	var menu: Node = _instantiate(failures)
+	if menu == null:
+		return failures
+	_add_and_ready(tree, menu)
+	var label: Label = menu.get_node_or_null("UI/SafeArea/VersionLabel") as Label
+	if label == null:
+		failures.append("the title screen shows no version")
+	else:
+		var expected: String = "v" + GameVersion.BUILD
+		if label.text != expected:
+			failures.append("the version reads '%s'; GameVersion.BUILD says '%s'" % [label.text, expected])
+		var size: int = label.get_theme_font_size("font_size")
+		if size < 14 or size > 16:
+			failures.append("the version is %d px; it is quiet, 14-16" % size)
+		var colour: Color = label.get_theme_color("font_color")
+		if absf(colour.a - 0.55) > 0.06:
+			failures.append("the version is at %.0f%% alpha; it is ink at 55%%" % (colour.a * 100.0))
+		if not colour.is_equal_approx(Color(Palette.INK, colour.a)):
+			failures.append("the version is not ink")
+		if label.anchor_right < 0.99 or label.anchor_bottom < 0.99:
+			failures.append("the version is not anchored bottom-right")
+		if label.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			failures.append("the version label eats touches")
+	if String(MainScript.build_version()) != GameVersion.BUILD:
+		failures.append("main.gd reads the build as '%s', not GameVersion.BUILD" % MainScript.build_version())
+	tree.root.remove_child(menu)
+	menu.free()
+	return failures
+
+
+## Dress Up on its own: Aliz is there, a swatch recolours her, Back returns to
+## the title screen. The old target was an ActivityScene that needed the Baby
+## Room's director and showed a grey screen when opened from the menu.
+func _test_dress_up_round_trip():
+	var failures: Array = []
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return ["menu_wow: no SceneTree"]
+	if not ResourceLoader.exists(DRESS_UP_SCENE):
+		return ["%s does not exist" % DRESS_UP_SCENE]
+	var packed: PackedScene = load(DRESS_UP_SCENE) as PackedScene
+	if packed == null:
+		return ["%s cannot be loaded" % DRESS_UP_SCENE]
+	var screen: Node = packed.instantiate()
+	var previous_scene: Node = tree.current_scene
+	_add_and_ready(tree, screen)
+	# Captured AFTER the screen is in, so the screen itself never reads as the
+	# scene Back opened.
+	var before: Array = tree.root.get_children().duplicate()
+
+	if screen.get_node_or_null("Aliz") == null:
+		failures.append("Dress Up has no Aliz")
+	elif not bool(screen.call("is_model_available")):
+		failures.append("Dress Up's Aliz has no model in this checkout")
+	var swatches: Dictionary = screen.call("get_swatch_buttons")
+	if swatches.size() < 3 or swatches.size() > 4:
+		failures.append("Dress Up has %d swatches; three or four big ones" % swatches.size())
+	for name: String in swatches.keys():
+		var button: Button = swatches[name] as Button
+		if button.custom_minimum_size.x < 120.0 or button.custom_minimum_size.y < 120.0:
+			failures.append("swatch '%s' is %s; a child's finger needs 120 px" % [name, str(button.custom_minimum_size)])
+		if button.pressed.get_connections().is_empty():
+			failures.append("swatch '%s' does nothing" % name)
+	var colour_before: Color = screen.call("get_accent_colour")
+	if swatches.has("mint"):
+		(swatches["mint"] as Button).pressed.emit()
+		var after: Color = screen.call("get_accent_colour")
+		if not after.is_equal_approx(Palette.MINT):
+			failures.append("pressing the mint swatch left the accents %s" % str(after))
+		if after.is_equal_approx(colour_before):
+			failures.append("pressing a swatch changed nothing")
+		if String(screen.call("get_current_swatch")) != "mint":
+			failures.append("the current swatch is '%s' after pressing mint" % String(screen.call("get_current_swatch")))
+	var hint: Label = screen.get_node_or_null("UI/SafeArea/HintLabel") as Label
+	if hint == null or not hint.text.contains("More outfits soon"):
+		failures.append("Dress Up does not say 'More outfits soon!'")
+	# One light, no shadows, no post -- the same budget as the menu.
+	var lights: Array = []
+	_collect(screen, "Light3D", lights)
+	if lights.size() != 1 or not (lights[0] is DirectionalLight3D) or (lights[0] as DirectionalLight3D).shadow_enabled:
+		failures.append("Dress Up must have exactly one DirectionalLight3D with shadows off")
+
+	var back: Button = screen.get_node_or_null("UI/SafeArea/BackButton") as Button
+	if back == null:
+		failures.append("Dress Up has no Back button")
+	else:
+		var w: float = back.offset_right - back.offset_left
+		var h: float = back.offset_bottom - back.offset_top
+		if w < 240.0 or h < 120.0:
+			failures.append("the Back button is %.0fx%.0f; it is big" % [w, h])
+		back.pressed.emit()
+		var opened: Node = _opened_scene(tree, before)
+		if opened == null:
+			failures.append("pressing Back opened nothing")
+		else:
+			if opened.scene_file_path != MENU_SCENE:
+				failures.append("pressing Back opened %s, not the title screen" % opened.scene_file_path)
+			if tree.current_scene != opened:
+				failures.append("pressing Back did not make the title screen current")
+			tree.root.remove_child(opened)
+			opened.free()
+		if is_instance_valid(screen) and not bool(screen.call("is_leaving")):
+			failures.append("Dress Up does not know it is leaving after Back")
+	tree.current_scene = previous_scene
+	if is_instance_valid(screen):
+		if screen.get_parent() == tree.root:
+			tree.root.remove_child(screen)
+		screen.free()
 	return failures
 
 
@@ -430,6 +774,39 @@ func _add_and_ready(tree: SceneTree, menu: Node) -> void:
 	tree.root.add_child(menu)
 	if not menu.is_node_ready():
 		menu.notification(Node.NOTIFICATION_READY)
+
+
+## The scene a press put under the root -- never the departure's cover, which
+## is a `CanvasLayer` and not a scene.
+static func _opened_scene(tree: SceneTree, before: Array) -> Node:
+	for child: Node in tree.root.get_children():
+		if before.has(child):
+			continue
+		if child is CanvasLayer and String(child.name) == COVER_NAME:
+			continue
+		return child
+	return null
+
+
+static func _sweep_cover(tree: SceneTree) -> void:
+	var cover: Node = tree.root.get_node_or_null(COVER_NAME)
+	if cover != null:
+		tree.root.remove_child(cover)
+		cover.free()
+
+
+func _cleanup(tree: SceneTree, menu: Node, previous_scene: Node, before: Array) -> void:
+	var opened: Node = _opened_scene(tree, before)
+	while opened != null:
+		tree.root.remove_child(opened)
+		opened.free()
+		opened = _opened_scene(tree, before)
+	_sweep_cover(tree)
+	tree.current_scene = previous_scene
+	if is_instance_valid(menu):
+		if menu.get_parent() == tree.root:
+			tree.root.remove_child(menu)
+		menu.free()
 
 
 func _instantiate(failures: Array) -> Node:

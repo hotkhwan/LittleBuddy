@@ -183,6 +183,25 @@ const BUNNY_YAW_DEG: float = 194.0
 const CAMERA_POSITION_WITH_BUDDY: Vector3 = Vector3(0.0, 1.60, 4.45)
 const CAMERA_TARGET_WITH_BUDDY: Vector3 = Vector3(0.05, 0.70, -0.70)
 
+## The build number, bottom-right and quiet. This is the ONLY place the version
+## is shown to a player: `GameVersion.BUILD` is the single source, and the
+## in-game HUD no longer repeats it.
+const GAME_VERSION_SCRIPT_PATH: String = "res://scripts/content_packs/game_version.gd"
+const VERSION_FONT_SIZE: int = 15
+const VERSION_ALPHA: float = 0.55
+const VERSION_MARGIN: Vector2 = Vector2(14.0, 10.0)
+
+## THE LOGO SLOT. Agent A's `scripts/branding/logo_title.gd` draws the owner's
+## logo as a Control; when it is in the build it takes the title panel's exact
+## place and the text panel is hidden. Without it the text panel stays -- the
+## fallback is what shipped before.
+const LOGO_TITLE_SCRIPT_PATH: String = "res://scripts/branding/logo_title.gd"
+
+## The walk home (`scripts/menu/menu_departure.gd`): what Start and Free Play
+## play before the hand-off. `load()`ed like everything optional here.
+const DEPARTURE_SCRIPT_PATH: String = "res://scripts/menu/menu_departure.gd"
+const UI_FADE_SEC: float = 0.25
+
 @onready var _play_button: Button = %PlayButton
 @onready var _free_play_button: Button = %FreePlayButton
 @onready var _dress_button: Button = %DressUpButton
@@ -192,6 +211,13 @@ const CAMERA_TARGET_WITH_BUDDY: Vector3 = Vector3(0.05, 0.70, -0.70)
 ## Set once the menu has handed off, so the first-launch timer can never fire
 ## into a scene the child has already left.
 var _handed_off: bool = false
+
+## The walk home in progress, or null. While it runs the buttons are gone, the
+## first-run timer stands down (the walk routes to first run itself), and a tap
+## anywhere skips to the hand-off.
+var _departure: Node = null
+var _departure_route: Callable = Callable()
+var _skip_catcher: Control = null
 
 
 func _ready() -> void:
@@ -213,8 +239,15 @@ func _ready() -> void:
 	_parent_button.pressed.connect(_on_parent_pressed)
 	_label_play_button()
 	_dress_buttons()
+	_place_logo()
+	_add_version_label()
 
 	_arm_first_run()
+
+
+func _process(delta: float) -> void:
+	if _departure != null and is_instance_valid(_departure) and _departure.has_method("advance"):
+		_departure.call("advance", delta)
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +291,7 @@ func _label_play_button() -> void:
 ## without one, or an older one, answers "no" and gets "Start", which is the safe
 ## way to be wrong.
 func _has_progress() -> bool:
-	var save_service: Node = get_node_or_null("/root/SaveService")
+	var save_service: Node = _autoload("SaveService")
 	if save_service == null:
 		return false
 	if save_service.has_method("get_level_completed"):
@@ -287,7 +320,12 @@ func _has_progress() -> bool:
 ## What the scene file cannot express is added here: a soft drop shadow under
 ## each button and a small squish on press with the gentle tap sound, so a
 ## finger on the glass always gets an answer even before the scene changes.
-const DRESS_UP_SCENE: String = "res://scenes/activities/dressing.tscn"
+## Dress Up is its own small screen (`scenes/dress_up/dress_up.tscn`): the real
+## Aliz on a stage with colour swatches and a Back button. It used to open
+## `scenes/activities/dressing.tscn`, an `ActivityScene` that needs the Baby
+## Room's director around it and, opened bare, showed a grey dead screen -- the
+## one thing a title-screen button must never do.
+const DRESS_UP_SCENE: String = "res://scenes/dress_up/dress_up.tscn"
 const PARENT_SCENE: String = "res://scenes/parent/parent_settings.tscn"
 
 const SHADOW_SIZE: int = 22
@@ -476,7 +514,7 @@ func _arm_first_run() -> void:
 
 
 func _on_first_run_due() -> void:
-	if _handed_off or not is_inside_tree():
+	if _handed_off or _departure != null or not is_inside_tree():
 		return
 	_enter_first_run()
 
@@ -522,6 +560,12 @@ func _add_buddy_avatar() -> bool:
 	placed.position = BUDDY_AVATAR_POSITION
 	placed.rotation = Vector3(0.0, deg_to_rad(BUDDY_AVATAR_YAW_DEG), 0.0)
 	add_child(placed)
+	# Her idle -- a breathing sway -- when the wrapper has one. Guarded rather
+	# than assumed: the clip is being authored in parallel, and a wrapper
+	# without it simply holds her pose. Nothing here fakes a motion.
+	if placed.has_method("can_play_action") and placed.has_method("play_action") \
+			and bool(placed.call("can_play_action", "idle")):
+		placed.call("play_action", "idle")
 	return true
 
 
@@ -585,17 +629,224 @@ static func _first_existing(paths: Array) -> String:
 # ---------------------------------------------------------------------------
 
 func _on_play_pressed() -> void:
+	_depart(_route_play)
+
+
+func _on_free_play_pressed() -> void:
+	_depart(_route_free_play)
+
+
+## Story Mode's routing, byte-for-byte what pressing Play always did.
+func _route_play() -> bool:
 	# A child who beats the first-launch timer to the button still gets taught.
 	# Pressing Play the very first time therefore opens the house rather than
 	# Chapter 2 -- once, for one launch, and only for a profile that has never
 	# been shown the game.
 	if is_first_launch() and _enter_first_run():
+		return true
+	return _enter_scene(story_scene_path(resolve_story_chapter_id()), ProgressionMode.STORY)
+
+
+func _route_free_play() -> bool:
+	return _enter_scene(free_play_scene_path(), ProgressionMode.FREE_PLAY)
+
+
+# ---------------------------------------------------------------------------
+# The walk home
+# ---------------------------------------------------------------------------
+
+## Plays the departure, then runs `route`. When the walk cannot be played --
+## no departure script in the build, or it refuses to start -- `route` runs at
+## once, which is exactly the old behaviour. A second press while walking is
+## a skip, not a second route.
+func _depart(route: Callable) -> void:
+	if _departure != null:
+		skip_departure()
 		return
-	_enter_scene(story_scene_path(resolve_story_chapter_id()), ProgressionMode.STORY)
+	var departure: Node = _make_departure()
+	if departure == null:
+		route.call()
+		return
+	_departure = departure
+	_departure_route = route
+	add_child(departure)
+	if departure.has_signal("finished"):
+		departure.finished.connect(_on_departure_finished)
+	var began: bool = bool(departure.call("begin",
+			get_node_or_null("BigBuddy") as Node3D,
+			get_node_or_null("Bunny") as Node3D,
+			get_node_or_null("Garden"),
+			get_node_or_null("Camera3D") as Camera3D))
+	if not began:
+		_departure = null
+		departure.queue_free()
+		route.call()
+		return
+	_hide_ui_for_departure()
 
 
-func _on_free_play_pressed() -> void:
-	_enter_scene(free_play_scene_path(), ProgressionMode.FREE_PLAY)
+func _make_departure() -> Node:
+	if not ResourceLoader.exists(DEPARTURE_SCRIPT_PATH):
+		return null
+	var script: Resource = load(DEPARTURE_SCRIPT_PATH)
+	if not (script is GDScript):
+		return null
+	var node: Object = (script as GDScript).new()
+	if not (node is Node) or not node.has_method("begin") or not node.has_method("advance"):
+		if node != null:
+			node.free()
+		return null
+	(node as Node).name = "Departure"
+	return node as Node
+
+
+## A tap anywhere during the walk goes straight to the game.
+func skip_departure() -> void:
+	if _departure != null and is_instance_valid(_departure) and _departure.has_method("skip"):
+		_departure.call("skip")
+
+
+## The walk in progress, or null. For tests and the screenshot harness.
+func get_departure() -> Node:
+	return _departure if _departure != null and is_instance_valid(_departure) else null
+
+
+func is_departing() -> bool:
+	return get_departure() != null
+
+
+func _on_departure_finished() -> void:
+	var departure: Node = _departure
+	var route: Callable = _departure_route
+	_departure_route = Callable()
+	var opened: bool = route.is_valid() and bool(route.call())
+	if departure != null and is_instance_valid(departure):
+		if opened:
+			# The cover lifts off the NEW scene; it lives under the root, so it
+			# outlives this menu.
+			if departure.has_method("reveal"):
+				departure.call("reveal")
+		else:
+			# Nothing to open (a broken build). Take the cover down and give the
+			# buttons back, with the warm message `_show_unavailable()` shows.
+			if departure.has_method("discard_cover"):
+				departure.call("discard_cover")
+			_show_ui_after_departure()
+			departure.queue_free()
+			_departure = null
+
+
+func _hide_ui_for_departure() -> void:
+	var safe_area: Control = get_node_or_null("UI/SafeArea") as Control
+	if safe_area != null:
+		if is_inside_tree():
+			var tween: Tween = create_tween()
+			tween.tween_property(safe_area, "modulate:a", 0.0, UI_FADE_SEC)
+		else:
+			safe_area.modulate.a = 0.0
+	var ui: Node = get_node_or_null("UI")
+	if ui != null and _skip_catcher == null:
+		var catcher := Control.new()
+		catcher.name = "SkipCatcher"
+		catcher.set_anchors_preset(Control.PRESET_FULL_RECT)
+		catcher.mouse_filter = Control.MOUSE_FILTER_STOP
+		catcher.gui_input.connect(_on_skip_catcher_input)
+		ui.add_child(catcher)
+		_skip_catcher = catcher
+
+
+func _show_ui_after_departure() -> void:
+	var safe_area: Control = get_node_or_null("UI/SafeArea") as Control
+	if safe_area != null:
+		safe_area.modulate.a = 1.0
+	if _skip_catcher != null and is_instance_valid(_skip_catcher):
+		_skip_catcher.queue_free()
+	_skip_catcher = null
+
+
+func _on_skip_catcher_input(event: InputEvent) -> void:
+	var pressed: bool = false
+	if event is InputEventScreenTouch:
+		pressed = (event as InputEventScreenTouch).pressed
+	elif event is InputEventMouseButton:
+		pressed = (event as InputEventMouseButton).pressed
+	if pressed:
+		skip_departure()
+
+
+# ---------------------------------------------------------------------------
+# The logo slot, and the version
+# ---------------------------------------------------------------------------
+
+## Swaps the text title panel for the owner's logo when `logo_title.gd` is in
+## the build. Same anchors and offsets, same place in the draw order; the text
+## panel is hidden, not removed, so a logo that fails to build costs nothing.
+func _place_logo() -> void:
+	var panel: Control = get_node_or_null("UI/SafeArea/TitlePanel") as Control
+	if panel == null or not ResourceLoader.exists(LOGO_TITLE_SCRIPT_PATH):
+		return
+	var script: Resource = load(LOGO_TITLE_SCRIPT_PATH)
+	if not (script is GDScript):
+		return
+	if not ClassDB.is_parent_class((script as GDScript).get_instance_base_type(), "Control"):
+		return
+	var logo: Object = (script as GDScript).new()
+	if not (logo is Control):
+		if logo != null:
+			logo.free()
+		return
+	var control := logo as Control
+	control.name = "LogoTitle"
+	control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var host: Node = panel.get_parent()
+	host.add_child(control)
+	host.move_child(control, panel.get_index())
+	control.anchor_left = panel.anchor_left
+	control.anchor_top = panel.anchor_top
+	control.anchor_right = panel.anchor_right
+	control.anchor_bottom = panel.anchor_bottom
+	control.offset_left = panel.offset_left
+	control.offset_top = panel.offset_top
+	control.offset_right = panel.offset_right
+	control.offset_bottom = panel.offset_bottom
+	control.grow_horizontal = panel.grow_horizontal
+	control.grow_vertical = panel.grow_vertical
+	panel.visible = false
+
+
+## "v0.1.0", bottom-right, ink at 55%. Read from `GameVersion.BUILD` so it can
+## never disagree with the content packs' idea of the build.
+func _add_version_label() -> void:
+	var host: Control = get_node_or_null("UI/SafeArea") as Control
+	if host == null:
+		return
+	var label := Label.new()
+	label.name = "VersionLabel"
+	label.text = "v" + build_version()
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", VERSION_FONT_SIZE)
+	label.add_theme_color_override("font_color", Color(Palette.INK, VERSION_ALPHA))
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	label.offset_left = -240.0 - VERSION_MARGIN.x
+	label.offset_top = -40.0 - VERSION_MARGIN.y
+	label.offset_right = -VERSION_MARGIN.x
+	label.offset_bottom = -VERSION_MARGIN.y
+	host.add_child(label)
+
+
+## The build string, or "" when the version script is missing from the build.
+static func build_version() -> String:
+	if not ResourceLoader.exists(GAME_VERSION_SCRIPT_PATH):
+		return ""
+	var script: Resource = load(GAME_VERSION_SCRIPT_PATH)
+	if not (script is GDScript):
+		return ""
+	var constants: Dictionary = (script as GDScript).get_script_constant_map()
+	return String(constants.get("BUILD", ""))
 
 
 ## The chapter the profile says the child is on, or `""` when there is no save
@@ -773,8 +1024,11 @@ func _show_unavailable() -> void:
 	_coming_soon_label.visible = true
 
 
+## Through `_scene_tree()`, so a menu that is not yet in an active tree (the
+## headless runner's root during `_initialize()`) asks the main loop instead of
+## raising an engine error; in the running game the two are the same tree.
 func _autoload(autoload_name: String) -> Node:
-	var tree: SceneTree = get_tree()
+	var tree: SceneTree = _scene_tree()
 	if tree == null or tree.root == null:
 		return null
 	return tree.root.get_node_or_null(autoload_name)
