@@ -41,6 +41,22 @@ public:
 	void start_listening(const godot::String &locale);
 	void stop_listening();
 
+	// Aliz Tutor Mode (hands-free, Agent E patch 2026-09-20):
+	//  * set_voice_processing(true) while a tutor session is active switches
+	//    the shared AVAudioSession to the voice-chat mode (acoustic echo
+	//    cancellation on the input node, DefaultToSpeaker, Bluetooth HFP) so
+	//    the child can interrupt Aliz without her own voice being transcribed;
+	//    set_voice_processing(false) restores the default mode. Applied to the
+	//    live session at once when the microphone is open, else on the next
+	//    start_listening().
+	//  * get_input_level() is the smoothed RMS (0..1) of the last microphone
+	//    buffers while listening, 0 otherwise -- the TutorVoiceSession's level
+	//    source for its VAD and the on-screen mic indicator. A number, never
+	//    audio; nothing is stored.
+	void set_voice_processing(bool enabled);
+	bool is_voice_processing() const;
+	float get_input_level() const;
+
 	// Called by the Objective-C controller (LBSpeechController) to forward
 	// results back into the Godot/GDExtension signal system. Not part of
 	// the GDScript-facing API.

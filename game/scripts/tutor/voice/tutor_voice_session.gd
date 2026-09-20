@@ -144,6 +144,15 @@ var _reprompt_total: int = 0
 var _transport_ready: bool = false
 var _streaming: bool = false
 var _wired: bool = false
+## CAPTURE-ONLY mode: the classroom scene owns the lesson loop (engine,
+## provider, synthesis, HUD, quota) and uses this session for what it is best
+## at -- the microphone, VAD, the echo gate and barge-in. In this mode the
+## session never speaks and never evaluates: it emits child_speech_started /
+## partial_transcript / child_speech_ended(transcript) / barge_in, and the scene
+## tells it when Aliz is speaking with `set_aliz_speaking()`. Started with
+## `start(id, {captureOnly: true, gatePassed: true})`.
+var _capture_only: bool = false
+var _forced_unavailable: bool = false
 
 
 # -- Wiring ---------------------------------------------------------------------
@@ -178,6 +187,71 @@ func set_save_service(save: Object) -> void:
 
 func set_level_source(source: Callable) -> void:
 	_level_source = source
+
+
+## -- The classroom scene's session contract (capture-only mode) --------------------------
+
+## Aliz is speaking (true) or has stopped (false). While she speaks the VAD is
+## gated against her own playback and the recogniser is closed; when she stops
+## the session listens again. In lesson-driven mode the session already knows.
+func set_aliz_speaking(active: bool) -> void:
+	if not _active or not _capture_only:
+		return
+	if active:
+		_interrupting = false
+		if _recognition != null:
+			_recognition.cancel("playback_started")
+		vad().set_gated(true)
+		vad().prime_playback_level(PLAYBACK_ASSUMED_LEVEL)
+		vad().set_last_partial("")
+		_set_state(STATE_ALIZ_SPEAKING)
+		_update_capture()
+	else:
+		vad().set_gated(false)
+		if _state == STATE_ALIZ_SPEAKING or _state == STATE_INTERRUPTED:
+			_listen()
+
+
+## Barge-in is real only when the session drives the microphone hands-free.
+func supports_barge_in() -> bool:
+	return _hands_free and not _forced_unavailable
+
+
+func hands_free_available() -> bool:
+	if _forced_unavailable:
+		return false
+	return _recognizer_usable()
+
+
+## Real on-device recognition, or the simulated path where a desktop allows it.
+func _recognizer_usable() -> bool:
+	if _recognition == null:
+		return false
+	if bool(_recognition.call("is_available")):
+		return true
+	return _recognition.has_method("is_simulation_enabled") and bool(_recognition.call("is_simulation_enabled"))
+
+
+## A test/dev seam: pretend the recogniser is gone (permission denied). Ends a
+## live session honestly so the scene falls back to tap-to-talk and cards.
+func force_unavailable(forced: bool) -> void:
+	_forced_unavailable = forced
+	if forced and _active:
+		stop(REASON_UNAVAILABLE)
+
+
+func enable_simulation(enabled: bool) -> void:
+	if _recognition != null and _recognition.has_method("set_simulation_enabled"):
+		_recognition.call("set_simulation_enabled", enabled and RecognitionScript.simulation_allowed())
+
+
+## Kept for the scene's contract; the capture-only session does not evaluate.
+func set_expected_answer(_answer: String) -> void:
+	pass
+
+
+func is_capture_only() -> bool:
+	return _capture_only
 
 
 func vad() -> RefCounted:
@@ -261,6 +335,30 @@ func start(lesson_id: String, opts: Dictionary = {}) -> bool:
 		session_ended.emit(REASON_GATE)
 		return false
 	_ensure_components()
+	_capture_only = bool(opts.get("captureOnly", false))
+	if _capture_only:
+		# Simulation first: on a desktop with no recogniser the simulated child
+		# audio IS the recogniser (tests, the dev panel); on a device it is
+		# refused by the provider and real availability decides.
+		if bool(opts.get("simulation", false)) and _recognition.has_method("set_simulation_enabled"):
+			_recognition.call("set_simulation_enabled", true)
+		if _forced_unavailable or _recognition == null or not _recognizer_usable():
+			session_ended.emit(REASON_UNAVAILABLE)
+			return false
+		_lesson_id = lesson_id
+		_locale = String(opts.get("locale", "en-US"))
+		_hands_free = bool(opts.get("handsFree", true))
+		_history.clear()
+		_queued_turns.clear()
+		_barge_count = 0
+		_interrupting = false
+		_muted = false
+		_active = true
+		if bool(opts.get("simulation", false)) and _recognition.has_method("set_simulation_enabled"):
+			_recognition.call("set_simulation_enabled", true)
+		_wire()
+		_listen()
+		return true
 	if _engine == null or not _engine.has_method("current_step"):
 		session_ended.emit("no_lesson_engine")
 		return false
@@ -404,7 +502,7 @@ func advance(delta: float) -> void:
 	if not _active:
 		return
 	var ms: float = delta * 1000.0
-	if _state == STATE_THINKING:
+	if _state == STATE_THINKING and not _capture_only:
 		_thinking_seconds += delta
 		if _thinking_seconds >= THINKING_TIMEOUT_SECONDS:
 			_thinking_seconds = 0.0
@@ -509,6 +607,11 @@ func _on_final(text: String) -> void:
 	if not _active or not (_state == STATE_CHILD_SPEAKING or _state == STATE_LISTENING or _state == STATE_INTERRUPTED):
 		return
 	child_speech_ended.emit(text)
+	if _capture_only:
+		_pending_phase = ""
+		if _state == STATE_CHILD_SPEAKING or _state == STATE_INTERRUPTED:
+			_listen()
+		return
 	var phase: String = _pending_phase if not _pending_phase.is_empty() else ConversationProviderScript.PHASE_ANSWER
 	_pending_phase = ""
 	if phase == ConversationProviderScript.PHASE_ANSWER and is_stop_phrase(text):
@@ -528,6 +631,11 @@ func _on_recognition_ended(terminal: String) -> void:
 			if _state == STATE_CHILD_SPEAKING or _state == STATE_LISTENING:
 				stop(REASON_UNAVAILABLE)
 		_:
+			if _capture_only:
+				if _state == STATE_CHILD_SPEAKING:
+					child_speech_ended.emit("")
+					_listen()
+				return
 			if _state == STATE_CHILD_SPEAKING:
 				# Heard something, decoded nothing: an unclear attempt, gently.
 				_pending_phase = ""
@@ -716,7 +824,8 @@ func _do_barge_in() -> void:
 	_streaming = false
 	if _transport != null:
 		_transport.cancel()
-	_synth.cancel()  # -> Voice.stop() / TtsService.stop() inside the provider
+	if _synth != null and is_instance_valid(_synth):
+		_synth.cancel()  # -> Voice.stop() / TtsService.stop() inside the provider
 	var t_voice: int = Time.get_ticks_usec()
 	_face_speaking(false)
 	var t_mouth: int = Time.get_ticks_usec()

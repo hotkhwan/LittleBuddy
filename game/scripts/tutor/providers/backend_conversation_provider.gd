@@ -353,6 +353,10 @@ func _start_next() -> void:
 
 func _send() -> void:
 	var headers: PackedStringArray = PackedStringArray(["Content-Type: application/json", "Accept: application/json"])
+	# The hardened server binds a session to the parent-approval token that
+	# created it and re-checks it on every call (turns, end, usage, delete).
+	if not _token.is_empty():
+		headers.append("X-Parent-Approval: %s" % _token)
 	for header: String in _request["headers"]:
 		headers.append(header)
 	var body: String = JSON.stringify(_request["body"])

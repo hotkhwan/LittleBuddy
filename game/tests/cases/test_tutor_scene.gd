@@ -243,12 +243,24 @@ func _test_barge_in_and_partials():
 		failures.append("never reached the first question (state '%s')" % scene.state())
 		_free(scene)
 		return failures
-	# A partial shows softly; a cough (blank final) keeps listening.
+	# A cough is not speech: with the child-tuned VAD an 80 ms burst is
+	# ignored outright -- no hearing banner, no turn, the mic simply stays open
+	# (the owner's rule: no reply for every cough or room noise). A real
+	# utterance that pauses mid-sentence DOES show the hearing banner first.
 	scene.simulate("cough")
-	if _until(scene, func() -> bool: return scene.hud().banner_kind() == Hud.BANNER_HEARING, 30) < 0:
-		failures.append("the child starting to talk should show the hearing banner")
+	for i: int in range(30):
+		scene.advance(STEP)
+	if scene.hud().banner_kind() == Hud.BANNER_HEARING:
+		failures.append("a cough must not read as the child talking")
 	if _until(scene, func() -> bool: return _ready_to_answer(scene), 60) < 0:
 		failures.append("a cough should leave the mic open, got state '%s'" % scene.state())
+	scene.simulate("pause_then_finish")
+	if _until(scene, func() -> bool: return scene.hud().banner_kind() == Hud.BANNER_HEARING, 30) < 0:
+		failures.append("the child starting to talk should show the hearing banner")
+	if _until(scene, func() -> bool: return scene.state() == "speaking", 200) < 0:
+		failures.append("a paused-then-finished answer should be evaluated and answered (state '%s')" % scene.state())
+	if _until(scene, func() -> bool: return _ready_to_answer(scene), 200) < 0:
+		failures.append("after Aliz's reply the mic should reopen (state '%s')" % scene.state())
 	var attempts_before: Variant = scene.lesson_engine().call("attempts") if scene.lesson_engine().has_method("attempts") else 0
 	if int(attempts_before) != 0:
 		failures.append("a cough must not count as an attempt")
@@ -325,7 +337,12 @@ func _test_simulation_is_refused_when_off():
 		failures.append("a simulated transcript must be refused while simulation is off")
 	var session: Object = scene.voice_session()
 	if session != null and session.has_method("simulate_child_audio"):
-		session.call("simulate_child_audio", "correct")
+		# The hands-free session takes a level clip plus a transcript.
+		var clip: Array = [[0.02, 200], [0.35, 700], [0.02, 1200]]
+		var script: Script = session.get_script()
+		if script != null and script.has_method("preset_clip"):
+			clip = script.call("preset_clip", "answer")
+		session.call("simulate_child_audio", clip, "apple")
 		for i: int in range(20):
 			scene.advance(STEP)
 		if scene.state() != before:

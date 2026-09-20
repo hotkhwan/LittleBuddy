@@ -296,6 +296,34 @@ func is_listening() -> bool:
 	return _session_active
 
 
+## Hands-free tutor (Agent E): ends the live session NOW as
+## `recognition_failed("cancelled")` + `session_ended(failed)` and asks the
+## backend to stop. A barge-in or the start of Aliz's playback must not wait
+## for the backend's hypothesis or the 4 s cap; whatever the backend reports
+## afterwards is a late terminal and is dropped like any other.
+func cancel_listening() -> void:
+	if not _session_active:
+		return
+	_finish_session_failed("cancelled")
+	if _backend != null:
+		_backend.stop_listening()
+
+
+## Hands-free tutor: the platform's echo-cancelled voice mode while a
+## TutorVoiceSession is active (native plugin only; no-op elsewhere).
+func set_voice_processing(enabled: bool) -> void:
+	if _backend != null and _backend.has_method("set_voice_processing"):
+		_backend.set_voice_processing(enabled)
+
+
+## Hands-free tutor: the microphone level 0..1 for the VAD and the mic
+## indicator while a session is live; 0 otherwise. A number, never audio.
+func get_input_level() -> float:
+	if not _session_active or _backend == null or not _backend.has_method("get_input_level"):
+		return 0.0
+	return clampf(float(_backend.get_input_level()), 0.0, 1.0)
+
+
 func _open_session() -> void:
 	_session_id += 1
 	_session_active = true

@@ -159,8 +159,16 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 // cancelled/cleared in _finishListening so it never fires after a
 // final result or a manual stop has already torn things down.
 @property(nonatomic, strong) dispatch_block_t timeoutBlock;
+// Hands-free tutor (Agent E): voice-processing mode requested by GDScript
+// while a TutorVoiceSession is active, and the smoothed input RMS (0..1) of
+// the most recent tap buffers. `inputLevel` is written on the audio tap
+// queue and read from Godot's thread: a single float, torn reads are
+// harmless, so `atomic` is enough. Reset to 0 on every teardown.
+@property(atomic, assign) BOOL voiceProcessing;
+@property(atomic, assign) float inputLevel;
 
 - (instancetype)initWithOwner:(LittleBuddySpeech *)owner;
+- (void)setVoiceProcessingEnabled:(BOOL)enabled;
 - (BOOL)isAvailable;
 - (BOOL)hasPermission;
 - (void)requestPermission;
@@ -225,6 +233,29 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	// a dangling `self`, which is exactly the kind of native crash this pass
 	// exists to close off.
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+#endif
+}
+
+// Hands-free tutor: remembers the request and, when the microphone is open
+// right now, re-applies the session mode in place (the input node's own
+// voice processing follows on the next start, when the tap is rebuilt).
+- (void)setVoiceProcessingEnabled:(BOOL)enabled {
+	if (self.voiceProcessing == enabled) {
+		return;
+	}
+	self.voiceProcessing = enabled;
+#if TARGET_OS_IPHONE
+	if (self.isListening) {
+		NSError *modeError = nil;
+		[[AVAudioSession sharedInstance] setMode:(enabled ? AVAudioSessionModeVoiceChat : AVAudioSessionModeDefault)
+										   error:&modeError];
+		if (modeError != nil) {
+			NSLog(@"[LittleBuddySpeech] setMode(%@) failed: %@", enabled ? @"voiceChat" : @"default",
+					modeError.localizedDescription);
+		}
+		NSError *overrideError = nil;
+		[[AVAudioSession sharedInstance] overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&overrideError];
+	}
 #endif
 }
 
@@ -356,8 +387,13 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	// concurrently-active audio graph.
 	NSError *sessionError = nil;
 	AVAudioSession *session = [AVAudioSession sharedInstance];
+	// Hands-free tutor: VoiceChat mode enables the platform's acoustic echo
+	// canceller and voice-optimised gains, so Aliz's own line from the
+	// speaker (inches from the mic) is removed before recognition sees it.
+	// Off (the default) it is exactly the session the rest of the game has
+	// been shipping with.
 	[session setCategory:AVAudioSessionCategoryPlayAndRecord
-				   mode:AVAudioSessionModeDefault
+				   mode:(self.voiceProcessing ? AVAudioSessionModeVoiceChat : AVAudioSessionModeDefault)
 				options:AVAudioSessionCategoryOptionDefaultToSpeaker |
 						AVAudioSessionCategoryOptionAllowBluetoothHFP |
 						AVAudioSessionCategoryOptionMixWithOthers
@@ -400,6 +436,18 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 
 	self.audioEngine = [[AVAudioEngine alloc] init];
 	AVAudioInputNode *inputNode = self.audioEngine.inputNode;
+	// Hands-free tutor: the input node's own voice processing (AEC + AGC +
+	// noise suppression) must be enabled BEFORE the tap is installed because
+	// it can change the node's output format. Best effort: a failure keeps
+	// the plain input and the client-side echo gate still applies.
+	if (@available(iOS 13.0, macOS 10.15, *)) {
+		NSError *vpError = nil;
+		if (![inputNode setVoiceProcessingEnabled:self.voiceProcessing error:&vpError] && vpError != nil) {
+			NSLog(@"[LittleBuddySpeech] voice processing %@ refused: %@",
+					self.voiceProcessing ? @"on" : @"off", vpError.localizedDescription);
+		}
+	}
+	self.inputLevel = 0.0f;
 	AVAudioFormat *recordingFormat = [inputNode outputFormatForBus:0];
 	// Defensive guard: some devices/states can report a zero-rate/zero-channel
 	// format if queried before the audio session has fully settled. Installing
@@ -436,6 +484,22 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 								__strong LBSpeechController *strongSelf = weakSelf;
 								if (strongSelf != nil && strongSelf.request != nil) {
 									[strongSelf.request appendAudioPCMBuffer:buffer];
+									// Input meter for the VAD / indicator: RMS of channel 0,
+									// smoothed 50/50 with the previous buffer. One float; the
+									// samples are not kept.
+									float *samples = buffer.floatChannelData != NULL ? buffer.floatChannelData[0] : NULL;
+									AVAudioFrameCount frames = buffer.frameLength;
+									if (samples != NULL && frames > 0) {
+										double sum = 0.0;
+										for (AVAudioFrameCount i = 0; i < frames; ++i) {
+											sum += (double)samples[i] * (double)samples[i];
+										}
+										float rms = (float)sqrt(sum / (double)frames);
+										if (rms > 1.0f) {
+											rms = 1.0f;
+										}
+										strongSelf.inputLevel = 0.5f * strongSelf.inputLevel + 0.5f * rms;
+									}
 								}
 							  }];
 
@@ -716,6 +780,7 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	self.task = nil;
 	self.lastPartialTranscript = nil;
 	self.isListening = NO;
+	self.inputLevel = 0.0f;
 	// Deliberately NOT calling `[[AVAudioSession sharedInstance] setActive:NO
 	// ...]` here. Little Buddy's game audio (Godot's own audio driver, TTS
 	// prompts, sound effects) may still be actively rendering through this
@@ -755,6 +820,9 @@ void LittleBuddySpeech::_bind_methods() {
 	ClassDB::bind_method(
 			D_METHOD("start_listening", "locale"), &LittleBuddySpeech::start_listening);
 	ClassDB::bind_method(D_METHOD("stop_listening"), &LittleBuddySpeech::stop_listening);
+	ClassDB::bind_method(D_METHOD("set_voice_processing", "enabled"), &LittleBuddySpeech::set_voice_processing);
+	ClassDB::bind_method(D_METHOD("is_voice_processing"), &LittleBuddySpeech::is_voice_processing);
+	ClassDB::bind_method(D_METHOD("get_input_level"), &LittleBuddySpeech::get_input_level);
 
 	ADD_SIGNAL(MethodInfo("permission_result", PropertyInfo(Variant::BOOL, "granted")));
 	ADD_SIGNAL(MethodInfo("recognized", PropertyInfo(Variant::STRING, "text")));
@@ -793,6 +861,23 @@ void LittleBuddySpeech::stop_listening() {
 	if (controller != nullptr) {
 		[controller stopListening];
 	}
+}
+
+void LittleBuddySpeech::set_voice_processing(bool enabled) {
+	if (controller != nullptr) {
+		[controller setVoiceProcessingEnabled:(enabled ? YES : NO)];
+	}
+}
+
+bool LittleBuddySpeech::is_voice_processing() const {
+	return controller != nullptr && controller.voiceProcessing;
+}
+
+float LittleBuddySpeech::get_input_level() const {
+	if (controller == nullptr || !controller.isListening) {
+		return 0.0f;
+	}
+	return controller.inputLevel;
 }
 
 // All six _emit_* methods below marshal into Godot via `call_deferred`

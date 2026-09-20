@@ -422,7 +422,22 @@ func _start_session() -> void:
 		_session.call("enable_simulation", _sim_enabled)
 	if _session.has_method("mute"):
 		_session.call("mute", _muted)
-	_session.call("start", _lesson_id, {"handsFree": _hands_free_setting()})
+	# The real TutorVoiceSession runs CAPTURE-ONLY under this scene: it owns the
+	# microphone, the VAD, the echo gate and barge-in; the scene keeps the
+	# lesson loop. The classroom is entered after the grown-ups gate on the
+	# title path, so the gate is recorded as passed here.
+	if _session.has_method("set_face") and _aliz != null:
+		_session.call("set_face", _aliz)
+	if _session.has_method("set_level_source"):
+		var speech: Node = _autoload(SPEECH_SERVICE_PATH)
+		if speech != null and speech.has_method("get_input_level"):
+			_session.call("set_level_source", Callable(speech, "get_input_level"))
+	_session.call("start", _lesson_id, {
+		"handsFree": _hands_free_setting(),
+		"gatePassed": true,
+		"captureOnly": true,
+		"simulation": _sim_enabled,
+	})
 	_refresh_input_mode()
 
 
@@ -1205,7 +1220,35 @@ func simulate(kind: String) -> void:
 		_start_listening()
 	_tell_session_expected_answer()
 	if _session != null and _session.has_method("simulate_child_audio"):
-		_session.call("simulate_child_audio", kind)
+		# The hands-free session takes a level clip plus a transcript, so the
+		# VAD and the barge-in gate run on the simulated audio too.
+		var expected: Array = _current_step.get("expectedAnswers", [])
+		var right: String = String(expected[0]) if not expected.is_empty() else "yes"
+		if _choosing:
+			right = "fruits"  # the simulated child picks English Basics, as documented
+		var clip_name: String = "answer"
+		var transcript: String = right
+		match kind:
+			"wrong":
+				transcript = "banana" if right != "banana" else "apple"
+			"cough":
+				clip_name = "cough"
+				transcript = ""
+			"pause_then_finish", "pause":
+				clip_name = "pause_then_finish"
+			"interrupt":
+				clip_name = "interrupt"
+				transcript = "Wait! I want a dog!"
+			"nothing", "silence":
+				clip_name = "silence"
+				transcript = ""
+		var frames: Array = []
+		var session_script: Script = _session.get_script()
+		if session_script != null and session_script.has_method("preset_clip"):
+			frames = session_script.call("preset_clip", clip_name)
+		if frames.is_empty():
+			frames = [[0.02, 200], [0.35, 700], [0.02, 1200]]
+		_session.call("simulate_child_audio", frames, transcript)
 		return
 	# A session without hooks: emulate the signals it would have sent.
 	if _state != STATE_LISTENING:

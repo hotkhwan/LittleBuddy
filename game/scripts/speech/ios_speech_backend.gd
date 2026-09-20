@@ -58,6 +58,19 @@ func is_listening() -> bool:
 	return _is_listening_cached
 
 
+## Hands-free tutor: forwarded to the native plugin when the binary has them
+## (docs/patches/agentE_ios_speech_plugin.diff); a no-op on an older binary.
+func set_voice_processing(enabled: bool) -> void:
+	if _singleton != null and _singleton.has_method("set_voice_processing"):
+		_singleton.call("set_voice_processing", enabled)
+
+
+func get_input_level() -> float:
+	if _singleton != null and _singleton.has_method("get_input_level"):
+		return clampf(float(_singleton.call("get_input_level")), 0.0, 1.0)
+	return 0.0
+
+
 func get_backend_name() -> String:
 	return "ios"
 

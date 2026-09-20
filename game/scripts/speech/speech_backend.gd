@@ -46,3 +46,16 @@ func is_listening() -> bool:
 
 func get_backend_name() -> String:
 	return "unavailable"
+
+
+## Hands-free tutor (Agent E). Optional capabilities; the base has neither.
+## `set_voice_processing(true)` asks the platform for its echo-cancelled
+## voice-chat audio mode while a TutorVoiceSession is active. `get_input_level()`
+## is the current microphone RMS 0..1 (a number for a VAD/indicator, never
+## audio), 0 when not listening or unsupported.
+func set_voice_processing(_enabled: bool) -> void:
+	pass
+
+
+func get_input_level() -> float:
+	return 0.0
