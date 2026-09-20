@@ -251,6 +251,45 @@ const BED_LIE_ALONG: float = 0.25
 const BED_LIE_HEIGHT: float = 0.40
 
 
+## -- Surfaces a character can be set down on (Free Play, 2026-09-20) ------------
+##
+## Where Bunny lands when Aliz carries him to a piece of furniture, and where
+## SHE sits when she arrives alone. Room-local, like everything else here;
+## `yaw` is the heading in the project's convention (`NavMath.yaw_towards`:
+## the character faces -Z at yaw 0). `seatHeight` is the surface the pelvis
+## rests on, for the seated pose to land on. An id with no entry has no
+## surface, and the caller falls back to the floor.
+const HIP_SEATED_HEIGHT: float = 0.42
+
+
+static func child_surface(room_id: String, local_id: String) -> Dictionary:
+	match [room_id, local_id]:
+		[BEDROOM, "bed"]:
+			# Head to the pillow: a lying child's head points along his local +X,
+			# and facing -X puts that at the headboard (see the bed section).
+			return {"position": Vector3(BED_POSITION.x, BED_LIE_HEIGHT, BED_POSITION.z + BED_LIE_ALONG),
+					"yaw": PI * 0.5, "activity": "bedtime"}
+		[LIVING_ROOM, "sofa"]:
+			return {"position": Vector3(-0.32, 0.45, -1.42), "yaw": PI, "activity": "carried"}
+		[KITCHEN, "table"]:
+			return {"position": Vector3(0.5, FLOOR_Y, 1.12), "yaw": 0.0, "activity": "carried"}
+		[BATHROOM, "bath"]:
+			return {"position": Vector3(0.95, 0.40, -1.48), "yaw": PI, "activity": "bath"}
+		_:
+			return {}
+
+
+static func caregiver_seat(room_id: String, local_id: String) -> Dictionary:
+	match [room_id, local_id]:
+		[LIVING_ROOM, "sofa"]:
+			return {"position": Vector3(-1.08, FLOOR_Y, -1.34), "yaw": PI, "seatHeight": 0.45}
+		[BEDROOM, "bed"]:
+			return {"position": Vector3(BED_POSITION.x + 0.28, FLOOR_Y, BED_POSITION.z + 0.30),
+					"yaw": -PI * 0.5, "seatHeight": 0.41}
+		_:
+			return {}
+
+
 ## Every room id, in ring order.
 static func room_ids() -> Array:
 	var ids: Array = []

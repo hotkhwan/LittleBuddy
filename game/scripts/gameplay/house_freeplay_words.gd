@@ -95,25 +95,37 @@ const SHARED_WITH_VOCABULARY: Dictionary = {
 ## walk: the bed is for sleeping in, the table is for eating at, the toy is for
 ## hugging. An action with no clip yet still starts, times out and returns to
 ## idle, so an unanimated verb is never a stuck child.
+## The pantomime Aliz plays on arriving at a thing WITH NOTHING ELSE TO DO
+## there. Most furniture now does something real instead (the doors swing, the
+## fridge opens, she sits, she washes) -- see `house_freeplay_director.gd`
+## `_act_at()` -- so only the leftovers keep an action, and none of them is
+## `pickUp` or `hold`: those fill her hands in the movement state machine, and
+## a hand filled by a wardrobe stayed "carrying" for the rest of the session.
 const ACTIONS: Dictionary = {
-	"bed": "sleep",
-	"wardrobe": "pickUp",
-	"toy": "hug",
-	"sink": "brushTeeth",
-	"bath": "wave",
-	"towel": "pickUp",
-	"fridge": "drink",
-	"counter": "pickUp",
-	"table": "eat",
+	"bed": "sit",
+	"wardrobe": "",
+	"toy": "clap",
+	"sink": "",
+	"bath": "",
+	"towel": "wave",
+	"fridge": "",
+	"counter": "",
+	"table": "",
 	"sofa": "sit",
-	"toyBox": "pickUp",
-	"toyShelf": "pickUp",
+	"toyBox": "",
+	"toyShelf": "",
 	"littleBuddy": "hug",
-	"book": "pickUp",
+	"book": "point",
 }
 
-## The reaction spoken after the action, so an arrival is warm rather than
-## silent. Short, forward-looking, never a score (CLAUDE.md child UX).
+## The ids whose arrival is a REAL act rather than a pantomime -- see
+## `house_freeplay_acts.gd`. Every id with an empty `ACTIONS` entry must be in
+## here, and `test_freeplay_acts.gd` proves each one decides something.
+const HANDLED_BY_ACTS: Array[String] = [
+	"wardrobe", "sink", "bath", "fridge", "counter", "table", "toyBox", "toyShelf",
+	"bed", "sofa",
+]
+
 const REACTIONS: Array[String] = ["Nice!", "Great!", "Yay!", "Look!"]
 
 

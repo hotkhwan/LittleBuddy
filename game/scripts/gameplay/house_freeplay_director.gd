@@ -80,6 +80,16 @@ const HouseLayout := preload("res://scripts/house/house_layout.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 const DropZoneScript := preload("res://scripts/gameplay/drop_zone.gd")
 const HouseStageScript := preload("res://scripts/gameplay/house_stage.gd")
+const PoseModifierScript := preload("res://scripts/interaction/pose_modifier.gd")
+const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
+const HouseActs := preload("res://scripts/gameplay/house_freeplay_acts.gd")
+
+## The care close-up (`care_overlay.gd`) is the lead's and is CALLED, never
+## edited: Free Play mounts its own instance under the world's `UI` layer.
+const CARE_OVERLAY_SCRIPT_PATH: String = "res://scripts/care/care_overlay.gd"
+## The entitlement service, read-only: which rooms Free Play may open today.
+const ENTITLEMENT_SERVICE_PATH: String = "res://scripts/entitlement/entitlement_service.gd"
+const ENTITLEMENT_IDS_PATH: String = "res://scripts/entitlement/entitlement_ids.gd"
 
 ## `load()`ed rather than `preload()`ed, both of them, for the reason this file's
 ## own script is: a Free Play session that cannot read the content set must still
@@ -158,6 +168,27 @@ var _drops: int = 0
 ## drives exactly the same code a device does.
 var _pending_returns: Array = []
 
+## -- Free Play acts (see `_act_at()`) --
+## Free Play's own care close-up, built on first use under the world's UI.
+var _care: Control = null
+var _care_child: Node = null
+var _care_kind: String = ""
+var _care_elapsed: float = 0.0
+## Aliz's held pose (sit, hands up), a modifier on her skeleton. Null without a rig.
+var _pose: SkeletonModifier3D = null
+## While she sits: where to stand her back up, and her saved collision mask.
+var _seat: Dictionary = {}
+var _hands_up_left: float = 0.0
+## A landing in flight onto furniture: what to do with the thing when it lands.
+var _pending_landing: Dictionary = {}
+## Props recorded inside a storage model: node instance id -> local storage id.
+var _stored: Dictionary = {}
+## Transient bubbles / drops, ticked from `step()`.
+var _sparkles: Array = []
+## Rooms the entitlement says are open; empty means "all of them".
+var _entitlements: Object = null
+var _entitlements_resolved: bool = false
+
 
 ## -- Wiring --------------------------------------------------------------------
 
@@ -204,8 +235,18 @@ func bind(world: Node) -> void:
 			_nav.connect("floor_tapped", _on_floor_tapped)
 	if _character != null and _character.has_signal("interaction_ready"):
 		_character.connect("interaction_ready", _on_interaction_ready)
+	if _character != null and _character.has_signal("move_started"):
+		_character.connect("move_started", _on_move_started)
 	if _world.has_signal("room_entered"):
 		_world.connect("room_entered", _on_room_entered)
+	_install_room_gate()
+	if _character != null and _character.has_method("get_carry_controller"):
+		var carry: Node = _character.call("get_carry_controller")
+		if carry != null:
+			if not carry.is_connected("carry_started", _on_object_taken):
+				carry.connect("carry_started", _on_object_taken)
+			if not carry.is_connected("carry_ended", _on_landed):
+				carry.connect("carry_ended", _on_landed)
 
 	# Explicit rather than relying on the engine noticing `_unhandled_input`,
 	# exactly as `navigation_controller.gd` does it.
@@ -300,6 +341,7 @@ func step(delta: float) -> void:
 	if _stage != null:
 		_stage.call("update_zones")
 	_step_returns(delta)
+	_step_acts(delta)
 	_idle += maxf(delta, 0.0)
 	if _hint != null and _hint.visible:
 		_hint.call("step", delta)
@@ -415,12 +457,19 @@ func _on_interaction_ready(target_id: String) -> void:
 	_arrivals += 1
 	if HouseRoute.is_door_id(target_id):
 		# The room is about to change; an action and a reaction here would both
-		# land in the room the child has just left.
+		# land in the room the child has just left. Unless the door is one this
+		# session keeps for later -- then the transition controller has refused
+		# it and the kind word is the whole event.
+		_say_soon_if_locked(target_id)
 		return
-	# A container is the one target whose whole point is that touching it CHANGES
-	# it. Walking to the toy box and having it merely say "toy box" would teach a
-	# child that the lid is scenery; opening it is the reaction.
-	_toggle_storage_if_container(target_id)
+	var done: Dictionary = _act_at(target_id)
+	if bool(done.get("handled", false)):
+		var line: String = String(done.get("say", ""))
+		if not line.is_empty():
+			if _hud != null:
+				_hud.call("show_encouragement", line)
+			_speak(line, false)
+		return
 
 	var described: Dictionary = Words.describe(target_id)
 	var action: String = String(described.get("action", ""))
@@ -441,19 +490,20 @@ func _on_interaction_ready(target_id: String) -> void:
 ## Asks the ROOM, by semantic id, and does nothing at all when the target is not
 ## a container -- so this stays one branch rather than a list of cabinet names,
 ## and a new drawer added to `HouseLayout.storages()` works here with no edit.
-func _toggle_storage_if_container(target_id: String) -> void:
+func _toggle_storage_if_container(target_id: String) -> bool:
 	if _world == null or not _world.has_method("get_current_room"):
-		return
+		return false
 	var room: Node = _world.call("get_current_room")
-	if room == null or not room.has_method("get_storage"):
-		return
-	var local_id: String = target_id.get_slice(".", target_id.get_slice_count(".") - 1)
-	if room.call("get_storage", local_id) == null:
-		return
-	var now_open: bool = bool(room.call("toggle_storage", local_id))
+	if room == null or not room.has_method("is_openable"):
+		return false
+	var local_id: String = _local_of(target_id)
+	if not bool(room.call("is_openable", local_id)):
+		return false
+	var now_open: bool = bool(room.call("toggle_open", local_id))
 	if _hud != null:
 		_hud.call("show_encouragement", "Open!" if now_open else "Closed!")
 	_speak("open" if now_open else "close", false)
+	return true
 
 
 func _on_room_entered(room_id: String, _spawn_id: String) -> void:
@@ -827,6 +877,659 @@ func _screen_position_of(semantic_id: String) -> Variant:
 	if camera.is_position_behind(point):
 		return null
 	return camera.unproject_position(point)
+
+
+## -- Free Play acts ---------------------------------------------------------------
+##
+## What actually happens when Aliz reaches a thing. The DECISION is
+## `house_freeplay_acts.gd`'s (pure, tested on dictionaries); this is the doing:
+## doors swing, the fridge opens, a prop goes into the box, Bunny is laid on the
+## bed, the care close-up opens, she sits, she washes her hands. Every act has a
+## visible result and a kind word, and none of them can strand the child: the
+## close-up times out into its touch fallback, the seat lets go on the next tap,
+## a refused landing shakes softly and keeps the thing in her hand.
+
+## How long the hands-up wash lasts, and how long the close-up may sit unplayed
+## before it completes itself (the touch fallback `CLAUDE.md` requires: a child
+## who cannot manage the gesture is never stuck behind a card).
+const WASH_HANDS_SEC: float = 1.0
+const CARE_FALLBACK_SEC: float = 14.0
+const SPARKLE_SEC: float = 1.6
+
+## The situation at `target_id`, in the acts model's vocabulary.
+func describe_situation(target_id: String) -> Dictionary:
+	var local_id: String = _local_of(target_id)
+	var room: Node = _world.call("get_current_room") if _world != null and _world.has_method("get_current_room") else null
+	var target: Node = _world.call("get_target_by_semantic_id", target_id) \
+			if _world != null and _world.has_method("get_target_by_semantic_id") else null
+	var actions: Array = []
+	if target != null and target.has_method("get_supported_actions"):
+		actions = target.call("get_supported_actions")
+	var situation: Dictionary = {
+		"localId": local_id,
+		"actions": actions,
+		"carrying": AffordanceLayerScript.carrying_kind(_character),
+		"isCharacter": target != null and target.get_parent() != null
+				and target.get_parent().has_method("satisfy"),
+		"openable": room != null and room.has_method("is_openable") and bool(room.call("is_openable", local_id)),
+		"isOpen": room != null and room.has_method("is_open") and bool(room.call("is_open", local_id)),
+		"canStore": false,
+		"station": {},
+		"kitchenHeld": "",
+		"canFeed": false,
+		"canPlaceHere": false,
+		"combines": false,
+	}
+	if bool(situation["openable"]) and String(situation["carrying"]) == "item" and room.has_method("can_store_node"):
+		situation["canStore"] = bool(room.call("can_store_node", local_id, _character.call("get_carried_node")))
+	var kitchen: RefCounted = _kitchen()
+	if kitchen != null and _current_room_id() == HouseLayout.KITCHEN:
+		var described: Dictionary = kitchen.call("describe", local_id)
+		var held: String = String(kitchen.call("held"))
+		situation["kitchenHeld"] = held
+		if not String(described.get("role", "")).is_empty():
+			described["opens"] = _kitchen_rules().opens(local_id)
+			situation["station"] = described
+			if not held.is_empty() and held != "none":
+				var resting: String = String(described.get("on", ""))
+				if resting == "none":
+					resting = ""
+				var rules: GDScript = _kitchen_rules()
+				var combo: String = String(rules.combination(local_id, resting, held))
+				situation["combines"] = not combo.is_empty() and combo != "none"
+				situation["canPlaceHere"] = bool(rules.can_place(local_id, held, resting)) or bool(situation["combines"])
+	if kitchen != null:
+		var held_now: String = String(kitchen.call("held"))
+		if not held_now.is_empty() and held_now != "none":
+			situation["kitchenHeld"] = held_now
+			situation["canFeed"] = bool(_kitchen_rules().is_feedable(held_now))
+	return situation
+
+
+## Does the thing at `target_id`. Returns `{"handled": bool, "say": String}`.
+func _act_at(target_id: String) -> Dictionary:
+	if _world == null:
+		return {"handled": false}
+	var situation: Dictionary = describe_situation(target_id)
+	var decision: Dictionary = HouseActs.decide(situation)
+	var act: String = String(decision.get("act", HouseActs.ACT_NONE))
+	var local_id: String = String(situation["localId"])
+	match act:
+		HouseActs.ACT_TOGGLE_OPEN:
+			return {"handled": _toggle_storage_if_container(target_id), "say": ""}
+		HouseActs.ACT_STORE_ITEM:
+			return {"handled": _store_carried_in(local_id), "say": "In it goes!"}
+		HouseActs.ACT_PLACE_ON_TABLE:
+			return {"handled": _place_carried_on_table(target_id), "say": "On the table!"}
+		HouseActs.ACT_PLACE_CHILD:
+			return {"handled": _place_child_on(local_id, String(decision.get("activity", ""))),
+					"say": "There you go!"}
+		HouseActs.ACT_CARE_CHILD:
+			return {"handled": _care_for_child(local_id, String(decision.get("careKind", ""))), "say": ""}
+		HouseActs.ACT_SIT:
+			return {"handled": _sit_on(target_id), "say": "Sitting down!"}
+		HouseActs.ACT_WASH_HANDS:
+			return {"handled": _wash_hands(target_id), "say": "Splash!"}
+		HouseActs.ACT_BUBBLES:
+			return {"handled": _bubbles_at(target_id), "say": "Bubbles!"}
+		HouseActs.ACT_KITCHEN_OPEN, HouseActs.ACT_KITCHEN_CLOSE, HouseActs.ACT_KITCHEN_TAKE, \
+				HouseActs.ACT_KITCHEN_PLACE:
+			return _kitchen_act(act, local_id, decision)
+		HouseActs.ACT_FEED_CHILD:
+			return _feed_child(target_id)
+		_:
+			return {"handled": false, "say": ""}
+
+
+## Per-frame bookkeeping for the acts: the hands-up timer, the close-up's
+## fallback, the sparkles, the seated pose staying put.
+func _step_acts(delta: float) -> void:
+	var dt: float = maxf(delta, 0.0)
+	if _hands_up_left > 0.0:
+		_hands_up_left -= dt
+		if _hands_up_left <= 0.0 and _pose != null and is_instance_valid(_pose) \
+				and String(_pose.call("get_pose")) == PoseModifierScript.POSE_HANDS_UP:
+			_pose.call("set_pose", PoseModifierScript.POSE_NONE)
+	if is_care_open():
+		_care_elapsed += dt
+		if _care_elapsed >= CARE_FALLBACK_SEC and _care.has_method("complete_by_touch"):
+			_care.call("complete_by_touch")
+	if not _sparkles.is_empty():
+		var alive: Array = []
+		for entry: Dictionary in _sparkles:
+			var node: Node3D = entry["node"]
+			if not is_instance_valid(node):
+				continue
+			var left: float = float(entry["left"]) - dt
+			if left <= 0.0:
+				if node.is_inside_tree():
+					node.queue_free()
+				else:
+					node.free()
+				continue
+			entry["left"] = left
+			var age: float = SPARKLE_SEC - left
+			for child: Node in node.get_children():
+				if child is Node3D:
+					var rise: float = float((child as Node3D).get_meta("rise", 0.3))
+					(child as Node3D).position.y = float((child as Node3D).get_meta("baseY", 0.0)) + rise * age
+					var fade: float = clampf(1.0 - age / SPARKLE_SEC, 0.0, 1.0)
+					(child as Node3D).scale = Vector3.ONE * maxf(fade, 0.05)
+			alive.append(entry)
+		_sparkles = alive
+
+
+## -- Doors this session keeps for later ---------------------------------------------
+
+## Which rooms Free Play may enter today, from the entitlement service (read
+## only): the bedroom, the kitchen and the feeding loop are always open; the
+## bathroom and the living room open with the family entitlement. No service,
+## or a broken one, opens everything -- a missing file must never lock a child
+## out of her own house.
+const ALWAYS_OPEN_ROOMS: Array[String] = ["bedroom", "kitchen"]
+
+
+func is_room_open(room_id: String) -> bool:
+	if ALWAYS_OPEN_ROOMS.has(room_id):
+		return true
+	var service: Object = _entitlement_service()
+	if service == null:
+		return true
+	var ids: GDScript = load(ENTITLEMENT_IDS_PATH) as GDScript
+	if ids == null:
+		return true
+	return bool(service.call("is_active", ids.FAMILY_CLUB))
+
+
+## A test seam, and the hook a parent-side unlock would use: hand in the
+## service to read. Null restores the default (a fresh local service).
+func set_entitlement_service(service: Object) -> void:
+	_entitlements = service
+	_entitlements_resolved = service != null
+
+
+func _entitlement_service() -> Object:
+	if _entitlements_resolved:
+		return _entitlements
+	_entitlements_resolved = true
+	if not ResourceLoader.exists(ENTITLEMENT_SERVICE_PATH):
+		return null
+	var script: GDScript = load(ENTITLEMENT_SERVICE_PATH) as GDScript
+	if script == null:
+		return null
+	_entitlements = script.new()
+	_resolve_services()
+	if _save != null and _entitlements.has_method("load_from"):
+		_entitlements.call("load_from", _save)
+	return _entitlements
+
+
+func _install_room_gate() -> void:
+	var gate: Callable = Callable(self, "is_room_open")
+	# The WORLD's layer is the one that lives: the HUD adopts it on its first
+	# refresh and frees its own copy, so a gate installed on the HUD's copy at
+	# bind time would go with it.
+	for layer: Control in [_world_layer(), _affordance_layer()]:
+		if layer != null and layer.has_method("set_room_gate"):
+			layer.call("set_room_gate", gate)
+	var transition: Node = _world.call("get_transition_controller") \
+			if _world.has_method("get_transition_controller") else null
+	if transition != null and transition.has_method("set_room_gate"):
+		transition.call("set_room_gate", gate)
+
+
+func _world_layer() -> Control:
+	if _world != null and _world.has_method("get_affordance_layer"):
+		return _world.call("get_affordance_layer")
+	return null
+
+
+func _affordance_layer() -> Control:
+	if _hud != null and _hud.has_method("get_affordance_layer"):
+		var mine: Control = _hud.call("get_affordance_layer")
+		if mine != null:
+			return mine
+	if _world != null and _world.has_method("get_affordance_layer"):
+		return _world.call("get_affordance_layer")
+	return null
+
+
+func _say_soon_if_locked(target_id: String) -> void:
+	var room: Node = _world.call("get_current_room") if _world.has_method("get_current_room") else null
+	if room == null or not room.has_method("get_door_for_target"):
+		return
+	var door: Dictionary = room.call("get_door_for_target", target_id)
+	var to_room: String = String(door.get("toRoomId", ""))
+	if to_room.is_empty() or is_room_open(to_room):
+		return
+	if _hud != null:
+		_hud.call("show_encouragement", "Soon!")
+	_speak("Soon! Ask a grown-up.", true)
+
+
+## -- Opening, storing, placing -----------------------------------------------------
+
+## Puts the carried prop INTO storage `local_id`: the model records it, the
+## carry controller lands it on the container's floor, and it stays draggable
+## so it can come out again.
+func _store_carried_in(local_id: String) -> bool:
+	var room: Node = _world.call("get_current_room")
+	var item: Node = _character.call("get_carried_node")
+	if room == null or item == null or not room.has_method("store_node"):
+		return false
+	var slot: int = _stored.size()
+	var rest: Variant = room.call("storage_rest_position", local_id, slot)
+	if not (rest is Vector3):
+		return false
+	if not bool(_character.call("put_down_carried", rest)):
+		_refuse_landing()
+		return false
+	var reason: String = String(room.call("store_node", local_id, item))
+	if not reason.is_empty():
+		return false
+	_stored[item.get_instance_id()] = local_id
+	_pending_landing = {"node": item, "kind": "item"}
+	_watch_landing()
+	_play_sfx(SFX_PLACE_SOFT)
+	return true
+
+
+## Sets the carried prop on the table top.
+func _place_carried_on_table(target_id: String) -> bool:
+	var target: Node = _world.call("get_target_by_semantic_id", target_id)
+	var item: Node = _character.call("get_carried_node")
+	if not (target is Node3D) or item == null:
+		return false
+	var top: Vector3 = SpatialUtil.world_position(target as Node3D)
+	var box: Vector3 = Vector3(1.0, 0.7, 0.8)
+	for child: Node in target.get_children():
+		if child is CollisionShape3D and (child as CollisionShape3D).shape is BoxShape3D:
+			box = ((child as CollisionShape3D).shape as BoxShape3D).size
+	# The tap box is centred on the prop; its top face is the table top.
+	var spot: Vector3 = Vector3(top.x - 0.22 + 0.18 * float(_drops % 3), top.y + box.y * 0.5 + 0.005, top.z + 0.1)
+	if not bool(_character.call("put_down_carried", spot)):
+		_refuse_landing()
+		return false
+	_pending_landing = {"node": item, "kind": "item"}
+	_watch_landing()
+	_play_sfx(SFX_PLACE_SOFT)
+	return true
+
+
+## Sets Bunny down on a SURFACE -- the bed, the sofa, the table's front -- and
+## poses him for it when he lands. Refused (with a soft shake, and he stays in
+## her arms) when the surface is unknown.
+func _place_child_on(local_id: String, activity: String) -> bool:
+	var child: Node = _character.call("get_carried_node")
+	if child == null or not child.has_method("set_carried_by"):
+		return false
+	var surface: Dictionary = HouseLayout.child_surface(_current_room_id(), local_id)
+	if surface.is_empty():
+		_refuse_landing()
+		return false
+	var room: Node3D = _world.call("get_current_room")
+	var world_point: Vector3 = SpatialUtil.world_transform(room) * (surface["position"] as Vector3)
+	if not bool(_character.call("put_down_carried", world_point, float(surface.get("yaw", 0.0)))):
+		_refuse_landing()
+		return false
+	_pending_landing = {"node": child, "kind": "child",
+			"activity": activity if not activity.is_empty() else String(surface.get("activity", "idle"))}
+	_watch_landing()
+	_play_sfx(SFX_PLACE_SOFT)
+	return true
+
+
+func _watch_landing() -> void:
+	var carry: Node = _character.call("get_carry_controller")
+	if carry != null and not carry.is_connected("carry_ended", _on_landed):
+		carry.connect("carry_ended", _on_landed)
+
+
+func _on_landed(node: Node) -> void:
+	if _pending_landing.is_empty() or _pending_landing.get("node", null) != node:
+		return
+	var landing: Dictionary = _pending_landing
+	_pending_landing = {}
+	if String(landing.get("kind", "")) == "child" and node.has_method("set_activity"):
+		node.call("set_activity", String(landing.get("activity", "idle")))
+	elif node.has_method("set_home_position") and node is Node3D:
+		# It lives here now: a later slide-home returns it to the shelf, not to
+		# the floor it was picked up from.
+		node.call("set_home_position", (node as Node3D).position)
+
+
+## A landing that could not happen: the thing stays in her hand and says so
+## with a small shake rather than a word (there is no red X in this game).
+func _refuse_landing() -> void:
+	var carry: Node = _character.call("get_carry_controller")
+	if carry != null and carry.has_method("shake"):
+		carry.call("shake")
+	if _hud != null:
+		_hud.call("show_encouragement", "Not there -- try again!")
+
+
+## Picking a stored prop back up takes it out of the model.
+func _on_object_taken(node: Node) -> void:
+	if node == null:
+		return
+	var id: int = node.get_instance_id()
+	if not _stored.has(id):
+		return
+	var local_id: String = String(_stored[id])
+	_stored.erase(id)
+	var room: Node = _world.call("get_current_room")
+	if room != null and room.has_method("get_storage"):
+		var model: RefCounted = room.call("get_storage", local_id)
+		if model != null and model.has_method("remove"):
+			var object_id: Variant = node.get("object_id")
+			model.call("remove", String(object_id) if object_id != null else node.name)
+
+
+## -- Sitting, washing, bubbles ------------------------------------------------------
+
+## Aliz sits on the sofa or the bed: the seated pose on her rig, her body
+## moved onto the seat, and the movement machine told it is a held `sit` so
+## the state reads true. Any new walk request stands her up again.
+func _sit_on(target_id: String) -> bool:
+	var local_id: String = _local_of(target_id)
+	var seat: Dictionary = HouseLayout.caregiver_seat(_current_room_id(), local_id)
+	if seat.is_empty() or not (_character is Node3D):
+		return false
+	_stand_up()
+	var room: Node3D = _world.call("get_current_room")
+	var stand: Vector3 = SpatialUtil.world_position(_character)
+	var spot: Vector3 = SpatialUtil.world_transform(room) * (seat["position"] as Vector3)
+	spot.y = maxf(float(seat.get("seatHeight", 0.45)) - HouseLayout.HIP_SEATED_HEIGHT, HouseLayout.FLOOR_Y)
+	_seat = {"targetId": target_id, "stand": stand, "mask": _character.get("collision_mask")}
+	# Through the sofa's front, not against it: the body is inside the collider
+	# while she sits, and must not be pushed out of it every physics step.
+	_character.set("collision_mask", 0)
+	SpatialUtil.set_world_position(_character, spot)
+	_character.rotation.y = float(seat.get("yaw", 0.0))
+	_character.call("play_action", "sit")
+	var pose: SkeletonModifier3D = _pose_modifier()
+	if pose != null:
+		pose.call("set_pose", PoseModifierScript.POSE_SIT)
+	return true
+
+
+func is_seated() -> bool:
+	return not _seat.is_empty()
+
+
+func _stand_up() -> void:
+	if _seat.is_empty():
+		return
+	var seat: Dictionary = _seat
+	_seat = {}
+	if _character is Node3D:
+		_character.set("collision_mask", seat.get("mask", 0))
+		SpatialUtil.set_world_position(_character, seat["stand"] as Vector3)
+		if _character.has_method("release_action"):
+			_character.call("release_action")
+	var pose: SkeletonModifier3D = _pose_modifier()
+	if pose != null and String(pose.call("get_pose")) == PoseModifierScript.POSE_SIT:
+		pose.call("set_pose", PoseModifierScript.POSE_NONE)
+
+
+func _on_move_started(_target_id: String) -> void:
+	if not _running:
+		return
+	_stand_up()
+	if _hands_up_left > 0.0:
+		_hands_up_left = 0.0
+		var pose: SkeletonModifier3D = _pose_modifier()
+		if pose != null:
+			pose.call("set_pose", PoseModifierScript.POSE_NONE)
+
+
+## Hands up under the tap for a second, and a splash of drops.
+func _wash_hands(target_id: String) -> bool:
+	_hands_up_left = WASH_HANDS_SEC
+	var pose: SkeletonModifier3D = _pose_modifier()
+	if pose != null:
+		pose.call("set_pose", PoseModifierScript.POSE_HANDS_UP)
+	_character.call("play_action", "brushTeeth", WASH_HANDS_SEC)
+	var target: Node = _world.call("get_target_by_semantic_id", target_id)
+	if target is Node3D:
+		_sparkle_at(SpatialUtil.world_position(target as Node3D) + Vector3(0.0, 0.55, 0.15), 4, 0.02)
+	return true
+
+
+func is_washing_hands() -> bool:
+	return _hands_up_left > 0.0
+
+
+## Soap bubbles rise out of the bath.
+func _bubbles_at(target_id: String) -> bool:
+	var target: Node = _world.call("get_target_by_semantic_id", target_id)
+	if not (target is Node3D):
+		return false
+	_sparkle_at(SpatialUtil.world_position(target as Node3D) + Vector3(0.0, 0.55, 0.0), 6, 0.05)
+	_character.call("play_action", "clap")
+	return true
+
+
+func get_sparkle_count() -> int:
+	return _sparkles.size()
+
+
+## A puff of cream spheres that rise and fade. Transient, unlit-cheap, never a
+## light or a particle system.
+func _sparkle_at(where: Vector3, count: int, radius: float) -> void:
+	var root: Node3D = Node3D.new()
+	root.name = "Sparkle"
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.965, 0.898, 0.85)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var mesh := SphereMesh.new()
+	mesh.radius = radius
+	mesh.height = radius * 2.0
+	mesh.radial_segments = 8
+	mesh.rings = 4
+	for index: int in range(count):
+		var bubble := MeshInstance3D.new()
+		bubble.mesh = mesh
+		bubble.material_override = material
+		var angle: float = TAU * float(index) / float(maxi(count, 1))
+		bubble.position = Vector3(cos(angle) * 0.12, 0.02 * float(index), sin(angle) * 0.08)
+		bubble.set_meta("baseY", bubble.position.y)
+		bubble.set_meta("rise", 0.25 + 0.05 * float(index % 3))
+		bubble.scale = Vector3.ONE * (0.7 + 0.15 * float(index % 3))
+		root.add_child(bubble)
+	var room: Node = _world.call("get_current_room")
+	if room != null:
+		room.add_child(root)
+		SpatialUtil.set_world_position(root, where)
+	else:
+		add_child(root)
+		root.position = where
+	_sparkles.append({"node": root, "left": SPARKLE_SEC})
+
+
+func _pose_modifier() -> SkeletonModifier3D:
+	if _pose != null and is_instance_valid(_pose):
+		return _pose
+	if _character == null:
+		return null
+	_pose = PoseModifierScript.for_character(_character)
+	return _pose
+
+
+## -- The care close-up, from Free Play ---------------------------------------------
+
+## Opens the lead's care overlay on Bunny for `care_kind` at `surface`. For
+## the bath he is first set down IN the tub. The room's input is held while
+## the card is up and given back when it closes, and the close-up completes
+## itself after `CARE_FALLBACK_SEC` if the gesture never comes.
+func _care_for_child(surface: String, care_kind: String) -> bool:
+	var child: Node = _character.call("get_carried_node")
+	if child == null or not child.has_method("satisfy"):
+		return false
+	var care: Control = _ensure_care_overlay()
+	if care == null:
+		return false
+	if surface == "bath":
+		_place_child_on(surface, "bath")
+	_care_child = child
+	_care_kind = care_kind
+	_care_elapsed = 0.0
+	if child.has_method("set_bubble_suppressed"):
+		child.call("set_bubble_suppressed", true)
+	if surface != "bath" and child.has_method("set_activity"):
+		child.call("set_activity", "bath")
+	if _hud != null and _hud.has_method("set_narration_covered"):
+		_hud.call("set_narration_covered", true)
+	_set_room_input(false)
+	care.visible = true
+	care.call("begin", care_kind)
+	_speak(String(care.call("word_for", care_kind)) if care.has_method("word_for") else "wash", true)
+	return true
+
+
+func is_care_open() -> bool:
+	return _care != null and is_instance_valid(_care) and _care.visible
+
+
+func get_care_overlay() -> Control:
+	return _care
+
+
+func _ensure_care_overlay() -> Control:
+	if _care != null and is_instance_valid(_care):
+		return _care
+	if not ResourceLoader.exists(CARE_OVERLAY_SCRIPT_PATH):
+		return null
+	var script: GDScript = load(CARE_OVERLAY_SCRIPT_PATH) as GDScript
+	if script == null:
+		return null
+	var care: Control = script.new()
+	var ui: Node = _world.get_node_or_null("UI")
+	if ui != null:
+		ui.add_child(care)
+	else:
+		add_child(care)
+	care.call("build")
+	care.visible = false
+	care.connect("care_completed", _on_care_completed)
+	_care = care
+	return care
+
+
+func _on_care_completed(care_kind: String) -> void:
+	if _care != null:
+		_care.visible = false
+	var child: Node = _care_child
+	_care_child = null
+	_care_kind = ""
+	if _hud != null and _hud.has_method("set_narration_covered"):
+		_hud.call("set_narration_covered", false)
+	_set_room_input(true)
+	if child != null and is_instance_valid(child):
+		if child.has_method("set_bubble_suppressed"):
+			child.call("set_bubble_suppressed", false)
+		if child.has_method("satisfy"):
+			child.call("satisfy", "dirty", 40.0)
+		# Back in her arms he stays carried; in the tub he stays in the bath.
+		if child.has_method("set_activity") and child.has_method("is_carried") \
+				and bool(child.call("is_carried")):
+			child.call("set_activity", "carried")
+	var line: String = "So fresh!" if care_kind != "brushTeeth" else "All clean!"
+	if _hud != null:
+		_hud.call("show_encouragement", line)
+	_speak(line, false)
+	_play_sfx(SFX_PLACE_SOFT)
+
+
+func _set_room_input(enabled: bool) -> void:
+	if _nav != null and _nav.get("taps_enabled") != null:
+		_nav.set("taps_enabled", enabled)
+	if _character != null and _character.has_method("set_disabled"):
+		_character.call("set_disabled", not enabled)
+
+
+## -- The kitchen, in Free Play -----------------------------------------------------
+
+func _kitchen() -> RefCounted:
+	if _world == null or not _world.has_method("get_kitchen_state"):
+		return null
+	return _world.call("get_kitchen_state")
+
+
+func _kitchen_rules() -> GDScript:
+	return load("res://scripts/kitchen/kitchen_rules.gd") as GDScript
+
+
+func _kitchen_act(act: String, station: String, decision: Dictionary) -> Dictionary:
+	var kitchen: RefCounted = _kitchen()
+	if kitchen == null:
+		return {"handled": false, "say": ""}
+	var report: Dictionary = {}
+	match act:
+		HouseActs.ACT_KITCHEN_OPEN:
+			report = kitchen.call("set_open", station, true)
+		HouseActs.ACT_KITCHEN_CLOSE:
+			report = kitchen.call("set_open", station, false)
+		HouseActs.ACT_KITCHEN_TAKE:
+			report = kitchen.call("take", station, String(decision.get("item", "")))
+			if bool(report.get("ok", false)):
+				_character.call("play_action", "pickUp")
+		HouseActs.ACT_KITCHEN_PLACE:
+			report = kitchen.call("place", station)
+			if bool(report.get("ok", false)):
+				_character.call("play_action", "give")
+				var gesture: String = String(report.get("gesture", ""))
+				if not gesture.is_empty():
+					_open_mix(gesture, String(report.get("result", "")))
+	_play_sfx(SFX_PLACE_SOFT)
+	return {"handled": true, "say": String(report.get("say", ""))}
+
+
+## The counter's preparation opens the same close-up the mission uses (`MIX`),
+## when the overlay knows the gesture; a gesture it does not have is simply the
+## combining, already done.
+func _open_mix(gesture: String, result: String) -> void:
+	var care: Control = _ensure_care_overlay()
+	if care == null:
+		return
+	var known: Variant = care.get("COPY")
+	if not (known is Dictionary) or not (known as Dictionary).has(gesture):
+		return
+	_care_child = null
+	_care_kind = gesture
+	_care_elapsed = 0.0
+	if _hud != null and _hud.has_method("set_narration_covered"):
+		_hud.call("set_narration_covered", true)
+	_set_room_input(false)
+	care.visible = true
+	care.call("begin", gesture)
+	if not result.is_empty():
+		var word: String = String((load("res://scripts/kitchen/kitchen_items.gd") as GDScript).word_for(result))
+		if _hud != null:
+			_hud.call("show_word", word, "")
+
+
+func _feed_child(target_id: String) -> Dictionary:
+	var kitchen: RefCounted = _kitchen()
+	if kitchen == null:
+		return {"handled": false, "say": ""}
+	var report: Dictionary = kitchen.call("give_to_bunny")
+	if not bool(report.get("ok", false)):
+		return {"handled": true, "say": String(report.get("say", ""))}
+	var target: Node = _world.call("get_target_by_semantic_id", target_id)
+	var child: Node = target.get_parent() if target != null else null
+	if child != null and child.has_method("satisfy"):
+		child.call("satisfy", "hungry", 70.0)
+		if child.has_method("set_activity"):
+			child.call("set_activity", "feeding", "giveSnack")
+	_character.call("play_action", "give")
+	_play_sfx(SFX_PLACE_SOFT)
+	return {"handled": true, "say": String(report.get("say", "Yum! Thank you!"))}
+
+
+static func _local_of(target_id: String) -> String:
+	return target_id.get_slice(".", target_id.get_slice_count(".") - 1)
 
 
 ## -- Services (all optional) ---------------------------------------------------

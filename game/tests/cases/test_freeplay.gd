@@ -172,6 +172,13 @@ func _test_every_reaction_is_a_real_action():
 	var known: Array = ActionDriverScript.KNOWN_ACTIONS
 	for local_id: Variant in Words.ACTIONS.keys():
 		var action: String = String(Words.ACTIONS[local_id])
+		if action.is_empty() and Words.HANDLED_BY_ACTS.has(String(local_id)):
+			# A real act (the doors swing, the fridge opens, she sits) rather
+			# than a pantomime; `test_freeplay_acts.gd` proves it decides one.
+			continue
+		if action in ["pickUp", "hold"]:
+			failures.append("'%s' reacts with '%s', which fills her hands in the movement machine "
+					% [String(local_id), action] + "and left her 'carrying' nothing for the rest of the session")
 		if not known.has(action):
 			failures.append(
 				"'%s' reacts with '%s', which is not one of the contract's semantic actions "
@@ -312,9 +319,20 @@ func _test_arriving_is_play():
 
 	# A door arrival must not act or react -- the room is about to change.
 	var before: Array = tts.lines.duplicate()
-	character.emit_signal("interaction_ready", "bedroom.doorToBathroom")
+	character.emit_signal("interaction_ready", "bedroom.doorToKitchen")
 	if tts.lines != before:
 		failures.append("arriving at a door spoke a reaction into the room the child is leaving")
+	# ...unless the door is one this session keeps for later: then nothing
+	# changes room and the kind word IS the event.
+	if bool(director.call("is_room_open", "bathroom")):
+		failures.append("the bathroom is open on the free starter; Free Play should keep it for later")
+	world.call("place_in_room", "bedroom", "")
+	before = tts.lines.duplicate()
+	character.emit_signal("interaction_ready", "bedroom.doorToBathroom")
+	if tts.lines.size() != before.size() + 1 or String(tts.lines[-1]).find("grown-up") < 0:
+		failures.append("arriving at a locked door did not say 'Soon! Ask a grown-up' (got %s)" % str(tts.lines))
+	if String(world.call("get_current_room_id")) != "bedroom":
+		failures.append("a locked door moved the child out of the bedroom")
 
 	_release(world)
 	return failures

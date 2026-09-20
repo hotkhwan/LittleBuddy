@@ -39,14 +39,29 @@ signal transition_started(from_room_id: String, to_room_id: String)
 signal transition_completed(room_id: String, spawn_id: String)
 
 ## Fired instead of `transition_completed` when a transition could not happen.
-## `reason` is one of "unknownRoom", "busy", "notBound", "placementFailed".
-## This is NEVER a failure state for the child -- there is no red X in this game
-## and the room simply does not change.
+## `reason` is one of "unknownRoom", "busy", "notBound", "placementFailed",
+## "locked". This is NEVER a failure state for the child -- there is no red X in
+## this game and the room simply does not change.
 signal transition_refused(to_room_id: String, reason: String)
 
 var _world: Node = null
 var _character: Node = null
 var _in_transition: bool = false
+## Optional: `func(room_id: String) -> bool`, true when the room may be entered
+## this session. Free Play installs one that reads the entitlement; with none
+## every room is open. A refused door leaves the child exactly where she is,
+## in control -- she is never moved, never ejected.
+var _room_gate: Callable = Callable()
+
+
+func set_room_gate(gate: Callable) -> void:
+	_room_gate = gate
+
+
+func is_room_open(room_id: String) -> bool:
+	if not _room_gate.is_valid():
+		return true
+	return bool(_room_gate.call(room_id))
 
 
 ## Composition, not an autoload: the world hands in the two things this needs.
@@ -100,6 +115,8 @@ func request_transition(to_room_id: String, to_spawn_id: String) -> bool:
 		# The whole point of rule 1: a bad id from content, a renamed room or a
 		# typo must not move, freeze or crash anybody.
 		refusal = "unknownRoom"
+	elif not is_room_open(to_room_id):
+		refusal = "locked"
 	else:
 		transition_started.emit(from_room_id, to_room_id)
 		if bool(_world.call("place_in_room", to_room_id, to_spawn_id)):

@@ -123,6 +123,50 @@ func bind(carrier: Node3D, socket_source: Node = null, provider: RefCounted = nu
 	_carrier = carrier
 	_socket_source = socket_source
 	_provider = provider
+	_watch_skeleton()
+
+
+## The socket is a bone. Bones move in the skeleton's own update, AFTER the
+## physics step that pinned the held thing to where the bone WAS -- one frame
+## of lag, which on a walking arm reads as the bottle floating behind the hand.
+## So the pin is re-applied the moment the skeleton reports its bones settled.
+var _skeleton: Skeleton3D = null
+
+
+func _watch_skeleton() -> void:
+	if _socket_source == null or not is_instance_valid(_socket_source):
+		return
+	var skeleton: Skeleton3D = _find_skeleton(_socket_source)
+	if skeleton == null or skeleton == _skeleton:
+		return
+	_skeleton = skeleton
+	if skeleton.has_signal("skeleton_updated") \
+			and not skeleton.is_connected("skeleton_updated", _on_skeleton_updated):
+		skeleton.connect("skeleton_updated", _on_skeleton_updated)
+
+
+func _on_skeleton_updated() -> void:
+	pin()
+
+
+## Re-pins a HELD thing to its socket without advancing any timer. Safe to
+## call any number of times per frame.
+func pin() -> void:
+	if _node == null or not is_instance_valid(_node) or _state != STATE_HELD:
+		return
+	if _shake_left > 0.0:
+		return
+	_apply(held_transform())
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child: Node in node.get_children():
+		var found: Skeleton3D = _find_skeleton(child)
+		if found != null:
+			return found
+	return null
 
 
 func set_socket_source(socket_source: Node) -> void:
@@ -164,18 +208,42 @@ func carry(node: Node3D, socket_name: String = "") -> bool:
 
 ## Sets the carried thing down at `point` (world), or -- with no point -- at the
 ## first standable spot `find_put_down_spot()` offers. False when nothing is
-## carried, when already placing, or when there is nowhere to put it.
-func put_down(point: Variant = null) -> bool:
+## carried, when already placing, or when there is nowhere to put it. `yaw`
+## (radians, the project's -Z-facing convention) turns the thing as it lands --
+## a child laid on the bed faces the pillow, not the way she happened to face;
+## null keeps her heading.
+func put_down(point: Variant = null, yaw: Variant = null) -> bool:
 	if _node == null or _state == STATE_PLACING or _state == STATE_IDLE:
 		return false
 	var target: Variant = point if point is Vector3 else find_put_down_spot()
 	if target == null:
 		return false
 	_from = SpatialUtil.world_transform(_node)
-	_to = Transform3D(_carrier_yaw_basis(), target as Vector3)
+	var basis: Basis = _carrier_yaw_basis()
+	if yaw is float or yaw is int:
+		basis = Basis(Vector3.UP, float(yaw))
+	_to = Transform3D(basis, target as Vector3)
 	_elapsed = 0.0
+	_shake_left = 0.0
 	_set_state(STATE_PLACING)
 	return true
+
+
+## A landing that was refused: the held thing sways once in her hands and
+## settles, so the child sees "not there" without a word or a red X.
+const SHAKE_SEC: float = 0.36
+const SHAKE_AMPLITUDE: float = 0.05
+var _shake_left: float = 0.0
+
+
+func shake() -> void:
+	if _node == null:
+		return
+	_shake_left = SHAKE_SEC
+
+
+func is_shaking() -> bool:
+	return _shake_left > 0.0
 
 
 ## A standable floor point an arm's length from the carrier, or null. See the
@@ -271,7 +339,12 @@ func sync(delta: float) -> void:
 				carry_settled.emit(_node)
 		STATE_HELD:
 			_keep_child_in_room()
-			_apply(held_transform())
+			var held: Transform3D = held_transform()
+			if _shake_left > 0.0:
+				_shake_left = maxf(_shake_left - maxf(delta, 0.0), 0.0)
+				var k: float = _shake_left / SHAKE_SEC
+				held.origin += held.basis.x * (sin(k * PI * 3.0) * SHAKE_AMPLITUDE * k)
+			_apply(held)
 		STATE_PLACING:
 			_elapsed += maxf(delta, 0.0)
 			var k: float = _ease(_elapsed / PLACE_SEC)

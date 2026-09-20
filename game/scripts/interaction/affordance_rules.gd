@@ -164,10 +164,11 @@ static func verb_for_target(description: Dictionary, context: Dictionary = {}) -
 	var actions: Array = description.get("supportedActions", []) as Array
 
 	if carrying == "child":
-		# Bunny in her arms: he is what the furniture is for.
+		# Bunny in her arms: he is what the furniture is for. A bed, a sofa and
+		# the table (his highchair spot) all take him.
 		if context.has("character"):
 			return ""
-		if _is_seat(actions) or actions.has("sleep"):
+		if actions.has("sit") or actions.has("sleep") or actions.has("eat"):
 			return VERB_PLACE
 		if actions.has("wash"):
 			return VERB_WASH
@@ -251,8 +252,10 @@ static func _furniture_verb(actions: Array) -> String:
 	return ""
 
 
+## A seat SHE can sit on: the sofa, the bed. The table says "sit" too, but
+## that is Bunny's highchair spot -- there is no chair for a grown-up there.
 static func _is_seat(actions: Array) -> bool:
-	return actions.has("sit")
+	return actions.has("sit") and not actions.has("eat")
 
 
 ## Flat distance from `actor` to `anchor`: height is ignored, because a fridge

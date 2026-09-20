@@ -1844,6 +1844,8 @@ func _build_furniture() -> void:
 		var mesh: MeshInstance3D = _add_mesh("Prop_%s" % target_id, Kit.commit(tool))
 		if mesh != null:
 			mesh.position = centre
+		if target_id == "wardrobe":
+			_build_wardrobe_doors(target_id, size, centre)
 		_add_collider("Prop_%sBody" % target_id, size, centre)
 		_add_target(
 			String(prop["targetId"]),
@@ -1853,6 +1855,151 @@ func _build_furniture() -> void:
 			prop["stand"] as Vector3,
 			prop["actions"] as Array
 		)
+
+
+## -- Things that open ----------------------------------------------------------------
+##
+## The wardrobe's two doors, each on its own hinge so OPEN is a visible swing
+## rather than a word. Registered as an "openable" -- the same open/closed
+## question the storages answer, without a `StorageModel` behind it (nothing is
+## put IN the wardrobe tonight). `set_open()` / `toggle_open()` / `is_open()`
+## work for both kinds, so a director never has to know which it is talking to.
+var _openables: Dictionary = {}
+
+
+func _build_wardrobe_doors(target_id: String, size: Vector3, centre: Vector3) -> void:
+	var hinges: Array = []
+	for side: float in [-1.0, 1.0]:
+		var hinge := Node3D.new()
+		hinge.name = "WardrobeDoor_%s" % ("L" if side < 0.0 else "R")
+		hinge.position = centre + Vector3(side * RoomProps.WARDROBE_HINGE_X,
+				RoomProps.WARDROBE_DOOR_Y, size.z * 0.5 + 0.005)
+		_geometry.add_child(hinge)
+		var tool: SurfaceTool = Kit.begin()
+		RoomProps.wardrobe_door(tool, size, side, HouseLayout.dominant_color(room_id))
+		var leaf := MeshInstance3D.new()
+		leaf.name = "Leaf"
+		leaf.mesh = Kit.commit(tool)
+		leaf.material_override = Kit.material()
+		hinge.add_child(leaf)
+		hinges.append({"node": hinge, "side": side})
+	_openables[target_id] = {"hinges": hinges, "open": false,
+			"degrees": RoomProps.WARDROBE_DOOR_OPEN_DEGREES}
+
+
+## True for anything in this room that opens: a lidded storage or the wardrobe.
+func is_openable(local_id: String) -> bool:
+	build()
+	return _openables.has(local_id) or _storage_models.has(local_id)
+
+
+func is_open(local_id: String) -> bool:
+	build()
+	if _openables.has(local_id):
+		return bool((_openables[local_id] as Dictionary)["open"])
+	return is_storage_open(local_id)
+
+
+## Opens or shuts a storage OR an openable. Returns the new state; false and
+## nothing changed for an id that does not open.
+func set_open(local_id: String, open_it: bool) -> bool:
+	build()
+	if _storage_models.has(local_id):
+		return set_storage_open(local_id, open_it)
+	if not _openables.has(local_id):
+		return false
+	var entry: Dictionary = _openables[local_id]
+	entry["open"] = open_it
+	var degrees: float = float(entry["degrees"])
+	for hinge_entry: Dictionary in entry["hinges"]:
+		var hinge: Node3D = hinge_entry["node"]
+		# The left leaf swings one way, the right the other, both towards the
+		# camera: +X rotated by -theta about Y goes to +Z.
+		var target: float = -float(hinge_entry["side"]) * degrees if open_it else 0.0
+		_swing_hinge(hinge, "rotation_degrees:y", target)
+	return open_it
+
+
+func toggle_open(local_id: String) -> bool:
+	build()
+	return set_open(local_id, not is_open(local_id))
+
+
+func _swing_hinge(hinge: Node3D, property: String, target: float) -> void:
+	var tree: SceneTree = get_tree() if is_inside_tree() else null
+	if tree == null:
+		# Headless: snap. A test asserts the END state.
+		hinge.set_indexed(property, target)
+		return
+	var tween: Tween = create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(hinge, property, target, LID_SWING_SECONDS)
+
+
+## -- Putting things into containers --------------------------------------------------
+
+## Whether `node` (a spawned prop with `object_id` / `category`) may go into
+## storage `local_id` right now: the model must be open, have room, and accept
+## the prop's tag. A node with no tags is a toy -- it is the only kind of loose
+## prop Free Play spawns in a room with a box.
+func can_store_node(local_id: String, node: Node) -> bool:
+	build()
+	var model: RefCounted = _storage_models.get(local_id, null)
+	if model == null or node == null:
+		return false
+	return bool(model.call("can_store", _node_item_id(node), _node_item_tags(node)))
+
+
+## Records `node` inside storage `local_id`. Returns the model's refusal reason
+## ("" when accepted). Purely the MODEL: the node's transform is the caller's.
+func store_node(local_id: String, node: Node) -> String:
+	build()
+	var model: RefCounted = _storage_models.get(local_id, null)
+	if model == null or node == null:
+		return "unknown"
+	return String(model.call("store", _node_item_id(node), _node_item_tags(node)))
+
+
+## Where an item sits once it is inside storage `local_id`, world space: on the
+## container's floor, so it shows in the open top. `slot` spreads several items
+## across the width.
+func storage_rest_position(local_id: String, slot: int = 0) -> Variant:
+	build()
+	for row: Dictionary in HouseLayout.storages(room_id):
+		if String(row["storageId"]) != local_id:
+			continue
+		var size: Vector3 = row["size"]
+		var centre: Vector3 = row["position"]
+		var wall: float = 0.055
+		var across: float = (size.x - wall * 2.0 - 0.16) * 0.5
+		var x: float = lerpf(-across, across, float(slot % 3) / 2.0) if slot > 0 else 0.0
+		var local: Vector3 = centre + Vector3(x, -size.y * 0.5 + wall + 0.002, 0.0)
+		return _to_world(local)
+	return null
+
+
+static func _node_item_id(node: Node) -> String:
+	var id: Variant = node.get("object_id")
+	return String(id) if id != null else node.name
+
+
+## Content categories -> storage tags. `objects.json` files a teddy under
+## `play`; the toy box's row accepts `toy`. Same thing, two vocabularies.
+const CATEGORY_TAGS: Dictionary = {"play": "toy", "toy": "toy", "book": "book"}
+
+
+static func _node_item_tags(node: Node) -> Array:
+	var tags: Array = []
+	var category: Variant = node.get("category")
+	if category != null and not String(category).is_empty():
+		tags.append(String(category))
+		if CATEGORY_TAGS.has(String(category)):
+			tags.append(String(CATEGORY_TAGS[String(category)]))
+	var explicit: Variant = node.get("tags")
+	if explicit is Array:
+		for tag: Variant in explicit:
+			tags.append(String(tag))
+	return tags
 
 
 ## -- Node factories ------------------------------------------------------------

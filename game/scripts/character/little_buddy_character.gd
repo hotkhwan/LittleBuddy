@@ -356,11 +356,11 @@ func carry_node(node: Node, socket_name: String = "") -> bool:
 ## Puts the carried thing down at `point` (world), or on the nearest standable
 ## spot when no point is given. False when nothing is carried or there is
 ## nowhere valid to put it.
-func put_down_carried(point: Variant = null) -> bool:
+func put_down_carried(point: Variant = null, yaw: Variant = null) -> bool:
 	_ensure_wired()
 	if _carry == null:
 		return false
-	return bool(_carry.call("put_down", point))
+	return bool(_carry.call("put_down", point, yaw))
 
 
 func get_carried_node() -> Node:

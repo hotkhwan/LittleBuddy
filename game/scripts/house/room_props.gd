@@ -132,6 +132,24 @@ static func _bed(tool: SurfaceTool, size: Vector3, accent: Color) -> void:
 				Kit.circle(0.052, 12), 0.012, Palette.CREAM, 0.004)
 
 
+## The door leaf `room.gd` hangs on each wardrobe hinge: a rounded slab in the
+## room's dominant colour with a cream knob, built at the hinge's origin and
+## extending `side` (+1 right, -1 left) so the hinge is its outer edge.
+static func wardrobe_door(tool: SurfaceTool, size: Vector3, side: float, dominant: Color) -> void:
+	var width: float = WARDROBE_DOOR_WIDTH
+	Kit.extrude(tool, Kit.at(Vector3(-side * width * 0.5, 0.0, 0.0)),
+			Kit.rounded_rect(Vector2(width, 1.42), 0.06, 3), 0.05, dominant, 0.018)
+	Kit.sphere(tool, Kit.at(Vector3(-side * (width - 0.07), 0.0, 0.05)), 0.036, Palette.CREAM, 10, 5)
+
+
+## Leaf width, the hinge's height above the wardrobe's centre and how far the
+## hinge stands proud of the front face. Shared with `room.gd`.
+const WARDROBE_DOOR_WIDTH: float = 0.40
+const WARDROBE_DOOR_Y: float = 0.03
+const WARDROBE_HINGE_X: float = 0.415
+const WARDROBE_DOOR_OPEN_DEGREES: float = 100.0
+
+
 static func _wardrobe(
 	tool: SurfaceTool, size: Vector3, dominant: Color, accent: Color
 ) -> void:
@@ -146,12 +164,19 @@ static func _wardrobe(
 	# the thing that reads as "a primitive with a texture on it".
 	Kit.box(tool, Kit.at(Vector3(0.0, size.y * 0.5 - 0.06, 0.0)),
 			Vector3(size.x + 0.06, 0.09, size.z + 0.06), WOOD, Kit.BEVEL)
-	for side: float in [-1.0, 1.0]:
-		Kit.extrude(tool, Kit.at(Vector3(side * 0.215, 0.03, size.z * 0.5 + 0.005)),
-				Kit.rounded_rect(Vector2(0.40, 1.42), 0.06, 3), 0.05,
-				dominant, 0.018)
-		Kit.sphere(tool, Kit.at(Vector3(side * 0.07, 0.03, size.z * 0.5 + 0.055)),
-				0.036, Palette.CREAM, 10, 5)
+	# The two DOORS are not written here: `room.gd::_build_wardrobe_doors()`
+	# hangs each on its own hinge node so OPEN can swing them (Free Play,
+	# 2026-09-20). What stays in the shell is the dark inside they reveal -- a
+	# shallow recess with a rail and two hanging things, so an open wardrobe is
+	# a wardrobe and not a hole.
+	var inside: Color = Palette.deep(WOOD)
+	Kit.box(tool, Kit.at(Vector3(0.0, 0.03, size.z * 0.5 - 0.06)),
+			Vector3(0.84, 1.42, 0.02), inside)
+	Kit.cylinder(tool, Kit.at_rotated(Vector3(0.0, 0.62, size.z * 0.5 - 0.16), Vector3(0.0, 0.0, 90.0)),
+			0.014, 0.80, Palette.CREAM, 8)
+	for x: float in [-0.20, 0.12]:
+		Kit.box(tool, Kit.at(Vector3(x, 0.30, size.z * 0.5 - 0.16)),
+				Vector3(0.22, 0.60, 0.05), Palette.light(accent) if x < 0.0 else Palette.light(dominant), 0.03, 2)
 	# Tidy but lived-in (§5): two folded things left on top.
 	Kit.box(tool, Kit.at(Vector3(-0.12, size.y * 0.5 + 0.06, 0.0)),
 			Vector3(0.28, 0.10, 0.24), Palette.light(accent), 0.025, 2)
