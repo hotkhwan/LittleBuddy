@@ -1,0 +1,44 @@
+{
+  "profileVersion": 1,
+  "note": "Child-tuned voice activity detection constants for game/scripts/tutor/voice/vad.gd (docs/ALIZ_TUTOR_CONTRACTS.md addendum). Levels are linear 0..1 amplitude envelopes; times in milliseconds. Changing a value changes when Aliz listens and when she answers; test_tutor_voice_session.gd pins the behaviour with synthetic level sequences.",
+  "frameMs": 20,
+  "noiseFloor": {
+    "initial": 0.02,
+    "min": 0.005,
+    "max": 0.4,
+    "risePerSecond": 0.03,
+    "risePerSecondDuringSpeech": 0.0075,
+    "fallSecondsToTrack": 0.5
+  },
+  "speechStart": {
+    "marginAboveFloor": 0.06,
+    "minDurationMs": 120,
+    "minBurstMs": 120
+  },
+  "speechEnd": {
+    "marginAboveFloor": 0.02,
+    "silenceMs": 900,
+    "extendedSilenceMs": 1600,
+    "shortUtteranceMs": 600,
+    "hesitationWords": [
+      "um",
+      "uh",
+      "er",
+      "erm",
+      "hmm",
+      "a",
+      "the",
+      "and",
+      "it's",
+      "its",
+      "i",
+      "so"
+    ]
+  },
+  "longPauseMs": 3000,
+  "echoGate": {
+    "marginAboveEstimate": 0.08,
+    "holdMs": 200,
+    "estimateSmoothingSeconds": 0.15
+  }
+}
