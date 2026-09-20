@@ -195,6 +195,11 @@ func is_showing() -> bool:
 	return _built and _pill.visible and not _current_line.is_empty()
 
 
+## The pill is on screen (including the short linger after a line ends).
+func is_pill_visible() -> bool:
+	return _built and _pill.visible
+
+
 func get_text() -> String:
 	return _label.text if _built else ""
 

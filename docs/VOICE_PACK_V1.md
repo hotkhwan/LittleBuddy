@@ -25,7 +25,8 @@ file that is not there.
 | `game/content/voice/voice_manifest.json` | the owner's 36 lines: `lineId`, `character`, `text`, `emotion`, `usage`, `file` |
 | `game/scripts/voice/voice_manifest.gd` | loads the JSON; `text_for`, `character_for`, `line_id_for_text`, `is_recorded`, `missing_line_ids`, `validate`. Engine-agnostic. |
 | `game/scripts/voice/voice_cues.gd` | pure table: game event -> ordered line ids (`for_event`, `for_need`, `for_task`, `for_encouragement`, `for_text`, `face_for`) |
-| `game/scripts/voice/voice_director.gd` | autoload `Voice`: `say`, `say_all`, `stop`, `is_speaking`, `current_line`, `is_recorded`, per-character volume, `line_started`/`line_finished` |
+| `game/scripts/voice/voice_director.gd` | autoload `Voice`: `say`, `say_all`, `say_text`, `stop`, `is_speaking`, `current_line`, `is_recorded`, per-character volume, `line_started`/`line_finished` |
+| `game/scripts/voice/voice_bridge.gd` | static null-guarded one-liners for call sites: `cue`, `say_lines`, `say_text`, `voice` |
 | `game/scripts/voice/subtitle_strip.gd` | the cream pill; mounted by the house HUD, the feeding HUD and the menu |
 | `game/scripts/audio/music_binder.gd` | `should_duck()` now also reads `Voice.is_speaking()` |
 | `game/scripts/speech/tts_service.gd` | reads `alizVoiceVolume` (then the old `voiceVolume`) for its level |
@@ -67,8 +68,14 @@ Master), so no bus-layout file had to be added.
   milk!" through TTS and the cue asks for `aliz_014_milk_time`), the director
   **adopts** the utterance already playing instead of saying it twice; if a
   recording of those words is already playing, the TTS duplicate is stopped.
-* If someone hands TTS a *different* prompt while a recording plays, the
-  recording yields (the prompt is what the child must hear).
+* If someone hands TTS a *different* prompt while a recording plays: a
+  **narration** recording yields at once (the prompt is what the child must
+  hear); a **reaction** recording younger than 2.5 s ("Yummy!", "Hmph!") is
+  protected -- the prompt (and anything queued behind it) is taken off the
+  device voice and said right after the reaction. Every Bunny line is a
+  reaction; Aliz's praise is one when asked (`reaction: true`).
+* A fallback reaction uses `TtsService.react()`, whose own 2.5 s protection
+  does the same for the device voice.
 * `interrupt: true` stops the device voice first, then plays.
 
 All of these are driven in `test_voice_director.gd`.
@@ -81,7 +88,9 @@ All of these are driven in `test_voice_director.gd`.
 | `say(aliz)` while Aliz is playing | queued behind her (her older queued lines are replaced) |
 | `say(bunny)` while Aliz is playing | queued behind Aliz (never interrupts) |
 | `say(bunny)` while Bunny is playing | queued behind himself, replacing his queued lines |
-| `say(x, {queue: true})` | never cuts; appends, replacing that character's queued lines |
+| `say(x, {queue: true})` | never cuts, never replaces: plain FIFO |
+| `say_text("Nice!")` | the alias's recorded line under the same rules |
+| `say_text("Walk to the kitchen.")` | an ad-hoc Aliz line on the device voice, under the same rules, subtitled |
 | `say(x, {interrupt: true})` | cuts anything (recording or TTS, ours or not), clears the queue |
 | `say_all([a, b])` | a under the rules above, then b appended in order |
 | `stop("bunny")` | cuts Bunny's current line, drops his queued lines, Aliz untouched |
@@ -148,6 +157,44 @@ old `voiceVolume` is migrated into `alizVoiceVolume` once at first boot;
 `TtsService` reads `alizVoiceVolume` first, then `voiceVolume`, so a build
 where S has not yet rebound the slider still behaves.
 
+## Evidence (2026-09-20, this checkout)
+
+* `docs/shots/voice_subtitle_house.png` -- Story HUD, 1334x750: the cream pill
+  "Let's make some milk!" bottom-centre, clear of Next, Speak, Home and the
+  thumbstick's rest ring (`tests/shots_voice.gd` asserts each).
+* `docs/shots/voice_subtitle_feeding.png` -- the highchair after a wrong item:
+  Bunny's `hmph` face and the strip.
+* Test run: `PASS - 144 case(s)`; `smoke_mission01.gd`, `-- snackTime` and
+  `smoke_audio_shipping.gd` all PASS with the pack code in place (the `Voice`
+  autoload is not registered on this branch; the paths run through
+  `/root/Voice` null guards and the tests park a director there).
+* Both frames were taken with **0 of 36 recordings present**: what is heard
+  is the device voice; what is seen is the pack's strip.
+
+Run the shots with a window (the headless renderer never reaches
+`frame_post_draw`):
+
+    Godot --path game --resolution 1334x750 --script res://tests/shots_voice.gd
+
+## Known trade-offs
+
+* Mode handlers (`scripts/gameplay/mode_handler.gd`, not in this pass) still
+  hand their instruction to `TtsService` directly. The pack adopts an
+  utterance with the same words rather than repeating it, and `TtsService`
+  itself no longer repeats words it is already saying, so nothing doubles --
+  but a task's instruction is only a *recording* when it arrives through
+  `PromptSpeaker` or one of the wired `_speak()` paths. Routing
+  `mode_handler._speak()` through `VoiceBridge.say_text()` is a one-hunk
+  follow-up for whoever owns that file.
+* On the highchair, Aliz's learning line ("Let's give Bunny the apple!") plays
+  AFTER the mission's own "I'm hungry." / "Give the baby the apple." -- three
+  lines at a task start. Once recordings exist that is the warm human voice
+  the owner asked for; on the device voice it is one extra line. Dropping the
+  cue is one line in `feeding_table.set_task()` if it proves too chatty.
+* The feeding strip sits on the bottom edge and overlaps the lower rim of the
+  centre plate at 16:9. It ignores touches (drag targets are unaffected); it
+  is the least-worst spot on a screen whose bottom is the tray.
+
 ## Tests
 
 * `test_voice_manifest.gd` -- structure, the 36 owner ids/texts pinned, folders,
@@ -157,4 +204,9 @@ where S has not yet rebound the slider still behaves.
 * `test_voice_director.gd` -- queue rules, interrupt/stop, sequences, the four
   no-simultaneous-playback cases, fallback, adopt-don't-repeat, volume
   persistence + migration, no-TTS build, subtitle strip, autoload shape/patch.
-* `test_voice_wiring.gd` -- the call sites route through the cues.
+* `test_voice_wiring.gd` -- a director parked at `/root/Voice`: the highchair
+  cues (learning line, Yummy!, More please!, Hmph! + hmph face + Let's try
+  again! + It's okay, Thank you Aliz! then All done!), Bunny's need cooldown
+  and single Hmph!, the summary's star/sticker lines, the menu's once-per-launch
+  welcome, `PromptSpeaker` routing without double-speak, and the no-`Voice`
+  path still speaking through TtsService.
