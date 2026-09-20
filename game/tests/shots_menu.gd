@@ -110,7 +110,7 @@ func _report() -> void:
 	if garden != null and garden.has_method("describe"):
 		print("  garden: %s" % str(garden.call("describe")))
 		print("  garden triangles: %d" % int(garden.call("count_triangles")))
-	for who: String in ["BigBuddy", "Bunny", "LittleBuddy"]:
+	for who: String in ["BigBuddy", "Bunny"]:
 		var node: Node = _menu.get_node_or_null(who)
 		if node == null:
 			print("  %s: ABSENT" % who)
@@ -119,6 +119,9 @@ func _report() -> void:
 			print("  %s: model available = %s" % [who, str(node.call("is_model_available"))])
 			if not bool(node.call("is_model_available")):
 				_fail.append("%s has no model in this checkout" % who)
+	# The pair and nobody else (owner review, 2026-09-20).
+	if _menu.get_node_or_null("LittleBuddy") != null:
+		_fail.append("a LittleBuddy stand-in is on the title screen; the menu shows Aliz and Bunny only")
 	var lights: int = 0
 	_count_lights(_menu, [lights])
 	var play: Button = _menu.get_node_or_null("UI/SafeArea/PlayButton") as Button

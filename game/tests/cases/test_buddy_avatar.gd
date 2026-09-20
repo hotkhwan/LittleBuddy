@@ -450,20 +450,60 @@ func _test_main_menu_wiring():
 	return failures
 
 
-## -- 8. Little Buddy is not replaced ---------------------------------------------------
+## -- 8. The title screen shows the real pair, and the toddler view is untouched ---------
 
-## The owner's requirement, and the easiest thing to get wrong in a hurry: this
-## model is the adult caregiver. The child stays `toddler_view.gd`.
+## REWRITTEN ON PURPOSE, 2026-09-20 -- a product decision recorded here, not a
+## weakening.
+##
+## This case used to pin the procedural `toddler_view.gd` stand-in INTO
+## `main.tscn`, from the days when the caregiver avatar was an experiment and
+## the only real character on the title screen was the placeholder toddler.
+## Both production wrappers now ship (`PinkGirlBuddy.ENABLED`,
+## `BabyLittleBuddy.ENABLED`), and in owner review the three-figure menu read
+## as "mum, a baby, and a third child nobody had met". The title screen shows
+## Aliz and Bunny -- the two characters the child is about to play with -- and
+## nobody else.
+##
+## What is still guarded, and why it matters just as much as before:
+##
+##   * `toddler_view.gd` is NOT deleted and NOT edited by this decision: it is
+##     still Little Buddy's view in the house (`house_world.tscn`) and the
+##     movement controller's reference height;
+##   * the caregiver wrapper stays uncoupled from it in executable code;
+##   * `main.tscn` reaches both characters ONLY through their wrapper scenes --
+##     the raw GLBs are named nowhere on the title screen -- and holds no
+##     `toddler_view.gd` node, so the menu cannot quietly grow a third figure
+##     again.
 func _test_little_buddy_is_untouched():
 	var failures: Array = []
 	var scene: String = _read(MAIN_SCENE)
 	if scene.is_empty():
 		return ["buddy_avatar: could not read %s" % MAIN_SCENE]
-	if not scene.contains("res://scripts/character/toddler_view.gd"):
-		failures.append("main.tscn no longer uses toddler_view.gd. Little Buddy is the child "
-				+ "character and is not replaced by the caregiver avatar.")
-	if not scene.contains("name=\"LittleBuddy\""):
-		failures.append("the LittleBuddy node is gone from the title screen")
+
+	# The stand-in still exists, unmodified in role: it is the house's toddler.
+	if not ResourceLoader.exists("res://scripts/character/toddler_view.gd"):
+		failures.append("toddler_view.gd is gone; the menu decision removed it from the TITLE SCREEN "
+				+ "only, and the house still needs it")
+	var house: String = _read("res://scenes/house/house_world.tscn")
+	if not house.is_empty() and not house.contains("res://scripts/character/toddler_view.gd"):
+		failures.append("house_world.tscn no longer uses toddler_view.gd; Little Buddy's house view "
+				+ "was not part of the title-screen decision")
+
+	# The title screen: the pair, through the wrappers, and no stand-in.
+	if scene.contains("res://scripts/character/toddler_view.gd") or scene.contains("name=\"LittleBuddy\""):
+		failures.append("main.tscn holds the procedural toddler again. The title screen shows Aliz and "
+				+ "Bunny only (owner review, 2026-09-20).")
+	# Raw source, not `_code_of()`: the paths live inside string literals, which
+	# `_code_of()` blanks.
+	var main_code: String = _read(MAIN_SOURCE)
+	if not main_code.contains(WRAPPER_SCENE):
+		failures.append("main.gd no longer reaches the caregiver through %s" % WRAPPER_SCENE)
+	if not main_code.contains("res://scenes/characters/little_buddy/BabyLittleBuddy.tscn"):
+		failures.append("main.gd no longer reaches Bunny through BabyLittleBuddy.tscn; the title "
+				+ "screen is a pair, and it is the REAL baby")
+	if main_code.contains(".glb"):
+		failures.append("main.gd names a GLB; both characters are reached through their wrappers only")
+
 	# Executable code only: the wrapper's doc comment legitimately cites
 	# `toddler_view.gd` as the precedent it follows, and a guard that punished
 	# accurate documentation would be weakened rather than fixed.

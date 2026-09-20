@@ -158,12 +158,12 @@ const CAMERA_TARGET: Vector3 = Vector3(0.0, 0.44, 0.0)
 const BUDDY_AVATAR_SCENE_PATH: String = "res://scenes/characters/buddy/PinkGirlBuddy.tscn"
 const BUDDY_AVATAR_SCRIPT_PATH: String = "res://scripts/characters/buddy/pink_girl_buddy.gd"
 
-## The family on the path. Aliz stands at the centre, a half step back so the
-## two small ones in front of her read as "hers"; Bunny sits forward and to her
-## right, Little Buddy (`main.tscn`) to her left. Art bible §4 is explicit that
-## adults must never dominate the frame, and a 1.65 m adult beside a 0.78 m baby
-## will do exactly that unless she is set back and the camera is aimed low.
-const BUDDY_AVATAR_POSITION: Vector3 = Vector3(0.05, 0.0, -0.55)
+## The pair on the path: Aliz a little left of centre and half a step back,
+## Bunny at her right side and a little forward, so he reads as "hers" and the
+## front door shows past her shoulder. Art bible §4 is explicit that adults must
+## never dominate the frame, and a 1.65 m adult beside a 0.78 m baby will do
+## exactly that unless she is set back and the camera is aimed low.
+const BUDDY_AVATAR_POSITION: Vector3 = Vector3(-0.38, 0.0, -0.55)
 ## Yaw 0 faces -Z for every character in this project, so 180 faces the camera.
 const BUDDY_AVATAR_YAW_DEG: float = 182.0
 
@@ -172,16 +172,16 @@ const BUDDY_AVATAR_YAW_DEG: float = 182.0
 ## fewer person in it, never as an error.
 const BUNNY_SCENE_PATH: String = "res://scenes/characters/little_buddy/BabyLittleBuddy.tscn"
 const BUNNY_SCRIPT_PATH: String = "res://scripts/characters/little_buddy/baby_little_buddy.gd"
-const BUNNY_POSITION: Vector3 = Vector3(0.82, 0.0, -0.22)
+const BUNNY_POSITION: Vector3 = Vector3(0.46, 0.0, -0.20)
 ## Facing the camera and turned a little toward Aliz, who is to his left.
 const BUNNY_YAW_DEG: float = 194.0
 
 ## The framing used ONLY when the avatar is on: pulled back and aimed at chest
-## height, so a 1.65 m figure, a 0.85 m one and a 0.78 m one all sit between the
-## title and the button row with the house behind them. Off,
-## `CAMERA_POSITION`/`CAMERA_TARGET` are used unchanged.
-const CAMERA_POSITION_WITH_BUDDY: Vector3 = Vector3(0.10, 1.60, 4.45)
-const CAMERA_TARGET_WITH_BUDDY: Vector3 = Vector3(0.15, 0.70, -0.70)
+## height, so a 1.65 m figure and a 0.78 m one both sit between the title and
+## the button row with the house behind them. Off, `CAMERA_POSITION`/
+## `CAMERA_TARGET` are used unchanged.
+const CAMERA_POSITION_WITH_BUDDY: Vector3 = Vector3(0.0, 1.60, 4.45)
+const CAMERA_TARGET_WITH_BUDDY: Vector3 = Vector3(0.05, 0.70, -0.70)
 
 @onready var _play_button: Button = %PlayButton
 @onready var _free_play_button: Button = %FreePlayButton

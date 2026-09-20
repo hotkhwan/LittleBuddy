@@ -23,18 +23,18 @@ extends Node3D
 
 const Palette := preload("res://scripts/ui/palette.gd")
 
-## Where the house stands, feet at ground level. Right of centre so the door and
-## the characters are not fighting for the same pixels: the family stands on the
-## path in front of their home, not in front of the door.
-const HOUSE_POSITION := Vector3(1.25, 0.0, -6.0)
+## Where the house stands, feet at ground level. Right of centre so the door
+## shows past Aliz's shoulder and the roof peak clears the title panel: the pair
+## stands on the path in front of their home, not in front of the door.
+const HOUSE_POSITION := Vector3(2.5, 0.0, -6.0)
 const HOUSE_SIZE := Vector3(3.2, 2.35, 2.6)
 const ROOF_HEIGHT: float = 1.3
 const DOOR_SIZE := Vector2(0.72, 1.25)
 
 ## Where the path starts (the doorstep) and ends (just past the camera's feet).
-const PATH_START := Vector3(1.25, 0.0, -4.65)
-const PATH_END := Vector3(-0.35, 0.0, 2.6)
-const PATH_BEND := Vector3(0.65, 0.0, -0.6)
+const PATH_START := Vector3(2.5, 0.0, -4.65)
+const PATH_END := Vector3(-0.6, 0.0, 2.6)
+const PATH_BEND := Vector3(1.1, 0.0, -1.2)
 const PATH_STONES: int = 13
 
 const SEED: int = 20260920
@@ -43,17 +43,17 @@ const TREE_SPOTS: Array = [
 	# position, foliage radius, foliage tint index
 	[Vector3(-3.6, 0.0, -4.6), 0.85, 0],
 	[Vector3(-2.4, 0.0, -7.4), 0.70, 1],
-	[Vector3(4.6, 0.0, -5.1), 0.90, 1],
-	[Vector3(3.6, 0.0, -8.0), 0.72, 0],
+	[Vector3(5.7, 0.0, -5.0), 0.90, 1],
+	[Vector3(5.2, 0.0, -8.4), 0.72, 0],
 	[Vector3(-5.6, 0.0, -2.2), 0.62, 1],
-	[Vector3(7.6, 0.0, -6.4), 0.80, 0],
+	[Vector3(8.4, 0.0, -6.6), 0.80, 0],
 	[Vector3(-7.4, 0.0, -7.6), 0.74, 1],
 ]
 
 const FLOWERBED_SPOTS: Array = [
 	# centre, size (x, z), flower count
-	[Vector3(0.05, 0.0, -4.25), Vector2(1.1, 0.5), 7],
-	[Vector3(2.55, 0.0, -4.25), Vector2(0.9, 0.5), 6],
+	[Vector3(1.3, 0.0, -4.25), Vector2(1.1, 0.5), 7],
+	[Vector3(3.8, 0.0, -4.25), Vector2(0.9, 0.5), 6],
 	[Vector3(-2.35, 0.0, 0.35), Vector2(1.2, 0.6), 8],
 	[Vector3(2.55, 0.0, 0.55), Vector2(1.0, 0.55), 6],
 ]
@@ -267,12 +267,14 @@ func _build_house() -> void:
 
 	var chimney := BoxMesh.new()
 	chimney.size = Vector3(0.42, 0.9, 0.42)
+	# Tall enough to clear the ridge, so it reads as a chimney from the path
+	# rather than hiding on the far slope.
 	_place(house, "Chimney", chimney, Palette.deep(Palette.LAVENDER),
-			Vector3(HOUSE_SIZE.x * 0.28, HOUSE_SIZE.y + ROOF_HEIGHT * 0.55, -0.3))
+			Vector3(HOUSE_SIZE.x * 0.28, HOUSE_SIZE.y + ROOF_HEIGHT * 0.55 + 0.32, -0.3))
 	var chimney_cap := BoxMesh.new()
 	chimney_cap.size = Vector3(0.52, 0.12, 0.52)
 	_place(house, "ChimneyCap", chimney_cap, Palette.CREAM,
-			Vector3(HOUSE_SIZE.x * 0.28, HOUSE_SIZE.y + ROOF_HEIGHT * 0.55 + 0.5, -0.3))
+			Vector3(HOUSE_SIZE.x * 0.28, HOUSE_SIZE.y + ROOF_HEIGHT * 0.55 + 0.82, -0.3))
 
 	var front_z: float = HOUSE_SIZE.z * 0.5
 	_build_door(house, Vector3(0.0, 0.0, front_z))
@@ -467,7 +469,7 @@ func _build_fence() -> void:
 	fence.name = "Fence"
 	add_child(fence)
 	var z: float = -4.15
-	var runs: Array = [[-9.3, -1.05], [3.45, 11.3]]
+	var runs: Array = [[-9.3, 0.2], [4.7, 11.3]]
 	for run: Array in runs:
 		var from_x: float = run[0]
 		var to_x: float = run[1]
@@ -529,7 +531,7 @@ func _build_toys() -> void:
 	# A little mailbox by the path: post, box, and a sunny flag.
 	var mailbox := Node3D.new()
 	mailbox.name = "Mailbox"
-	mailbox.position = Vector3(2.4, 0.0, -2.9)
+	mailbox.position = Vector3(3.7, 0.0, -2.9)
 	toys.add_child(mailbox)
 	_place(mailbox, "Post", _cylinder(0.04, 0.7), wood(), Vector3(0.0, 0.35, 0.0))
 	var box := BoxMesh.new()

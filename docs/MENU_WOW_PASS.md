@@ -14,12 +14,17 @@ blue sky and did not feel like a children's game world.
   picket fence; soft rolling hills; a gradient pastel sky dome; four clouds;
   a sun; toy balls, a duck and a mailbox. Every colour is a `palette.gd`
   token or one of its two derivations (`light()` / `deep()`); no black, no red.
-- **The real cast**: Aliz (`PinkGirlBuddy.tscn`) at the centre, **Bunny**
-  (`BabyLittleBuddy.tscn`, the same wrapper the house uses; added in
-  `main.gd::_add_bunny()`, playing his `idle`) at her right, Little Buddy
-  (`toddler_view.gd`, still pinned by `test_buddy_avatar.gd`) at her left. New
-  framing `CAMERA_POSITION_WITH_BUDDY` / `CAMERA_TARGET_WITH_BUDDY`: 10° pitch,
-  feet above the button row, heads below the title, sun on their faces.
+- **The real pair, and only the pair**: Aliz (`PinkGirlBuddy.tscn`) a little
+  left of centre, **Bunny** (`BabyLittleBuddy.tscn`, the same wrapper the house
+  uses; added in `main.gd::_add_bunny()`, playing his `idle`) at her right
+  side. The procedural `toddler_view` stand-in is gone from `main.tscn` (owner
+  review: it read as a third child nobody had met); the house still uses it.
+  `test_buddy_avatar.gd` section 8 was rewritten to pin exactly this -- a
+  product decision recorded in the test, not a weakening. Framing
+  `CAMERA_POSITION_WITH_BUDDY` / `CAMERA_TARGET_WITH_BUDDY`: 10° pitch, feet
+  above the button row, heads below the title, sun on their faces. The house
+  sits right of centre so the door shows past Aliz's shoulder and the roof peak
+  clears the (now 640 px wide) title panel.
 - **Four buttons in one row** (`main.tscn`): Start/Continue (mint, play glyph),
   Free Play (peach, house), Dress Up (pink, new shirt-with-heart
   `dress_glyph.gd`), Grown-ups (lavender, gear). 256×256 each, 40 px gaps,
@@ -38,7 +43,7 @@ device; PNG size asserted):
 
 | Shot | Size | Verdict |
 | --- | --- | --- |
-| `docs/shots/menu_wow_ipad.png` | 1334×750 | PASS — house, garden, all three characters clear of the buttons |
+| `docs/shots/menu_wow_ipad.png` | 1334×750 | PASS — house with roof peak, garden, Aliz + Bunny clear of the buttons |
 | `docs/shots/menu_wow_iphone.png` | 2340×1080 | PASS — same, wider garden, buttons inside the safe area |
 | `docs/shots/menu_wow_pressed.png` | 1334×750 | PASS — Start held down, visibly squished |
 
@@ -52,10 +57,5 @@ device; PNG size asserted):
 
 ## Known limits
 
-- The title panel hides the roof peak and chimney; the house reads fine
-  without them.
+- The chimney is on the far roof slope and barely shows from the path.
 - Aliz has no idle clip (only walk/run ship), so she stands still; Bunny idles.
-- Little Buddy (procedural toddler) stays on screen because
-  `test_buddy_avatar.gd::_test_little_buddy_is_untouched` pins him in
-  `main.tscn`; dropping him to a two-character menu is a one-line change in
-  `main.tscn` plus that test.

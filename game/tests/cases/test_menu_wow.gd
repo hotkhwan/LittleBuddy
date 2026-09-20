@@ -11,7 +11,8 @@ extends RefCounted
 ##     never black, never red;
 ##   * the render budget holds: one `DirectionalLight3D`, no shadows, no other
 ##     light, nothing from section 7's forbidden list, a triangle cap;
-##   * the three characters are in the scene and FRAMED: feet above the button
+##   * the TWO characters -- Aliz and Bunny, through their production wrappers
+##     and nobody else -- are in the scene and FRAMED: feet above the button
 ##     row, heads below the title, inside the narrowest iPad frame;
 ##   * all four buttons -- Start, Free Play, Dress Up, Grown-ups -- are big
 ##     enough, carry a picture and a word, get a shadow and press feedback, and
@@ -190,20 +191,22 @@ func _test_characters_are_framed():
 		menu.free()
 		return ["the menu has no Camera3D"]
 
-	# Who is home.
+	# Who is home: the pair, and only the pair. A procedural stand-in next to the
+	# two real characters read as a third child nobody had met (owner review,
+	# 2026-09-20); `test_buddy_avatar.gd` section 8 pins the same decision.
+	if menu.get_node_or_null("LittleBuddy") != null:
+		failures.append("a LittleBuddy stand-in is on the title screen; the menu shows Aliz and Bunny only")
 	var people: Dictionary = {}
-	for who: String in ["BigBuddy", "Bunny", "LittleBuddy"]:
+	for who: String in ["BigBuddy", "Bunny"]:
 		var node: Node3D = menu.get_node_or_null(who) as Node3D
 		if node == null:
 			failures.append("%s is not on the title screen" % who)
 			continue
 		if node.has_method("is_model_available") and not bool(node.call("is_model_available")):
 			failures.append("%s is in the scene but has no model in this checkout" % who)
-		var height: float = 0.85
+		var height: float = 1.65 if who == "BigBuddy" else 0.78
 		if node.has_method("get_height"):
 			height = float(node.call("get_height"))
-		elif who == "BigBuddy":
-			height = 1.65
 		people[who] = [node.position, height]
 
 	# The camera is above the family and looking gently down -- never top-down,
