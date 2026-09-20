@@ -85,14 +85,14 @@ const COPY: Dictionary = {
 		"childLine": "I'm all wet!", "doneLine": "Nice and dry!",
 	},
 	MIX: {
-		"title": "Make the milk!", "word": "milk", "thai": "ผสมนม",
+		"title": "Let's make some milk!", "word": "milk", "thai": "ผสมนม",
 		"hint": "Hold the jug over the bottle, then shake it.",
-		"childLine": "I'm hungry!", "doneLine": "The milk is ready!",
+		"childLine": "I'm hungry, Aliz!", "doneLine": "The milk is ready!",
 	},
 	FEED: {
-		"title": "Drink!", "word": "drink", "thai": "ดื่มนม",
+		"title": "Time to drink!", "word": "drink", "thai": "ดื่มนม",
 		"hint": "Hold the bottle at Bunny's mouth.",
-		"childLine": "Milk, please!", "doneLine": "Yum! Thank you!",
+		"childLine": "Milk, please, Aliz!", "doneLine": "Thank you, Aliz!",
 	},
 }
 
@@ -221,8 +221,8 @@ func build() -> void:
 	_title.add_theme_font_size_override("font_size", 56)
 	_title.add_theme_color_override("font_color", Palette.CREAM)
 	_title.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_title.offset_left = -300.0
-	_title.offset_right = 300.0
+	_title.offset_left = -440.0
+	_title.offset_right = 440.0
 	_title.offset_top = 48.0
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_title)

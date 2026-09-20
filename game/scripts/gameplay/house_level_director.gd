@@ -1028,6 +1028,19 @@ func _bind_speech_feedback() -> void:
 	_speech_binder = SpeechBinderScript.new()
 	_speech_binder.call("bind", panel, _autoload("SpeechService"),
 			Callable(self, "_transcript_matches"))
+	# The transcript itself must reach the runner, or a child who says "milk"
+	# perfectly sees "Great!" and nothing happens. The binder only reports;
+	# `baby_room.gd` had this wire and the house did not (found by Agent E).
+	var speech: Node = _autoload("SpeechService")
+	if speech != null and speech.has_signal("recognized") \
+			and not speech.is_connected("recognized", _on_transcript):
+		speech.connect("recognized", _on_transcript)
+
+
+func _on_transcript(text: String) -> void:
+	if not _running or _runner == null or not _runner.has_method("on_transcript"):
+		return
+	_runner.call("on_transcript", text)
 
 
 ## Did what the child said satisfy the task in front of them? Answered by the
