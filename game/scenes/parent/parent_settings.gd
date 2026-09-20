@@ -1136,7 +1136,7 @@ func _aliz_value_label(label_name: String) -> Label:
 	var label := Label.new()
 	label.name = label_name
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size = Vector2(300.0, 0.0)
+	label.custom_minimum_size = Vector2(420.0, 0.0)
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	label.add_theme_font_size_override("font_size", 26)
