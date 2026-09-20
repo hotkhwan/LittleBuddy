@@ -22,6 +22,7 @@ extends SceneTree
 const OUT_DIR: String = "docs/shots/"
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 const NavMath := preload("res://scripts/navigation/nav_math.gd")
+const HouseLayout := preload("res://scripts/house/house_layout.gd")
 
 var _prefix: String = "ux_ipad"
 var _frame := Vector2i(1334, 750)
@@ -66,6 +67,9 @@ func _run() -> void:
 		return
 	if args.size() > 3 and String(args[3]) == "bedroom":
 		await _run_bedroom()
+		return
+	if args.size() > 3 and String(args[3]) == "free":
+		await _run_free_play_acts()
 		return
 	# Free Play: the objective-free house, which is where a child meets the
 	# fridge without a mission steering the camera.
@@ -231,6 +235,193 @@ func _run_bedroom() -> void:
 	_finish()
 
 
+## FREE PLAY ACTS, photographed (2026-09-20). Every frame is asserted against
+## the world's state before it is written:
+##
+##   <prefix>_badge_bedroom   the 96 px OPEN badge on the toy box
+##   <prefix>_wardrobe_open   the wardrobe doors swung open
+##   <prefix>_toybox_open     the toy box lid open
+##   <prefix>_shelf_teddy     the bedroom's teddy carried to the living room shelf and put in
+##   <prefix>_sofa_sit        Aliz seated on the sofa
+##   <prefix>_bed_bunny       Bunny laid on the bed (bedtime)
+##   <prefix>_table_bunny     Bunny set at his table spot
+##   <prefix>_sink_wash       the washFace close-up open from Free Play, Bunny in her arms
+##   <prefix>_locked_sign     the SOON sign on the bathroom door
+func _run_free_play_acts() -> void:
+	_world.call("set_progression_mode", 1)
+	_viewport.add_child(_world)
+	await _settle(0.8)
+	_director = _world.call("get_free_play_director")
+	_hud = _director.call("get_hud") if _director != null else null
+	_layer = _hud.call("get_affordance_layer") if _hud != null else null
+	if _layer == null:
+		_fail.append("the HUD has no affordance layer")
+		return _finish()
+	var aliz: Node3D = _world.call("get_character")
+	var bunny: Node = _world.get_node_or_null("Rooms/Bedroom/LittleBuddyChild")
+
+	# -- Bedroom: the badge, the wardrobe, the toy box -----------------------------
+	_world.call("place_in_room", "bedroom", "")
+	await _settle(0.5)
+	_quiet()
+	_stand_at("bedroom.toyBox")
+	await _settle(0.6)
+	_quiet()
+	_expect("OPEN", "bedroom.toyBox", "badge_bedroom")
+	var disc: float = float(_layer.call("badge_diameter", float(_frame.y)))
+	print("  badge_bedroom: disc %.0f px on a %d px tall frame" % [disc, _frame.y])
+	if absf(disc - float(_frame.y) * 0.128) > 2.0:
+		_fail.append("badge_bedroom: the disc is %.0f px; 12.8%% of %d is %.0f" % [disc, _frame.y, float(_frame.y) * 0.128])
+	await _shot("%s_badge_bedroom" % _prefix)
+
+	var bedroom: Node = _world.call("get_current_room")
+	_arrive(aliz, "bedroom.wardrobe")
+	await _settle(0.6)
+	if not bool(bedroom.call("is_open", "wardrobe")):
+		_fail.append("wardrobe_open: the wardrobe is not open")
+	_stand_at("bedroom.bed")
+	_quiet()
+	await _settle(0.2)
+	await _shot("%s_wardrobe_open" % _prefix)
+	_arrive(aliz, "bedroom.wardrobe")
+	await _settle(0.5)
+
+	bedroom.call("set_open", "toyBox", false)
+	_arrive(aliz, "bedroom.toyBox")
+	await _settle(0.6)
+	if not bool(bedroom.call("is_storage_open", "toyBox")):
+		_fail.append("toybox_open: the lid is not open")
+	_quiet()
+	await _shot("%s_toybox_open" % _prefix)
+
+	# -- The teddy, carried to the living room shelf --------------------------------
+	var teddy: Node = null
+	for node: Variant in _director.call("ensure_draggables"):
+		if node is Node and String((node as Node).get("object_id")) == "teddy":
+			teddy = node
+	if teddy == null:
+		_fail.append("shelf_teddy: no teddy staged in the bedroom")
+	else:
+		aliz.call("carry_node", teddy, "itemHoldRight")
+		await _settle(0.6)
+		_world.call("place_in_room", "livingRoom", "")
+		await _settle(0.6)
+		if not is_instance_valid(teddy) or aliz.call("get_carried_node") != teddy:
+			_fail.append("shelf_teddy: the teddy did not travel to the living room in her hand")
+		else:
+			var living: Node = _world.call("get_current_room")
+			living.call("set_open", "toyShelf", true)
+			_arrive(aliz, "livingRoom.toyShelf")
+			await _settle(0.8)
+			var model: RefCounted = living.call("get_storage", "toyShelf")
+			if not bool(model.call("contains", "teddy")):
+				_fail.append("shelf_teddy: the shelf's model does not hold the teddy (%s)" % str(model.call("describe")))
+			if bool(aliz.call("is_carrying_node")):
+				_fail.append("shelf_teddy: the teddy is still in her hand")
+			_quiet()
+			await _shot("%s_shelf_teddy" % _prefix)
+
+	# -- Aliz sits on the sofa -----------------------------------------------------------
+	_arrive(aliz, "livingRoom.sofa")
+	await _settle(0.9)
+	if not bool(_director.call("is_seated")):
+		_fail.append("sofa_sit: Aliz is not seated")
+	var pose: Node = _find_named(aliz, "HeldPose")
+	if pose == null or String(pose.call("get_pose")) != "sit" or not bool(pose.call("is_posed")):
+		_fail.append("sofa_sit: the seated pose is not on her skeleton (%s)" % (pose.call("get_pose") if pose != null else "no modifier"))
+	print("  sofa_sit: origin %s, pose %s" % [SpatialUtil.world_position(aliz), pose.call("get_pose") if pose != null else "-"])
+	_quiet()
+	await _shot("%s_sofa_sit" % _prefix)
+	_director.call("_stand_up")
+
+	# -- Bunny on the bed, then at the table --------------------------------------------
+	_world.call("place_in_room", "bedroom", "")
+	await _settle(0.5)
+	if bunny == null:
+		_fail.append("bed_bunny: no Bunny")
+	else:
+		SpatialUtil.set_world_position(aliz, SpatialUtil.world_position(bunny) + Vector3(0.0, 0.0, 0.62))
+		bunny.call("perform_affordance", aliz)
+		await _settle(0.6)
+		_arrive(aliz, "bedroom.bed")
+		await _settle(0.9)
+		if String(bunny.call("get_activity")) != "bedtime":
+			_fail.append("bed_bunny: Bunny's activity is '%s'" % bunny.call("get_activity"))
+		if SpatialUtil.world_position(bunny).y < 0.3:
+			_fail.append("bed_bunny: Bunny is at y %.2f, not on the mattress" % SpatialUtil.world_position(bunny).y)
+		_quiet()
+		await _shot("%s_bed_bunny" % _prefix)
+		_expect_no_floor_discs("bed_bunny")
+
+		# Pick him up again and carry him to the kitchen table.
+		var lie: Vector3 = SpatialUtil.world_position(bunny)
+		SpatialUtil.set_world_position(aliz, Vector3(lie.x + 0.62, 0.0, lie.z))
+		aliz.rotation.y = PI * 0.5
+		bunny.call("perform_affordance", aliz)
+		await _settle(0.6)
+		_world.call("place_in_room", "kitchen", "")
+		await _settle(0.6)
+		_arrive(aliz, "kitchen.table")
+		await _settle(0.9)
+		var spot: Vector3 = SpatialUtil.world_transform(_world.call("get_current_room")) \
+				* (HouseLayout.child_surface("kitchen", "table")["position"] as Vector3)
+		if SpatialUtil.world_position(bunny).distance_to(spot) > 0.08:
+			_fail.append("table_bunny: Bunny is at %s, not at his table spot %s" % [SpatialUtil.world_position(bunny), spot])
+		_quiet()
+		await _shot("%s_table_bunny" % _prefix)
+
+		# -- The sink close-up, from Free Play ----------------------------------------------
+		SpatialUtil.set_world_position(aliz, spot + Vector3(0.0, 0.0, 0.62))
+		aliz.rotation.y = 0.0
+		bunny.call("perform_affordance", aliz)
+		await _settle(0.6)
+		_world.call("place_in_room", "bathroom", "")
+		await _settle(0.6)
+		_arrive(aliz, "bathroom.sink")
+		await _settle(0.6)
+		if not bool(_director.call("is_care_open")):
+			_fail.append("sink_wash: the close-up did not open")
+		else:
+			var care: Control = _director.call("get_care_overlay")
+			if String(care.call("get_care_kind")) != "washFace":
+				_fail.append("sink_wash: the close-up is '%s'" % care.call("get_care_kind"))
+			if bool(_layer.call("is_showing")):
+				_fail.append("sink_wash: a badge shows under the close-up")
+		await _shot("%s_sink_wash" % _prefix)
+		if bool(_director.call("is_care_open")):
+			_director.call("get_care_overlay").call("complete_by_touch")
+		await _settle(0.4)
+		aliz.call("put_down_carried")
+		await _settle(0.6)
+
+	# -- The locked door's sign ------------------------------------------------------------
+	_world.call("place_in_room", "bedroom", "")
+	await _settle(0.5)
+	_quiet()
+	_stand_at("bedroom.doorToBathroom")
+	await _settle(0.6)
+	_quiet()
+	_expect("SOON", "bedroom.doorToBathroom", "locked_sign")
+	await _shot("%s_locked_sign" % _prefix)
+	_finish()
+
+
+## Stands Aliz at the target and fires the arrival, as a finished walk would.
+func _arrive(aliz: Node3D, target_id: String) -> void:
+	_stand_at(target_id)
+	aliz.emit_signal("interaction_ready", target_id)
+
+
+func _find_named(node: Node, wanted: String) -> Node:
+	if node.name == wanted:
+		return node
+	for child: Node in node.get_children():
+		var found: Node = _find_named(child, wanted)
+		if found != null:
+			return found
+	return null
+
+
 func _expect_any(verbs: Array, target_id: String, shot: String) -> void:
 	var got_verb: String = String(_layer.call("get_current_verb"))
 	var got_id: String = String(_layer.call("get_current_target_id"))
@@ -332,3 +523,21 @@ func _settle(seconds: float) -> void:
 	var deadline: int = Time.get_ticks_msec() + int(seconds * 1000.0)
 	while Time.get_ticks_msec() < deadline:
 		await process_frame
+
+
+## No flat disc lies on any floor in Free Play: the landing-pad markers that
+## read as fake shadows under the toy box and the bath are off for good.
+func _expect_no_floor_discs(shot: String) -> void:
+	for disc: MeshInstance3D in _visible_discs(_world):
+		_fail.append("%s: a flat disc '%s' lies on the floor at %s" % [shot, disc.get_path(), disc.global_position])
+
+
+func _visible_discs(n: Node) -> Array:
+	var found: Array = []
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh is CylinderMesh \
+			and (n as MeshInstance3D).is_visible_in_tree() and (n as MeshInstance3D).global_position.y < 0.5 \
+			and n.name != "TapRipple" and not n.name.begins_with("Ripple"):
+		found.append(n)
+	for c: Node in n.get_children():
+		found.append_array(_visible_discs(c))
+	return found

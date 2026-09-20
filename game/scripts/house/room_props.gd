@@ -169,14 +169,18 @@ static func _wardrobe(
 	# 2026-09-20). What stays in the shell is the dark inside they reveal -- a
 	# shallow recess with a rail and two hanging things, so an open wardrobe is
 	# a wardrobe and not a hole.
+	# The body is one solid box, so the "inside" is painted ON its front face
+	# and the rail and the two hanging things stand a few centimetres proud of
+	# it -- hidden behind the doors when shut, an interior when they swing.
+	var front: float = size.z * 0.5 - 0.01
 	var inside: Color = Palette.deep(WOOD)
-	Kit.box(tool, Kit.at(Vector3(0.0, 0.03, size.z * 0.5 - 0.06)),
-			Vector3(0.84, 1.42, 0.02), inside)
-	Kit.cylinder(tool, Kit.at_rotated(Vector3(0.0, 0.62, size.z * 0.5 - 0.16), Vector3(0.0, 0.0, 90.0)),
-			0.014, 0.80, Palette.CREAM, 8)
+	Kit.box(tool, Kit.at(Vector3(0.0, 0.03, front + 0.004)),
+			Vector3(0.84, 1.42, 0.008), inside)
+	Kit.cylinder(tool, Kit.at_rotated(Vector3(0.0, 0.62, front + 0.03), Vector3(0.0, 0.0, 90.0)),
+			0.012, 0.80, Palette.CREAM, 8)
 	for x: float in [-0.20, 0.12]:
-		Kit.box(tool, Kit.at(Vector3(x, 0.30, size.z * 0.5 - 0.16)),
-				Vector3(0.22, 0.60, 0.05), Palette.light(accent) if x < 0.0 else Palette.light(dominant), 0.03, 2)
+		Kit.box(tool, Kit.at(Vector3(x, 0.30, front + 0.03)),
+				Vector3(0.22, 0.60, 0.04), Palette.light(accent) if x < 0.0 else Palette.light(dominant), 0.03, 2)
 	# Tidy but lived-in (§5): two folded things left on top.
 	Kit.box(tool, Kit.at(Vector3(-0.12, size.y * 0.5 + 0.06, 0.0)),
 			Vector3(0.28, 0.10, 0.24), Palette.light(accent), 0.025, 2)

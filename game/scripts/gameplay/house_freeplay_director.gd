@@ -555,6 +555,13 @@ func stage_draggables(room_id: String) -> Array:
 	# on the toy box and the row between the child and the camera, and the
 	# spawner needs the anchor to already be in the right room.
 	_stage.call("begin_task", {"roomId": room_id}, _focus_position(room_id), _row_anchor(room_id))
+	# No pad discs on the floor in Free Play. They read as flat grey shadows
+	# under the toy box and the bath (owner feedback, 2026-09-20), and the one
+	# for a room with no focus prop hovered in the middle of the NEXT room. The
+	# zones stay -- a drag still lands in them -- and the PLACE badge now says
+	# where a carried thing goes.
+	if _stage.has_method("clear_markers"):
+		_stage.call("clear_markers")
 	var anchor: Node3D = _stage.call("get_object_anchor") as Node3D
 	if anchor == null:
 		return []
@@ -580,11 +587,8 @@ func stage_draggables(room_id: String) -> Array:
 			if zone.has_method("get_radius"):
 				radius = float(zone.call("get_radius"))
 			node.call("set_drop_zone", zone, radius)
-			# A pad on the furniture is a place on the floor a child has to be
-			# shown; a pad on Little Buddy is Little Buddy, who is already the
-			# most visible thing in the room.
 			if zone.has_method("set_marker_visible"):
-				zone.call("set_marker_visible", not _rides_on_character(interaction))
+				zone.call("set_marker_visible", false)
 		node.connect("chosen", _on_object_chosen)
 		anchor.add_child(node)
 		_draggables.append(node)
@@ -705,16 +709,46 @@ func _step_returns(delta: float) -> void:
 
 func _despawn_draggables() -> void:
 	_pending_returns = []
+	var kept: Array = []
+	var in_hand: Node = _character.call("get_carried_node") \
+			if _character != null and _character.has_method("get_carried_node") else null
 	for node: Variant in _draggables:
 		if not (node is Node) or not is_instance_valid(node as Node):
 			continue
+		if node == in_hand:
+			# It travels with her. Freeing the thing in her hand at the door is
+			# how a teddy vanished between the bedroom and the shelf it was
+			# being carried to.
+			kept.append(node)
+			continue
+		_forget_stored(node as Node)
 		if (node as Node).is_inside_tree():
 			(node as Node).queue_free()
 		else:
 			# Deferred deletion needs an idle frame, and the headless runner
 			# never has one -- free a detached node outright so it cannot leak.
 			(node as Node).free()
-	_draggables = []
+	_draggables = kept
+
+
+## A prop that is about to be freed leaves the storage model it was in, so the
+## box does not keep counting a teddy that no longer exists.
+func _forget_stored(node: Node) -> void:
+	var id: int = node.get_instance_id()
+	if not _stored.has(id):
+		return
+	var local_id: String = String(_stored[id])
+	_stored.erase(id)
+	if _world == null or not _world.has_method("get_room"):
+		return
+	for room_id: String in HouseLayout.room_ids():
+		var room: Node = _world.call("get_room", room_id)
+		if room == null or not room.has_method("get_storage"):
+			continue
+		var model: RefCounted = room.call("get_storage", local_id)
+		if model != null and model.has_method("remove"):
+			var object_id: Variant = node.get("object_id")
+			model.call("remove", String(object_id) if object_id != null else node.name)
 
 
 func _draggable_node(object_id: String) -> Node:

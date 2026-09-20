@@ -272,7 +272,9 @@ static func child_surface(room_id: String, local_id: String) -> Dictionary:
 		[LIVING_ROOM, "sofa"]:
 			return {"position": Vector3(-0.32, 0.45, -1.42), "yaw": PI, "activity": "carried"}
 		[KITCHEN, "table"]:
-			return {"position": Vector3(0.5, FLOOR_Y, 1.12), "yaw": 0.0, "activity": "carried"}
+			# The table's +X side, facing it: Aliz stands at the FRONT to serve,
+			# and a child set down there would sit behind her, hidden.
+			return {"position": Vector3(1.12, FLOOR_Y, 0.60), "yaw": PI * 0.5, "activity": "carried"}
 		[BATHROOM, "bath"]:
 			return {"position": Vector3(0.95, 0.40, -1.48), "yaw": PI, "activity": "bath"}
 		_:
