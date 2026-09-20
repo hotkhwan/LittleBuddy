@@ -1,9 +1,10 @@
 # Little Days — owner playtest build, 2026-09-20
 
-Branch `feature/overnight-production-candidate`. **Integrated commit `fa650bd`**,
-pushed to `origin` (fast-forward, no force). Base at the start of the day:
-`840fd45`. 26 commits, 220 files, from six workstream agents merged one at a
-time by the lead, each merge re-gated.
+Branch `feature/overnight-production-candidate`. **Final code commit `b10ab01`**
+(the documentation commits that follow change no game file), pushed to `origin`
+(fast-forward, no force). Base at the start of the day: `840fd45`. Six workstream
+agents plus an independent QA agent, merged one at a time by the lead, each
+merge re-gated.
 
 > Every PASS below is a command that ran on this MacBook against the real
 > scenes, or a screenshot that was opened and looked at. **Nothing here is a
@@ -31,7 +32,7 @@ time by the lead, each merge re-gated.
 | Music | **PASS** — owner confirmed rights (Suno); menu theme and mission track play in a normal build, one player, no restart across four room changes, ducks under speech, mute works. Suno plan-at-generation recorded as unverified, not invented | `docs/licences/music/*/OWNER_CONFIRMATION_2026-09-20.md`, `smoke_audio_shipping.gd` |
 | Android build on the MacBook | **PASS** — toolchain installed user-locally; signed debug APK from the integrated HEAD; AAB pipeline proven with a debug bundle | §4, `docs/GOOGLE_PLAY_RELEASE_READINESS.md` |
 
-## 2. Gates on `fa650bd`
+## 2. Gates on `b10ab01` (re-run after the QA follow-up)
 
 | Gate | Result |
 |---|---|
@@ -43,9 +44,9 @@ time by the lead, each merge re-gated.
 | Audio silent path (pending fixture) | SMOKE PASS |
 | Feeding proof | `shots_rc.gd` RC SHOTS OK at 1334×750 and 2340×1080 |
 | Kitchen / carry / menu / UX proofs | agents' harnesses (`shots_kitchen`, `shots_carry`, `shots_menu`, `shots_ux`, `shots_bubble`) all OK on their branches; independent QA on the integrated HEAD: see §5 |
-| iOS export | `./tools/export_ios.sh debug` exit 0; `build/ios/LittleBuddy.xcodeproj`, pck 8,469,828 B, speech plugin referenced and registered |
+| iOS export | `./tools/export_ios.sh debug` exit 0; `build/ios/LittleBuddy.xcodeproj`, pck 8,478,276 B, speech plugin referenced and registered |
 | arm64 Xcode build | `** BUILD SUCCEEDED **`, binary arm64, rebuilt speech plugin linked (`partial_result` present) |
-| Android debug APK | `build/android/LittleDays-debug.apk`, 36,802,352 B, SHA-256 `9b6b5f038ba19a26c0c0e3b163a4d881f0eae02c3a7a1d637627a0d9820f1758`, `com.pointit.littlebuddy` 0.1.0 (1), minSdk 24 / targetSdk 36, arm64-v8a, zero permissions, signed v2+v3 (debug key) |
+| Android debug APK | `build/android/LittleDays-debug.apk`, 36,810,544 B, SHA-256 `3699976273f888e78177f49f1e2166678afaecf0bb300ba12550004a287844c1`, `apksigner verify` OK, `com.pointit.littlebuddy` 0.1.0 (1), minSdk 24 / targetSdk 36, arm64-v8a, zero permissions, signed v2+v3 (debug key) |
 | Release AAB | pipeline proven with a debug bundle; **no release artefact** — needs the owner's upload keystore (§4) |
 
 ## 3. Measurements
@@ -118,7 +119,14 @@ did not fix today: the target ring sits on Aliz's face when she stands right in
 front of a station; the version label is very small; the HUD prompt can sit over
 the 3D KITCHEN sign on iPhone; `shots_kitchen.gd` runs on the live profile.
 
-FOLLOWUP_PLACEHOLDER
+**Follow-up merged as `b10ab01`** (Agent B, re-gated by the lead): provider
+verbs are normalised so CARRY / PLACE / TAKE render with proper glyphs; doors
+(3) and characters (3) outrank stations (2) and loose props (1), so ENTER wins
+by the door (`docs/shots/ux3_ipad_door_enter.png`); a character's speech bubble
+is a keep-out and the badge prefers beside/below, so "I'm hungry, Aliz!" stays
+legible with Aliz in front of Bunny (`docs/shots/ux3_harness_house_bedroom_ipad.png`,
+`ux3_iphone_story_hug.png`). Three new tests cover each. The three release-blocking
+rows above are therefore closed on the final HEAD; see §2 for the re-run gates.
 
 ## 6. Honest limits and blockers
 

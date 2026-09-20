@@ -1,8 +1,8 @@
 # Google Play release readiness — Little Days (`com.pointit.littlebuddy`)
 
 > **Integrated build 2026-09-20 (lead):** `build/android/LittleDays-debug.apk` rebuilt
-> from commit `fa650bd` with the toolchain below: 36,802,352 B, SHA-256
-> `9b6b5f038ba19a26c0c0e3b163a4d881f0eae02c3a7a1d637627a0d9820f1758`,
+> from commit `b10ab01` with the toolchain below: 36,810,544 B, SHA-256
+> `3699976273f888e78177f49f1e2166678afaecf0bb300ba12550004a287844c1` (apksigner verify OK),
 > `com.pointit.littlebuddy` 0.1.0 (versionCode 1), minSdk 24, targetSdk 36,
 > arm64-v8a, zero permissions, signed v2+v3 with the local debug key. Music now
 > plays in this build (owner rights confirmation, `docs/licences/music/`).
