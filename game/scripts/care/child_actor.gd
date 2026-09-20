@@ -86,9 +86,70 @@ const BUBBLE_SIDE_DEADZONE: float = 0.12
 const BUBBLE_FONT_SIZE: int = 56
 const BUBBLE_PIXEL_SIZE: float = 0.0016
 
+## -- The bubble's backing --------------------------------------------------------
+##
+## Added 2026-09-20. The line was ink text with a cream outline and nothing
+## behind it, and over a cream wall -- which is most of the house -- the outline
+## and the wall are the same colour, so the outline did nothing and the line
+## read as loose brown letters on beige (`docs/shots/aliz_after_house.png`). It
+## now sits on a rounded cream panel with a dusty-blue rim, a soft warm shadow,
+## and a small tail pointing at Bunny's head: a speech bubble, which is what it
+## always was meant to read as. `docs/BUBBLE_BACKING_PASS.md` has the frames.
+##
+## The panel is ONE unlit quad, a child of the label, drawn by the small SDF
+## shader at the bottom of this file. See `_build_bubble_backing()` for why a
+## shader rather than a texture, and for the render-order decisions.
+
+## Cream around the shaped text, in metres: sideways, and above/below.
+const BUBBLE_PAD := Vector2(0.06, 0.04)
+const BUBBLE_CORNER_RADIUS: float = 0.07
+## The rim's thickness. ~3 px at the close-up on an iPad, ~1.5 px in a wide room
+## shot -- thin, but the shader anti-aliases it so it never drops out.
+const BUBBLE_RIM: float = 0.011
+## High but not opaque: a sliver of the room shows through, which is what keeps
+## the panel reading as a bubble IN the room rather than a sticker on the glass.
+const BUBBLE_FILL_ALPHA: float = 0.94
+## A soft warm shadow, offset down-right. Warm `ink`, never black (ART_BIBLE §3).
+const BUBBLE_SHADOW_OFFSET := Vector2(0.008, -0.014)
+const BUBBLE_SHADOW_ALPHA: float = 0.22
+const BUBBLE_SHADOW_SOFT: float = 0.022
+## The tail: a wedge on the bottom edge whose apex leans towards Bunny's head, so
+## when the line has stepped 0.7 m sideways to clear Aliz it still visibly
+## belongs to him. Short on purpose -- it must never reach his face.
+const BUBBLE_TAIL_LENGTH: float = 0.065
+const BUBBLE_TAIL_HALF_BASE: float = 0.038
+## Where the tail aims: the top of a 0.78 m child's head, a little below the
+## crown so the aim survives his idle bob. `shots_bubble.gd` uses the same figure.
+const CHILD_HEAD_HEIGHT: float = 0.72
+## Used when the font cannot be measured. Half the height of a 56 px line at
+## `BUBBLE_PIXEL_SIZE`, so the fallback is the common case rather than a guess.
+const BUBBLE_FALLBACK_HALF_HEIGHT: float = 0.055
+## Transparent geometry sorts by `render_priority` FIRST and by depth second, and
+## the panel and the glyphs sit at exactly the same depth (same origin, both
+## billboarded about it), so the order is decided here and nowhere else:
+## backing, then the glyph outline, then the glyphs. The `Label3D` defaults are
+## 0 for the text and -1 for the outline; both are raised ABOVE the backing rather
+## than the backing pushed below -1, so the bubble as a whole still sorts by depth
+## against everything else that is transparent in the room (tap ripples, drop
+## zones) instead of always losing to it.
+const BUBBLE_BACKING_RENDER_PRIORITY: int = 0
+const BUBBLE_OUTLINE_RENDER_PRIORITY: int = 1
+const BUBBLE_TEXT_RENDER_PRIORITY: int = 2
+
 var _state: RefCounted = null
 var _wrapper: Node3D = null
 var _bubble: Label3D = null
+var _backing: MeshInstance3D = null
+var _backing_quad: QuadMesh = null
+var _backing_material: ShaderMaterial = null
+## Half extents of the panel (text + pad, no tail, no shadow) in metres.
+var _backing_half: Vector2 = Vector2.ZERO
+## The text the panel was last sized for. A carriage return can never be a need
+## line, so it is the "never fitted" sentinel; "" is a real (content) line.
+var _backing_fitted_text: String = "\r"
+## While true the line and its backing are hidden whatever the need is. See
+## `set_bubble_suppressed()`.
+var _bubble_suppressed: bool = false
 var _activity: String = Present.ACTIVITY_IDLE
 ## Which act the activity is, when the caller knows. See `set_activity()`.
 var _activity_detail: String = ""
@@ -182,7 +243,10 @@ func build() -> void:
 	# Billboarded: the child is small and may be approached from any side, and a
 	# line the player has to walk around to read is not a signal.
 	_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_bubble.render_priority = BUBBLE_TEXT_RENDER_PRIORITY
+	_bubble.outline_render_priority = BUBBLE_OUTLINE_RENDER_PRIORITY
 	add_child(_bubble)
+	_build_bubble_backing()
 	# Over his own head, which is where it belongs when there is nobody to dodge.
 	# `_refresh()` below, and `live()` every frame after that, move it aside only
 	# if the caregiver turns out to be in the way.
@@ -572,6 +636,182 @@ func _apply_bubble_offset(world_offset: Vector3) -> void:
 		return
 	var wanted: Vector3 = world_offset + Vector3(0.0, BUBBLE_HEIGHT, 0.0)
 	_bubble.position = SpatialUtil.world_transform(self).basis.inverse() * wanted
+	# The backing is a CHILD of the label at its origin, so it has just moved with
+	# it. What is left is to size it for the line (only when the line changed) and
+	# to point its tail back at the head the line has stepped away from.
+	_fit_bubble_backing()
+	_aim_bubble_tail(wanted)
+
+
+## -- The backing panel -----------------------------------------------------------
+##
+## One `MeshInstance3D` with a `QuadMesh`, parented to the label at its origin,
+## drawn by `BACKING_SHADER`.
+##
+## ## Why a child of the label
+##
+## The placement rule above writes ONE position, `_bubble.position`, every frame,
+## and it has been wrong twice. A sibling that mirrors that position is a second
+## copy of the answer that can drift from the first; a child has no position of
+## its own to get wrong, and it inherits `visible`, so the panel appears and
+## disappears on exactly the line `_refresh()` already throws (`_apply_bubble_
+## visibility()`) with no second switch to forget. `Label3D` billboards in its
+## material rather than by rotating its node, so the child is NOT billboarded by
+## the parent -- the shader does its own, about the same origin, and the two
+## therefore always face the camera together.
+##
+## ## Why a shader rather than a texture
+##
+## The line's width varies by half again between "I'm hungry!" and "I need
+## changing.", and the panel is drawn at anything from ~190 px/m (a wide room) to
+## ~600 px/m (the iPhone close-up). A rounded texture stretched to fit smears its
+## corners and thins its rim; regenerating one per need change is a per-pixel
+## loop in GDScript on the render thread's frame. A signed-distance shader is the
+## same quad at every size and every resolution, the rim is a constant metre
+## width, and the tail is three more lines of arithmetic. It is unshaded, reads
+## no texture, does no lighting, casts no shadow and disables fog -- one alpha-
+## blended quad, which is the budget `CLAUDE.md` sets.
+##
+## ## Depth
+##
+## The quad is depth-TESTED like the label (neither has `no_depth_test`), and
+## like every alpha-blended material it does not write depth. So a wall between
+## the camera and the bubble hides both the panel and the text together, rather
+## than one showing through where the other does not.
+func _build_bubble_backing() -> void:
+	_backing_quad = QuadMesh.new()
+	_backing_material = ShaderMaterial.new()
+	var shader: Shader = Shader.new()
+	shader.code = BACKING_SHADER
+	_backing_material.shader = shader
+	_backing_material.render_priority = BUBBLE_BACKING_RENDER_PRIORITY
+	var fill: Color = Palette.CREAM
+	fill.a = BUBBLE_FILL_ALPHA
+	var shadow: Color = Palette.INK
+	shadow.a = BUBBLE_SHADOW_ALPHA
+	_backing_material.set_shader_parameter("fill_color", fill)
+	_backing_material.set_shader_parameter("rim_color", Palette.deep(Palette.DUSTY_BLUE))
+	_backing_material.set_shader_parameter("shadow_color", shadow)
+	_backing_material.set_shader_parameter("shadow_offset", BUBBLE_SHADOW_OFFSET)
+	_backing_material.set_shader_parameter("shadow_soft", BUBBLE_SHADOW_SOFT)
+	_backing_material.set_shader_parameter("corner_radius", BUBBLE_CORNER_RADIUS)
+	_backing_material.set_shader_parameter("rim_width", BUBBLE_RIM)
+	_backing_material.set_shader_parameter("tail_half_base", BUBBLE_TAIL_HALF_BASE)
+
+	_backing = MeshInstance3D.new()
+	_backing.name = "Backing"
+	_backing.mesh = _backing_quad
+	_backing.material_override = _backing_material
+	_backing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_backing.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	_backing.position = Vector3.ZERO
+	_bubble.add_child(_backing)
+
+
+## Sizes the quad and the panel to the line on the label, once per line.
+##
+## Width from `_bubble_half_width()` -- the text-server measurement the step
+## rule already trusts, never `get_aabb()` -- and height from the font's own
+## line height at the label's size. Both are then padded. The QUAD is larger
+## than the panel by the tail's reach on every side it can lean towards and by
+## the shadow's spread, and is centred a little low so the extra is below,
+## where the tail is; the shader leaves that extra transparent.
+func _fit_bubble_backing() -> void:
+	if _backing == null or _bubble == null:
+		return
+	if _bubble.text == _backing_fitted_text:
+		return
+	_backing_fitted_text = _bubble.text
+	var half_h: float = BUBBLE_FALLBACK_HALF_HEIGHT
+	var font: Font = _bubble.font if _bubble.font != null else ThemeDB.fallback_font
+	if font != null:
+		var line_height: float = font.get_height(_bubble.font_size) * _bubble.pixel_size
+		if is_finite(line_height) and line_height > 0.02:
+			half_h = line_height * 0.5
+	_backing_half = Vector2(_bubble_half_width(), half_h) + BUBBLE_PAD
+	_backing_material.set_shader_parameter("half_size", _backing_half)
+
+	var side_margin: float = BUBBLE_TAIL_LENGTH + BUBBLE_SHADOW_SOFT + absf(BUBBLE_SHADOW_OFFSET.x)
+	var above: float = BUBBLE_SHADOW_SOFT
+	var below: float = BUBBLE_TAIL_LENGTH + BUBBLE_SHADOW_SOFT + absf(BUBBLE_SHADOW_OFFSET.y)
+	_backing_quad.size = Vector2(
+		2.0 * (_backing_half.x + side_margin), 2.0 * _backing_half.y + above + below)
+	_backing_quad.center_offset = Vector3(0.0, (above - below) * 0.5, 0.0)
+
+
+## Points the tail at Bunny's head from wherever the panel has ended up.
+##
+## `bubble_local` is where the panel is relative to Bunny in WORLD metres (the
+## offset the step rule chose plus `BUBBLE_HEIGHT`). The head is at
+## `CHILD_HEAD_HEIGHT` above his origin, so the vector from panel to head is
+## known in world space; it is projected onto the camera's right and up, which
+## are the quad's own x and y once billboarded. The tail leaves the bottom edge
+## where the line to the head crosses it (clamped clear of the rounded corners)
+## and runs `BUBBLE_TAIL_LENGTH` along that line -- never to the head itself.
+func _aim_bubble_tail(bubble_local: Vector3) -> void:
+	if _backing_material == null or _backing_half == Vector2.ZERO:
+		return
+	var camera_basis: Basis = _camera_basis()
+	var to_head: Vector3 = Vector3(0.0, CHILD_HEAD_HEIGHT, 0.0) - bubble_local
+	var tip: Vector2 = Vector2(to_head.dot(camera_basis.x), to_head.dot(camera_basis.y))
+	if tip.y > -0.02:
+		# The head is level with or above the panel, which the rule never produces
+		# in a room; straight down is the honest default for a bare actor.
+		tip = Vector2(0.0, -1.0)
+	var direction: Vector2 = tip.normalized()
+	var bottom: float = -_backing_half.y
+	var reach: float = maxf(_backing_half.x - BUBBLE_CORNER_RADIUS - BUBBLE_TAIL_HALF_BASE, 0.0)
+	var base_x: float = clampf(tip.x * (bottom / tip.y), -reach, reach)
+	# The base sits a rim-width INSIDE the panel so the union with the rounded box
+	# has no seam and the rim runs round the wedge rather than across its root.
+	_backing_material.set_shader_parameter("tail_base", Vector2(base_x, bottom + BUBBLE_RIM * 2.0))
+	_backing_material.set_shader_parameter(
+		"tail_tip", Vector2(base_x, bottom) + direction * BUBBLE_TAIL_LENGTH)
+
+
+## The rendering camera's basis, or identity when there is none -- out of the
+## tree, or in the headless runner. Identity makes the tail aim in world x/y,
+## which at every room's authored `yaw = 0` is the same answer as the camera's.
+func _camera_basis() -> Basis:
+	if not is_inside_tree():
+		return Basis.IDENTITY
+	var viewport: Viewport = get_viewport()
+	var camera: Camera3D = viewport.get_camera_3d() if viewport != null else null
+	if camera == null or not camera.is_inside_tree():
+		return Basis.IDENTITY
+	return camera.global_transform.basis
+
+
+## One switch for the line's visibility, so `_refresh()` and
+## `set_bubble_suppressed()` cannot disagree about it. The backing is a child of
+## the label and follows without being mentioned.
+func _apply_bubble_visibility() -> void:
+	if _bubble == null:
+		return
+	_bubble.visible = not _need.is_empty() and not _bubble_suppressed
+
+
+## Hides the line -- and its backing -- regardless of the need, until told
+## otherwise.
+##
+## For the feeding close-up: the camera is on Bunny, the care overlay's top band
+## carries the hint text, and his 3D "I'm hungry!" was showing through the band
+## and over-printing it. The director wraps the overlay in this. Un-suppressing
+## restores the ordinary rule (`_apply_bubble_visibility()`) at once rather than
+## at the next need change, and re-places the line the same frame so it does not
+## reappear where it was before the camera moved.
+func set_bubble_suppressed(suppressed: bool) -> void:
+	build()
+	if _bubble_suppressed == suppressed:
+		return
+	_bubble_suppressed = suppressed
+	_apply_bubble_visibility()
+	if _bubble != null and _bubble.visible:
+		_place_bubble()
+
+
+func is_bubble_suppressed() -> bool:
+	return _bubble_suppressed
 
 
 ## The bubble node, so a test or a screenshot harness can measure the thing on
@@ -579,6 +819,19 @@ func _apply_bubble_offset(world_offset: Vector3) -> void:
 func get_need_bubble() -> Label3D:
 	build()
 	return _bubble
+
+
+## The panel behind the line: the label's only child.
+func get_need_bubble_backing() -> MeshInstance3D:
+	build()
+	return _backing
+
+
+## Half the panel's width and height in metres -- text plus padding, without the
+## tail or the shadow. What a harness should project to ask "is a face under it".
+func get_bubble_backing_half_extents() -> Vector2:
+	build()
+	return _backing_half
 
 
 ## Where the bubble sits relative to Bunny in WORLD metres -- which is the frame
@@ -861,8 +1114,9 @@ func _refresh() -> void:
 
 	if _bubble != null:
 		# Nothing to say when content: an empty bubble is quieter than a cheerful
-		# one, and the child should only interrupt when it wants something.
-		_bubble.visible = not _need.is_empty()
+		# one, and the child should only interrupt when it wants something. (And
+		# nothing at all while suppressed -- a refresh must not re-show it.)
+		_apply_bubble_visibility()
 		_bubble.text = String(described["line"])
 	# AFTER the text, not before it. The step aside is sized from the line's
 	# rendered width (`_bubble_half_width()`), so placing first would measure the
@@ -888,3 +1142,100 @@ func get_socket(socket_name: String) -> Node3D:
 	if _wrapper != null and _wrapper.has_method("get_socket"):
 		return _wrapper.call("get_socket", socket_name)
 	return self
+
+
+## -- The backing shader ------------------------------------------------------------
+##
+## Kept in this file rather than as a `.gdshader` asset because the bubble is
+## this file's, its constants above are the only thing that tune it, and every
+## uniform it has is written from `_build_bubble_backing()`, `_fit_bubble_
+## backing()` or `_aim_bubble_tail()` a few screens up.
+##
+## The vertex half is the stock Godot billboard: the model's translation with the
+## main camera's rotation, so the quad faces the camera about its own origin --
+## exactly what `Label3D` does with `BILLBOARD_ENABLED`, which is why the two
+## stay aligned. The fragment half is a signed distance field: a rounded box
+## unioned with a wedge, filled, rimmed where the distance is within `rim_width`
+## of the edge, and laid over the same shape offset and blurred as a shadow.
+## `fwidth()` gives the anti-aliasing width in screen pixels whatever the
+## distance and resolution, so the rim is one crisp line at both viewports.
+##
+## `render_mode`: unshaded and every light path off, no depth WRITE (so the
+## panel cannot punch a hole in geometry sorted after it), the default depth
+## TEST (so a wall in front hides it, as it hides the text), `blend_mix` for the
+## alpha, `cull_disabled` because a billboard's winding depends on the camera.
+const BACKING_SHADER: String = """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never, blend_mix,
+	shadows_disabled, ambient_light_disabled, specular_disabled, fog_disabled;
+
+uniform vec2 half_size = vec2(0.40, 0.10);
+uniform float corner_radius = 0.07;
+uniform float rim_width = 0.011;
+uniform vec4 fill_color : source_color = vec4(1.0, 0.965, 0.898, 0.94);
+uniform vec4 rim_color : source_color = vec4(0.548, 0.644, 0.701, 1.0);
+uniform vec4 shadow_color : source_color = vec4(0.349, 0.259, 0.169, 0.22);
+uniform vec2 shadow_offset = vec2(0.008, -0.014);
+uniform float shadow_soft = 0.022;
+uniform vec2 tail_base = vec2(0.0, -0.08);
+uniform vec2 tail_tip = vec2(0.0, -0.165);
+uniform float tail_half_base = 0.038;
+
+varying vec2 local;
+
+void vertex() {
+	local = VERTEX.xy;
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
+		MAIN_CAM_INV_VIEW_MATRIX[0], MAIN_CAM_INV_VIEW_MATRIX[1],
+		MAIN_CAM_INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+}
+
+float sd_round_box(vec2 p, vec2 b, float r) {
+	vec2 q = abs(p) - b + vec2(r);
+	return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+float sd_triangle(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
+	vec2 e0 = p1 - p0;
+	vec2 e1 = p2 - p1;
+	vec2 e2 = p0 - p2;
+	vec2 v0 = p - p0;
+	vec2 v1 = p - p1;
+	vec2 v2 = p - p2;
+	vec2 pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+	vec2 pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+	vec2 pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+	float s = sign(e0.x * e2.y - e0.y * e2.x);
+	vec2 d = min(min(vec2(dot(pq0, pq0), s * (v0.x * e0.y - v0.y * e0.x)),
+			vec2(dot(pq1, pq1), s * (v1.x * e1.y - v1.y * e1.x))),
+			vec2(dot(pq2, pq2), s * (v2.x * e2.y - v2.y * e2.x)));
+	return -sqrt(d.x) * sign(d.y);
+}
+
+float sd_bubble(vec2 p) {
+	float d = sd_round_box(p, half_size, corner_radius);
+	vec2 a = tail_base - vec2(tail_half_base, 0.0);
+	vec2 b = tail_base + vec2(tail_half_base, 0.0);
+	if (distance(tail_tip, tail_base) > 0.005) {
+		d = min(d, sd_triangle(p, a, b, tail_tip));
+	}
+	return d;
+}
+
+void fragment() {
+	float d = sd_bubble(local);
+	float aa = max(fwidth(d), 0.0005);
+	float body = 1.0 - smoothstep(-aa, aa, d);
+	float rim = smoothstep(-rim_width - aa, -rim_width + aa, d);
+	vec4 panel = mix(fill_color, rim_color, rim);
+	float panel_a = panel.a * body;
+
+	float ds = sd_bubble(local - shadow_offset);
+	float shadow_a = shadow_color.a * (1.0 - smoothstep(-shadow_soft * 0.5, shadow_soft, ds));
+
+	float alpha = panel_a + shadow_a * (1.0 - panel_a);
+	vec3 rgb = mix(shadow_color.rgb, panel.rgb, panel_a / max(alpha, 0.0001));
+	ALBEDO = rgb;
+	ALPHA = alpha;
+}
+"""

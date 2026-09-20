@@ -41,6 +41,200 @@ func run():
 	failures.append_array(_test_it_clears_a_longer_line_by_more())
 	failures.append_array(_test_it_survives_being_built_outside_the_tree())
 	failures.append_array(_test_it_is_only_visible_when_there_is_a_need())
+	failures.append_array(_test_the_backing_is_one_unit_with_the_line())
+	failures.append_array(_test_the_backing_is_sized_from_the_shaped_line())
+	failures.append_array(_test_the_text_draws_over_the_backing())
+	failures.append_array(_test_it_can_be_suppressed_and_comes_straight_back())
+	return failures
+
+
+## -- The backing (2026-09-20) ------------------------------------------------------
+##
+## The line now sits on a rounded panel. Everything the placement rule decides
+## must still be decided ONCE: the panel is a child of the label at its origin,
+## so wherever the rule puts the line, the panel is there too, and whenever the
+## rule hides the line, the panel is gone too. Pinned here because a sibling
+## that mirrors the label's position is the obvious implementation and would be
+## a second copy of an answer that has already been wrong twice.
+func _test_the_backing_is_one_unit_with_the_line():
+	var failures: Array = []
+	var rig: Dictionary = _stage(180.0)
+	if rig.is_empty():
+		return ["no SceneTree"]
+	var child: Node3D = rig["child"]
+	var bubble: Label3D = child.call("get_need_bubble")
+	var backing: Node3D = child.call("get_need_bubble_backing")
+	if backing == null:
+		_teardown(rig)
+		return ["the actor built no backing behind the line"]
+	if backing.get_parent() != bubble:
+		failures.append("the backing is parented to '%s', not to the label" % str(backing.get_parent()))
+	if backing.position.length() > TOLERANCE:
+		failures.append("the backing sits at %s in the label's frame; it must be at its origin"
+				% str(backing.position))
+
+	# Move the caregiver about; the panel's world position must equal the
+	# label's after every placement, with no separate number to keep in step.
+	for x: float in [-0.40, 0.40, -3.0, 0.0]:
+		_move(rig["caregiver"], Vector3(x, 0.0, 0.0))
+		child.call("live", 0.016)
+		var apart: float = Spatial.world_position(backing).distance_to(Spatial.world_position(bubble))
+		if apart > TOLERANCE:
+			failures.append("caregiver at x=%+.2f: the backing is %.3f m from the line" % [x, apart])
+
+	# Hidden together: the one switch is the label's `visible`.
+	var stats: Object = child.call("get_stats")
+	for axis: String in ["hunger", "thirst"]:
+		stats.call("set_stat", axis, 0.0)
+	for axis: String in ["happiness", "energy", "cleanliness", "freshness"]:
+		stats.call("set_stat", axis, 100.0)
+	child.call("_refresh")
+	if bubble.visible:
+		failures.append("a content child's line is still visible")
+	if backing.visible and backing.get_parent() != bubble:
+		failures.append("the backing would stay on screen after the line went")
+	_teardown(rig)
+	return failures
+
+
+## The panel is sized from the SHAPED text -- `_bubble_half_width()`, the text
+## server measurement the step rule trusts -- and never from `get_aabb()`, which
+## is empty here. So a longer line gets a wider panel, and every panel is wider
+## than its own text. Height comes from the font's line height, so it is never
+## zero either.
+func _test_the_backing_is_sized_from_the_shaped_line():
+	var failures: Array = []
+	var rig: Dictionary = _stage(0.0)
+	if rig.is_empty():
+		return ["no SceneTree"]
+	var child: Node3D = rig["child"]
+	var bubble: Label3D = child.call("get_need_bubble")
+
+	bubble.text = "I'm hungry!"
+	child.call("_place_bubble")
+	var short_half: Vector2 = child.call("get_bubble_backing_half_extents")
+	var short_text: float = float(child.call("_bubble_half_width"))
+
+	bubble.text = "I need changing."
+	child.call("_place_bubble")
+	var long_half: Vector2 = child.call("get_bubble_backing_half_extents")
+	var long_text: float = float(child.call("_bubble_half_width"))
+
+	if short_half.x <= short_text:
+		failures.append("'I'm hungry!' text is %.3f m half-wide and its panel only %.3f m"
+				% [short_text, short_half.x])
+	if long_half.x <= long_text:
+		failures.append("'I need changing.' text is %.3f m half-wide and its panel only %.3f m"
+				% [long_text, long_half.x])
+	if long_half.x <= short_half.x + TOLERANCE:
+		failures.append("the longer line's panel (%.3f m) is no wider than the short one's (%.3f m)"
+				% [long_half.x, short_half.x])
+	if absf(long_half.y - short_half.y) > TOLERANCE:
+		failures.append("one line of text, two panel heights: %.3f m and %.3f m"
+				% [short_half.y, long_half.y])
+	if short_half.y < 0.05:
+		failures.append("the panel is only %.3f m half-tall; the font was not measured" % short_half.y)
+	# The panel is padded on both sides of the text, symmetrically.
+	if short_half.x - short_text < Actor.BUBBLE_PAD.x - TOLERANCE:
+		failures.append("the panel pads the text by %.3f m, less than BUBBLE_PAD.x (%.3f m)"
+				% [short_half.x - short_text, Actor.BUBBLE_PAD.x])
+	_teardown(rig)
+	return failures
+
+
+## Transparent geometry sorts by render priority before depth, and the glyphs,
+## their outline and the panel all share one origin. The order has to be stated:
+## panel under outline under glyphs. A panel at or above the glyphs' priority is
+## a cream rectangle with the line hidden inside it -- and it would still pass
+## every placement test above.
+func _test_the_text_draws_over_the_backing():
+	var failures: Array = []
+	var rig: Dictionary = _stage(0.0)
+	if rig.is_empty():
+		return ["no SceneTree"]
+	var child: Node3D = rig["child"]
+	var bubble: Label3D = child.call("get_need_bubble")
+	var backing: GeometryInstance3D = child.call("get_need_bubble_backing")
+	var material: Material = backing.material_override if backing != null else null
+	if material == null:
+		_teardown(rig)
+		return ["the backing has no material of its own"]
+	if not (material.render_priority < bubble.outline_render_priority
+			and bubble.outline_render_priority < bubble.render_priority):
+		failures.append("render order is backing %d, outline %d, text %d; it must ascend"
+				% [material.render_priority, bubble.outline_render_priority, bubble.render_priority])
+	if backing.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+		failures.append("the backing casts shadows; the budget says no")
+	if material is ShaderMaterial:
+		var code: String = (material as ShaderMaterial).shader.code
+		for word: String in ["unshaded", "depth_draw_never", "shadows_disabled"]:
+			if not code.contains(word):
+				failures.append("the backing shader is not '%s'" % word)
+		if code.contains("depth_test_disabled"):
+			failures.append("the backing ignores depth; the text does not, and they would part "
+					+ "company behind a wall")
+	_teardown(rig)
+	return failures
+
+
+## `set_bubble_suppressed(true)` hides the line and the panel whatever the need;
+## a `_refresh()` or a `live()` during suppression must not bring it back; and
+## `set_bubble_suppressed(false)` restores the ordinary rule AT ONCE -- not at the
+## next need change, because the need does not change when a camera moves away.
+func _test_it_can_be_suppressed_and_comes_straight_back():
+	var failures: Array = []
+	var rig: Dictionary = _stage(0.0)
+	if rig.is_empty():
+		return ["no SceneTree"]
+	var child: Node3D = rig["child"]
+	var bubble: Label3D = child.call("get_need_bubble")
+	var stats: Object = child.call("get_stats")
+
+	stats.call("set_stat", "hunger", 70.0)
+	child.call("_refresh")
+	if not bubble.visible:
+		failures.append("precondition: a hungry child's line is hidden")
+	if bool(child.call("is_bubble_suppressed")):
+		failures.append("the actor starts suppressed")
+
+	child.call("set_bubble_suppressed", true)
+	if not bool(child.call("is_bubble_suppressed")):
+		failures.append("is_bubble_suppressed() is false right after set_bubble_suppressed(true)")
+	if bubble.visible:
+		failures.append("suppressed, and the line is still visible")
+
+	# The things that happen every frame and on every stat move must not re-show it.
+	child.call("_refresh")
+	if bubble.visible:
+		failures.append("a _refresh() during suppression re-showed the line")
+	stats.call("set_stat", "hunger", 90.0)
+	child.call("_refresh")
+	if bubble.visible:
+		failures.append("a need change during suppression re-showed the line")
+	child.call("live", 0.016)
+	if bubble.visible:
+		failures.append("a live() frame during suppression re-showed the line")
+	if String(child.call("get_need")).is_empty():
+		failures.append("suppression emptied the need itself; it must only hide the line")
+
+	# Back, immediately, with no need change in between.
+	child.call("set_bubble_suppressed", false)
+	if bool(child.call("is_bubble_suppressed")):
+		failures.append("is_bubble_suppressed() is still true after set_bubble_suppressed(false)")
+	if not bubble.visible:
+		failures.append("un-suppressed with a live need, and the line did not come back at once")
+
+	# ...and un-suppressing a CONTENT child shows nothing: the ordinary rule holds.
+	child.call("set_bubble_suppressed", true)
+	for axis: String in ["hunger", "thirst"]:
+		stats.call("set_stat", axis, 0.0)
+	for axis: String in ["happiness", "energy", "cleanliness", "freshness"]:
+		stats.call("set_stat", axis, 100.0)
+	child.call("_refresh")
+	child.call("set_bubble_suppressed", false)
+	if bubble.visible:
+		failures.append("un-suppressing a content child showed '%s'" % bubble.text)
+	_teardown(rig)
 	return failures
 
 

@@ -4,6 +4,11 @@ extends SceneTree
 ##
 ##   Godot --path game --script res://tests/shots_bubble.gd -- ipad 1366x1024
 ##   Godot --path game --script res://tests/shots_bubble.gd -- iphone 2340x1080
+##   Godot --path game --script res://tests/shots_bubble.gd -- ipad 1334x750 bubble_backing_after
+##
+## The optional third argument is the file-name PREFIX (default `bubble`), so a
+## before/after pair of a rendering change can sit side by side in `docs/shots/`
+## without either overwriting the other.
 ##
 ## Bunny's "I'm hungry!" line is a `Label3D` over his head. He is 0.78 m tall and
 ## Aliz is more than twice that, so at the close-up framing the bubble used to
@@ -46,6 +51,14 @@ extends SceneTree
 ##   `longline` -- the `front` staging again with the longest need line the game
 ##                 has ("I need changing."), which is half as wide again as
 ##                 "I'm hungry!" and is what a fixed-size step would leave on her.
+##   `satisfied` -- the `front` staging after `satisfy("hungry", 70.0)`: the need
+##                 is answered, so the line -- and, since the backing pass, the
+##                 panel drawn behind it -- must be GONE. Asserted, not pictured.
+##
+## Since the backing pass every staging also projects the bubble's rectangle into
+## the frame and asserts that neither Bunny's face nor Aliz's face is inside it.
+## A line that is easier to read because it now covers the child it is about
+## would be a step backwards.
 ##
 ## `left` and `right` are the side-swap under test: the bubble must end up on the
 ## OPPOSITE side in each, and the printed `bubbleWorldDX` / `alizDX` pair says so
@@ -74,6 +87,7 @@ const BEHIND: float = -0.62
 const ABEAM_STEP: float = 1.40
 
 var _suffix: String = "ipad"
+var _prefix: String = "bubble"
 var _frame: Vector2i = Vector2i(1366, 1024)
 var _viewport: SubViewport = null
 var _world: Node = null
@@ -97,7 +111,10 @@ func _run() -> void:
 		var wide: PackedStringArray = String(args[1]).split("x")
 		if wide.size() == 2:
 			_frame = Vector2i(int(wide[0]), int(wide[1]))
-	print("=== need bubble, %s, %dx%d ===" % [_suffix, _frame.x, _frame.y])
+	if args.size() > 2 and not String(args[2]).strip_edges().is_empty():
+		_prefix = String(args[2]).strip_edges()
+	print("=== need bubble, %s, %dx%d, files %s_*_%s.png ==="
+			% [_suffix, _frame.x, _frame.y, _prefix, _suffix])
 
 	await process_frame
 	# A clean profile, for the same reason `smoke_mission01.gd` resets one: the
@@ -221,6 +238,20 @@ func _run() -> void:
 	await process_frame
 	await _case("longline", here)
 
+	# THE NEED ANSWERED. Back to plain hunger first, so the thing being satisfied
+	# is the thing the feeding beat satisfies, then `satisfy()` exactly as that
+	# beat calls it. The line must be gone -- and so must anything drawn behind
+	# it. `_case_satisfied()` asserts the absence rather than only photographing it.
+	if long_stats != null:
+		long_stats.call("set_stat", "thirst", 0.0)
+		long_stats.call("set_stat", "freshness", 100.0)
+		long_stats.call("set_stat", "hunger", 70.0)
+		_child.call("_refresh")
+	await process_frame
+	_child.call("satisfy", "hungry", 70.0)
+	await process_frame
+	await _case_satisfied("satisfied", here)
+
 	_report()
 
 
@@ -240,9 +271,45 @@ func _case(label: String, aliz_at: Vector3, expect: String = "step") -> void:
 		camera.call("settle")
 	await _settle(0.5)
 
-	var out_name: String = "bubble_%s_%s" % [label, _suffix]
+	var out_name: String = "%s_%s_%s" % [_prefix, label, _suffix]
 	_measure(label, out_name, bunny, expect)
 	await _shot(out_name)
+
+
+## The staging after the need is answered: the bubble must NOT be there.
+##
+## `visible` on the label is the switch `child_actor._refresh()` throws; the
+## backing is a child of the label so it goes with it, and `is_visible_in_tree()`
+## is the question that proves that rather than assumes it.
+func _case_satisfied(label: String, aliz_at: Vector3) -> void:
+	Spatial.set_world_position(_aliz, aliz_at)
+	await _settle(0.35)
+	_director.call("_update_focus")
+	await _settle(0.4)
+	var out_name: String = "%s_%s_%s" % [_prefix, label, _suffix]
+	print("\n  -- %s --" % label)
+	print("     need='%s'  bubbleVisible=%s  text='%s'"
+			% [String(_child.call("get_need")), str(_bubble.visible), String(_bubble.get("text"))])
+	if not String(_child.call("get_need")).is_empty():
+		_fail.append("%s: hunger was satisfied and Bunny still needs '%s'"
+				% [label, String(_child.call("get_need"))])
+	if _bubble.visible:
+		_fail.append("%s: the need is answered and the line is still up" % label)
+	var backing: Node3D = _backing()
+	if backing != null:
+		print("     backingVisibleInTree=%s" % str(backing.is_visible_in_tree()))
+		if backing.is_visible_in_tree():
+			_fail.append("%s: the line is down but its backing is still drawn" % label)
+	print("     -> %s.png" % out_name)
+	await _shot(out_name)
+
+
+## The backing quad, when this build has one. Null on a build that predates it,
+## which is what the `before` frames are of.
+func _backing() -> Node3D:
+	if _child.has_method("get_need_bubble_backing"):
+		return _child.call("get_need_bubble_backing") as Node3D
+	return null
 
 
 ## Everything a reader needs to check the picture against, printed.
@@ -317,7 +384,52 @@ func _measure(label: String, out_name: String, bunny: Vector3, expect: String) -
 			% [apart, screen_bubble.distance_to(screen_bunny_head)])
 	if apart < 90.0:
 		_fail.append("%s: the bubble is only %.0f px from Aliz's chest" % [label, apart])
+	_check_faces(label, camera, bubble_world, aliz, bunny)
 	print("     -> %s.png" % out_name)
+
+
+## Neither face may be inside the bubble's on-screen rectangle.
+##
+## The rectangle is the BACKING's when the build has one -- that is the opaque
+## thing that could hide a face -- and the shaped text's extent otherwise, so the
+## `before` frames are held to the same question. Both are billboards, so the
+## rectangle is the centre pushed along the camera's own right and up axes and
+## then projected; not `get_aabb()`, which is empty until the renderer has built
+## a mesh and is exactly the kind of number that reads as zero on the wrong day.
+##
+## Face heights: Bunny is 0.78 m tall and his face is the upper half of a big
+## head, so 0.62 m; Aliz's face sits at about 1.45 m. Both are printed with the
+## rectangle so a reader can check them against the frame.
+const BUNNY_FACE_HEIGHT: float = 0.62
+const ALIZ_FACE_HEIGHT: float = 1.45
+
+
+func _check_faces(label: String, camera: Camera3D, bubble_world: Vector3,
+		aliz: Vector3, bunny: Vector3) -> void:
+	if camera == null:
+		return
+	var half: Vector2 = Vector2.ZERO
+	if _backing() != null and _child.has_method("get_bubble_backing_half_extents"):
+		half = _child.call("get_bubble_backing_half_extents")
+	else:
+		half = Vector2(float(_child.call("_bubble_half_width")), 0.07)
+	var right: Vector3 = camera.global_transform.basis.x
+	var up: Vector3 = camera.global_transform.basis.y
+	var corner_a: Vector2 = camera.unproject_position(bubble_world - right * half.x + up * half.y)
+	var corner_b: Vector2 = camera.unproject_position(bubble_world + right * half.x - up * half.y)
+	var rect: Rect2 = Rect2(corner_a, Vector2.ZERO).expand(corner_b).abs()
+	var faces: Dictionary = {
+		"Bunny's face": camera.unproject_position(bunny + Vector3(0.0, BUNNY_FACE_HEIGHT, 0.0)),
+		"Aliz's face": camera.unproject_position(aliz + Vector3(0.0, ALIZ_FACE_HEIGHT, 0.0)),
+	}
+	print("     bubble rect on screen: (%.0f, %.0f)-(%.0f, %.0f)  bunnyFace=(%.0f, %.0f)  alizFace=(%.0f, %.0f)"
+			% [rect.position.x, rect.position.y, rect.end.x, rect.end.y,
+				faces["Bunny's face"].x, faces["Bunny's face"].y,
+				faces["Aliz's face"].x, faces["Aliz's face"].y])
+	for who: String in faces:
+		if rect.has_point(faces[who]):
+			_fail.append("%s: the bubble covers %s at (%.0f, %.0f)"
+					% [label, who, faces[who].x, faces[who].y])
 
 
 func _find_child_actor() -> Node:
@@ -331,7 +443,16 @@ func _find_child_actor() -> Node:
 
 
 func _shot(out_name: String) -> void:
-	await RenderingServer.frame_post_draw
+	# Drawn ON DEMAND rather than awaited. macOS stops Godot's ordinary draw loop
+	# while the window is occluded -- another window in front, the display asleep
+	# -- and `await RenderingServer.frame_post_draw` then never resumes: the run
+	# sat for minutes with the scene composed, frames ticking, and no frame
+	# written (2026-09-20, the backing pass, while the machine was unattended).
+	# The composition does not depend on anyone seeing the window; the
+	# SubViewport renders either way when asked. One `process_frame` first so
+	# the frame being drawn is the one the transforms above have settled into.
+	await process_frame
+	RenderingServer.force_draw(true, 0.0)
 	var image: Image = _viewport.get_texture().get_image()
 	var path: String = ProjectSettings.globalize_path("res://../" + OUT_DIR + out_name + ".png")
 	var err: int = image.save_png(path)
