@@ -183,3 +183,144 @@ pre-existing missing macOS speech-plugin binary message is unrelated).
 
 `git checkout 840fd45 -- game/assets/characters/buddy/pinkGirl/` then
 `Godot --headless --path game --import`. The reimport is required, as before.
+
+---
+
+# Second pass — the smile, the fringe edge, and the Meshy question
+
+**2026-09-20, after the first pass merged as `6d9d698`. Zero Meshy credits. One public
+price page was read; no API endpoint was called.**
+
+Owner feedback from playing the real build: *"hair still has visible defects"* and *"mouth
+looks too pursed."* Only the two asset files, `tools/aliz_*` and this document changed.
+
+| View | Before | After | 1:1 strip (before left, after right, 4x below) |
+|---|---|---|---|
+| Real main menu | `aliz_smile_before_menu.png` | `aliz_smile_after_menu.png` | `aliz_smile_menu_face_1x.png` |
+| Standing, front, house light, gameplay distance | `aliz_smile_before_front.png` | `aliz_smile_after_front.png` | `aliz_smile_front_face_1x.png` |
+| Three-quarter (the walking angle) | `aliz_smile_before_threeq.png` | `aliz_smile_after_threeq.png` | `aliz_smile_threeq_face_1x.png` |
+| From behind | `aliz_smile_before_back.png` | `aliz_smile_after_back.png` | — |
+| Real bedroom, `shot_harness -- house` | `aliz_smile_before_bedroom.png` | `aliz_smile_after_bedroom.png` | `aliz_smile_bedroom_face_1x.png` |
+| Feeding portrait, `shots_rc.gd` | `aliz_smile_before_feed.png` | `aliz_smile_after_feed.png` | — (see note) |
+| Head close-up, `alizface 1.24` | `aliz_smile_before_face.png` | `aliz_smile_after_face.png` | — |
+| Crown, `alizface 1.42` | — | `aliz_smile_after_crown.png` | — |
+
+All in `docs/shots/`. The front / three-quarter / back trio comes from the new
+`tools/aliz_shots.gd` (run with `Godot --path game --script ../tools/aliz_shots.gd -- <prefix>`),
+which loads the shipping wrapper under `main.tscn`'s light at the bedroom's head size, so
+those three are deterministic. **Note on the house shots:** `-- house` and `shots_rc.gd`
+play the real game against the persistent `user://` profile, which every run advances; the
+bedroom pair happened to land on the same beat, but in the feeding pair she stands behind
+Bunny's portrait in the "after" run, so that pair proves only that nothing broke, not the
+face. The menu and the deterministic trio are the fair comparison.
+
+## 1. Mouth — `tools/aliz_smile_repaint.py` — PASS
+
+**What it was.** 60 mm wide (8 % of a 0.73 m head), 6.4 mm deep, hard horizontal ends, in
+the art bible's `#9E4F4D`. On this face the atlas density is about 3 texels per cm — the
+entire old smile was **35 texels** — so at menu distance it mip-averaged to a small dark dot.
+"Pursed" is exactly what a dark dot in the middle of a chin reads as.
+
+**What it is now.** One filled shape, 84 mm wide (1.4x), 6.2 mm thick at the middle tapering
+to 55 % at the ends, corners rising 8 mm, **round caps** instead of the cut ends, feathered
+over 1.8 mm, in `#B85E5C`. That colour is one step lighter and warmer than the bible's hex,
+which is a deliberate and recorded deviation: the bible's ink was specified for a 1:6.5
+figure and at this head's texel density it reads as a hole. Selection is 3D → texels
+through the same guarded `claim_map` as before; the whole mouth ellipse is repainted skin
+first so nothing of the old shape ghosts through; gutters re-padded. No mesh change.
+
+Judged at 1:1 in `aliz_smile_menu_face_1x.png` and `aliz_smile_front_face_1x.png`: it reads
+as a small smile with corners, not a dot. The three-quarter strip shows the corner lifting
+the cheek. Identity unchanged.
+
+## 2. Hair at gameplay distance — `tools/aliz_fringe_repaint.py` — PASS, with a residue
+
+**Cut-through.** Every view above was inspected for sky or wall showing through the hair:
+none in the menu, front, three-quarter, back, bedroom, crown or close-up. The first pass's
+caps hold from behind and at the walking angle. Nothing to fix here.
+
+**The fringe edge — what it actually was.** The first pass described the fringe as "a few
+millimetres of relief"; it was measured unlit. Fitting a base forehead surface to the head-on
+render and rejecting everything in front of it, the relief histogram is bimodal — forehead at
+0–10 mm and a solid **32–52 mm slab**: the bangs are a 4 cm volume with a zigzag lower edge.
+Per 1 cm column, the old paint arc `y = 1.418 + 0.42x²` sits **2–9 cm below** that slab edge
+at |x| = 3–9 cm, and the central strand tips dip **15 mm below** it. So under the house light
+the owner saw a lit pink band of flat forehead beneath a shadowed jagged wall, with
+skin-coloured teeth in it — a ragged fringe. Painting, not geometry, and yet not fixable by
+painting alone:
+
+**Why the obvious repaint failed.** Blending each hair texel toward skin by flatness produced
+a checkerboard of skin flecks across the slab. Measured: **426 of the 2,176 texels in the
+band are claimed by both a forehead triangle and a slab triangle** — the two islands overlap
+in the atlas around (347–388, 240–290). The first pass's "no texel is shared between regions
+more than 12 cm apart" is still true; these surfaces are 4 cm apart.
+
+**What was done.** The **10 flat forehead triangles under the fringe's teeth** (|x| < 8 cm,
+y < 1.455, relief < 6 mm) were given new vertices with UVs in a free 45×40 atlas rectangle at
+(313, 451) — positions, normals, joints and weights copied, so no vertex moves and the
+triangle count is unchanged. Their old texels were transferred into the new island by
+barycentric lookup (brows and skin detail come along), then everything that was hair-pink in
+that island became skin. The hair/skin boundary is now the **mesh edge** between forehead and
+the slab's foot, on two different islands, so bilinear filtering cannot smear it. Gutters
+re-padded.
+
+A first cut moved all 27 flat triangles in the band and opened two large skin wedges at the
+temples where the slab edge climbs to y 1.49 — geometrically forehead, visually holes. That
+is why the selection is limited to the central teeth; the flat pink outside them stays as the
+side hair's foot.
+
+**Result.** A scalloped fringe with three soft central points over a skin forehead,
+consistent with its own shading (`aliz_smile_after_crown.png`, `aliz_smile_after_face.png`,
+and at size in the front and menu strips). It is a more *stylised* edge than the flat arc,
+and that is the residue: the zigzag is what the generated mesh actually is. It reads as a
+drawn fringe rather than a torn one, but it is not the smooth curtain the art bible sketches.
+
+## 3. Numbers and gates
+
+| | First pass | Now | Gate |
+|---|---|---|---|
+| Triangles | 3,889 | **3,889** | ≤ 4,000 |
+| Vertices | 4,939 | 4,951 | — |
+| Atlas | 1 × 512² | **1 × 512²** | ≤ 512 |
+| GLB / PNG bytes | 563,520 / 257,085 | 565,616 / 258,558 | — |
+| Bounding box | identical | **identical** | — |
+
+Full suite after the change: `PASS - 122 case(s), 0 failure(s)`. `test_aliz_face.gd`'s hair
+floor (≥ 90 % above y 1.450) still holds; the skin that returned is below 1.455 by
+construction. No test weakened.
+
+## 4. Meshy decision prep — no spend
+
+**Verdict: the defects the owner can see are now handled locally and do not, on their own,
+justify a regeneration; what would justify one is the structural remainder, and that is an
+owner call.** What remains is (a) 1:3 head-to-height against the bible's 1:6.5, (b) a face
+painted at ~3 texels/cm so any mouth is a few dozen texels, (c) a fringe whose shape is the
+remesh's zigzag rather than authored, (d) hair that now shades as one mass because its
+normals were transferred from a capsule, and (e) ~8.5 cm² of faint coplanar overlap under the
+mouth. None of these is fixable by another local pass; all of them go away together only with
+a new model. **The asset:** image-to-3D from `docs/reference/aliz_reference_apose.png` via
+`tools/meshy_aliz_apose.sh preview` — its prompt already demands an A-pose, hair as one solid
+continuous piece and a closed-mouth smile, which are precisely the three things this and the
+previous pass spent their time repairing — followed by Remesh to the 4,000-triangle budget,
+then Rigging (which includes the walk and run clips the wrapper already binds). **Credits,
+from `docs.meshy.ai/en/api/pricing` read today (no key, no endpoint):** image-to-3D with
+texture 30 (Meshy-7; 35 with 8K texture, +5 for 2k/4k geometry resolution; 15 on the
+Smart-Topology T2 model), Remesh 5, Auto-Rigging 5, Animation 3 per extra action. So **40
+credits for the Meshy-7 route, 25 for T2**, against an account balance last recorded at 3,054
+and a sprint ceiling of 30 of which 20 are unspent — a new run therefore needs a fresh
+approval, per the ledger's one-approval-per-operation rule. **Acceptance gate, all before
+integration:** preview image shows a closed mouth and one continuous hair mass; after Remesh
+≤ 4,000 triangles and one atlas that survives `optimize_runtime_glb.py --texture 512`;
+`aliz_head_probe.py` reports **zero boundary loops on the head** and one shell;
+head:height between 1:5 and 1:6.5; the rig passes `test_buddy_avatar.gd` and
+`glb_deform_check.py`; the full suite is green; and `aliz_shots.gd` plus the menu shot,
+side by side with `aliz_smile_after_*.png`, are judged better by the owner — not by whoever
+ran the job.
+
+## 5. Tools added this pass
+
+| Tool | Purpose |
+|---|---|
+| `tools/aliz_smile_repaint.py` | The mouth. Texture only; SDF smile with round caps; guarded 3D → texel writes. |
+| `tools/aliz_fringe_repaint.py` | The fringe edge. Relocates the central forehead triangles to their own island, transfers texels, paints the flat part skin. Its docstring carries the overlap measurement. |
+| `tools/aliz_shots.gd` | Front / three-quarter / back at gameplay size under the game's light, deterministic. |
