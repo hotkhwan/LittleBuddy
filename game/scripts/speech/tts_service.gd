@@ -129,7 +129,11 @@ const REACTION_PROTECT_SECONDS: float = 2.5
 ## 0..1, default 0.85) scales it -- see `_voice_volume()`.
 const SPEECH_VOLUME: int = 85
 const SPEECH_VOLUME_SCALE: float = 100.0
-const VOICE_VOLUME_SETTING: String = "voiceVolume"
+## Aliz's level from the voice pack settings (`scripts/voice/voice_director.gd`
+## writes `alizVoiceVolume`); the old single `voiceVolume` is read when the new
+## key has not been written yet. The device voice IS Aliz's fallback voice.
+const VOICE_VOLUME_SETTING: String = "alizVoiceVolume"
+const LEGACY_VOICE_VOLUME_SETTING: String = "voiceVolume"
 
 ## Owner-recorded lines under `res://audio/voice/<lineId>.ogg` play instead of
 ## the platform voice when they exist. See `voice_lines.gd`.
@@ -639,11 +643,12 @@ func _voice_volume() -> float:
 		return _voice_volume_override
 	var service: Node = _save_service()
 	if service != null and service.has_method("get_setting"):
-		var value: Variant = service.call("get_setting", VOICE_VOLUME_SETTING, null)
-		if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
-			var linear: float = float(value)
-			if is_finite(linear):
-				return clampf(linear, 0.0, 1.0)
+		for key: String in [VOICE_VOLUME_SETTING, LEGACY_VOICE_VOLUME_SETTING]:
+			var value: Variant = service.call("get_setting", key, null)
+			if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
+				var linear: float = float(value)
+				if is_finite(linear):
+					return clampf(linear, 0.0, 1.0)
 	return float(SPEECH_VOLUME) / SPEECH_VOLUME_SCALE
 
 

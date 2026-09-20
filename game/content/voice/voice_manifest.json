@@ -1,0 +1,353 @@
+{
+  "manifestVersion": 1,
+  "notes": "Owner line list 2026-09-20. 36 lines, two characters. Laughs, chewing, drinking, sighs and sleepy sounds are SFX and are NOT voice lines. A line with no file falls back to the device voice (TtsService) speaking `text`; nothing here is ever faked as recorded.",
+  "format": {
+    "container": "ogg",
+    "codec": "vorbis",
+    "sampleRateHz": 44100,
+    "channels": 1,
+    "bitrateKbps": 96,
+    "peakDbfs": -3.0,
+    "maxHeadTailSeconds": 0.1
+  },
+  "characters": {
+    "aliz": {
+      "displayName": "Aliz",
+      "voice": "bright, cheerful, warm, youthful English-speaking girl",
+      "role": "narrator and guide; her lines are the English the child is learning",
+      "folder": "res://assets/audio/voice/aliz/"
+    },
+    "bunny": {
+      "displayName": "Bunny",
+      "voice": "soft, adorable, expressive baby; laughs, delight, sleepy, a little sulky; never shrill",
+      "role": "the baby being cared for; his lines are reactions and needs",
+      "folder": "res://assets/audio/voice/bunny/"
+    }
+  },
+  "lines": [
+    {
+      "lineId": "aliz_001_welcome",
+      "character": "aliz",
+      "text": "Welcome to Little Days!",
+      "emotion": "cheerful",
+      "usage": "menuReady",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_001_welcome.ogg"
+    },
+    {
+      "lineId": "aliz_002_lets_play",
+      "character": "aliz",
+      "text": "Let's play together!",
+      "emotion": "excited",
+      "usage": "menuReady",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_002_lets_play.ogg"
+    },
+    {
+      "lineId": "aliz_003_come_on",
+      "character": "aliz",
+      "text": "Come on, Bunny!",
+      "emotion": "inviting",
+      "usage": "callBunny",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_003_come_on.ogg"
+    },
+    {
+      "lineId": "aliz_004_lets_go_home",
+      "character": "aliz",
+      "text": "Let's go home!",
+      "emotion": "bright",
+      "usage": "startPressed",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_004_lets_go_home.ogg"
+    },
+    {
+      "lineId": "aliz_005_what_shall_we_do",
+      "character": "aliz",
+      "text": "What shall we do today?",
+      "emotion": "curious",
+      "usage": "freePlayStart",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_005_what_shall_we_do.ogg"
+    },
+    {
+      "lineId": "aliz_006_good_job",
+      "character": "aliz",
+      "text": "Great job!",
+      "emotion": "praise",
+      "usage": "encouragementGreat",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_006_good_job.ogg"
+    },
+    {
+      "lineId": "aliz_007_well_done",
+      "character": "aliz",
+      "text": "You did it!",
+      "emotion": "delighted",
+      "usage": "encouragementWellDone",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_007_well_done.ogg"
+    },
+    {
+      "lineId": "aliz_008_try_again",
+      "character": "aliz",
+      "text": "Let's try again!",
+      "emotion": "encouraging",
+      "usage": "encouragementTryAgain",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_008_try_again.ogg"
+    },
+    {
+      "lineId": "aliz_009_its_okay",
+      "character": "aliz",
+      "text": "It's okay. We can do it!",
+      "emotion": "warm",
+      "usage": "secondMiss",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_009_its_okay.ogg"
+    },
+    {
+      "lineId": "aliz_010_follow_me",
+      "character": "aliz",
+      "text": "Follow me!",
+      "emotion": "inviting",
+      "usage": "followMe",
+      "set": "A",
+      "file": "res://assets/audio/voice/aliz/aliz_010_follow_me.ogg"
+    },
+    {
+      "lineId": "bunny_001_hungry",
+      "character": "bunny",
+      "text": "I'm hungry, Aliz!",
+      "emotion": "hungry, pleading",
+      "usage": "needHungry",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_001_hungry.ogg"
+    },
+    {
+      "lineId": "bunny_002_milk",
+      "character": "bunny",
+      "text": "Milk, please!",
+      "emotion": "asking, cute",
+      "usage": "milkPrompt",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_002_milk.ogg"
+    },
+    {
+      "lineId": "bunny_003_yummy",
+      "character": "bunny",
+      "text": "Yummy!",
+      "emotion": "delighted",
+      "usage": "foodBite",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_003_yummy.ogg"
+    },
+    {
+      "lineId": "bunny_004_more",
+      "character": "bunny",
+      "text": "More, please!",
+      "emotion": "eager",
+      "usage": "mealHalfway",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_004_more.ogg"
+    },
+    {
+      "lineId": "bunny_005_thank_you",
+      "character": "bunny",
+      "text": "Thank you, Aliz!",
+      "emotion": "grateful, happy",
+      "usage": "careCompleted",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_005_thank_you.ogg"
+    },
+    {
+      "lineId": "bunny_006_sleepy",
+      "character": "bunny",
+      "text": "I'm sleepy.",
+      "emotion": "sleepy, soft",
+      "usage": "needSleepy",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_006_sleepy.ogg"
+    },
+    {
+      "lineId": "bunny_007_good_night",
+      "character": "bunny",
+      "text": "Good night!",
+      "emotion": "sleepy, content",
+      "usage": "bedtimePlaced",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_007_good_night.ogg"
+    },
+    {
+      "lineId": "bunny_008_bath",
+      "character": "bunny",
+      "text": "Bath time!",
+      "emotion": "excited",
+      "usage": "needBath",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_008_bath.ogg"
+    },
+    {
+      "lineId": "bunny_009_play",
+      "character": "bunny",
+      "text": "Play with me!",
+      "emotion": "playful",
+      "usage": "needWantsToPlay",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_009_play.ogg"
+    },
+    {
+      "lineId": "bunny_010_hug",
+      "character": "bunny",
+      "text": "Hug me, please!",
+      "emotion": "tender, pleading",
+      "usage": "needComfort",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_010_hug.ogg"
+    },
+    {
+      "lineId": "bunny_011_happy",
+      "character": "bunny",
+      "text": "Yay!",
+      "emotion": "delighted",
+      "usage": "celebrate",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_011_happy.ogg"
+    },
+    {
+      "lineId": "bunny_012_upset",
+      "character": "bunny",
+      "text": "Hmph!",
+      "emotion": "cute sulk",
+      "usage": "wrongItem",
+      "set": "B",
+      "file": "res://assets/audio/voice/bunny/bunny_012_upset.ogg"
+    },
+    {
+      "lineId": "aliz_011_apple",
+      "character": "aliz",
+      "text": "Let's give Bunny the apple!",
+      "emotion": "bright, guiding",
+      "usage": "taskApple",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_011_apple.ogg"
+    },
+    {
+      "lineId": "aliz_012_banana",
+      "character": "aliz",
+      "text": "Let's peel the banana!",
+      "emotion": "bright, guiding",
+      "usage": "taskBanana",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_012_banana.ogg"
+    },
+    {
+      "lineId": "aliz_013_drink",
+      "character": "aliz",
+      "text": "Time for a drink!",
+      "emotion": "bright, guiding",
+      "usage": "taskDrink",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_013_drink.ogg"
+    },
+    {
+      "lineId": "aliz_014_milk_time",
+      "character": "aliz",
+      "text": "Let's make some milk!",
+      "emotion": "bright, excited",
+      "usage": "taskPrepareMilk",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_014_milk_time.ogg"
+    },
+    {
+      "lineId": "aliz_015_bath_time",
+      "character": "aliz",
+      "text": "Let's take a bath!",
+      "emotion": "bright, guiding",
+      "usage": "taskBath",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_015_bath_time.ogg"
+    },
+    {
+      "lineId": "aliz_016_brush_teeth",
+      "character": "aliz",
+      "text": "Let's brush our teeth!",
+      "emotion": "bright, guiding",
+      "usage": "taskBrushTeeth",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_016_brush_teeth.ogg"
+    },
+    {
+      "lineId": "aliz_017_bedtime",
+      "character": "aliz",
+      "text": "Time for bed!",
+      "emotion": "soft, warm",
+      "usage": "taskBedtime",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_017_bedtime.ogg"
+    },
+    {
+      "lineId": "aliz_018_clean_up",
+      "character": "aliz",
+      "text": "Let's put the toys away!",
+      "emotion": "bright, guiding",
+      "usage": "taskTidy",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_018_clean_up.ogg"
+    },
+    {
+      "lineId": "aliz_019_cooking",
+      "character": "aliz",
+      "text": "Let's cook something yummy!",
+      "emotion": "excited",
+      "usage": "taskCooking",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_019_cooking.ogg"
+    },
+    {
+      "lineId": "aliz_020_all_done",
+      "character": "aliz",
+      "text": "All done!",
+      "emotion": "pleased",
+      "usage": "taskDone",
+      "set": "C",
+      "file": "res://assets/audio/voice/aliz/aliz_020_all_done.ogg"
+    },
+    {
+      "lineId": "aliz_021_star",
+      "character": "aliz",
+      "text": "You earned a star!",
+      "emotion": "delighted",
+      "usage": "starAwarded",
+      "set": "D",
+      "file": "res://assets/audio/voice/aliz/aliz_021_star.ogg"
+    },
+    {
+      "lineId": "aliz_022_sticker",
+      "character": "aliz",
+      "text": "A new sticker for you!",
+      "emotion": "delighted",
+      "usage": "stickerUnlocked",
+      "set": "D",
+      "file": "res://assets/audio/voice/aliz/aliz_022_sticker.ogg"
+    },
+    {
+      "lineId": "aliz_023_break",
+      "character": "aliz",
+      "text": "Let's take a little break!",
+      "emotion": "gentle, caring",
+      "usage": "breakCard",
+      "set": "D",
+      "file": "res://assets/audio/voice/aliz/aliz_023_break.ogg"
+    },
+    {
+      "lineId": "aliz_024_come_back",
+      "character": "aliz",
+      "text": "Come back soon for more Little Days!",
+      "emotion": "warm, cheerful",
+      "usage": "breakCard",
+      "set": "D",
+      "file": "res://assets/audio/voice/aliz/aliz_024_come_back.ogg"
+    }
+  ]
+}

@@ -106,15 +106,21 @@ func _test_missing_recording_falls_back_to_tts():
 	return failures
 
 
-## The owner's request document lists exactly the ids the code will look for.
+## The owner's request document is now the VOICE PACK list (36 ids, two
+## characters -- see `scripts/voice/voice_manifest.gd`); the text-keyed
+## `VoiceLines` ids are the legacy drop-in and are no longer requested. The
+## document must still name the legacy path so a file dropped there is not a
+## mystery, and must list every manifest id (`test_voice_manifest.gd` checks the
+## texts too).
 func _test_request_document_matches_the_code():
 	var failures: Array = []
 	if not FileAccess.file_exists(REQUEST_DOC):
 		return ["%s is missing" % REQUEST_DOC]
 	var text: String = FileAccess.get_file_as_string(REQUEST_DOC)
-	for line_id: String in VoiceLines.line_ids():
+	if not text.contains("res://audio/voice/<lineId>.ogg"):
+		failures.append("the request document must still name the legacy drop-in path res://audio/voice/<lineId>.ogg")
+	var manifest: RefCounted = (load("res://scripts/voice/voice_manifest.gd") as GDScript).call("load_default")
+	for line_id: String in manifest.call("line_ids"):
 		if not text.contains("`%s`" % line_id):
 			failures.append("docs/VOICE_ASSET_REQUEST.md does not list `%s`" % line_id)
-	if not text.contains("res://audio/voice/<lineId>.ogg"):
-		failures.append("the request document must name the drop-in path res://audio/voice/<lineId>.ogg")
 	return failures

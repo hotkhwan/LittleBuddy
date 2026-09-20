@@ -1,93 +1,130 @@
-# Voice asset request -- owner-recorded lines
+# Voice asset request -- Little Days voice pack V1
 
-Little Days, 2026-09-20. Agent F (audio/speech).
+Little Days, 2026-09-20. Agent V (voice pack). Supersedes the 2026-09-20 Agent F
+single-voice list: the owner decided on a **character-based recorded voice pack
+with two performers**. The 36 ids and texts below are the owner's list and are
+**authoritative** -- `game/content/voice/voice_manifest.json` mirrors them
+exactly and `test_voice_manifest.gd` fails if either drifts.
 
+## Status
 
-## What these are for
+**0 of 36 recordings exist.** Nothing here has been recorded, converted or
+dropped in. Every line currently plays through the device voice (`TtsService`),
+and the game says so honestly: `Voice.is_recorded(lineId)` is false for all 36
+and the test run prints `voice pack: 0 of 36 recordings present`.
 
-The game speaks English to the child through the device voice (compact Samantha
-on this Mac; the best en-US voice the iPad has). A recorded human voice is warmer
-and does not depend on which voices a device happens to have. This is the list
-of lines to record so they can be dropped in **without any code change**.
+## The two characters
 
-## Drop-in path
+**Aliz** -- bright, cheerful, warm, youthful English-speaking girl. She is the
+narrator and guide; her lines are the English the child is learning. Clear
+consonants, unhurried, a smile you can hear. Not a cartoon voice, not baby talk.
+No disappointment anywhere: "Let's try again!" is an invitation.
 
-    res://audio/voice/<lineId>.ogg        (game/audio/voice/<lineId>.ogg)
+**Bunny** -- soft, adorable, expressive baby. Laughs, delight, sleepy, a little
+sulky. **Never shrill.** He is the one being cared for; his lines are needs and
+reactions, so they are short and full of feeling. "Hmph!" is a toddler's cute
+sulk drawn to be funny, never real anger.
 
-* `<lineId>` is the id in the first column below, exactly (lower case, underscores).
-* `.ogg` (Vorbis, q4) preferred; `.wav` or `.mp3` also work.
-* Mono or stereo, 44.1 kHz. Peak about -3 dBFS. No leading silence; about 0.1 s of tail.
-* One file per line. A line with no file simply keeps using the device voice, so
-  a partial delivery is fine and can be topped up later.
-* `TtsService` checks `VoiceLines.stream_for(text)` before it speaks; music ducks
-  under a recording exactly as it does under the device voice.
-* The **Voice volume** slider in Grown-ups applies to recordings too.
+Laughs, chewing, drinking, sighs and sleepy sounds are **SFX**, not voice
+lines. They are not in this list and must not be delivered as `bunny_*` files.
 
-## Voice direction
+## WAV master spec (what to record)
 
-One performer, one voice, for every line: bright, kind, unhurried, addressed to a
-3-5 year old who is learning English. Not a cartoon voice, not baby talk -- clear
-consonants, natural pitch (a real child or a warm adult), a smile you can hear.
-No disappointment anywhere: "Try again!" is an invitation. Speak the single words
-("milk", "apple") slowly and completely, as a model to copy.
+* **48 kHz, 24-bit, mono WAV**, one file per line, named exactly `<lineId>.wav`.
+* Keep the masters **OUTSIDE the repo**: `~/Music/LittleDays/voice/aliz/` and
+  `~/Music/LittleDays/voice/bunny/`. `*.wav` under `game/assets/audio/voice/`
+  is git-ignored so a master can never ship by accident.
+* Peak about **-3 dBFS**, no clipping, no noise reduction artefacts.
+* **No more than 0.1 s** of silence at the head and at the tail.
+* Room-quiet, close mic, consistent distance across the whole set so the lines
+  match each other in tone.
+* Two or three takes per line are welcome; deliver the chosen take under the
+  exact filename.
 
-## The lines
+## Delivery format (what the game loads)
 
-| # | lineId | English text | Intended emotion | Target length |
-|---|--------|--------------|------------------|---------------|
-| 1 | `im_hungry_aliz` | I'm hungry, Aliz! | hungry, a little whiny, cute | ~1.6 s |
-| 2 | `go_to_bunny` | Go to Bunny. | warm, guiding | ~1.2 s |
-| 3 | `lets_make_some_milk` | Let's make some milk! | bright, excited | ~1.6 s |
-| 4 | `walk_to_the_kitchen` | Walk to the kitchen. | calm, clear | ~1.5 s |
-| 5 | `where_is_the_bottle` | Where is the bottle? | curious, playful | ~1.5 s |
-| 6 | `find_the_baby_bottle` | Find the baby bottle. | calm, clear | ~1.5 s |
-| 7 | `pour_the_water_then_mix` | Pour the water, then mix. | calm, step by step | ~2.0 s |
-| 8 | `take_it_to_bunny` | Take it to Bunny! | encouraging | ~1.3 s |
-| 9 | `time_to_drink` | Time to drink! | happy | ~1.2 s |
-| 10 | `give_bunny_the_bottle` | Give Bunny the bottle. | warm | ~1.5 s |
-| 11 | `bunny_wants_a_cuddle` | Bunny wants a cuddle. | soft, tender | ~1.6 s |
-| 12 | `give_bunny_a_big_hug` | Give Bunny a big hug. | warm, smiling | ~1.6 s |
-| 13 | `thank_you_aliz` | Thank you, Aliz! | grateful, happy | ~1.3 s |
-| 14 | `im_hungry` | I'm hungry. | hungry, cute | ~1.0 s |
-| 15 | `im_thirsty` | I'm thirsty. | thirsty, cute | ~1.0 s |
-| 16 | `give_the_baby_some_milk` | Give the baby some milk. | warm, guiding | ~1.8 s |
-| 17 | `give_the_baby_the_apple` | Give the baby the apple. | warm, guiding | ~1.8 s |
-| 18 | `give_the_baby_the_banana` | Give the baby the banana. | warm, guiding | ~1.8 s |
-| 19 | `give_me_some_water` | Give me some water. | asking, cute | ~1.5 s |
-| 20 | `can_you_say_milk` | Can you say milk? | inviting, patient | ~1.4 s |
-| 21 | `milk` | milk | clear, slow, single word | ~0.8 s |
-| 22 | `apple` | apple | clear, slow, single word | ~0.8 s |
-| 23 | `banana` | banana | clear, slow, single word | ~0.9 s |
-| 24 | `water` | water | clear, slow, single word | ~0.8 s |
-| 25 | `great` | Great! | delighted | ~0.7 s |
-| 26 | `nice` | Nice! | pleased | ~0.6 s |
-| 27 | `well_done` | Well done! | proud, warm | ~0.9 s |
-| 28 | `thank_you` | Thank you! | grateful, happy | ~0.9 s |
-| 29 | `try_again` | Try again! | kind, no disappointment | ~0.9 s |
-| 30 | `you_can_tap_it_too` | You can tap it too! | kind, helpful | ~1.4 s |
-| 31 | `lets_go` | Let's go! | bright | ~0.8 s |
-| 32 | `this_way` | This way! | guiding, cheerful | ~0.8 s |
-| 33 | `here_we_are` | Here we are! | arriving, pleased | ~1.0 s |
-| 34 | `im_listening` | I'm listening... | attentive, gentle | ~1.2 s |
-| 35 | `voice_is_not_ready_tap_it_instead` | Voice is not ready. Tap it instead! | matter-of-fact, kind | ~2.0 s |
-| 36 | `take_a_break` | Take a break? | gentle, caring | ~1.0 s |
+    res://assets/audio/voice/<character>/<lineId>.ogg
+    (game/assets/audio/voice/aliz/aliz_001_welcome.ogg, game/assets/audio/voice/bunny/bunny_003_yummy.ogg, ...)
 
-36 lines. The ids are `Localization.key_for(<English text>)`, the same keys
-the helper-language tables use (`game/content/localization/keys_en.json`), so one
-id names a line everywhere.
+OGG Vorbis, **44.1 kHz mono, about 96 kb/s**. Produced from the masters by:
 
-## Delivery checklist
+    tools/voice_convert.sh ~/Music/LittleDays/voice
 
-1. Save each file as `game/audio/voice/<lineId>.ogg`.
-2. Open the project once (or run `Godot --headless --path game --import`) so the
-   `.import` files are generated.
-3. Run the mission smoke: the prompt "I'm hungry, Aliz!" should now be the
-   recording; any line without a file is still spoken by the device voice.
-4. `tests/cases/test_tts_voice_lines.gd` keeps this table and the code in step.
+The script uses `oggenc` (vorbis-tools) or `ffmpeg`, whichever is installed
+(`afconvert` is tried last and its failure is reported), validates each
+duration (0.3 s - 6.0 s), writes the OGGs into the two drop-in folders and a
+`voice_pack_report.json` beside them. A partial delivery is fine: a line with
+no file keeps using the device voice.
 
-## Not requested (and why)
+Each drop-in folder has a README with the exact filenames.
 
-* Thai / other-language helper lines: the helper is TEXT ONLY by design. The
-  child hears English; the grown-up reads the helper.
-* Bunny's sounds and reactions: sound effects, not speech, and already covered by
-  `game/audio/sfx/`.
+## Set A -- Aliz, general
+
+| # | lineId | English text | Emotion / direction | Used when |
+|---|--------|--------------|---------------------|-----------|
+| 1 | `aliz_001_welcome` | Welcome to Little Days! | cheerful | menuReady |
+| 2 | `aliz_002_lets_play` | Let's play together! | excited | menuReady |
+| 3 | `aliz_003_come_on` | Come on, Bunny! | inviting | callBunny |
+| 4 | `aliz_004_lets_go_home` | Let's go home! | bright | startPressed |
+| 5 | `aliz_005_what_shall_we_do` | What shall we do today? | curious | freePlayStart |
+| 6 | `aliz_006_good_job` | Great job! | praise | encouragementGreat |
+| 7 | `aliz_007_well_done` | You did it! | delighted | encouragementWellDone |
+| 8 | `aliz_008_try_again` | Let's try again! | encouraging | encouragementTryAgain |
+| 9 | `aliz_009_its_okay` | It's okay. We can do it! | warm | secondMiss |
+| 10 | `aliz_010_follow_me` | Follow me! | inviting | followMe |
+
+## Set B -- Bunny
+
+| # | lineId | English text | Emotion / direction | Used when |
+|---|--------|--------------|---------------------|-----------|
+| 1 | `bunny_001_hungry` | I'm hungry, Aliz! | hungry, pleading | needHungry |
+| 2 | `bunny_002_milk` | Milk, please! | asking, cute | milkPrompt |
+| 3 | `bunny_003_yummy` | Yummy! | delighted | foodBite |
+| 4 | `bunny_004_more` | More, please! | eager | mealHalfway |
+| 5 | `bunny_005_thank_you` | Thank you, Aliz! | grateful, happy | careCompleted |
+| 6 | `bunny_006_sleepy` | I'm sleepy. | sleepy, soft | needSleepy |
+| 7 | `bunny_007_good_night` | Good night! | sleepy, content | bedtimePlaced |
+| 8 | `bunny_008_bath` | Bath time! | excited | needBath |
+| 9 | `bunny_009_play` | Play with me! | playful | needWantsToPlay |
+| 10 | `bunny_010_hug` | Hug me, please! | tender, pleading | needComfort |
+| 11 | `bunny_011_happy` | Yay! | delighted | celebrate |
+| 12 | `bunny_012_upset` | Hmph! | cute sulk | wrongItem |
+
+## Set C -- Aliz, learning prompts
+
+| # | lineId | English text | Emotion / direction | Used when |
+|---|--------|--------------|---------------------|-----------|
+| 1 | `aliz_011_apple` | Let's give Bunny the apple! | bright, guiding | taskApple |
+| 2 | `aliz_012_banana` | Let's peel the banana! | bright, guiding | taskBanana |
+| 3 | `aliz_013_drink` | Time for a drink! | bright, guiding | taskDrink |
+| 4 | `aliz_014_milk_time` | Let's make some milk! | bright, excited | taskPrepareMilk |
+| 5 | `aliz_015_bath_time` | Let's take a bath! | bright, guiding | taskBath |
+| 6 | `aliz_016_brush_teeth` | Let's brush our teeth! | bright, guiding | taskBrushTeeth |
+| 7 | `aliz_017_bedtime` | Time for bed! | soft, warm | taskBedtime |
+| 8 | `aliz_018_clean_up` | Let's put the toys away! | bright, guiding | taskTidy |
+| 9 | `aliz_019_cooking` | Let's cook something yummy! | excited | taskCooking |
+| 10 | `aliz_020_all_done` | All done! | pleased | taskDone |
+
+## Set D -- Aliz, rewards and break
+
+| # | lineId | English text | Emotion / direction | Used when |
+|---|--------|--------------|---------------------|-----------|
+| 1 | `aliz_021_star` | You earned a star! | delighted | starAwarded |
+| 2 | `aliz_022_sticker` | A new sticker for you! | delighted | stickerUnlocked |
+| 3 | `aliz_023_break` | Let's take a little break! | gentle, caring | breakCard |
+| 4 | `aliz_024_come_back` | Come back soon for more Little Days! | warm, cheerful | breakCard |
+
+## Where each line plays
+
+See the cue table in `docs/VOICE_PACK_V1.md` (and `game/scripts/voice/voice_cues.gd`):
+menu ready plays 1 then 2; Start / Free Play plays 4; the highchair asks with
+11-13, cheers with Bunny's 3/4/5 and sulks with 12 on a wrong item (with the
+`hmph` face); stars and stickers play 21/22 on the summary; the break card
+plays 23 then 24.
+
+## Legacy drop-in (still honoured, not requested)
+
+The earlier text-keyed drop-in `res://audio/voice/<lineId>.ogg` read by
+`scripts/speech/voice_lines.gd` still works for the device-voice path and is
+kept so nothing regresses, but **no new recordings should go there**. New
+recordings go to the per-character folders above.

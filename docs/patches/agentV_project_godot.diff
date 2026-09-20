@@ -1,0 +1,24 @@
+# Agent V (Voice Pack V1) -- for the lead to apply to game/project.godot.
+#
+# Registers the voice pack director as the `Voice` autoload. Until this is
+# applied every caller reaches it through `/root/Voice` with a null guard and
+# simply keeps using TtsService, so the game is complete either way.
+#
+# Order matters only in that Voice must come AFTER SaveService and TtsService
+# (it reads the profile's volume keys in _ready() and hooks TtsService's
+# signals). No audio bus layout file is needed: the director creates the
+# "Voice" bus at runtime (sends to Master) when it is absent.
+#
+# Also add "Voice" to PROJECT_AUTOLOADS in game/tests/run_tests.gd -- already
+# done on wt3/voice, so the runner detaches it like the other autoloads.
+
+--- a/game/project.godot
++++ b/game/project.godot
+@@ -24,6 +24,7 @@
+ SaveService="*res://scripts/save/save_service.gd"
+ SpeechService="*res://scripts/speech/speech_service.gd"
+ TtsService="*res://scripts/speech/tts_service.gd"
++Voice="*res://scripts/voice/voice_director.gd"
+ Sfx="*res://scripts/audio/sfx_player.gd"
+ Audio="*res://scripts/audio/audio_director.gd"
+ 

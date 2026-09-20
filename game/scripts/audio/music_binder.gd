@@ -92,6 +92,10 @@ const SUMMARY_SCRIPT: String = "res://scenes/progression/session_summary.gd"
 
 const TTS_SERVICE_PATH: String = "/root/TtsService"
 const SPEECH_SERVICE_PATH: String = "/root/SpeechService"
+## The recorded voice pack (`scripts/voice/voice_director.gd`). A recording is
+## not a `TtsService` utterance, so ducking must ask it too; a build without the
+## autoload simply never ducks for it.
+const VOICE_DIRECTOR_PATH: String = "/root/Voice"
 
 ## Kept as a constant so the intent survives in the file rather than in a commit
 ## message. See the class docs.
@@ -111,6 +115,7 @@ var _mission_running: bool = false
 var _bound: Dictionary = {}
 var _tts: Node = null
 var _speech: Node = null
+var _voice: Node = null
 
 
 func _ready() -> void:
@@ -279,11 +284,15 @@ func _request(state: String, source: String) -> void:
 # -----------------------------------------------------------------------------
 
 
-## True when the game is speaking English or listening for it, so music should be
-## out of the way. Polled; see the class docs on why this is not signal-driven.
+## True when the game is speaking English (device voice OR a recorded line) or
+## listening for it, so music should be out of the way. Polled; see the class
+## docs on why this is not signal-driven.
 func should_duck() -> bool:
 	var tts: Node = _service(TTS_SERVICE_PATH, "_tts")
 	if tts != null and tts.has_method("is_speaking") and bool(tts.call("is_speaking")):
+		return true
+	var voice: Node = _service(VOICE_DIRECTOR_PATH, "_voice")
+	if voice != null and voice.has_method("is_speaking") and bool(voice.call("is_speaking")):
 		return true
 	var speech: Node = _service(SPEECH_SERVICE_PATH, "_speech")
 	if speech != null and speech.has_method("is_listening") and bool(speech.call("is_listening")):
