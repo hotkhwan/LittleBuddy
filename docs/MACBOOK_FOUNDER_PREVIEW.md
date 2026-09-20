@@ -184,13 +184,18 @@ Aliz was not regenerated: the current Aliz is the approved fallback.
 | | |
 |---|---|
 | Base commit verified | `3999ff1` |
-| This report's commit | recorded in §12 after the push |
+| This report's commit | `6836f36` |
 | Pushed to | `origin/feature/overnight-production-candidate`, fast-forward, no force |
 | Pre-push checks | tracked tree grepped for API keys, private keys and keystore/profile files: none; `build/` and plugin binaries confirmed gitignored; suite 122/122 |
 
 ## 12. Commit SHAs
 
-Filled in below once pushed.
+| | |
+|---|---|
+| Base (from Mac Mini) | `3999ff1` |
+| Report + iPad card + MacBook render | `6836f36` |
+| This SHA line | the commit that follows `6836f36`; `git log -2 --oneline` shows both |
+| Remote | `origin/feature/overnight-production-candidate` at the same SHA as local HEAD after `git push` (fast-forward, verified with `git status -sb`) |
 
 ## 13. Remaining blockers, in order
 
