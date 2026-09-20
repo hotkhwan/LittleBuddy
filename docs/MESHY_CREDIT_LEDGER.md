@@ -225,3 +225,23 @@ To unblock: `export MESHY_API_KEY=...` then `tools/meshy_aliz_apose.sh preview`.
 Expected spend for the full experiment, to be confirmed against the live price
 list before committing: one image-to-3D preview, then rigging only if the
 preview passes a look-at-it review. Well inside 100.
+
+## Character expression pass — Agent E (2026-09-20, evening)
+
+| | |
+|---|---|
+| Balance before | **3184** (`GET /openapi/v1/balance`, HTTP 200, read at the start of the pass) |
+| Balance after | **3184** (same call, end of the pass) |
+| Paid calls | **none** |
+| Spent | **0** |
+
+Nothing blocked on a regeneration, so the protocol never got past step (a).
+Everything in the pass was local and is documented in `docs/ALIZ_FACE_PASS.md`
+and `docs/BUNNY_EMOTION_PASS.md`: Aliz's warmer face, her four moods and the
+blink are texture patches on the shipping 512² atlas (`tools/aliz_face_pass.py`);
+her idle and hair sway are an authored clip and a `SkeletonModifier3D` on the
+skeleton she already has; Bunny's three new moods, his blink and his stamp are
+repaints and keyframes on the shipping rig. The Bunny neck seam that was to be
+inspected turned out not to exist on the mesh (0 boundary edges, 0 split
+normals, no dark texels on the front of the neck band), so there was nothing to
+regenerate. Standing ceiling of 100 credits: untouched.

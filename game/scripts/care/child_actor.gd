@@ -21,6 +21,28 @@ extends Node3D
 ## model's real `AnimationPlayer`. See the "Bunny is alive" section below, which
 ## is also where the one piece of procedural motion in the pass is named as one.
 ##
+## ## Urgency, the face and the blink (added 2026-09-20)
+##
+## A need that goes unanswered for `child_life.gd::IGNORED_AFTER_SEC` while
+## Bunny is standing about ESCALATES, all three channels together: the bubble
+## switches to the need's louder line (`child_needs.gd::LINES_URGENT`), the
+## face goes to `hmph` (brows in, puffed cheeks), and every `STAMP_EVERY_SEC`
+## the body plays the one-shot `stamp` clip and returns to fussing. The clock
+## is `_ignored_for`, kept here because only this node knows the activity, the
+## carry and the happy window; the decisions are `child_life.gd`'s. It resets
+## the moment the need changes, the child is picked up, cared for or fed. It is
+## a request getting louder, not a timer running out: nothing is lost.
+##
+## The blink is a `set_eyes_closed()` on the wrapper for `BLINK_CLOSED_SEC`
+## every `BLINK_GAP_MIN_SEC`..`BLINK_GAP_MAX_SEC`, clocked in `live()` (this
+## node already runs a frame loop; the wrapper must not). Skipped while the
+## mood itself has the eyes shut.
+##
+## Public, all safe without the rigged model:
+##   `get_ignored_for() -> float`, `is_urgent() -> bool`
+##   `set_blinking(enabled)`, `is_blinking_enabled() -> bool`, `blink_now()`
+##   `get_line()` now returns the urgent line while `is_urgent()`.
+##
 ## ## The bubble is the whole point
 ##
 ## A child whose need is invisible is furniture. The floating line is how a
@@ -189,6 +211,26 @@ var _watching: bool = false
 var _caregiver: Node3D = null
 var _looked_for_caregiver: bool = false
 
+## -- Urgency and the blink ------------------------------------------------------
+## Seconds the current uncomfortable need has waited while nothing was being
+## done about it; the escalation clock. See the class doc.
+var _ignored_for: float = 0.0
+## The `_ignored_for` value the last stamp played at; negative for none yet.
+var _last_stamp_at: float = -1.0
+## Set for exactly one `_apply_life()` when a stamp is due.
+var _stamp_pending: bool = false
+var _urgent: bool = false
+## Seconds until the next blink begins, then seconds until it ends.
+var _blink_in: float = 4.0
+var _blink_left: float = 0.0
+var _blink_enabled: bool = true
+var _blink_rng := RandomNumberGenerator.new()
+
+## The blink: shut for this long, every so often, randomised.
+const BLINK_CLOSED_SEC: float = 0.12
+const BLINK_GAP_MIN_SEC: float = 3.0
+const BLINK_GAP_MAX_SEC: float = 6.0
+
 
 func _ready() -> void:
 	# DEFERRED, and the deferral is a shipping-path fix rather than a style choice.
@@ -233,6 +275,8 @@ func build() -> void:
 		return
 	_built = true
 	_state = StatsScript.new()
+	_blink_rng.randomize()
+	_blink_in = _blink_rng.randf_range(BLINK_GAP_MIN_SEC, BLINK_GAP_MAX_SEC)
 	# The affordance contract: anything in this group answers `get_affordance()`
 	# and `perform_affordance()`, and the HUD draws the verb it returns.
 	add_to_group(AFFORDABLE_GROUP)
@@ -490,6 +534,8 @@ func live(delta: float) -> void:
 		_happy_left = maxf(_happy_left - delta, 0.0)
 		if _happy_left == 0.0:
 			_apply_life()
+	_tick_ignored(delta)
+	_tick_blink(delta)
 	_attend_to_caregiver(delta)
 	# The bubble dodges the CAREGIVER, and she walks. Re-placing it only when the
 	# child refreshed -- which is what the first version did -- meant the side was
@@ -502,6 +548,82 @@ func live(delta: float) -> void:
 	# next spoonful up, or drops back to the idle, without a signal round trip.
 	if _player != null and not _player.is_playing():
 		_apply_life()
+
+
+## -- Being ignored ------------------------------------------------------------------
+
+## Advances the escalation clock while a need is being left alone; resets it
+## the moment anything is being done about the child.
+func _tick_ignored(delta: float) -> void:
+	var waiting: bool = _carrier == null and _activity == Present.ACTIVITY_IDLE \
+			and _happy_left <= 0.0 and Life.is_uncomfortable_need(_need)
+	if not waiting:
+		if _ignored_for > 0.0 or _urgent:
+			_reset_ignored()
+			_refresh()
+		return
+	_ignored_for += delta
+	if not _urgent and Life.is_ignored(_ignored_for):
+		# Escalate: the line, the face and the body, in one refresh.
+		_urgent = true
+		_refresh()
+	if not _walking and _player != null and Life.stamp_due(_ignored_for, _last_stamp_at):
+		_last_stamp_at = _ignored_for
+		_stamp_pending = true
+		_apply_life()
+
+
+func _reset_ignored() -> void:
+	_ignored_for = 0.0
+	_last_stamp_at = -1.0
+	_stamp_pending = false
+	_urgent = false
+
+
+## -- The blink ------------------------------------------------------------------------
+
+func _tick_blink(delta: float) -> void:
+	if not _blink_enabled or _wrapper == null or not _wrapper.has_method("set_eyes_closed"):
+		return
+	if _blink_left > 0.0:
+		_blink_left -= delta
+		if _blink_left <= 0.0:
+			_blink_left = 0.0
+			_wrapper.call("set_eyes_closed", false)
+			_blink_in = _blink_rng.randf_range(BLINK_GAP_MIN_SEC, BLINK_GAP_MAX_SEC)
+		return
+	_blink_in -= delta
+	if _blink_in > 0.0:
+		return
+	_blink_in = _blink_rng.randf_range(BLINK_GAP_MIN_SEC, BLINK_GAP_MAX_SEC)
+	if bool(_wrapper.call("are_eyes_closed")):
+		return   # the mood already has them shut; nothing to blink
+	if bool(_wrapper.call("set_eyes_closed", true)):
+		_blink_left = BLINK_CLOSED_SEC
+
+
+## Switches the blink on or off. Off also reopens the eyes if one was mid-way.
+func set_blinking(enabled: bool) -> void:
+	build()
+	_blink_enabled = enabled
+	if not enabled and _blink_left > 0.0:
+		_blink_left = 0.0
+		if _wrapper != null and _wrapper.has_method("set_eyes_closed"):
+			_wrapper.call("set_eyes_closed", false)
+
+
+func is_blinking_enabled() -> bool:
+	return _blink_enabled
+
+
+## Shuts the eyes now for one blink's length (the next `live()` reopens them).
+## For tests and for the shot harness.
+func blink_now() -> void:
+	build()
+	if _wrapper == null or not _wrapper.has_method("set_eyes_closed"):
+		return
+	if bool(_wrapper.call("set_eyes_closed", true)):
+		_blink_left = BLINK_CLOSED_SEC
 
 
 ## -- Where the need bubble goes --------------------------------------------------
@@ -940,7 +1062,8 @@ func _apply_life() -> void:
 		return
 	var stats: Dictionary = _state.call("describe")
 	var wanted: String = Life.clip_for(
-			stats, _activity, _walking, _happy_left, _activity_detail)
+			stats, _activity, _walking, _happy_left, _activity_detail, _stamp_pending)
+	_stamp_pending = false
 	# **The face first, and outside every early return below.** It is a texture
 	# swap, not a clip, so it is available on a build whose model has no
 	# `AnimationPlayer` at all -- and a Bunny who cannot move but can at least
@@ -954,7 +1077,7 @@ func _apply_life() -> void:
 		# Honest degradation: a build whose model has no such clip plays nothing
 		# rather than substituting a clip that means something else.
 		return
-	_player.speed_scale = Life.pace_for(wanted, Life.distress(stats))
+	_player.speed_scale = Life.pace_for(wanted, Life.distress(stats), _need)
 	if _player.current_animation == wanted and _player.is_playing():
 		return
 	# Cross-faded rather than cut. Every one of these clips rests every bone it
@@ -985,7 +1108,7 @@ const LIFE_BLEND_SEC: float = 0.22
 func _apply_face(clip: String) -> void:
 	if _wrapper == null or not _wrapper.has_method("set_face_mood"):
 		return
-	_wrapper.call("set_face_mood", Life.face_for(clip))
+	_wrapper.call("set_face_mood", Life.face_for(clip, _need, _ignored_for))
 
 
 ## The clip Bunny's body is playing, for tests and for the production report.
@@ -1171,7 +1294,18 @@ func get_activity() -> String:
 
 func get_line() -> String:
 	build()
-	return Needs.line_for(_need)
+	return Needs.line_for(_need, _urgent)
+
+
+## Seconds the current need has waited unanswered; 0 while content or cared for.
+func get_ignored_for() -> float:
+	return _ignored_for
+
+
+## True once the wait has passed `child_life.gd::IGNORED_AFTER_SEC`: the bubble
+## is on its louder line and the face is the `hmph`.
+func is_urgent() -> bool:
+	return _urgent
 
 
 ## Sets what the caregiver is doing with the child. An explicit activity wins
@@ -1216,6 +1350,8 @@ func satisfy(need: String, amount: float = 60.0) -> void:
 			_state.call("adjust", "happiness", amount)
 	# Being cared for is pleasant whatever the need was.
 	_state.call("adjust", "happiness", 8.0)
+	# ...and the wait is over, whatever it had grown into.
+	_reset_ignored()
 	# ...and it SHOWS, for a few seconds. Without this the only thing that happens
 	# when a child finishes a whole mission is that a bubble goes away, which is
 	# the quietest possible answer to "you looked after me".
@@ -1239,11 +1375,14 @@ func _refresh() -> void:
 	if _state == null or _wrapper == null:
 		return
 	var described: Dictionary = Present.describe(
-		_state.call("describe"), _activity)
+		_state.call("describe"), _activity, _urgent)
 
 	var new_need: String = String(described["need"])
 	if new_need != _need:
 		_need = new_need
+		# A new need starts a new wait; the escalation belongs to the old one.
+		_reset_ignored()
+		described = Present.describe(_state.call("describe"), _activity, false)
 		need_changed.emit(_need)
 
 	var pose: String = String(described["pose"])

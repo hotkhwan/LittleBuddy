@@ -24,12 +24,26 @@ extends RefCounted
 ## described that way in `docs/BUNNY_EXPRESSION_PASS.md` rather than as
 ## "expression animation".
 ##
-## | mood        | eyes                        | mouth                  |
-## |-------------|-----------------------------|------------------------|
-## | `content`   | the shipped face, untouched | untouched              |
-## | `unhappy`   | upper lids drawn down       | a small downturned line|
-## | `delighted` | closed, arched UP           | open, a wide smile     |
-## | `asleep`    | closed, curved DOWN         | untouched              |
+## | mood        | eyes                        | brows            | mouth                  | cheeks |
+## |-------------|-----------------------------|------------------|------------------------|--------|
+## | `content`   | the shipped face, untouched | untouched        | untouched              | --     |
+## | `unhappy`   | redrawn small and low       | untouched        | a small downturned line| --     |
+## | `delighted` | closed, arched UP           | untouched        | open, a wide smile     | --     |
+## | `asleep`    | closed, curved DOWN         | untouched        | untouched              | --     |
+## | `hungry`    | untouched (big, asking)     | inner ends UP    | a small pout           | --     |
+## | `sleepy`    | half-lidded                 | untouched        | untouched              | --     |
+## | `hmph`      | untouched                   | inner ends DOWN  | a short flat line      | puffed |
+##
+## Plus a BLINK: `paint(base, mood, true)` paints any of the above and then
+## shuts the eyes with a near-straight lid, so a blink keeps the mood's mouth
+## and brows and only the eyes change for the 120 ms it lasts. `delighted` and
+## `asleep` already have the eyes shut and are returned as they are.
+##
+## `hmph` is the cute-frustrated face for a need that has gone unanswered for a
+## while (`child_life.gd::IGNORED_AFTER_SEC`): brows in, a tiny flat mouth and
+## puffed cheeks. It is a toddler's "hmph", drawn to be funny; there is no
+## version of it with teeth, tears or a scowl, and the moment the need is met it
+## goes -- see `test_bunny_face.gd`'s scan for the words this file may not use.
 ##
 ## ## Why it is painted rather than shipped as four PNGs
 ##
@@ -92,6 +106,31 @@ const MOUTH: Array[float] = [298.0 / 1024.0, 663.0 / 1024.0, 356.0 / 1024.0, 696
 ## Every eye box, in one place, so a mood cannot repaint two of the three.
 const EYES: Array = [EYE_MAIN, EYE_FAR, EYE_LEFT_B]
 
+## The brows, one per eye box, measured the same way (a brown stroke sits above
+## each eye at these texels; the far eye's is cut by its chart's edge). The
+## third value of each entry below is which END is the inner one (towards the
+## nose) in that chart: -1 = the left end, +1 = the right end. Read off the
+## crops: in the main chart the far eye lies to the LEFT of the main eye, so
+## the main eye's inner end is its left; in the second chart the nose bump is
+## to the right of the eye.
+const BROW_MAIN: Array[float] = [360.0 / 1024.0, 537.0 / 1024.0, 414.0 / 1024.0, 560.0 / 1024.0]
+const BROW_FAR: Array[float] = [252.0 / 1024.0, 525.0 / 1024.0, 277.0 / 1024.0, 563.0 / 1024.0]
+const BROW_LEFT_B: Array[float] = [447.0 / 1024.0, 851.0 / 1024.0, 501.0 / 1024.0, 882.0 / 1024.0]
+const BROWS: Array = [BROW_MAIN, BROW_FAR, BROW_LEFT_B]
+const BROW_INNER: Array = [-1, 1, 1]
+
+## The cheeks, where the blush already is: below and outside each eye, clear of
+## the mouth box and of every eye box.
+const CHEEK_MAIN: Array[float] = [386.0 / 1024.0, 640.0 / 1024.0, 458.0 / 1024.0, 692.0 / 1024.0]
+const CHEEK_FAR: Array[float] = [258.0 / 1024.0, 640.0 / 1024.0, 294.0 / 1024.0, 692.0 / 1024.0]
+const CHEEK_B: Array[float] = [404.0 / 1024.0, 956.0 / 1024.0, 470.0 / 1024.0, 1008.0 / 1024.0]
+const CHEEKS: Array = [CHEEK_MAIN, CHEEK_FAR, CHEEK_B]
+
+## Every box any mood may write to. `patch_rect()` spans them all and
+## `test_bunny_face.gd` checks nothing lands outside them.
+const FEATURE_BOXES: Array = [EYE_MAIN, EYE_FAR, EYE_LEFT_B, MOUTH,
+	BROW_MAIN, BROW_FAR, BROW_LEFT_B, CHEEK_MAIN, CHEEK_FAR, CHEEK_B]
+
 ## Points the guard reads, as fractions. Inside the main eye, just above it, and
 ## on the lower lip.
 const PROBE_IRIS := Vector2(394.0 / 1024.0, 601.0 / 1024.0)
@@ -104,13 +143,28 @@ const PROBE_LIP := Vector2(326.0 / 1024.0, 681.0 / 1024.0)
 ## The lash colour is lifted from the shipped upper lash line rather than being a
 ## constant, so a re-skin in another palette repaints in its own ink.
 const PROBE_LASH := Vector2(400.0 / 1024.0, 576.0 / 1024.0)
+## The brow's own brown, so the redrawn brows are the exported brows' colour.
+const PROBE_BROW := Vector2(390.0 / 1024.0, 550.0 / 1024.0)
 
 const MOOD_CONTENT: String = "content"
 const MOOD_UNHAPPY: String = "unhappy"
 const MOOD_DELIGHTED: String = "delighted"
 const MOOD_ASLEEP: String = "asleep"
+const MOOD_HUNGRY: String = "hungry"
+const MOOD_SLEEPY: String = "sleepy"
+const MOOD_HMPH: String = "hmph"
 
-const MOODS: Array[String] = [MOOD_CONTENT, MOOD_UNHAPPY, MOOD_DELIGHTED, MOOD_ASLEEP]
+const MOODS: Array[String] = [
+	MOOD_CONTENT, MOOD_UNHAPPY, MOOD_DELIGHTED, MOOD_ASLEEP,
+	MOOD_HUNGRY, MOOD_SLEEPY, MOOD_HMPH,
+]
+
+## Moods whose eyes are already shut; a blink on top of them is a no-op.
+const EYES_SHUT_MOODS: Array[String] = [MOOD_DELIGHTED, MOOD_ASLEEP]
+
+## The puffed-cheek rose. Deeper than the shipped blush (about (250, 170, 165))
+## so the puff reads at 12 px, never red.
+const PUFF := Color(0.97, 0.56, 0.58, 1.0)
 
 ## How far outside the features the patch reaches. `_skin_fill()` samples 5 px
 ## above, 5 below and 3 to either side of every box it repaints, so the patch has
@@ -151,7 +205,7 @@ static func patch_rect(base: Image) -> Rect2i:
 	var y0: int = 1 << 30
 	var x1: int = 0
 	var y1: int = 0
-	for box: Array in [EYE_MAIN, EYE_FAR, EYE_LEFT_B, MOUTH]:
+	for box: Array in FEATURE_BOXES:
 		var pixels: Array = _box(box, size)
 		x0 = mini(x0, int(pixels[0]))
 		y0 = mini(y0, int(pixels[1]))
@@ -170,7 +224,7 @@ static func patch_rect(base: Image) -> Rect2i:
 ##
 ## `MOOD_CONTENT` returns the untouched region, so the caller has one code path
 ## for going back to the resting face as well as for leaving it.
-static func paint(base: Image, mood: String) -> Image:
+static func paint(base: Image, mood: String, closed_eyes: bool = false) -> Image:
 	if not can_paint(base):
 		return null
 	var rect: Rect2i = patch_rect(base)
@@ -179,7 +233,7 @@ static func paint(base: Image, mood: String) -> Image:
 	# megabyte per mood for nothing.
 	var patch: Image = Image.create_empty(rect.size.x, rect.size.y, false, base.get_format())
 	patch.blit_rect(base, rect, Vector2i.ZERO)
-	if mood == MOOD_CONTENT:
+	if mood == MOOD_CONTENT and not closed_eyes:
 		return patch
 
 	var size: Vector2i = base.get_size()
@@ -187,11 +241,35 @@ static func paint(base: Image, mood: String) -> Image:
 	var eyes: Array = []
 	for box: Array in EYES:
 		eyes.append(_shift(_box(box, size), origin))
+	var brows: Array = []
+	for box: Array in BROWS:
+		brows.append(_shift(_box(box, size), origin))
+	var cheeks: Array = []
+	for box: Array in CHEEKS:
+		cheeks.append(_shift(_box(box, size), origin))
 	var mouth: Array = _shift(_box(MOUTH, size), origin)
 	var lash: Color = _sample(base, PROBE_LASH)
 	var lip: Color = _sample(base, PROBE_LIP)
+	var brow_ink: Color = _sample(base, PROBE_BROW)
 
 	match mood:
+		MOOD_HUNGRY:
+			# Asking, not complaining: the big eyes stay, the brows lift at the
+			# inner ends (pleading), and the mouth closes to a small pout.
+			_brows(patch, brows, 0.45, brow_ink)
+			_skin_fill(patch, mouth)
+			_pout(patch, mouth, lip)
+		MOOD_SLEEPY:
+			# Half-lidded: the top half of each eye filled with skin down to a
+			# heavy lid, the lower half still looking at you.
+			_half_lids(patch, eyes, lash)
+		MOOD_HMPH:
+			# The toddler "hmph": brows down at the inner ends, a short flat
+			# mouth, and cheeks puffed out. Funny, never fierce.
+			_brows(patch, brows, -0.45, brow_ink)
+			_skin_fill(patch, mouth)
+			_flat_mouth(patch, mouth, lip)
+			_puff_cheeks(patch, cheeks)
 		MOOD_ASLEEP:
 			# Eyes closed, the curve bowing DOWN in the middle -- lashes resting.
 			# The mouth is left exactly as exported: the shipped face already has
@@ -214,6 +292,10 @@ static func paint(base: Image, mood: String) -> Image:
 			_sad_eyes(patch, eyes, _sample(base, PROBE_IRIS), lash)
 			_skin_fill(patch, mouth)
 			_downturned_mouth(patch, mouth, lip)
+	if closed_eyes and not EYES_SHUT_MOODS.has(mood):
+		# The blink: a near-straight relaxed lid, thinner than sleep's, over
+		# whatever mood is showing. Only the eyes change.
+		_close_eyes(patch, eyes, -3.0, 6.5, lash)
 	return patch
 
 
@@ -320,6 +402,115 @@ static func _ellipse(patch: Image, cx: float, cy: float, rx: float, ry: float,
 			var dy: float = (float(y) - cy) / maxf(ry, 0.5)
 			var distance: float = sqrt(dx * dx + dy * dy)
 			_blend(patch, x, y, ink, clampf((1.0 - distance) * edge + 0.5, 0.0, 1.0))
+
+
+## **Brows redrawn at a slant.** Each brow box is erased to skin and one soft
+## stroke is drawn across it; `inner_lift` is how far the INNER end (towards the
+## nose, per `BROW_INNER`) sits above the outer end, as a fraction of the box
+## height. Positive lifts the inner end -- pleading, asking; negative drops it
+## -- the "hmph". The same brown as the exported brows.
+static func _brows(patch: Image, brows: Array, inner_lift: float, ink: Color) -> void:
+	for box: Array in brows:
+		_skin_fill(patch, box)
+	for index: int in range(brows.size()):
+		var box: Array = brows[index]
+		var width: float = float(box[2] - box[0])
+		var height: float = float(box[3] - box[1])
+		var inner: int = int(BROW_INNER[index])
+		var cy: float = float(box[1]) + height * 0.5
+		var rise: float = inner_lift * height
+		var thickness: float = height * 0.34
+		# The round caps must stay inside the box (the far brow's box is narrow),
+		# so the ends are inset by the cap radius, never less than a tenth.
+		var inset: float = maxf(width * 0.10, thickness * 0.5 + 1.5)
+		var x_inner: float = (float(box[0]) if inner < 0 else float(box[2])) - inner * inset
+		var x_outer: float = (float(box[2]) if inner < 0 else float(box[0])) + inner * inset
+		_line(patch, x_inner, cy - rise * 0.5, x_outer, cy + rise * 0.5, thickness, ink)
+
+
+## A small pout: closed lips pushed forward, drawn as a short plump oval in the
+## lip's own colour with a darker seam through it. Deliberately SMALL -- the
+## shipped smile is 58 px wide, the pout is about 20 -- because "mouth got
+## small" is what a pout is at 12 px.
+static func _pout(patch: Image, box: Array, lip: Color) -> void:
+	var cx: float = (box[0] + box[2]) * 0.5
+	var cy: float = float(box[1]) + (box[3] - box[1]) * 0.42
+	var rx: float = (box[2] - box[0]) * 0.17
+	var ry: float = (box[3] - box[1]) * 0.30
+	var plump := Color(lip.r * 0.92, lip.g * 0.82, lip.b * 0.84, 1.0)
+	var seam := Color(lip.r * 0.70, lip.g * 0.62, lip.b * 0.64, 1.0)
+	_ellipse(patch, cx, cy, rx, ry, plump)
+	_stroke(patch, cx, cy + ry * 0.15, rx * 0.85, 1.5, 2.5, seam, 0.3)
+	# One catchlight on the top lip so it reads as a shape, not a stain.
+	_ellipse(patch, cx - rx * 0.3, cy - ry * 0.45, rx * 0.28, ry * 0.22,
+		Color(1.0, 0.93, 0.92, 1.0))
+
+
+## The "hmph" mouth: short, flat, a touch downturned, in a darker lip.
+static func _flat_mouth(patch: Image, box: Array, lip: Color) -> void:
+	_stroke(patch,
+		(box[0] + box[2]) * 0.5, float(box[1]) + (box[3] - box[1]) * 0.42,
+		(box[2] - box[0]) * 0.22, 2.0, 5.5,
+		Color(lip.r * 0.74, lip.g * 0.66, lip.b * 0.68, 1.0), 0.35)
+
+
+## Puffed cheeks: a soft, deeper rose over each cheek box, strongest at the
+## middle and gone at the edge, so the puff reads as a rounder cheek rather
+## than as a spot.
+static func _puff_cheeks(patch: Image, cheeks: Array) -> void:
+	for box: Array in cheeks:
+		var cx: float = (box[0] + box[2]) * 0.5
+		var cy: float = (box[1] + box[3]) * 0.5
+		var rx: float = (box[2] - box[0]) * 0.46
+		var ry: float = (box[3] - box[1]) * 0.44
+		for y: int in range(int(box[1]), int(box[3]) + 1):
+			for x: int in range(int(box[0]), int(box[2]) + 1):
+				var dx: float = (float(x) - cx) / rx
+				var dy: float = (float(y) - cy) / ry
+				var e: float = dx * dx + dy * dy
+				if e >= 1.0:
+					continue
+				var here: Color = patch.get_pixel(x, y)
+				if not _is_skin(here):
+					continue
+				var t: float = 1.0 - e
+				_blend(patch, x, y, PUFF, 0.55 * t * t * (3.0 - 2.0 * t))
+
+
+## Half-lidded eyes: the upper part of each eye is filled with skin down to a
+## lid that bows lower in the middle, and a lash line follows the lid. The
+## lower part of the exported eye stays visible, so he is drowsy, not asleep.
+static func _half_lids(patch: Image, eyes: Array, ink: Color) -> void:
+	for box: Array in eyes:
+		var height: float = float(box[3] - box[1])
+		var lid_y: float = float(box[1]) + height * 0.50
+		var bow: float = -height * 0.10
+		_skin_fill(patch, box, [lid_y, bow])
+	for box: Array in eyes:
+		var width: float = float(box[2] - box[0])
+		var height: float = float(box[3] - box[1])
+		_stroke(patch, (box[0] + box[2]) * 0.5, float(box[1]) + height * 0.50,
+			width * 0.50, -height * 0.10, height * 0.11, ink, 0.3)
+
+
+## A soft round-ended straight stroke between two points.
+static func _line(patch: Image, x0: float, y0: float, x1: float, y1: float,
+		thickness: float, ink: Color) -> void:
+	var half: float = thickness * 0.5
+	var min_x: int = int(minf(x0, x1) - half) - 1
+	var max_x: int = int(maxf(x0, x1) + half) + 1
+	var min_y: int = int(minf(y0, y1) - half) - 1
+	var max_y: int = int(maxf(y0, y1) + half) + 1
+	var vx: float = x1 - x0
+	var vy: float = y1 - y0
+	var len2: float = maxf(vx * vx + vy * vy, 0.0001)
+	for y: int in range(min_y, max_y + 1):
+		for x: int in range(min_x, max_x + 1):
+			var t: float = clampf(((float(x) - x0) * vx + (float(y) - y0) * vy) / len2, 0.0, 1.0)
+			var d: float = Vector2(float(x) - (x0 + t * vx), float(y) - (y0 + t * vy)).length()
+			# Thinner towards the outer end, like the exported brow.
+			var here: float = half * (1.0 - 0.35 * t)
+			_blend(patch, x, y, ink, clampf(here + 0.5 - d, 0.0, 1.0))
 
 
 # ---------------------------------------------------------------------------

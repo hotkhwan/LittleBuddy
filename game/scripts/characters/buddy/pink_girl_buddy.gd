@@ -49,6 +49,9 @@ extends Node3D
 ## `SkeletonModifier3D` on the head bone, +-0.4 degrees on two slow sines --
 ## makes the long hair read as swaying over any clip. `get_hair_sway()`.
 ##
+## **Contact hint**: `contact_shadow.gd`, a 0.22 m soft dark-peach ellipse under
+## her feet at alpha 0.18, because the game runs no shadows. `get_contact_hint()`.
+##
 ## ---------------------------------------------------------------------------
 ## ## Why it is OFF by default -- measured, not an opinion
 ## ---------------------------------------------------------------------------
@@ -189,6 +192,7 @@ const CarryPoseScript := preload("res://scripts/characters/buddy/buddy_carry_pos
 const LifeClipsScript := preload("res://scripts/characters/buddy/buddy_life_clips.gd")
 const HairSwayScript := preload("res://scripts/characters/buddy/buddy_hair_sway.gd")
 const FaceScript := preload("res://scripts/characters/buddy/buddy_face.gd")
+const ContactHintScript := preload("res://scripts/characters/contact_shadow.gd")
 
 ## Where the bone-name adapter lives. The ONLY file that may name one of her
 ## bones; everything above `get_socket()` speaks `LB_Rig_v1` and nothing else.
@@ -677,6 +681,7 @@ func _build_model() -> void:
 	_build_carry_pose()
 	_build_hair_sway()
 	_build_blink_timer()
+	_build_contact_hint()
 
 
 ## Merges the locomotion clips onto the model's own `AnimationPlayer`.
@@ -975,6 +980,30 @@ func is_carry_pose_active() -> bool:
 func get_carry_pose() -> SkeletonModifier3D:
 	build()
 	return _carry_pose
+
+
+# ---------------------------------------------------------------------------
+# The contact hint -- so she stands ON the floor with no shadows in the game
+# ---------------------------------------------------------------------------
+
+## A soft dark-peach ellipse under her feet (`contact_shadow.gd`), inside the
+## `Model` node so the sealed-hierarchy contract holds. Sized in metres, so the
+## model root's normalising scale is undone on it.
+func _build_contact_hint() -> void:
+	if _model_root == null:
+		return
+	var hint: MeshInstance3D = ContactHintScript.build(ContactHintScript.DEFAULT_RADIUS_M)
+	var inverse: float = 1.0 / maxf(_model_root.scale.y, 0.0001)
+	hint.scale = Vector3.ONE * inverse
+	hint.position = Vector3(0.0, ContactHintScript.LIFT_M * inverse, 0.0)
+	_model_root.add_child(hint)
+
+
+func get_contact_hint() -> MeshInstance3D:
+	build()
+	if _model_root == null:
+		return null
+	return _model_root.get_node_or_null(ContactHintScript.NAME) as MeshInstance3D
 
 
 # ---------------------------------------------------------------------------

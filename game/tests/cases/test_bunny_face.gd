@@ -54,6 +54,8 @@ func run():
 	failures.append_array(_test_the_resting_face_is_the_exported_one())
 	failures.append_array(_test_it_refuses_a_face_it_does_not_know())
 	failures.append_array(_test_the_actor_paints_what_the_body_says())
+	failures.append_array(_test_urgency_is_readable())
+	failures.append_array(_test_the_blink())
 	return failures
 
 
@@ -74,9 +76,12 @@ func _test_the_mood_vocabulary():
 	for mood: String in Faces.MOODS:
 		if not Life.FACE_MOODS.has(mood):
 			failures.append("baby_face_moods.gd paints '%s' and nothing ever asks for it" % mood)
-	if Faces.MOODS.size() < 4:
-		failures.append("only %d faces are authored; the pass promised content, unhappy, "
-				% Faces.MOODS.size() + "delighted and asleep")
+	if Faces.MOODS.size() < 7:
+		failures.append("only %d faces are authored; the passes promised content, unhappy, "
+				% Faces.MOODS.size() + "delighted, asleep, hungry, sleepy and hmph")
+	for mood: String in [Faces.MOOD_HUNGRY, Faces.MOOD_SLEEPY, Faces.MOOD_HMPH]:
+		if not Faces.MOODS.has(mood):
+			failures.append("the '%s' face is missing; urgency has one less channel to read" % mood)
 	if Faces.EYES.size() != 3:
 		failures.append(("%d eye boxes are listed. This head is unwrapped into two overlapping "
 				+ "charts and the left eye is painted in BOTH -- three boxes for two eyes. "
@@ -107,8 +112,29 @@ func _test_the_mood_follows_the_clip():
 	# ...and it is derived from the clip, which is what keeps the mouth and the
 	# arms agreeing. A hungry child fusses, so a hungry child is unhappy-faced.
 	var hungry: Dictionary = _stats(70.0)
-	if Life.face_for(Life.clip_for(hungry, Present.ACTIVITY_IDLE, false, 0.0)) != Life.FACE_UNHAPPY:
-		failures.append("a hungry Bunny does not wear the unhappy face")
+	var hungry_clip: String = Life.clip_for(hungry, Present.ACTIVITY_IDLE, false, 0.0)
+	if Life.face_for(hungry_clip) != Life.FACE_UNHAPPY:
+		failures.append("a fuss with no need named does not wear the unhappy face")
+	# With the need named, the fuss is refined WITHIN the clip: hunger pouts,
+	# comfort stays unhappy, and a need that has waited goes to the hmph.
+	if Life.face_for(hungry_clip, Needs.HUNGRY) != Life.FACE_HUNGRY:
+		failures.append("a hungry Bunny does not pout")
+	if Life.face_for(hungry_clip, Needs.THIRSTY) != Life.FACE_HUNGRY:
+		failures.append("a thirsty Bunny does not pout")
+	if Life.face_for(hungry_clip, Needs.NEEDS_COMFORT) != Life.FACE_UNHAPPY:
+		failures.append("a Bunny who needs a cuddle should look unhappy, not hungry")
+	if Life.face_for(hungry_clip, Needs.HUNGRY, Life.IGNORED_AFTER_SEC) != Life.FACE_HMPH:
+		failures.append("a need ignored past IGNORED_AFTER_SEC does not reach the hmph face")
+	if Life.face_for(Life.LIFE_STAMP) != Life.FACE_HMPH:
+		failures.append("the stamp clip does not wear the hmph face")
+	if Life.face_for(Life.LIFE_IDLE, Needs.SLEEPY) != Life.FACE_SLEEPY:
+		failures.append("a sleepy Bunny standing about is not half-lidded")
+	if Life.face_for(Life.LIFE_IDLE, Needs.HUNGRY) != Life.FACE_CONTENT:
+		failures.append("the sleepy face leaked onto an idle for another need")
+	if not is_equal_approx(Life.pace_for(Life.LIFE_IDLE, 0.0, Needs.SLEEPY), Life.SLEEPY_IDLE_PACE):
+		failures.append("a sleepy idle does not slow down")
+	if not is_equal_approx(Life.pace_for(Life.LIFE_IDLE, 0.0, Needs.HUNGRY), 1.0):
+		failures.append("an idle for another need changed pace")
 	if Life.face_for(Life.clip_for(hungry, Present.ACTIVITY_IDLE, false, 1.0)) != Life.FACE_DELIGHTED:
 		failures.append("a Bunny inside the happy window does not look pleased")
 	if Life.face_for(Life.clip_for(hungry, Present.ACTIVITY_BEDTIME, false, 0.0)) != Life.FACE_ASLEEP:
@@ -158,7 +184,8 @@ func _test_every_eye_is_repainted():
 		return failures
 
 	var rect: Rect2i = Faces.patch_rect(base)
-	for mood: String in [Faces.MOOD_UNHAPPY, Faces.MOOD_DELIGHTED, Faces.MOOD_ASLEEP]:
+	for mood: String in [Faces.MOOD_UNHAPPY, Faces.MOOD_DELIGHTED, Faces.MOOD_ASLEEP,
+			Faces.MOOD_SLEEPY]:
 		var patch: Image = Faces.paint(base, mood)
 		if patch == null:
 			failures.append("the '%s' face painted nothing at all" % mood)
@@ -177,6 +204,31 @@ func _test_every_eye_is_repainted():
 		if stray.size() > 0:
 			failures.append(("the '%s' face changed %d pixels outside its own eye and mouth "
 					+ "boxes, first at atlas (%d, %d)") % [mood, stray.size(), stray[0], stray[1]])
+	# The moods that redraw the brows, the mouth or the cheeks stay inside THOSE
+	# boxes too, and each one really does change what it claims to.
+	for mood: String in [Faces.MOOD_HUNGRY, Faces.MOOD_HMPH]:
+		var patch: Image = Faces.paint(base, mood)
+		if patch == null:
+			failures.append("the '%s' face painted nothing at all" % mood)
+			continue
+		for index: int in range(Faces.BROWS.size()):
+			var box: Array = _pixels(Faces.BROWS[index], base.get_size(), rect)
+			if _difference(base, patch, box, rect) < REPAINTED * 0.5:
+				failures.append("the '%s' face left brow box %d untouched" % [mood, index])
+		if _difference(base, patch, _pixels(Faces.MOUTH, base.get_size(), rect), rect) < REPAINTED:
+			failures.append("the '%s' face left the mouth untouched" % mood)
+		var stray: Array = _stray_pixels(base, patch, rect)
+		if stray.size() > 0:
+			failures.append(("the '%s' face changed %d pixels outside the feature boxes, first "
+					+ "at atlas (%d, %d)") % [mood, stray.size(), stray[0], stray[1]])
+	# ...and the eyes themselves are left alone by both: they ask with the eyes
+	# they were exported with.
+	var pout: Image = Faces.paint(base, Faces.MOOD_HUNGRY)
+	if pout != null:
+		for index: int in range(Faces.EYES.size()):
+			var box: Array = _pixels(Faces.EYES[index], base.get_size(), rect)
+			if _difference(base, pout, box, rect) > 0.001:
+				failures.append("the hungry face repainted eye box %d; the pout keeps the eyes" % index)
 	return failures
 
 
@@ -260,10 +312,22 @@ func _test_the_actor_paints_what_the_body_says():
 	stats.call("set_stat", "hunger", 72.0)
 	bunny.call("_refresh")
 	if String(bunny.call("get_life_clip")) == Life.LIFE_FUSS \
+			and String(bunny.call("get_face_mood")) != Life.FACE_HUNGRY:
+		failures.append(("Bunny's body is fussing for food and his face is '%s'. The two are "
+				+ "decided together on purpose; a smile over a fuss is the statue problem with "
+				+ "a different face on it, and a hungry fuss pouts.")
+				% String(bunny.call("get_face_mood")))
+	# A fuss for comfort keeps the unhappy face: the pout is hunger's alone.
+	stats.call("set_stat", "hunger", 5.0)
+	stats.call("set_stat", "happiness", 20.0)
+	bunny.call("_refresh")
+	if String(bunny.call("get_life_clip")) == Life.LIFE_FUSS \
 			and String(bunny.call("get_face_mood")) != Life.FACE_UNHAPPY:
-		failures.append(("Bunny's body is fussing and his face is '%s'. The two are decided "
-				+ "together on purpose; a smile over a fuss is the statue problem with a "
-				+ "different face on it.") % String(bunny.call("get_face_mood")))
+		failures.append("a Bunny fussing for a cuddle wears '%s', expected unhappy"
+				% String(bunny.call("get_face_mood")))
+	stats.call("set_stat", "happiness", 80.0)
+	stats.call("set_stat", "hunger", 72.0)
+	bunny.call("_refresh")
 
 	bunny.call("satisfy", Needs.HUNGRY, 70.0)
 	if String(bunny.call("get_face_mood")) != Life.FACE_DELIGHTED:
@@ -274,6 +338,156 @@ func _test_the_actor_paints_what_the_body_says():
 	if String(bunny.call("get_face_mood")) != Life.FACE_ASLEEP:
 		failures.append("Bunny was put to bed with his eyes '%s'"
 				% String(bunny.call("get_face_mood")))
+	bunny.free()
+	return failures
+
+
+# ---------------------------------------------------------------------------
+# 4. Urgency: the line, the face and the body escalate TOGETHER
+# ---------------------------------------------------------------------------
+
+## A hungry Bunny left alone for `IGNORED_AFTER_SEC`: the bubble goes to its
+## louder line, the face to the hmph, the body stamps once and goes back to
+## fussing -- and the moment he is fed, all of it is gone. Driven through the
+## real actor's `live()`, which is the clock the game uses.
+func _test_urgency_is_readable():
+	var failures: Array = []
+	if not Baby.is_pose_available(Baby.PREFERRED_POSE):
+		return failures
+	var bunny: Node3D = Node3D.new()
+	bunny.set_script(Actor)
+	bunny.call("build")
+	var stats: RefCounted = bunny.call("get_stats")
+	stats.call("set_stat", "hunger", 72.0)
+	stats.call("set_stat", "thirst", 5.0)
+	bunny.call("_refresh")
+	if String(bunny.call("get_line")) != Needs.line_for(Needs.HUNGRY):
+		failures.append("a freshly hungry Bunny should say the calm line, said '%s'"
+				% String(bunny.call("get_line")))
+	if Needs.line_for(Needs.HUNGRY) != "I'm hungry, Aliz!":
+		failures.append("Mission 01's opening line changed: '%s'" % Needs.line_for(Needs.HUNGRY))
+	# Just short of the threshold: nothing has escalated.
+	var elapsed: float = 0.0
+	while elapsed < Life.IGNORED_AFTER_SEC - 0.5:
+		bunny.call("live", 0.25)
+		elapsed += 0.25
+	if bool(bunny.call("is_urgent")):
+		failures.append("Bunny escalated after %.1f s; IGNORED_AFTER_SEC is %.1f"
+				% [elapsed, Life.IGNORED_AFTER_SEC])
+	# Past it: all three channels.
+	while elapsed < Life.IGNORED_AFTER_SEC + 0.5:
+		bunny.call("live", 0.25)
+		elapsed += 0.25
+	if not bool(bunny.call("is_urgent")):
+		failures.append("Bunny did not escalate after %.1f s of being ignored" % elapsed)
+	if String(bunny.call("get_line")) != Needs.line_for(Needs.HUNGRY, true):
+		failures.append("the ignored line is '%s', expected the urgent one '%s'"
+				% [String(bunny.call("get_line")), Needs.line_for(Needs.HUNGRY, true)])
+	if String(bunny.call("get_face_mood")) != Life.FACE_HMPH:
+		failures.append("an ignored Bunny wears '%s', expected the hmph"
+				% String(bunny.call("get_face_mood")))
+	var player: AnimationPlayer = bunny.get("_player")
+	if player != null:
+		if not player.has_animation(Life.LIFE_STAMP):
+			failures.append("no 'stamp' clip on the rigged model")
+		else:
+			var stamp: Animation = player.get_animation(Life.LIFE_STAMP)
+			if stamp.loop_mode != Animation.LOOP_NONE:
+				failures.append("the stamp loops; a child stamping forever is a tantrum")
+			if stamp.length < 0.6 or stamp.length > 1.4:
+				failures.append("the stamp is %.2f s; the brief asked for ~0.9" % stamp.length)
+			if player.current_animation != Life.LIFE_STAMP:
+				failures.append("the stamp did not play at the moment of escalation (playing '%s')"
+						% player.current_animation)
+	# Urgent lines are still the child's own voice.
+	for state: String in Needs.PRIORITY:
+		var line: String = Needs.line_for(state, true)
+		if line.strip_edges().is_empty():
+			failures.append("need '%s' has no urgent line" % state)
+		for banned: String in ["bad", "naughty", "wrong", "fail", "stupid", "hurry", "slow"]:
+			if line.to_lower().contains(banned):
+				failures.append("urgent line for '%s' says '%s'; it must ask, not accuse" % [state, banned])
+	# Fed: everything resets at once.
+	bunny.call("satisfy", Needs.HUNGRY, 70.0)
+	if bool(bunny.call("is_urgent")) or float(bunny.call("get_ignored_for")) > 0.0:
+		failures.append("feeding Bunny did not clear the escalation")
+	if String(bunny.call("get_face_mood")) != Life.FACE_DELIGHTED:
+		failures.append("Bunny was fed after waiting and wears '%s'"
+				% String(bunny.call("get_face_mood")))
+	# Being picked up also ends the wait: a carried child is being attended to.
+	stats.call("set_stat", "hunger", 72.0)
+	bunny.set("_happy_left", 0.0)
+	bunny.call("_refresh")
+	for _i in range(int(Life.IGNORED_AFTER_SEC * 2.0) + 4):
+		bunny.call("live", 0.5)
+	if not bool(bunny.call("is_urgent")):
+		failures.append("Bunny did not escalate the second time")
+	var carrier := Node3D.new()
+	bunny.call("set_carried_by", carrier)
+	bunny.call("live", 0.1)
+	if bool(bunny.call("is_urgent")):
+		failures.append("Bunny stayed urgent in Aliz's arms")
+	bunny.call("release_carried")
+	carrier.free()
+	bunny.free()
+	return failures
+
+
+# ---------------------------------------------------------------------------
+# 5. The blink
+# ---------------------------------------------------------------------------
+
+func _test_the_blink():
+	var failures: Array = []
+	if not Baby.is_pose_available(Baby.PREFERRED_POSE):
+		return failures
+	var base: Image = _albedo()
+	if base != null and Faces.can_paint(base):
+		var rect: Rect2i = Faces.patch_rect(base)
+		# A blink over the pout: the eyes shut, the mouth keeps the pout.
+		var pout: Image = Faces.paint(base, Faces.MOOD_HUNGRY)
+		var blink: Image = Faces.paint(base, Faces.MOOD_HUNGRY, true)
+		for index: int in range(Faces.EYES.size()):
+			var box: Array = _pixels(Faces.EYES[index], base.get_size(), rect)
+			if _difference(base, blink, box, rect) < REPAINTED:
+				failures.append("the blink left eye box %d open" % index)
+		var mouth: Array = _pixels(Faces.MOUTH, base.get_size(), rect)
+		if _patch_difference(pout, blink, mouth) > 0.001:
+			failures.append("a blink changed the mouth; it must change the eyes only")
+		# ...and over a mood whose eyes are already shut it is exactly that mood.
+		var asleep: Image = Faces.paint(base, Faces.MOOD_ASLEEP)
+		var asleep_blink: Image = Faces.paint(base, Faces.MOOD_ASLEEP, true)
+		if _patch_difference(asleep, asleep_blink, [0, 0, rect.size.x - 1, rect.size.y - 1]) > 0.0:
+			failures.append("a blink over 'asleep' repainted something")
+
+	var bunny: Node3D = Node3D.new()
+	bunny.set_script(Actor)
+	bunny.call("build")
+	var wrapper: Node3D = bunny.get("_wrapper")
+	if bool(wrapper.call("are_eyes_closed")):
+		failures.append("Bunny starts with his eyes shut")
+	bunny.call("blink_now")
+	if not bool(wrapper.call("are_eyes_closed")):
+		failures.append("blink_now() did not shut the eyes")
+	bunny.call("live", Actor.BLINK_CLOSED_SEC + 0.05)
+	if bool(wrapper.call("are_eyes_closed")):
+		failures.append("the eyes did not reopen after BLINK_CLOSED_SEC")
+	# Left to itself, it blinks within the cadence window, and not before.
+	var t: float = 0.0
+	var blinked_at: float = -1.0
+	while t < Actor.BLINK_GAP_MAX_SEC + 1.0 and blinked_at < 0.0:
+		bunny.call("live", 0.05)
+		t += 0.05
+		if bool(wrapper.call("are_eyes_closed")):
+			blinked_at = t
+	if blinked_at < 0.0:
+		failures.append("Bunny did not blink within %.1f s" % (Actor.BLINK_GAP_MAX_SEC + 1.0))
+	elif blinked_at < Actor.BLINK_GAP_MIN_SEC - 0.1:
+		failures.append("Bunny blinked after %.2f s; the gap is at least %.1f"
+				% [blinked_at, Actor.BLINK_GAP_MIN_SEC])
+	if Actor.BLINK_CLOSED_SEC > 0.2 or Actor.BLINK_GAP_MIN_SEC < 2.0 or Actor.BLINK_GAP_MAX_SEC > 8.0:
+		failures.append("the blink cadence is outside the brief (120 ms every 3-6 s)")
+	bunny.call("set_blinking", false)
 	bunny.free()
 	return failures
 
@@ -349,14 +563,26 @@ func _difference(base: Image, patch: Image, box: Array, rect: Rect2i) -> float:
 	return total / float(maxi(count, 1))
 
 
+## Mean absolute channel change between two PATCHES inside a patch-space box.
+func _patch_difference(a: Image, b: Image, box: Array) -> float:
+	var total: float = 0.0
+	var count: int = 0
+	for y: int in range(int(box[1]), int(box[3]) + 1):
+		for x: int in range(int(box[0]), int(box[2]) + 1):
+			var pa: Color = a.get_pixel(x, y)
+			var pb: Color = b.get_pixel(x, y)
+			total += absf(pa.r - pb.r) + absf(pa.g - pb.g) + absf(pa.b - pb.b)
+			count += 3
+	return total / float(maxi(count, 1))
+
+
 ## Every changed pixel that is not inside one of the feature boxes, as
 ## `[x, y, ...]` in ATLAS coordinates. Empty is the only acceptable answer.
 func _stray_pixels(base: Image, patch: Image, rect: Rect2i) -> Array:
 	var size: Vector2i = base.get_size()
 	var boxes: Array = []
-	for box: Array in Faces.EYES:
+	for box: Array in Faces.FEATURE_BOXES:
 		boxes.append(_pixels(box, size, rect))
-	boxes.append(_pixels(Faces.MOUTH, size, rect))
 	var stray: Array = []
 	for y: int in range(rect.size.y):
 		for x: int in range(rect.size.x):

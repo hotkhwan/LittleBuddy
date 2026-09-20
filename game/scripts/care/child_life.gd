@@ -52,10 +52,14 @@ const LIFE_WALK: String = "walk"
 ## carried is still hungry (the bubble says so) but he is not standing and
 ## fussing in mid-air.
 const LIFE_CARRIED: String = "carried"
+## The little foot stamp -- one-shot, 0.9 s -- for a need that has gone
+## unanswered a while. The body's "hmph", to go with the face's. Never a
+## loop: he stamps once, then goes back to fussing and asking.
+const LIFE_STAMP: String = "stamp"
 
 const LIFE_CLIPS: Array[String] = [
 	LIFE_IDLE, LIFE_FUSS, LIFE_EAT, LIFE_DRINK, LIFE_HAPPY, LIFE_SLEEP, LIFE_WALK,
-	LIFE_CARRIED,
+	LIFE_CARRIED, LIFE_STAMP,
 ]
 
 ## -- The face --------------------------------------------------------------------
@@ -73,10 +77,33 @@ const FACE_CONTENT: String = "content"
 const FACE_UNHAPPY: String = "unhappy"
 const FACE_DELIGHTED: String = "delighted"
 const FACE_ASLEEP: String = "asleep"
+## Added 2026-09-20 so urgency is readable on the face as well as the bubble:
+## a pout with pleading brows for hunger and thirst, half-lidded eyes for a
+## child who is sleepy but not yet in bed, and the "hmph" -- brows in, puffed
+## cheeks -- for a need that has been ignored.
+const FACE_HUNGRY: String = "hungry"
+const FACE_SLEEPY: String = "sleepy"
+const FACE_HMPH: String = "hmph"
 
 const FACE_MOODS: Array[String] = [
 	FACE_CONTENT, FACE_UNHAPPY, FACE_DELIGHTED, FACE_ASLEEP,
+	FACE_HUNGRY, FACE_SLEEPY, FACE_HMPH,
 ]
+
+## -- Being ignored --------------------------------------------------------------
+##
+## A need voiced this long without being answered escalates: the bubble says
+## its louder line (`child_needs.gd::LINES_URGENT`), the face goes to `hmph`,
+## and every `STAMP_EVERY_SEC` after that the body stamps a foot once. It is
+## still a request -- nothing is lost, nothing counts down, and the moment the
+## need is met it all goes with the need. The number is long enough that a
+## player walking over from the next room never sees it.
+const IGNORED_AFTER_SEC: float = 12.0
+const STAMP_EVERY_SEC: float = 6.0
+
+## The idle plays this much slower while Bunny is sleepy: heavier breathing,
+## a slower look-around. Same clip, different pace -- the trick `fuss` uses.
+const SLEEPY_IDLE_PACE: float = 0.72
 
 ## How long Bunny stays visibly pleased after being cared for. Long enough to be
 ## seen and short enough that he is not still celebrating a bottle two rooms
@@ -125,7 +152,7 @@ const ATTEND_LIMIT_DEG: float = 45.0
 ##   4. then a real unmet need;
 ##   5. then idle.
 static func clip_for(stats: Dictionary, activity: String, walking: bool,
-		happy_left: float, detail: String = "") -> String:
+		happy_left: float, detail: String = "", stamp: bool = false) -> String:
 	if walking:
 		return LIFE_WALK
 	# Being carried is a whole-body posture; nothing else can play at the same
@@ -142,7 +169,9 @@ static func clip_for(stats: Dictionary, activity: String, walking: bool,
 	if happy_left > 0.0:
 		return LIFE_HAPPY
 	if _is_uncomfortable(Needs.dominant(stats)):
-		return LIFE_FUSS
+		# `stamp` is the actor saying "the stamp is due now" (see
+		# `stamp_due()`); it is a one-shot, so the next refresh is a fuss again.
+		return LIFE_STAMP if stamp else LIFE_FUSS
 	return LIFE_IDLE
 
 
@@ -157,10 +186,22 @@ static func clip_for(stats: Dictionary, activity: String, walking: bool,
 ## `eat` and `drink` keep the resting face. A child mid-spoonful is neither
 ## delighted nor upset, and swapping the mouth for an open grin exactly when a
 ## bottle is covering it buys nothing.
-static func face_for(clip: String) -> String:
+##
+## `need` and `ignored_for` refine the answer WITHIN the clip, never against it:
+## a fuss for hunger or thirst wears the pout (`hungry`), a fuss that has gone
+## on past `IGNORED_AFTER_SEC` wears the `hmph`, a fuss for anything else stays
+## `unhappy`; an idle while the child is sleepy is half-lidded. Called with the
+## clip alone, the mapping is the original one.
+static func face_for(clip: String, need: String = "", ignored_for: float = 0.0) -> String:
 	match clip:
 		LIFE_FUSS:
+			if is_ignored(ignored_for):
+				return FACE_HMPH
+			if need == Needs.HUNGRY or need == Needs.THIRSTY:
+				return FACE_HUNGRY
 			return FACE_UNHAPPY
+		LIFE_STAMP:
+			return FACE_HMPH
 		LIFE_HAPPY:
 			return FACE_DELIGHTED
 		LIFE_SLEEP:
@@ -168,8 +209,32 @@ static func face_for(clip: String) -> String:
 		LIFE_CARRIED:
 			# Picked up is the thing a small child wants most; he beams.
 			return FACE_DELIGHTED
+		LIFE_IDLE:
+			return FACE_SLEEPY if need == Needs.SLEEPY else FACE_CONTENT
 		_:
 			return FACE_CONTENT
+
+
+## Has a need waited long enough to escalate? Pure, so the actor, the face and
+## the line all agree on the moment.
+static func is_ignored(ignored_for: float) -> bool:
+	return ignored_for >= IGNORED_AFTER_SEC
+
+
+## Is a stamp due? One at the moment of escalation, then one every
+## `STAMP_EVERY_SEC`; `last_stamp_at` is the `ignored_for` value the previous
+## stamp was played at (negative for none).
+static func stamp_due(ignored_for: float, last_stamp_at: float) -> bool:
+	if not is_ignored(ignored_for):
+		return false
+	if last_stamp_at < 0.0:
+		return true
+	return ignored_for - last_stamp_at >= STAMP_EVERY_SEC
+
+
+## Does this need count towards being ignored? Only the ones the body shows.
+static func is_uncomfortable_need(need: String) -> bool:
+	return _is_uncomfortable(need)
 
 
 ## **A bottle or a spoon?** They are different motions -- two hands and a head
@@ -225,8 +290,12 @@ static func fuss_pace(distress_level: float) -> float:
 
 ## Every clip except the fuss plays at its authored pace. Stated as a function so
 ## `child_actor.gd` has one thing to ask and no branch of its own.
-static func pace_for(clip: String, distress_level: float) -> float:
-	return fuss_pace(distress_level) if clip == LIFE_FUSS else 1.0
+static func pace_for(clip: String, distress_level: float, need: String = "") -> float:
+	if clip == LIFE_FUSS:
+		return fuss_pace(distress_level)
+	if clip == LIFE_IDLE and need == Needs.SLEEPY:
+		return SLEEPY_IDLE_PACE
+	return 1.0
 
 
 ## Should Bunny be looking at Aliz? `attending` is the current answer, so the

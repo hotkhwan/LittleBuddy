@@ -152,6 +152,8 @@ const SHIN_R: String = "RightLeg"
 ## | `drink`     | `drink`         | being given the bottle                  |
 ## | `celebrate` | `celebrate`     | just been cared for                     |
 ## | `sleep`     | `sleep`         | bedtime -- see `_sleep()`               |
+## | `carried`   | (none)          | in Aliz's arms -- see `_carried()`      |
+## | `stamp`     | (none)          | a need ignored a while -- `_stamp()`    |
 const CLIP_IDLE: String = "idle"
 const CLIP_FUSS: String = "fuss"
 const CLIP_EAT: String = "eat"
@@ -159,9 +161,11 @@ const CLIP_DRINK: String = "drink"
 const CLIP_CELEBRATE: String = "celebrate"
 const CLIP_SLEEP: String = "sleep"
 const CLIP_CARRIED: String = "carried"
+const CLIP_STAMP: String = "stamp"
 
 const CLIP_NAMES: Array[String] = [
 	CLIP_IDLE, CLIP_FUSS, CLIP_EAT, CLIP_DRINK, CLIP_CELEBRATE, CLIP_SLEEP, CLIP_CARRIED,
+	CLIP_STAMP,
 ]
 
 ## How far the back of a sleeping child sits above the floor, in bone units
@@ -212,6 +216,8 @@ static func build(clip_name: String, skeleton: Skeleton3D, prefix: String) -> An
 			return _sleep(skeleton, prefix)
 		CLIP_CARRIED:
 			return _carried(skeleton, prefix)
+		CLIP_STAMP:
+			return _stamp(skeleton, prefix)
 		_:
 			return null
 
@@ -750,6 +756,74 @@ static func _carried(skeleton: Skeleton3D, prefix: String) -> Animation:
 			[1.8, [[NOD, -52.0], [TILT, side * 17.0]]],
 			[3.6, [[NOD, -48.0], [TILT, side * 16.0]]]])
 		_bone(animation, skeleton, prefix, _hand(side), [[0.0, [[NOD, -14.0]]]])
+
+	_rest_the_others(animation, skeleton, prefix)
+	return animation
+
+
+## **The foot stamp.** One-shot, 0.9 s, for a need that has gone unanswered
+## past `child_life.gd::IGNORED_AFTER_SEC`: the right knee comes up, the foot
+## comes down, the whole child dips on the landing and bounces back, arms
+## straight down and a little back with the hands balled, chin up and the head
+## turned away -- the toddler "hmph" that goes with the `hmph` face.
+##
+## Cute, not cross, and the timing is what keeps it so: the lift is slow
+## (0.35 s), the drop is quick, the settle is soft. Nothing shakes. The hips
+## drop 1.2 units on the landing so the supporting leg reads as taking the
+## weight, and the raised foot never goes higher than the other knee. Like
+## every clip here it rests every bone it does not key, so it cross-fades
+## cleanly from `fuss` and back.
+static func _stamp(skeleton: Skeleton3D, prefix: String) -> Animation:
+	var animation: Animation = _once(0.9)
+	var lift: float = 0.35
+	var land: float = 0.5
+	var settle: float = 0.9
+
+	# The supporting side is the LEFT (side -1); the RIGHT foot stamps.
+	_hips(animation, skeleton, prefix, [
+		[0.0, [0.0, [[TILT, 0.0]]]],
+		[lift, [0.6, [[TILT, -4.0]]]],
+		[land, [-1.2, [[TILT, -1.0]]]],
+		[0.65, [0.3, [[TILT, 0.0]]]],
+		[settle, [0.0, [[TILT, 0.0]]]]])
+	_bone(animation, skeleton, prefix, _thigh(1), [
+		[0.0, [[NOD, 0.0]]], [lift, [[NOD, -42.0]]], [land, [[NOD, -2.0]]],
+		[0.62, [[NOD, -6.0]]], [settle, [[NOD, 0.0]]]])
+	_bone(animation, skeleton, prefix, _shin(1), [
+		[0.0, [[NOD, 0.0]]], [lift, [[NOD, 48.0]]], [land, [[NOD, 2.0]]],
+		[0.62, [[NOD, 8.0]]], [settle, [[NOD, 0.0]]]])
+	# The supporting knee softens on the landing.
+	_bone(animation, skeleton, prefix, _thigh(-1), [
+		[0.0, [[NOD, 0.0]]], [land, [[NOD, -6.0]]], [settle, [[NOD, 0.0]]]])
+	_bone(animation, skeleton, prefix, _shin(-1), [
+		[0.0, [[NOD, 0.0]]], [land, [[NOD, 12.0]]], [settle, [[NOD, 0.0]]]])
+
+	# Torso: a small lean back with the lift, forward on the landing.
+	_bone(animation, skeleton, prefix, SPINE_LOW, [
+		[0.0, [[NOD, 2.0]]], [lift, [[NOD, -4.0]]], [land, [[NOD, 5.0]]], [settle, [[NOD, 2.0]]]])
+	_bone(animation, skeleton, prefix, SPINE_MID, [
+		[0.0, [[NOD, 1.0]]], [lift, [[NOD, -3.0]]], [land, [[NOD, 3.0]]], [settle, [[NOD, 1.0]]]])
+	# Chin up and head turned away -- the "hmph" -- held through the stamp.
+	_bone(animation, skeleton, prefix, NECK, [[0.0, [[NOD, -3.0]]]])
+	_bone(animation, skeleton, prefix, HEAD, [
+		[0.0, [[NOD, -6.0], [TURN, 6.0], [TILT, 4.0]]],
+		[lift, [[NOD, -9.0], [TURN, 18.0], [TILT, 6.0]]],
+		[land, [[NOD, -4.0], [TURN, 16.0], [TILT, 5.0]]],
+		[settle, [[NOD, -6.0], [TURN, 6.0], [TILT, 4.0]]]])
+
+	# Arms straight down and a little back, hands balled, jerking down with the
+	# landing. Shoulders drop rather than lift: a shrug would read as a laugh.
+	for side: int in [-1, 1]:
+		_bone(animation, skeleton, prefix, _shoulder(side), [[0.0, [[TILT, side * 4.0]]]])
+		_bone(animation, skeleton, prefix, _arm(side), [
+			[0.0, [[NOD, 6.0], [TILT, -side * 4.0]]],
+			[lift, [[NOD, 14.0], [TILT, -side * 6.0]]],
+			[land, [[NOD, 10.0], [TILT, -side * 3.0]]],
+			[settle, [[NOD, 6.0], [TILT, -side * 4.0]]]])
+		_bone(animation, skeleton, prefix, _forearm(side), [
+			[0.0, [[NOD, -8.0]]], [lift, [[NOD, -14.0]]], [land, [[NOD, -6.0]]],
+			[settle, [[NOD, -8.0]]]])
+		_bone(animation, skeleton, prefix, _hand(side), [[0.0, [[NOD, -30.0]]]])
 
 	_rest_the_others(animation, skeleton, prefix)
 	return animation

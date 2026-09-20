@@ -136,7 +136,10 @@ static func activity_for_need(need: String) -> String:
 ## An explicit `activity` always wins. That is what makes a mission able to seat
 ## the child for Milk Time even while some other stat is drifting -- the brief's
 ## "make transitions deliberate".
-static func describe(stats: Dictionary, activity: String = ACTIVITY_IDLE) -> Dictionary:
+## `urgent` asks for the need's louder line (`child_needs.gd::LINES_URGENT`);
+## `child_actor.gd` sets it once a need has waited `child_life.gd::IGNORED_AFTER_SEC`.
+static func describe(stats: Dictionary, activity: String = ACTIVITY_IDLE,
+		urgent: bool = false) -> Dictionary:
 	var need: String = Needs.dominant(stats)
 	var chosen: String = activity
 	if chosen == ACTIVITY_IDLE:
@@ -145,7 +148,7 @@ static func describe(stats: Dictionary, activity: String = ACTIVITY_IDLE) -> Dic
 		"pose": pose_for_activity(chosen),
 		"activity": chosen,
 		"need": need,
-		"line": Needs.line_for(need),
+		"line": Needs.line_for(need, urgent),
 		"mood": mood_for(need),
 	}
 

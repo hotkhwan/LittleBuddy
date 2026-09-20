@@ -231,6 +231,9 @@ const LifeClipsScript := preload("res://scripts/characters/little_buddy/baby_lif
 ## file's job is filenames, normalisation and the §7 material policy, and the
 ## drawing belongs beside the drawing.
 const FaceMoodsScript := preload("res://scripts/characters/little_buddy/baby_face_moods.gd")
+## The soft mark under his feet -- see `contact_shadow.gd`. A child's stance.
+const ContactHintScript := preload("res://scripts/characters/contact_shadow.gd")
+const CONTACT_HINT_RADIUS_M: float = 0.15
 
 ## Emitted when a requested action begins. Emitted even though nothing is shown,
 ## so a caller's await is symmetric with `LittleBuddyCharacter`'s.
@@ -438,6 +441,8 @@ var _built: bool = false
 ## that is ever uploaded; the moods are small patches blitted into it, so four
 ## expressions cost four 80 KB patches rather than four megabyte textures.
 var _face_mood: String = FaceMoodsScript.MOOD_CONTENT
+## A blink in progress: the eyes are shut over whatever mood is showing.
+var _eyes_closed: bool = false
 var _face_canvas: Image = null
 var _face_texture: ImageTexture = null
 var _face_patches: Dictionary = {}
@@ -1088,6 +1093,13 @@ func _normalise(pose_name: String, holder: Node3D, oriented: Node3D, instance: N
 		-(placed.position.x + placed.size.x * 0.5),
 		-placed.position.y,
 		-(placed.position.z + placed.size.z * 0.5))
+	# The contact hint sits on the floor under the wrapper's origin, inside the
+	# holder (so the sealed hierarchy holds) and therefore offset back by the
+	# holder's own placement. The holder is unscaled, so metres are metres.
+	var hint: MeshInstance3D = ContactHintScript.build(CONTACT_HINT_RADIUS_M)
+	hint.position = Vector3(-holder.position.x, -holder.position.y + ContactHintScript.LIFT_M,
+			-holder.position.z)
+	holder.add_child(hint)
 
 
 func _pose_rotation(pose_name: String) -> Vector3:
@@ -1142,18 +1154,22 @@ func _apply_art_bible_material(mesh_instance: MeshInstance3D) -> void:
 ## There are no facial bones -- the skeleton ends at `headfront`, there is no
 ## jaw and no eyelid -- so the face cannot be animated and this file will not
 ## pretend it can. What it CAN do is repaint the face region of the albedo, and
-## `baby_face_moods.gd` does exactly that: four variants of one texture,
-## differing only inside the eye and mouth islands.
+## `baby_face_moods.gd` does exactly that: seven variants of one texture
+## (content, unhappy, delighted, asleep, hungry, sleepy, hmph), differing only
+## inside the eye, brow, cheek and mouth islands, plus a shut-eyes overlay for
+## the blink (`set_eyes_closed()`).
 ##
 ## Set up once, here, and then costed at almost nothing:
 ##
 ##   * ONE extra texture, a working copy of the albedo, which is what gets
-##     uploaded. Four full mood atlases would have been four megabytes of nearly
-##     identical pixels.
-##   * FOUR small patches, ~80 KB each, painted lazily -- a build that never
-##     puts Bunny to bed never pays for the sleeping face.
-##   * NOTHING per frame. A mood change is a blit and a texture upload and
-##     happens a handful of times in a session.
+##     uploaded. Seven full mood atlases would have been seven megabytes of
+##     nearly identical pixels.
+##   * SMALL patches, ~100 KB each, painted lazily and cached per mood and per
+##     mood-with-eyes-shut -- a build that never puts Bunny to bed never pays
+##     for the sleeping face.
+##   * NOTHING per frame in this file. A mood change is a blit and a texture
+##     upload; the blink's clock lives in `child_actor.gd`, which already has a
+##     frame loop, and costs two uploads every few seconds.
 ##
 ## It stands down completely, and silently as far as the caller is concerned, if
 ## the texture is not the face `baby_face_moods.gd` was measured against -- a
@@ -1220,12 +1236,46 @@ func set_face_mood(mood: String) -> bool:
 		return false
 	if mood == _face_mood:
 		return true
-	if not _face_patches.has(mood):
+	if not _upload_face(mood, _eyes_closed):
+		return false
+	_face_mood = mood
+	return true
+
+
+## **Shut or open Bunny's eyes over the current mood** -- the blink.
+## `child_actor.gd` drives the timing (it already runs a frame loop; this file
+## must not, by `test_baby_avatar.gd`'s rule). A mood whose eyes are already
+## shut (`delighted`, `asleep`) is left exactly as it is. Returns false only
+## when this build has no repaintable face.
+func set_eyes_closed(closed: bool) -> bool:
+	build()
+	if _face_texture == null:
+		return false
+	if closed == _eyes_closed:
+		return true
+	if not _upload_face(_face_mood, closed):
+		return false
+	_eyes_closed = closed
+	return true
+
+
+## True while the eyes are shut on the atlas: by a blink, or because the mood
+## itself closes them.
+func are_eyes_closed() -> bool:
+	return _eyes_closed or FaceMoodsScript.EYES_SHUT_MOODS.has(_face_mood)
+
+
+## Paints (once, then cached) and uploads one face: `mood`, with the eyes shut
+## on top when `closed`. Patches are keyed by both so a blink over `hungry`
+## keeps the pout and only changes the eyes.
+func _upload_face(mood: String, closed: bool) -> bool:
+	var key: String = mood + ("+blink" if closed else "")
+	if not _face_patches.has(key):
 		# Painted on first use. `paint()` reads the UNTOUCHED albedo through the
 		# resting patch rather than the canvas, so a mood is never painted on top
 		# of another mood.
-		_face_patches[mood] = FaceMoodsScript.paint(_restored_source(), mood)
-	var patch: Image = _face_patches[mood] as Image
+		_face_patches[key] = FaceMoodsScript.paint(_restored_source(), mood, closed)
+	var patch: Image = _face_patches[key] as Image
 	if patch == null:
 		return false
 	_face_canvas.blit_rect(patch, Rect2i(Vector2i.ZERO, patch.get_size()), _face_rect.position)
@@ -1235,7 +1285,6 @@ func set_face_mood(mood: String) -> bool:
 	if _face_canvas.has_mipmaps():
 		_face_canvas.generate_mipmaps()
 	_face_texture.update(_face_canvas)
-	_face_mood = mood
 	return true
 
 

@@ -185,5 +185,28 @@ const LINES: Dictionary = {
 }
 
 
-static func line_for(state: String) -> String:
+## The same needs, said again LOUDER -- what Bunny says once a need has gone
+## unanswered for `child_life.gd::IGNORED_AFTER_SEC`. Still asking, still
+## warm; the escalation is in the "please" and the "so", never in a reproach.
+## `HUNGRY`'s first line is Mission 01's opening and stays exactly as it is;
+## only its second line changes.
+const LINES_URGENT: Dictionary = {
+	HUNGRY: "Aliz! I'm SO hungry!",
+	THIRSTY: "Water, please!",
+	NEEDS_CHANGING: "Change me, please!",
+	NEEDS_BATH: "Bath time, please!",
+	DIRTY: "I'm all sticky!",
+	SLEEPY: "So sleepy... bed?",
+	NEEDS_COMFORT: "Hug me, please?",
+	WANTS_TO_PLAY: "Play with me!",
+	CRYING: "Waaah!",
+}
+
+
+## What the child says for `state`; `urgent` picks the louder second line for a
+## need that has been waiting. Falls back to the calm line, so every need has
+## something to say either way.
+static func line_for(state: String, urgent: bool = false) -> String:
+	if urgent and LINES_URGENT.has(state):
+		return String(LINES_URGENT[state])
 	return String(LINES.get(state, "I'm happy!"))
