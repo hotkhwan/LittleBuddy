@@ -124,7 +124,20 @@ const REACTION_PROTECT_SECONDS: float = 2.5
 ## 0-100. Prompts must sit clearly above the sound effects (which peak at
 ## -6 dBFS or lower); the platform default of 50 is easy to miss in a room with
 ## a child in it. Confirm comfort on device -- see the device checklist.
+##
+## This is the DEFAULT: the parent's "Voice volume" slider (`voiceVolume`,
+## 0..1, default 0.85) scales it -- see `_voice_volume()`.
 const SPEECH_VOLUME: int = 85
+const SPEECH_VOLUME_SCALE: float = 100.0
+const VOICE_VOLUME_SETTING: String = "voiceVolume"
+
+## Owner-recorded lines under `res://audio/voice/<lineId>.ogg` play instead of
+## the platform voice when they exist. See `voice_lines.gd`.
+const VoiceLinesScript := preload("res://scripts/speech/voice_lines.gd")
+## Safety margin over a recording's own length before the queue moves on
+## without its `finished` signal.
+const RECORDING_TIMEOUT_FACTOR: float = 1.25
+const RECORDING_TIMEOUT_PAD_SECONDS: float = 0.5
 
 const MIN_DURATION_SECONDS: float = 0.6
 const MAX_DURATION_SECONDS: float = 12.0
@@ -184,6 +197,12 @@ var _current_is_reaction: bool = false
 var _reaction_protected_until_msec: int = 0
 ## The voice id handed to the platform for the last utterance, for diagnostics.
 var _last_voice_id: String = ""
+## The parent's slider, when set live this session; < 0 means "read the profile".
+var _voice_volume_override: float = -1.0
+## The player for bundled recordings, made on first use, only inside a tree.
+var _line_player: AudioStreamPlayer = null
+var _current_used_recording: bool = false
+var _current_recording_id: String = ""
 ## `choose_voice()` result, cached: enumerating the platform's voices costs
 ## tens of milliseconds (180 entries on a Mac) and would otherwise run on every
 ## utterance. Re-read every `VOICE_CACHE_SECONDS`, so a voice the parent
@@ -292,6 +311,8 @@ func stop() -> void:
 	_queue.clear()
 	if _tts_feature_supported:
 		DisplayServer.tts_stop()
+	if _line_player != null and is_instance_valid(_line_player) and _line_player.playing:
+		_line_player.stop()
 	if _is_speaking:
 		var text: String = _current_text
 		_is_speaking = false
@@ -336,6 +357,35 @@ func notify_utterance_finished(utterance_id: int) -> void:
 ## The rate handed to the platform, for tests and diagnostics.
 func get_speech_rate() -> float:
 	return _speech_rate()
+
+
+## The parent's Voice volume slider, 0..1, applied to the next utterance (and to
+## the recording playing now). The settings screen calls this live; the value
+## is also persisted by the settings model and read back on the next launch.
+func set_voice_volume(linear: float) -> void:
+	_voice_volume_override = clampf(linear, 0.0, 1.0) if is_finite(linear) else -1.0
+	if _line_player != null and is_instance_valid(_line_player):
+		_line_player.volume_db = _recording_volume_db()
+
+
+## 0..1. The live override first, then the profile, then `SPEECH_VOLUME`.
+func get_voice_volume() -> float:
+	return _voice_volume()
+
+
+## The 0-100 figure handed to the platform right now. Tests and diagnostics.
+func get_speech_volume_percent() -> int:
+	return clampi(roundi(SPEECH_VOLUME_SCALE * _voice_volume()), 0, 100)
+
+
+## Whether the line playing now is an owner recording rather than the platform
+## voice, and which. Diagnostics and tests.
+func is_playing_recording() -> bool:
+	return _is_speaking and _current_used_recording
+
+
+func current_recording_id() -> String:
+	return _current_recording_id if _is_speaking else ""
 
 
 ## The voice this service would speak with right now: `{id, name, language,
@@ -500,6 +550,8 @@ func _begin(text: String, is_reaction: bool = false) -> void:
 	_current_text = text
 	_is_speaking = true
 	_current_used_native = false
+	_current_used_recording = false
+	_current_recording_id = ""
 	_current_started_natively = false
 	_current_begin_msec = Time.get_ticks_msec()
 	_current_is_reaction = is_reaction
@@ -509,6 +561,14 @@ func _begin(text: String, is_reaction: bool = false) -> void:
 
 	speech_started.emit(text)
 
+	# An owner recording of this exact line beats the platform voice.
+	var recording_seconds: float = _try_play_recording(text, utterance_id)
+	if recording_seconds > 0.0:
+		_current_used_recording = true
+		_schedule_fallback(utterance_id,
+				recording_seconds * RECORDING_TIMEOUT_FACTOR + RECORDING_TIMEOUT_PAD_SECONDS)
+		return
+
 	if _tts_feature_supported:
 		_current_used_native = _try_speak_native(text, utterance_id)
 
@@ -517,6 +577,83 @@ func _begin(text: String, is_reaction: bool = false) -> void:
 	_schedule_fallback(utterance_id, _timeout_for(text, _current_used_native))
 	if _current_used_native:
 		_schedule_poll(utterance_id)
+
+
+## Plays a bundled recording for `text` when one is shipped AND this node is in
+## a tree (an `AudioStreamPlayer` cannot play otherwise). Returns the
+## recording's length in seconds, or 0.0 when nothing was played -- the caller
+## then falls back to the platform voice, so a missing file never means silence.
+func _try_play_recording(text: String, utterance_id: int) -> float:
+	if not is_inside_tree():
+		return 0.0
+	var stream: AudioStream = VoiceLinesScript.stream_for(text)
+	if stream == null:
+		return 0.0
+	var player: AudioStreamPlayer = _ensure_line_player()
+	if player == null:
+		return 0.0
+	player.stop()
+	player.stream = stream
+	player.volume_db = _recording_volume_db()
+	player.play()
+	_current_recording_id = VoiceLinesScript.line_id_for(text)
+	# `finished` fires once per play; a stale one for an older utterance is
+	# ignored by `_complete_utterance()`'s id check.
+	if not player.finished.is_connected(_on_recording_finished):
+		player.finished.connect(_on_recording_finished)
+	_line_player_utterance = utterance_id
+	var length: float = stream.get_length()
+	return length if length > 0.0 else MIN_DURATION_SECONDS
+
+
+var _line_player_utterance: int = 0
+
+
+func _on_recording_finished() -> void:
+	_complete_utterance(_line_player_utterance)
+
+
+func _ensure_line_player() -> AudioStreamPlayer:
+	if _line_player != null and is_instance_valid(_line_player):
+		return _line_player
+	_line_player = AudioStreamPlayer.new()
+	_line_player.name = "VoiceLinePlayer"
+	# A dedicated bus when the project has one; Master otherwise. Music ducks
+	# under this exactly as it does under the platform voice, because
+	# `MusicBinder` polls `is_speaking()`, which is true either way.
+	_line_player.bus = &"Voice" if AudioServer.get_bus_index("Voice") >= 0 else &"Master"
+	add_child(_line_player)
+	return _line_player
+
+
+func _recording_volume_db() -> float:
+	var linear: float = _voice_volume()
+	if linear <= 0.0:
+		return -80.0
+	return linear_to_db(linear)
+
+
+## 0..1: the live override, else the profile's `voiceVolume`, else the default.
+func _voice_volume() -> float:
+	if _voice_volume_override >= 0.0:
+		return _voice_volume_override
+	var service: Node = _save_service()
+	if service != null and service.has_method("get_setting"):
+		var value: Variant = service.call("get_setting", VOICE_VOLUME_SETTING, null)
+		if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
+			var linear: float = float(value)
+			if is_finite(linear):
+				return clampf(linear, 0.0, 1.0)
+	return float(SPEECH_VOLUME) / SPEECH_VOLUME_SCALE
+
+
+## The SaveService autoload, through the main loop's root, so a service built
+## outside a running scene gets null and no engine error.
+func _save_service() -> Node:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(NodePath("SaveService"))
 
 
 func _try_speak_native(text: String, utterance_id: int) -> bool:
@@ -532,7 +669,7 @@ func _try_speak_native(text: String, utterance_id: int) -> bool:
 	DisplayServer.tts_speak(
 		text,
 		_last_voice_id,
-		SPEECH_VOLUME,
+		get_speech_volume_percent(),
 		SPEECH_PITCH,
 		_speech_rate(),
 		utterance_id,
@@ -554,9 +691,7 @@ func _english_voices() -> PackedStringArray:
 ## Reads the parent-facing "ttsSpeed" setting. Read defensively: SaveService may
 ## be absent (tests, a scene run on its own).
 func _speech_rate() -> float:
-	var save_service: Node = null
-	if is_inside_tree():
-		save_service = get_node_or_null("/root/SaveService")
+	var save_service: Node = _save_service()
 	if save_service == null or not save_service.has_method("get_setting"):
 		return NORMAL_SPEECH_RATE
 	if str(save_service.call("get_setting", "ttsSpeed", "normal")) == "slow":

@@ -19,9 +19,15 @@ extends Control
 ## | `HEARD` | "I heard: milk" |
 ## | `MATCHED` | "Great!" with the word that earned it |
 ## | `NOT_UNDERSTOOD` | "Try again!" (with what was heard, if anything) plus the reminder that tapping works |
-## | `PERMISSION_NEEDED` | a grown-up needs to turn the microphone on |
-## | `UNAVAILABLE` | voice is off, tapping still works |
-## | `ERROR` | "Let's try again." |
+## | `PERMISSION_NEEDED` | "Voice is not ready" -- a grown-up can turn the microphone on; tap it instead |
+## | `UNAVAILABLE` | "Voice is not ready" -- tap it instead |
+## | `ERROR` | "Try again!" (a timeout, or anything unexpected) plus the tap reminder |
+##
+## Every listening session ends in exactly one of three FACES (2026-09-20):
+## SUCCESS (`MATCHED`, "Great!"), RETRY (`NOT_UNDERSTOOD` / `ERROR`, "Try
+## again!" + "You can tap it too!") or UNAVAILABLE (`UNAVAILABLE` /
+## `PERMISSION_NEEDED`, "Voice is not ready -- tap it instead!").
+## `terminal_class()` names which; `test_speech_end_states.gd` forces every path.
 ##
 ## ## Two rules this file exists to keep
 ##
@@ -283,31 +289,51 @@ static func copy_for_state(state: int, heard: String = "") -> Dictionary:
 			# a child who cannot be heard must still be able to finish.
 			return {
 				"title": "Try again!",
-				"detail": ("I heard: %s. You can tap it too." % words) if not words.is_empty()
-						else "Say it once more, or tap it.",
+				"detail": ("I heard: %s. You can tap it too!" % words) if not words.is_empty()
+						else "You can tap it too!",
 				"color": Palette.PEACH,
 			}
 		State.PERMISSION_NEEDED:
 			return {
-				"title": "Microphone is off",
-				"detail": "A grown-up can turn it on in Settings. You can tap it too.",
+				"title": "Voice is not ready",
+				"detail": "A grown-up can turn the microphone on in Settings. Tap it instead!",
 				"color": Palette.LAVENDER,
 			}
 		State.UNAVAILABLE:
 			return {
 				"title": "Voice is not ready",
-				"detail": "You can tap it instead!",
+				"detail": "Tap it instead!",
 				"color": Palette.LAVENDER,
 			}
 		State.ERROR:
-			# Also the timeout: nothing was heard within the listening window.
+			# The timeout (nothing heard in the window) and anything unexpected:
+			# the same RETRY face as a misheard word.
 			return {
-				"title": "Let's try again",
-				"detail": "Tap Speak and say it, or just tap it.",
+				"title": "Try again!",
+				"detail": "You can tap it too!",
 				"color": Palette.PEACH,
 			}
 		_:
 			return {"title": "", "detail": "", "color": Palette.CREAM}
+
+
+const TERMINAL_SUCCESS: String = "success"
+const TERMINAL_RETRY: String = "retry"
+const TERMINAL_UNAVAILABLE: String = "unavailable"
+
+
+## Which of the three end faces a state is, or "" for a state that is not an
+## end (idle, listening, processing, the neutral HEARD receipt).
+static func terminal_class(state: int) -> String:
+	match state:
+		State.MATCHED:
+			return TERMINAL_SUCCESS
+		State.NOT_UNDERSTOOD, State.ERROR:
+			return TERMINAL_RETRY
+		State.UNAVAILABLE, State.PERMISSION_NEEDED:
+			return TERMINAL_UNAVAILABLE
+		_:
+			return ""
 
 
 ## States that disappear by themselves, and how long they stay. A state that is

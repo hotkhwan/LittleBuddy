@@ -896,8 +896,67 @@ func _on_next_pressed() -> void:
 	skip_pressed.emit()
 
 
+## Speak: the press goes out, and if it opened a listening session the button
+## is held disabled until that session ends -- one session at a time, and a
+## child cannot stack presses into a queue of microphones. Re-enabled on
+## `SpeechService.session_ended` (every terminal state emits it) and, as a belt
+## to that brace, by `SPEAK_LOCK_MAX_SECONDS` regardless.
 func _on_speak_pressed() -> void:
 	speak_pressed.emit()
+	_lock_speak_while_listening()
+
+
+## Longer than the service's own worst case (6 s after a partial + grace), so
+## the service ends the session first in every real path and this only ever
+## fires if the service itself is gone.
+const SPEAK_LOCK_MAX_SECONDS: float = 9.0
+
+var _speak_lock_generation: int = 0
+
+
+func _lock_speak_while_listening() -> void:
+	var speech: Node = _speech_service()
+	if speech == null or not speech.has_method("has_active_session") \
+			or not bool(speech.call("has_active_session")):
+		return  # nothing opened (unavailable, refused): the button stays live
+	_speak_button.disabled = true
+	if speech.has_signal("session_ended") \
+			and not speech.is_connected("session_ended", _on_speech_session_ended):
+		speech.connect("session_ended", _on_speech_session_ended)
+	_speak_lock_generation += 1
+	var generation: int = _speak_lock_generation
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null or not is_inside_tree():
+		return
+	tree.create_timer(SPEAK_LOCK_MAX_SECONDS).timeout.connect(
+		func() -> void:
+			if generation == _speak_lock_generation:
+				_release_speak(),
+		CONNECT_ONE_SHOT
+	)
+
+
+func _on_speech_session_ended(_outcome: String) -> void:
+	_release_speak()
+
+
+func _release_speak() -> void:
+	_speak_lock_generation += 1
+	if _speak_button != null:
+		_speak_button.disabled = false
+
+
+## True while a listening session holds the Speak button. Tests.
+func is_speak_locked() -> bool:
+	build()
+	return _speak_button.disabled
+
+
+func _speech_service() -> Node:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(NodePath("SpeechService"))
 
 
 ## The speech state panel, so the director can bind it to `SpeechService`. The
@@ -1195,6 +1254,12 @@ func _add_button(node_name: String, text: String, tint: Color) -> Button:
 	button.add_theme_color_override("font_pressed_color", INK)
 	for state: String in ["normal", "hover", "pressed", "focus"]:
 		button.add_theme_stylebox_override(state, _button_style(tint, state == "pressed"))
+	# Held (a live listening session): the same shape, quieter, never greyed to
+	# "broken" -- and the ink stays ink so the word is still readable.
+	var held: StyleBoxFlat = _button_style(tint.lerp(CREAM, 0.45), false)
+	button.add_theme_stylebox_override("disabled", held)
+	button.add_theme_color_override("font_disabled_color", INK.lerp(CREAM, 0.35))
+	button.add_theme_color_override("icon_disabled_color", INK.lerp(CREAM, 0.35))
 	add_child(button)
 	return button
 

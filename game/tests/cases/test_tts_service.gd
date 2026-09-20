@@ -341,7 +341,7 @@ func _test_platform_argument_order():
 		return failures
 
 	# (text, voice, volume, pitch, rate, utterance_id, interrupt)
-	if not String(args[2]).contains("VOLUME"):
+	if not String(args[2]).to_lower().contains("volume"):
 		failures.append("argorder: argument 3 should be the volume, got '%s'" % args[2])
 	if not String(args[3]).contains("PITCH"):
 		failures.append("argorder: argument 4 must be the PITCH, got '%s'" % args[3])

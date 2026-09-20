@@ -9,6 +9,29 @@
 ##
 ## `recognition_failed` is never fatal; touch gameplay must stay fully
 ## playable regardless of backend state.
+##
+## ## A listening session always ends, exactly once (2026-09-20)
+##
+## Every `start_listening()` that actually opens the microphone is a SESSION,
+## and a session ends in exactly one terminal signal -- `recognized(text)` or
+## `recognition_failed(reason)` -- followed by `session_ended(outcome)`. Nothing
+## in the backend can prevent that:
+##
+##   * no partial within `NO_PARTIAL_CAP_SECONDS` (4 s)         -> capped
+##   * no final within `AFTER_PARTIAL_CAP_SECONDS` (6 s) of the
+##     last partial                                            -> capped
+##
+## A cap asks the backend to stop (which makes both the native plugin and the
+## mock report the hypothesis they have as the final) and, if nothing terminal
+## arrives within `CAP_GRACE_SECONDS`, reports `timeout` itself. A second
+## terminal for the same session -- a late native callback, a backend that
+## fails and then also finishes -- is dropped. `listening_stopped` is
+## guaranteed before the terminal, because the iOS backend's failure path does
+## not emit it. `is_listening()` answers from the session, not from the
+## backend's cached flag, so the music duck that polls it always releases.
+##
+## No transcript is ever held here: the cap needs only WHETHER a partial came,
+## and when.
 extends Node
 
 ## Name the native iOS plugin registers itself under (see IosSpeechBackend).
@@ -27,6 +50,22 @@ signal listening_stopped()
 signal partial_recognized(text: String)
 signal recognized(text: String)
 signal recognition_failed(reason: String)
+## After the terminal signal of every session (and after an immediate
+## `unavailable` failure, which is a session that never opened). `outcome` is
+## `OUTCOME_RECOGNIZED` or `OUTCOME_FAILED`. The Speak button re-enables on this.
+signal session_ended(outcome: String)
+
+const OUTCOME_RECOGNIZED: String = "recognized"
+const OUTCOME_FAILED: String = "failed"
+const REASON_TIMEOUT: String = "timeout"
+const REASON_UNAVAILABLE: String = "unavailable"
+
+## Hard caps. See the class docs.
+const NO_PARTIAL_CAP_SECONDS: float = 4.0
+const AFTER_PARTIAL_CAP_SECONDS: float = 6.0
+## How long a capped session waits for the backend to hand over its hypothesis
+## before `timeout` is reported for it.
+const CAP_GRACE_SECONDS: float = 0.75
 
 var _backend: SpeechBackend = null
 var _backend_name: String = "unavailable"
@@ -43,6 +82,17 @@ var _launch_count: int = 1
 ## said is ever held here. See `describe_diagnostics()`.
 var _last_locale: String = "en-US"
 
+## The live session. `_session_id` increments per session so a late callback
+## for an old one is recognisable; the times are seconds of session age.
+var _session_active: bool = false
+var _session_id: int = 0
+var _session_age: float = 0.0
+var _had_partial: bool = false
+var _since_partial: float = 0.0
+var _capping: bool = false
+var _since_cap: float = 0.0
+var _stopped_emitted: bool = false
+
 
 func _ready() -> void:
 	_load_diagnostics()
@@ -50,6 +100,60 @@ func _ready() -> void:
 	# Announce initial state so UI can reflect it without polling.
 	availability_changed.emit(is_available())
 	_write_diagnostics()
+
+
+func _process(delta: float) -> void:
+	advance(delta)
+
+
+## Runs the session watchdog. Called every frame by `_process()`; a headless
+## test drives it directly, exactly as `AudioDirector.advance()` is.
+func advance(delta: float) -> void:
+	if not _session_active or delta <= 0.0:
+		return
+	_session_age += delta
+	if _capping:
+		_since_cap += delta
+		if _since_cap >= CAP_GRACE_SECONDS:
+			_finish_session_failed(REASON_TIMEOUT)
+		return
+	if _had_partial:
+		_since_partial += delta
+		if _since_partial >= AFTER_PARTIAL_CAP_SECONDS:
+			_cap_session(_since_partial - AFTER_PARTIAL_CAP_SECONDS)
+	elif _session_age >= NO_PARTIAL_CAP_SECONDS:
+		_cap_session(_session_age - NO_PARTIAL_CAP_SECONDS)
+
+
+## Asks the backend to wrap up. It reports its hypothesis as the final (or
+## nothing at all), and the grace timer covers the second case. `overshoot` is
+## how far past the cap this frame already ran; it counts against the grace, so
+## one long frame cannot stretch the ending.
+func _cap_session(overshoot: float = 0.0) -> void:
+	if _capping or not _session_active:
+		return
+	_capping = true
+	_since_cap = 0.0
+	if _backend != null:
+		_backend.stop_listening()  # may end the session synchronously
+	if _session_active and _capping:
+		_since_cap = maxf(overshoot, 0.0)
+		if _since_cap >= CAP_GRACE_SECONDS:
+			_finish_session_failed(REASON_TIMEOUT)
+
+
+## A session that is live right now. Tests and diagnostics.
+func has_active_session() -> bool:
+	return _session_active
+
+
+## Seconds since the current session started. Tests and diagnostics.
+func session_age() -> float:
+	return _session_age
+
+
+func session_had_partial() -> bool:
+	return _had_partial
 
 
 ## Restores the counters from a previous run. Without this, every relaunch
@@ -108,8 +212,18 @@ func _write_diagnostics() -> void:
 	file.close()
 
 
+## An autoload by name, through the main loop's root, so a service built
+## outside a running scene (the headless runner) gets null and no engine error
+## about absolute paths.
+func _autoload(node_name: String) -> Node:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(NodePath(node_name))
+
+
 func _tts_available() -> bool:
-	var tts: Node = get_node_or_null("/root/TtsService")
+	var tts: Node = _autoload("TtsService")
 	if tts != null and tts.has_method("is_available"):
 		return bool(tts.call("is_available"))
 	return false
@@ -118,7 +232,7 @@ func _tts_available() -> bool:
 ## Which voice speaks, e.g. "Samantha (compact)". Diagnostics only (the live
 ## panel, not the persisted file).
 func _tts_voice() -> String:
-	var tts: Node = get_node_or_null("/root/TtsService")
+	var tts: Node = _autoload("TtsService")
 	if tts != null and tts.has_method("describe_voice"):
 		return String(tts.call("describe_voice"))
 	return ""
@@ -129,7 +243,7 @@ func _tts_voice() -> String:
 ## the likeliest thing to be transcribed. Stopping it also makes the loop feel
 ## immediate -- the child pressed Speak, so the game listens now.
 func _hush_tts() -> void:
-	var tts: Node = get_node_or_null("/root/TtsService")
+	var tts: Node = _autoload("TtsService")
 	if tts != null and tts.has_method("stop"):
 		tts.call("stop")
 
@@ -153,11 +267,21 @@ func request_permission() -> void:
 
 func start_listening(locale: String = "en-US") -> void:
 	_last_locale = locale
+	if _session_active:
+		return  # one session at a time; the Speak button is disabled meanwhile
 	if not is_available():
-		recognition_failed.emit("unavailable")
+		# A session that never opened still ends, so a Speak button that
+		# disabled itself on the press is re-enabled.
+		_failed_count += 1
+		_last_failure_reason = REASON_UNAVAILABLE
+		_write_diagnostics()
+		recognition_failed.emit(REASON_UNAVAILABLE)
+		session_ended.emit(OUTCOME_FAILED)
 		return
+	_open_session()
 	_hush_tts()
 	_backend.start_listening(locale)
+	# A backend that refused synchronously has already closed the session.
 
 
 func stop_listening() -> void:
@@ -165,8 +289,45 @@ func stop_listening() -> void:
 		_backend.stop_listening()
 
 
+## Whether a session is live. The backend's own flag is deliberately NOT
+## consulted: the iOS backend's failure path leaves it set, and a duck keyed on
+## a stuck flag would never release.
 func is_listening() -> bool:
-	return _backend != null and _backend.is_listening()
+	return _session_active
+
+
+func _open_session() -> void:
+	_session_id += 1
+	_session_active = true
+	_session_age = 0.0
+	_had_partial = false
+	_since_partial = 0.0
+	_capping = false
+	_since_cap = 0.0
+	_stopped_emitted = false
+
+
+## Ends the session, emitting `listening_stopped` first when the backend did
+## not. Returns false when no session is live (a late or duplicate terminal).
+func _close_session() -> bool:
+	if not _session_active:
+		return false
+	_session_active = false
+	_capping = false
+	if not _stopped_emitted:
+		_stopped_emitted = true
+		listening_stopped.emit()
+	return true
+
+
+func _finish_session_failed(reason: String) -> void:
+	if not _close_session():
+		return
+	_failed_count += 1
+	_last_failure_reason = reason
+	_write_diagnostics()
+	recognition_failed.emit(reason)
+	session_ended.emit(OUTCOME_FAILED)
 
 
 ## -- Parent diagnostics --------------------------------------------------------
@@ -308,37 +469,56 @@ func _on_permission_result(granted: bool) -> void:
 
 
 func _on_listening_started() -> void:
+	if not _session_active:
+		# A backend that starts on its own (never in this project, but a
+		# contract is a contract): adopt it as a session so it is still capped.
+		_open_session()
 	_listen_count += 1
 	_write_diagnostics()
 	listening_started.emit()
 
 
 func _on_listening_stopped() -> void:
+	if _stopped_emitted:
+		return
+	_stopped_emitted = true
 	listening_stopped.emit()
 
 
-## Passed straight through: not counted, not written, not remembered.
+## Passed straight through: not counted, not written, not remembered. Only the
+## fact that one arrived, and when, is kept for the cap.
 func _on_partial_recognized(text: String) -> void:
+	if not _session_active:
+		return
+	if not text.strip_edges().is_empty():
+		_had_partial = true
+		_since_partial = 0.0
 	partial_recognized.emit(text)
 
 
 func _on_recognized(text: String) -> void:
+	if not _close_session():
+		return  # a late final for a session that already ended
 	_recognized_count += 1
 	_write_diagnostics()
 	recognized.emit(text)
+	session_ended.emit(OUTCOME_RECOGNIZED)
 
 
+## A failure for the live session ends it. One arriving with no session live --
+## the iOS backend re-emitting an error after a cap already ended the session --
+## is dropped: the child has already been answered once, and a second "Try
+## again" on top of "Great!" is exactly the double ending this file forbids.
 func _on_recognition_failed(reason: String) -> void:
-	_failed_count += 1
-	_last_failure_reason = reason
-	_write_diagnostics()
-	recognition_failed.emit(reason)
+	if not _session_active:
+		return
+	_finish_session_failed(reason)
 
 
 ## Reads `speechEnabled` from SaveService defensively — SaveService is
 ## authored concurrently and must never be assumed to exist.
 func _speech_enabled() -> bool:
-	var save_service := get_node_or_null("/root/SaveService")
+	var save_service: Node = _autoload("SaveService")
 	if save_service != null and save_service.has_method("get_setting"):
 		var value = save_service.call("get_setting", "speechEnabled", true)
 		return bool(value)
