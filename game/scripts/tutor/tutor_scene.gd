@@ -134,6 +134,15 @@ signal left_scene(target: String)
 
 var _classroom: Node3D = null
 var _aliz: Node3D = null
+## The lesson an interjection asked to switch to, applied at the boundary.
+var _switch_target: String = ""
+var _board_asset: String = ""
+## Set for the instant a barge-in cuts Aliz: the synthesis provider's cancel()
+## emits `finished` synchronously, and that must NOT run the boundary logic.
+var _interrupted: bool = false
+## A correct answer whose praise was cut short is still a correct answer: its
+## advance is applied when the interruption has been handled.
+var _deferred_action: String = ""
 var _seat: SkeletonModifier3D = null
 var _hud: Control = null
 var _break_card: Control = null
@@ -536,7 +545,7 @@ func _speak_turn(turn: Dictionary) -> void:
 
 func _on_speech_finished(_text: String) -> void:
 	_set_speaking(false)
-	if _state != STATE_SPEAKING:
+	if _interrupted or _state != STATE_SPEAKING:
 		return
 	_hud.call("set_subtitle", "")
 	_after_turn()
@@ -562,6 +571,19 @@ func _after_turn() -> void:
 		return
 	var action: String = String(_current_turn.get("lessonAction", "retry"))
 	match action:
+		"jump_step":
+			# handle_interjection() already moved the engine ("Okay! Let's see
+			# the dog!"): open the step it is now on, card and all.
+			_open_step()
+		"switch_lesson":
+			var target: String = String(_current_turn.get("nextLessonId", _switch_target))
+			_switch_target = ""
+			if not target.is_empty() and _engine.has_method("switch_lesson") \
+					and bool(_engine.call("switch_lesson", target, _save_service())):
+				_lesson_id = target
+				if _quota != null and _quota.has_method("set_lesson_id"):
+					_quota.call("set_lesson_id", target)
+			_open_step()
 		"complete", "end_session":
 			if _outcome_was_correct:
 				_outcome_was_correct = false
@@ -851,8 +873,17 @@ func _on_child_speech_ended(transcript: String) -> void:
 func _on_barge_in() -> void:
 	if _state != STATE_SPEAKING or _closing:
 		return
+	# Remember what the cut turn owed the lesson: a correct answer's advance
+	# must still happen once the interruption is dealt with.
+	_deferred_action = ""
+	if _outcome_was_correct:
+		_deferred_action = String(_current_turn.get("lessonAction", "next_question"))
+		_outcome_was_correct = false
+	_interrupted = true
 	_synth.call("cancel")
+	_interrupted = false
 	_set_speaking(false)
+	_pending_phase = ScriptedProviderScript.PHASE_INTERJECTION
 	_hud.call("set_subtitle", "")
 	_face("listening")
 	_gesture("tilt")
@@ -882,14 +913,70 @@ func _heard(transcript: String) -> void:
 	if _choosing:
 		_choose_subject(_route_subject(text))
 		return
-	if _engine.has_method("handle_interjection") and _pending_phase != ScriptedProviderScript.PHASE_OPEN:
+	# Interjections are what a BARGE-IN says. The engine's handle_interjection()
+	# MOVES the lesson when it recognises a request, so it is consulted only for
+	# a barge-in transcript; an ordinary answer is evaluated as an answer (a wrong
+	# "banana" on the apple step is a miss, not a request to see the banana).
+	var interjecting: bool = _pending_phase == ScriptedProviderScript.PHASE_INTERJECTION
+	if interjecting and _engine.has_method("handle_interjection"):
+		if not _sounds_like_a_request(text):
+			# A bare word shouted over the question is an answer.
+			_think(text, ScriptedProviderScript.PHASE_ANSWER)
+			return
 		var handled: Dictionary = _engine.call("handle_interjection", text)
+		var action: String = String(handled.get("lessonAction", ""))
 		if bool(handled.get("handled", false)):
+			_switch_target = String(handled.get("nextLessonId", ""))
+			_deferred_action = ""
 			_pending_phase = ScriptedProviderScript.PHASE_ANSWER
 			_speak_turn(TurnValidator.make(String(handled.get("line", "Okay!")), "happy", "nod",
-				String(handled.get("lessonAction", "next_question")), String(_current_step.get("visualAssetId", ""))))
+				action if not action.is_empty() else "next_question", String(_current_step.get("visualAssetId", ""))))
 			return
+		if not bool(handled.get("isAnswer", false)):
+			# An interruption that neither answers nor asks for anything else
+			# ("look, a bird!") is never an attempt: finish what the cut turn
+			# owed, then ask the question again.
+			_resume_after_interjection()
+			return
+	elif _session != null and _session.has_method("is_stop_phrase") and bool(_session.call("is_stop_phrase", text)):
+		# "I'm done" / "stop" from any turn ends the lesson kindly.
+		_pending_phase = ScriptedProviderScript.PHASE_ANSWER
+		_speak_turn(TurnValidator.make("Okay! Great job today! Bye bye!", "happy", "wave", "end_session",
+				String(_current_step.get("visualAssetId", ""))))
+		return
 	_think(text, ScriptedProviderScript.PHASE_ANSWER)
+
+
+const REQUEST_CUES: Array[String] = ["want", "show", "see", "let", "lets", "can", "no", "wait", "instead", "please", "again", "different", "other", "another"]
+
+
+## True when an interruption reads as a request rather than a shouted answer.
+static func _sounds_like_a_request(text: String) -> bool:
+	var words: PackedStringArray = EngineStubScript.normalise(text).split(" ", false)
+	if words.size() >= 3:
+		return true
+	for word: String in words:
+		if REQUEST_CUES.has(word):
+			return true
+	return false
+
+
+## After an interruption Aliz could not act on: apply the advance the cut
+## praise owed (if any), then re-ask the current question. No attempt is spent.
+func _resume_after_interjection() -> void:
+	var owed: String = _deferred_action
+	_deferred_action = ""
+	_pending_phase = ScriptedProviderScript.PHASE_OPEN
+	if owed == "next_question":
+		_advance_step()
+		return
+	if owed == "complete" or owed == "end_session":
+		_complete_lesson()
+		return
+	if not _last_question.is_empty():
+		_speak_turn(_last_question)
+	else:
+		_open_step()
 
 
 ## A short "Thinking..." beat with a nod, then the transcript goes to the provider.
@@ -1212,7 +1299,7 @@ func is_simulation_enabled() -> bool:
 
 ## DEV: simulated child audio, through the session's hook. Refused unless
 ## simulation is on, so nothing in normal play can fake a transcript.
-func simulate(kind: String) -> void:
+func simulate(kind: String, transcript_override: String = "") -> void:
 	if not _sim_enabled:
 		push_warning("tutor: simulated audio refused; simulation is not enabled")
 		return
@@ -1242,6 +1329,8 @@ func simulate(kind: String) -> void:
 			"nothing", "silence":
 				clip_name = "silence"
 				transcript = ""
+		if not transcript_override.is_empty():
+			transcript = transcript_override
 		var frames: Array = []
 		var session_script: Script = _session.get_script()
 		if session_script != null and session_script.has_method("preset_clip"):
@@ -1297,6 +1386,7 @@ func _set_speaking(active: bool) -> void:
 
 
 func _show_card(asset_id: String) -> void:
+	_board_asset = asset_id
 	_hud.call("set_card", asset_id)
 	var board: Node = _classroom.call("get_board")
 	if board != null:
@@ -1422,6 +1512,11 @@ func synthesis() -> Node:
 
 func current_turn() -> Dictionary:
 	return _current_turn
+
+
+## The asset the board is showing right now, "" for none (tests).
+func board_asset_id() -> String:
+	return _board_asset
 
 
 func current_step() -> Dictionary:

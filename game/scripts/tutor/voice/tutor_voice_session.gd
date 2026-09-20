@@ -254,6 +254,12 @@ func is_capture_only() -> bool:
 	return _capture_only
 
 
+## True while a simulated child-audio clip is still being fed to the VAD (tests
+## and the dev panel wait for it before feeding the next one).
+func is_simulating() -> bool:
+	return _sim_active
+
+
 func vad() -> RefCounted:
 	if _vad == null:
 		_vad = VadScript.new()

@@ -57,6 +57,8 @@ func run():
 	failures.append_array(_test_scene_loads_and_is_within_budget())
 	failures.append_array(_test_full_hands_free_lesson_completes())
 	failures.append_array(_test_barge_in_and_partials())
+	failures.append_array(_test_interjection_switches_the_item())
+	failures.append_array(_test_idle_interruption_is_not_an_attempt())
 	failures.append_array(_test_no_recogniser_fallbacks())
 	failures.append_array(_test_simulation_is_refused_when_off())
 	failures.append_array(_test_every_button_routes())
@@ -275,8 +277,14 @@ func _test_barge_in_and_partials():
 		failures.append("a barge-in should show the 'I'm listening!' banner, got '%s'" % scene.hud().banner_kind())
 	if scene.synthesis().is_speaking():
 		failures.append("a barge-in must cut Aliz's speech")
-	if _until(scene, func() -> bool: return scene.state() == "thinking", 40) < 0:
-		failures.append("the interrupting utterance should be evaluated (state '%s')" % scene.state())
+	# "Wait! I want a dog!" in the fruits lesson is a subject switch: Aliz
+	# answers it ("Okay! Let's learn about animals!") -- acted upon, not scored.
+	if _until(scene, func() -> bool: return scene.state() == "thinking" or scene.state() == "speaking", 40) < 0:
+		failures.append("the interrupting utterance should be acted upon (state '%s')" % scene.state())
+	elif scene.state() == "speaking":
+		var last: Dictionary = scene.turn_log().back() if not scene.turn_log().is_empty() else {}
+		if not String(last.get("speech", "")).begins_with("Okay"):
+			failures.append("the interruption should be answered with an 'Okay…' line, got %s" % str(last.get("speech", "")))
 	_free(scene)
 	return failures
 
@@ -587,5 +595,61 @@ func _test_break_card_copy():
 				failures.append("break card copy '%s' contains '%s'" % [text, banned])
 	if SceneScript.CLOSING_TEXT.length() > Turn.MAX_SPEECH:
 		failures.append("the closing line must fit the turn validator")
+	_free(scene)
+	return failures
+
+
+## QA B1: "Wait! I want a dog!" while Aliz asks about the cat must actually move
+## the lesson to the dog -- board, question and scoring -- not only say so.
+func _test_interjection_switches_the_item():
+	var failures: Array = []
+	var scene: Node = _make()
+	if not _reach_first_question(scene):
+		failures.append("never reached the first question (state '%s')" % scene.state())
+		_free(scene)
+		return failures
+	if not scene.using_real_engine():
+		_free(scene)
+		return failures
+	var before: String = String(scene.current_step().get("stepId", ""))
+	scene.hud().press("repeat")  # Aliz is speaking the apple question
+	scene.simulate("interrupt", "Wait! I want the banana!")
+	if _until(scene, func() -> bool: return String(scene.current_step().get("stepId", "")).contains("banana") and _ready_to_answer(scene), 400) < 0:
+		failures.append("after 'I want the banana' the lesson should be on the banana step and listening, got step %s (was %s) state %s"
+				% [str(scene.current_step().get("stepId")), before, scene.state()])
+	if scene.has_method("board_asset_id") and not String(scene.board_asset_id()).contains("banana"):
+		failures.append("the board should show the banana after the switch, got %s" % str(scene.board_asset_id()))
+	scene.simulate("correct")
+	if _until(scene, func() -> bool: return scene.state() == "celebrate" or scene.state() == "speaking", 200) < 0:
+		failures.append("answering on the banana step should be judged, got state %s" % scene.state())
+	_free(scene)
+	return failures
+
+
+## QA B2: an interruption Aliz cannot act on ("look, a bird outside!") during
+## her praise must not be scored, and the correct answer it cut must still
+## advance the lesson.
+func _test_idle_interruption_is_not_an_attempt():
+	var failures: Array = []
+	var scene: Node = _make()
+	if not _reach_first_question(scene):
+		failures.append("never reached the first question")
+		_free(scene)
+		return failures
+	var step_before: String = String(scene.current_step().get("stepId", ""))
+	scene.simulate("correct")
+	if _until(scene, func() -> bool: return scene.state() == "speaking", 200) < 0:
+		failures.append("the correct answer should have Aliz praising (state %s)" % scene.state())
+		_free(scene)
+		return failures
+	scene.simulate("interrupt", "look a bird outside")
+	if _until(scene, func() -> bool: return _ready_to_answer(scene), 400) < 0:
+		failures.append("after an idle interruption the mic should reopen (state %s)" % scene.state())
+	var step_after: String = String(scene.current_step().get("stepId", ""))
+	if step_after == step_before:
+		failures.append("the correct answer cut by the interruption must still advance the lesson (still on %s)" % step_before)
+	var engine: Object = scene.lesson_engine()
+	if engine != null and engine.has_method("attempts") and int(engine.call("attempts")) != 0:
+		failures.append("an idle interruption must not count as an attempt on the new step")
 	_free(scene)
 	return failures
