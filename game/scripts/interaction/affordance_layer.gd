@@ -661,6 +661,12 @@ func _layout() -> void:
 		_bubble_rect = _any_bubble_keep_out(camera)
 	if _bubble_rect.size.x > 0.0:
 		keep_outs.append(_bubble_rect)
+	# Aliz's own face is a keep-out too: standing square to the camera in front
+	# of Bunny, the CARRY disc landed on her face (the side-step alone only
+	# helps when she is off to one side).
+	var face: Rect2 = _actor_face_keep_out(camera)
+	if face.size.x > 0.0:
+		keep_outs.append(face)
 	var verb: String = String(_current.get("verb", ""))
 	var placed: Dictionary = place_badge(
 		_screen, _ring_px, view, _top_keep_out, _actor_screen_x(camera), keep_outs, character,
@@ -918,6 +924,29 @@ func _actor_screen_x(camera: Camera3D) -> float:
 	if camera.is_position_behind(chest):
 		return _screen.x
 	return camera.unproject_position(chest).x
+
+
+## A box around the caregiver's head on screen (1.25 m to 1.7 m above her
+## feet, about a head's width either side), or empty when she is off screen.
+func _actor_face_keep_out(camera: Camera3D) -> Rect2:
+	if camera == null or _actor == null or not is_instance_valid(_actor):
+		return Rect2()
+	var feet: Vector3 = SpatialUtil.world_position(_actor)
+	var basis: Basis = SpatialUtil.world_transform(camera).basis
+	var rect: Rect2 = Rect2()
+	var first: bool = true
+	for h: float in [1.25, 1.72]:
+		for sx: float in [-0.2, 0.2]:
+			var corner: Vector3 = feet + Vector3(0.0, h, 0.0) + basis.x * sx
+			if camera.is_position_behind(corner):
+				return Rect2()
+			var point: Vector2 = camera.unproject_position(corner)
+			if first:
+				rect = Rect2(point, Vector2.ZERO)
+				first = false
+			else:
+				rect = rect.expand(point)
+	return rect.grow(6.0)
 
 
 func get_placement() -> String:

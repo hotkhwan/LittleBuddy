@@ -476,13 +476,20 @@ func _stand_at(semantic_id: String) -> void:
 	character.rotation.y = NavMath.yaw_towards(stand, face, character.rotation.y)
 
 
+## A kitchen door that is OPEN to a free-starter profile. The living-room door
+## is locked in Free Play (it shows SOON, which `_locked_sign` photographs), so
+## the ENTER frame uses the door back to the bedroom.
 func _first_door_id() -> String:
+	var candidates: Array = []
 	for id: Variant in _world.call("get_semantic_target_ids"):
 		var target: Node = _world.call("get_target_by_semantic_id", String(id))
 		if target != null and target.has_method("is_door") and bool(target.call("is_door")) \
 				and String(id).begins_with("kitchen."):
-			return String(id)
-	return ""
+			candidates.append(String(id))
+	for id: String in candidates:
+		if id.to_lower().contains("bedroom"):
+			return id
+	return String(candidates[0]) if not candidates.is_empty() else ""
 
 
 func _expect(verb: String, target_id: String, shot: String) -> void:
