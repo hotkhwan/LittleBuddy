@@ -1096,9 +1096,13 @@ func _normalise(pose_name: String, holder: Node3D, oriented: Node3D, instance: N
 	# The contact hint sits on the floor under the wrapper's origin, inside the
 	# holder (so the sealed hierarchy holds) and therefore offset back by the
 	# holder's own placement. The holder is unscaled, so metres are metres.
+	# Under his FEET (the mesh is centred on its box and his head reaches
+	# further forward than his toes), carried through the same instance ->
+	# oriented chain the mesh takes, so it lands where the shoes do.
+	var feet_local: Vector3 = ContactHintScript.feet_centre(mesh_instance.mesh) - centre
+	var feet: Vector3 = oriented.get_transform() * feet_local
 	var hint: MeshInstance3D = ContactHintScript.build(CONTACT_HINT_RADIUS_M)
-	hint.position = Vector3(-holder.position.x, -holder.position.y + ContactHintScript.LIFT_M,
-			-holder.position.z)
+	hint.position = Vector3(feet.x, -holder.position.y + ContactHintScript.LIFT_M, feet.z)
 	holder.add_child(hint)
 
 

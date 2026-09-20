@@ -995,7 +995,14 @@ func _build_contact_hint() -> void:
 	var hint: MeshInstance3D = ContactHintScript.build(ContactHintScript.DEFAULT_RADIUS_M)
 	var inverse: float = 1.0 / maxf(_model_root.scale.y, 0.0001)
 	hint.scale = Vector3.ONE * inverse
-	hint.position = Vector3(0.0, ContactHintScript.LIFT_M * inverse, 0.0)
+	# Under the feet: the mesh is centred on its bounding box and her hair and
+	# dress reach further out than her shoes, so the origin is not the stance.
+	var feet: Vector3 = Vector3.ZERO
+	if _mesh != null and _mesh.mesh != null:
+		var instance: Node3D = _model_root.get_child(0) as Node3D
+		var offset: Vector3 = instance.position if instance != null else Vector3.ZERO
+		feet = ContactHintScript.feet_centre(_mesh.mesh) + offset
+	hint.position = Vector3(feet.x, ContactHintScript.LIFT_M * inverse, feet.z)
 	_model_root.add_child(hint)
 
 
