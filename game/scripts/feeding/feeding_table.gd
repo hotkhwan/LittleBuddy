@@ -598,12 +598,14 @@ func _press_at(canvas_pos: Vector2) -> bool:
 
 
 func _move_to(canvas_pos: Vector2) -> void:
-	if _press_item == null:
-		return
 	if not _press_moved and canvas_pos.distance_to(_press_screen) > 18.0:
 		_press_moved = true
+	# A live drag follows the finger whatever else is remembered about the
+	# press (`begin_drag()` clears `_press_item`).
 	if _drag_item != null:
 		drag_to_screen(canvas_pos)
+		return
+	if _press_item == null:
 		return
 	# Drag-down on the banana peels it.
 	if bool(_press_item.call("needs_peel")) and canvas_pos.y - _press_screen.y > 28.0:
@@ -624,6 +626,7 @@ func _release_at(_canvas_pos: Vector2) -> void:
 	if item == null or _press_moved:
 		return
 	tap_item(String(item.get("item_id")))
+	_press_moved = false
 
 
 func _item_at(canvas_pos: Vector2) -> Node3D:
@@ -890,6 +893,9 @@ func _peel(item: Node3D) -> void:
 		return
 	_hud.call("hide_hint")
 	_play_sfx(SFX_PLACE)
+	# Peeled NOW, as a fact; the strips fold over the next 0.4 s as a picture.
+	# A child who grabs the banana while it is still folding may.
+	item.set("peeled", true)
 	if _instant or not is_inside_tree():
 		item.call("set_peel_progress", 1.0)
 		return
@@ -1043,33 +1049,26 @@ func _set_face(mood: String) -> void:
 # Screen space, services
 # ---------------------------------------------------------------------------
 
-## Window pixels -> the canvas space events and Controls use.
+## Camera3D projects in the viewport's VISIBLE RECT, which under the project's
+## `canvas_items` stretch is the 2D canvas (1821x1024 on a 1334x750 window) --
+## the same space input events and Controls use. Measured, not assumed: an
+## InputEventMouseButton at window (100, 100) arrives here as (136.5, 136.5),
+## and `get_visible_rect()` reports the canvas. So there is nothing to convert.
 func _to_canvas(world: Vector3) -> Vector2:
 	if _camera == null or not _camera.is_inside_tree():
 		return Vector2.ZERO
-	var window_pos: Vector2 = _camera.unproject_position(world)
-	var viewport: Viewport = get_viewport()
-	if viewport == null:
-		return window_pos
-	return viewport.get_final_transform().affine_inverse() * window_pos
+	return _camera.unproject_position(world)
 
 
 func _to_window(canvas_pos: Vector2) -> Vector2:
-	var viewport: Viewport = get_viewport()
-	if viewport == null:
-		return canvas_pos
-	return viewport.get_final_transform() * canvas_pos
+	return canvas_pos
 
 
 func _canvas_size() -> Vector2:
 	var viewport: Viewport = get_viewport()
 	if viewport == null:
 		return Vector2(1366.0, 1024.0)
-	var size: Vector2 = viewport.get_visible_rect().size
-	var scale: Vector2 = viewport.get_final_transform().get_scale()
-	if scale.x > 0.0001 and scale.y > 0.0001:
-		size = Vector2(size.x / scale.x, size.y / scale.y)
-	return size
+	return viewport.get_visible_rect().size
 
 
 func _after(seconds: float, callable: Callable) -> void:
