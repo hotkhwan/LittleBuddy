@@ -27,6 +27,8 @@ extends RefCounted
 
 const MANIFEST_SCRIPT: String = "res://scripts/audio/music_manifest.gd"
 const SHIPPED_MANIFEST: String = "res://content/audio/manifest.json"
+## The pre-clearance manifest, kept as a fixture so the silent path stays tested.
+const PENDING_FIXTURE: String = "res://tests/fixtures/audio_manifest_pending.json"
 
 ## The two tracks Anny is generating. Named here so that renaming one in the
 ## manifest without telling anyone fails a test rather than silently muting a
@@ -55,7 +57,8 @@ func run():
 	_script = loaded as GDScript
 
 	failures.append_array(_test_shipped_manifest_is_well_formed())
-	failures.append_array(_test_shipped_manifest_is_silent_today())
+	failures.append_array(_test_shipped_manifest_is_cleared())
+	failures.append_array(_test_pending_manifest_is_silent())
 	failures.append_array(_test_round_trip_loses_nothing())
 	failures.append_array(_test_licence_gate_fails_closed())
 	failures.append_array(_test_evidence_must_name_something())
@@ -113,17 +116,20 @@ func _test_shipped_manifest_is_well_formed():
 	if not ids.is_empty():
 		var first_id: String = String(ids[0])
 		var before: String = String(manifest.get_track(first_id)["commercialUse"])
+		var cleared_before: bool = manifest.licence_cleared(first_id)
 		var row: Dictionary = manifest.get_track(first_id)
-		row["commercialUse"] = _script.COMMERCIAL_USE_VERIFIED
+		# Flip whatever it is, so the case bites whether the row is pending or cleared.
+		row["commercialUse"] = "denied" if before == _script.COMMERCIAL_USE_VERIFIED \
+				else _script.COMMERCIAL_USE_VERIFIED
 		row["licenseEvidence"] = "invented by a caller"
 		var after: String = String(manifest.get_track(first_id)["commercialUse"])
 		if after != before:
 			failures.append(
 				"mutating the dictionary returned by get_track() changed the catalogue; a caller "
-				+ "must not be able to clear a track's licence by editing a copy"
+				+ "must not be able to change a track's licence by editing a copy"
 			)
-		if manifest.licence_cleared(first_id):
-			failures.append("the catalogue cleared a licence after a caller edited a copied row")
+		if manifest.licence_cleared(first_id) != cleared_before:
+			failures.append("the catalogue changed a licence after a caller edited a copied row")
 
 	return failures
 
@@ -138,58 +144,69 @@ func _test_shipped_manifest_is_well_formed():
 ## stays shut and the game ships silent. The temptation this case exists to defeat
 ## is the small edit -- `"pending"` -> `"verified"`, evidence invented -- that
 ## would make the music audible and the project liable.
-func _test_shipped_manifest_is_silent_today():
+## The shipped rows were cleared on 2026-09-20 on the project owner's written
+## commercial-use confirmation (tool: Suno; the Suno plan at generation is
+## recorded as UNVERIFIED, not invented). The evidence string must therefore name
+## a record that really exists in the repository, and both tracks must be
+## playable for exactly the scenes the manifest lists. The silent path is still
+## proven, against a pending fixture, in `_test_pending_manifest_is_silent()`.
+func _test_shipped_manifest_is_cleared():
 	var failures: Array = []
 
 	var manifest: RefCounted = _script.new()
 	manifest.load_file(SHIPPED_MANIFEST)
 
 	for track_id: String in manifest.track_ids():
-		if manifest.is_playable(track_id):
-			failures.append(
-				("track %s reports as playable. Real licence evidence is the ONLY thing that may "
-				+ "make this true. If it now exists, update this case alongside it and say what "
-				+ "the evidence is -- do not simply delete the assertion.") % track_id
-			)
-		var reason: String = manifest.refusal_reason(track_id)
-		if reason.is_empty():
-			failures.append("track %s is refused but gives no reason" % track_id)
-		# The refusal must be about the PAPERWORK, not about a missing file. If a
-		# track starts reporting `fileMissing` the delivery has been lost or
-		# renamed, and the licence question would be silently hidden behind it.
-		if reason == _script.REFUSAL_FILE_MISSING:
-			failures.append(
-				("track %s is refused for a missing file. Both tracks were delivered on "
-				+ "2026-09-19 and must be on disk; a missing file would hide the licence "
-				+ "refusal behind it.") % track_id
-			)
+		if not manifest.is_playable(track_id):
+			failures.append("track %s is refused (%s); the owner cleared both tracks on 2026-09-20"
+					% [track_id, manifest.refusal_reason(track_id)])
+		var row: Dictionary = manifest.get_track(track_id)
+		if String(row.get("commercialUse", "")) != "verified":
+			failures.append("track %s commercialUse is %s" % [track_id, str(row.get("commercialUse", ""))])
+		# The evidence must point at a record that is really in the repository.
+		var evidence: String = String(row.get("licenseEvidence", ""))
+		var record: String = evidence.get_slice("Record: ", 1).strip_edges()
+		if record.is_empty() or not FileAccess.file_exists("res://../" + record):
+			failures.append("track %s: licenseEvidence names no record on disk ('%s')" % [track_id, evidence])
+		if not String(row.get("source", "")).contains("Suno"):
+			failures.append("track %s: source no longer records the production tool" % track_id)
 
-	# Scene lookups must answer "" rather than guessing, for every state the BGM
-	# machine can be in.
+	if manifest.playable_track_for_scene("menu") != "littleDaysTheme":
+		failures.append("menu resolves to '%s', expected littleDaysTheme" % manifest.playable_track_for_scene("menu"))
+	if manifest.playable_track_for_scene("miniGame") != "hungryBunny":
+		failures.append("miniGame resolves to '%s', expected hungryBunny" % manifest.playable_track_for_scene("miniGame"))
+	if manifest.playable_track_for_scene("somethingElse") != "":
+		failures.append("an unknown scene resolved to a track")
+
+	if not manifest.missing_track_ids().is_empty():
+		failures.append("missing_track_ids() is %s; both files must be on disk" % str(manifest.missing_track_ids()))
+	if not manifest.licence_refused_track_ids().is_empty():
+		failures.append("licence_refused_track_ids() is %s; expected none" % str(manifest.licence_refused_track_ids()))
+
+	return failures
+
+
+## The silent path, kept alive for the next unverified delivery: the same two
+## real files, with the paperwork still pending, must be refused for the
+## paperwork and nothing else.
+func _test_pending_manifest_is_silent():
+	var failures: Array = []
+	var manifest: RefCounted = _script.new()
+	if not manifest.load_file(PENDING_FIXTURE):
+		return ["could not load %s: %s" % [PENDING_FIXTURE, str(manifest.errors())]]
+	for track_id: String in manifest.track_ids():
+		if manifest.is_playable(track_id):
+			failures.append("pending fixture track %s reports as playable" % track_id)
+		if manifest.refusal_reason(track_id) != _script.REFUSAL_COMMERCIAL_USE_UNVERIFIED:
+			failures.append("pending fixture track %s refused for '%s', expected commercialUseUnverified"
+					% [track_id, manifest.refusal_reason(track_id)])
 	for scene: String in ["menu", "house", "miniGame", "reward", "somethingElse"]:
 		if manifest.playable_track_for_scene(scene) != "":
-			failures.append("scene %s resolved to a playable track in a build with no music" % scene)
-
-	# The files really are there. This is the half of the old assertion that
-	# inverted when the delivery landed, and inverting it is the point: the audio
-	# pipeline is proven, only the rights are outstanding.
+			failures.append("pending fixture: scene %s resolved to a playable track" % scene)
 	if not manifest.missing_track_ids().is_empty():
-		failures.append(
-			("missing_track_ids() is %s. Both delivered tracks must resolve to a file on disk; "
-			+ "see docs/ORIGINAL_MUSIC_INTEGRATION.md for how they are produced.")
-			% str(manifest.missing_track_ids())
-		)
-
-	# Every track the gate refuses is a track nobody may ship. It should be BOTH of
-	# them today, and the count is asserted so that clearing one by accident is a
-	# failure rather than an improvement.
+		failures.append("pending fixture: files missing %s (the silence must be the paperwork)" % str(manifest.missing_track_ids()))
 	if manifest.licence_refused_track_ids().size() != manifest.track_count():
-		failures.append(
-			("licence_refused_track_ids() is %s of %d tracks. Neither delivered track has licence "
-			+ "evidence, so both must be refused.")
-			% [str(manifest.licence_refused_track_ids()), manifest.track_count()]
-		)
-
+		failures.append("pending fixture: expected every track refused, got %s" % str(manifest.licence_refused_track_ids()))
 	return failures
 
 

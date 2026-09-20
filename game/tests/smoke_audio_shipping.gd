@@ -17,8 +17,9 @@ extends SceneTree
 ## hear nothing.
 ##
 ## What a PASS means, and it is all checked below:
-##   1. with the licence override DISARMED (the shipping default) nothing plays,
-##      and that is quiet and errorless -- proven BEFORE anything else;
+##   1. with the licence override DISARMED, a PENDING manifest plays nothing,
+##      quietly and without errors -- proven BEFORE anything else -- and the
+##      SHIPPED manifest (cleared by the owner on 2026-09-20) plays unarmed;
 ##   2. the real menu scene puts `littleDaysTheme` on a real stream player;
 ##   3. the real house + level director puts `hungryBunny` on one, in `miniGame`;
 ##   4. exactly ONE player in the whole tree holds music -- no overlap, ever;
@@ -32,6 +33,8 @@ extends SceneTree
 
 const DIRECTOR_SCRIPT: String = "res://scripts/audio/audio_director.gd"
 const OVERRIDE_SCRIPT: String = "res://scripts/audio/music_licence_override.gd"
+const MANIFEST_SCRIPT: String = "res://scripts/audio/music_manifest.gd"
+const PENDING_FIXTURE: String = "res://tests/fixtures/audio_manifest_pending.json"
 const MENU_SCENE: String = "res://scenes/main/main.tscn"
 const HOUSE_SCENE: String = "res://scenes/house/house_world.tscn"
 
@@ -104,40 +107,42 @@ func _run() -> void:
 				"allow_unverified_music is armed although nothing armed it. Nothing committed "
 				+ "to this repository may turn unverified music on.")
 	_director.allow_unverified_music = false
+	# The silent path is proven on the PENDING fixture (the pre-clearance manifest
+	# verbatim: same two real files, paperwork pending), because since 2026-09-20
+	# the shipped manifest is cleared on the owner's written confirmation.
+	var shipped: RefCounted = _director.manifest()
+	var pending: RefCounted = (load(MANIFEST_SCRIPT) as GDScript).new()
+	_check(bool(pending.load_file(PENDING_FIXTURE)),
+			"cannot load the pending fixture %s" % PENDING_FIXTURE)
+	_director.set_manifest(pending)
 	for state: String in ["menu", "house", "miniGame", "reward"]:
 		_director.set_state(state)
 		_director.finish_fades()
 		_check(not bool(_director.is_playing_music()),
-				("state '%s' played music with the licence override disarmed. Unverified tracks "
-				+ "must be silent in every build.") % state)
+				("state '%s' played music from a PENDING manifest with the override disarmed. "
+				+ "Unverified tracks must be silent in every build.") % state)
 	_check(bool(_director.is_silent_build()),
-			"is_silent_build() is false with the override disarmed, yet no track has licence "
-			+ "evidence")
+			"is_silent_build() is false on the pending fixture with the override disarmed")
 	_check(_director.manifest().missing_track_ids().is_empty(),
 			"a delivered track has no file on disk: %s"
 					% str(_director.manifest().missing_track_ids()))
-	print("   shipping default: silent in every state, both .ogg files present, 0 errors")
+	print("   silent path: silent in every state on the pending fixture, both .ogg files present")
 	_director.set_state("silent")
 	_director.finish_fades()
+	_director.set_manifest(shipped)
 
-	# ------------------------------------------------- arm the preview, loudly
-	# Equivalent to `-- --allow-unverified-music`. Done in the open, and only after
-	# the silent default above has been proven, because the point of the rest of
-	# this run is the AUDIO PIPELINE and not the paperwork.
-	_director.allow_unverified_music = true
-	print("2. licence override ARMED (%s)."
-			% ("by the operator, on the command line or via the marker file"
-				if armed_by_operator else "by this script; same effect as `-- %s`"
-						% String(override.CLI_FLAG)))
-	print("   The manifest still says commercialUse=\"pending\" and the gate still")
-	print("   refuses: MusicManifest.is_playable() is %s for both tracks."
-			% str(_director.manifest().is_playable(MENU_TRACK)))
-	print("   Overridden tracks: %s" % str(_director.overridden_track_ids()))
-	_check(not bool(_director.manifest().is_playable(MENU_TRACK)),
-			"arming the override changed MusicManifest.is_playable(). The gate must never soften.")
-	_check(_director.overridden_track_ids().size() == 2,
-			"expected both tracks to be override-only, got %s"
+	# ------------------------------------------------- 2. the SHIPPED manifest is CLEARED
+	# No override is armed for the rest of this run: this is the normal game.
+	print("2. shipped manifest: %s" % str(_director.manifest().licence_refused_track_ids()))
+	_check(not bool(_director.allow_unverified_music), "the override must stay disarmed for the shipping run")
+	_check(bool(_director.manifest().is_playable(MENU_TRACK)),
+			"%s is not playable in the shipped manifest; the owner cleared it on 2026-09-20" % MENU_TRACK)
+	_check(bool(_director.manifest().is_playable(MISSION_TRACK)),
+			"%s is not playable in the shipped manifest; the owner cleared it on 2026-09-20" % MISSION_TRACK)
+	_check(_director.overridden_track_ids().is_empty(),
+			"tracks are playing on the override rather than on their licence: %s"
 					% str(_director.overridden_track_ids()))
+	_check(not bool(_director.is_silent_build()), "the shipped build is still silent")
 
 	# ------------------------------------------------- 3. THE REAL MENU SCENE
 	var save: Node = root.get_node_or_null("SaveService")

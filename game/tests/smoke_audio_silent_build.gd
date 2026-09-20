@@ -40,6 +40,8 @@ const MISSION: String = "imHungry"
 ## The one refusal that means "the paperwork is not done". Anything else here
 ## would mean the silence has a different, worse cause.
 const EXPECTED_REFUSAL: String = "commercialUseUnverified"
+const MANIFEST_SCRIPT: String = "res://scripts/audio/music_manifest.gd"
+const PENDING_FIXTURE: String = "res://tests/fixtures/audio_manifest_pending.json"
 
 var _fail: Array = []
 var _director: Node = null
@@ -52,7 +54,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	print("=== proving the SHIPPING DEFAULT: unverified music is silent ===")
+	print("=== proving the SILENT PATH: unverified music is silent (pending fixture manifest) ===")
 	# AFTER a frame: autoloads are not attached to `root` yet when a `--script`
 	# SceneTree initialises. Same reason as smoke_mission01.gd.
 	await process_frame
@@ -97,6 +99,16 @@ func _run() -> void:
 			func(track_id: String, _reason: String) -> void:
 				_fail.append("unverified_music_allowed fired for '%s' in a normal build" % track_id))
 
+	# ------------------------------------------------- the PENDING fixture
+	# Since 2026-09-20 the SHIPPED manifest is cleared (owner confirmation, see
+	# docs/licences/music/). The silent path still has to work for the next
+	# unverified delivery, so this file now proves it on a fixture that is the
+	# pre-clearance manifest verbatim: the same two real files, paperwork pending.
+	var fixture: RefCounted = (load(MANIFEST_SCRIPT) as GDScript).new()
+	if not bool(fixture.load_file(PENDING_FIXTURE)):
+		return _die("cannot load the pending fixture %s: %s" % [PENDING_FIXTURE, str(fixture.errors())])
+	_director.set_manifest(fixture)
+	print("1b. director now holds the PENDING fixture manifest %s" % PENDING_FIXTURE)
 	var catalogue: Object = _director.manifest()
 	_check((catalogue.errors() as Array).is_empty(),
 			"the manifest reported schema errors: %s" % str(catalogue.errors()))

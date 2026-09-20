@@ -1,5 +1,20 @@
 # Music rights checklist — the ten minutes that turn the music on
 
+> **STATUS 2026-09-20 — music is ON in the normal game.** Khwan, the project
+> owner, confirmed commercial-use authorization for both tracks and stated the
+> production tool is **Suno**. Both manifest rows now read `commercialUse:
+> "verified"` with `licenseEvidence` pointing at
+> `docs/licences/music/<trackId>/OWNER_CONFIRMATION_2026-09-20.md`. Menu plays
+> `littleDaysTheme`, Mission 01 plays `hungryBunny`, no override flag involved
+> (`tests/smoke_audio_shipping.gd` proves it in the real scenes).
+>
+> **Still unverified, and recorded as such rather than invented:** the Suno
+> account, the plan active at the moment of generation, the generation dates,
+> and any receipt or plan-page capture (Part 1 questions 2–4, Part 2 question 9).
+> The authorization currently rests on the owner's written confirmation alone.
+> Questions 1 (tool = Suno) and 11 (owner's authorization) are answered; the rest
+> of this sheet remains open for Anny and Khwan to complete when convenient.
+
 **For:** Khwan and Anny, together. **Time:** about ten minutes. **Date completed:** `____________`
 
 Two original tracks are already in the game, encoded, wired to the right scenes and ducked

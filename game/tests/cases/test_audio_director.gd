@@ -32,6 +32,9 @@ const MACHINE_SCRIPT: String = "res://scripts/audio/bgm_state_machine.gd"
 const SFX_SCRIPT: String = "res://scripts/audio/sfx_player.gd"
 const OVERRIDE_SCRIPT: String = "res://scripts/audio/music_licence_override.gd"
 const SHIPPED_MANIFEST: String = "res://content/audio/manifest.json"
+## The pre-clearance manifest, verbatim, so "a build with no music" stays testable
+## now that the shipped rows are cleared (owner confirmation, 2026-09-20).
+const PENDING_FIXTURE: String = "res://tests/fixtures/audio_manifest_pending.json"
 
 ## Real files, ours, used as stand-in tracks. See the class docs.
 const FIXTURE_FILE_A: String = "res://audio/sfx/bedtime_chime.wav"
@@ -88,6 +91,8 @@ func _test_a_build_with_no_music_behaves_normally():
 	var failures: Array = []
 
 	var director: Node = _director_script.new()
+	director.manifest_path = PENDING_FIXTURE
+	director.manifest_path = PENDING_FIXTURE
 	# The decision is asserted below; the engine warning itself would only make the
 	# suite output noisy. See `warn_on_licence_refusal`.
 	director.warn_on_licence_refusal = false
@@ -109,7 +114,7 @@ func _test_a_build_with_no_music_behaves_normally():
 		)
 	if not director.is_silent_build():
 		failures.append(
-			("is_silent_build() is false. The two delivered tracks are still refused (rights "
+			("is_silent_build() is false on the PENDING fixture. Its two tracks are refused (rights "
 			+ "unrecorded), so the shipping build is silent. If that changes -- real licence "
 			+ "evidence, `commercialUse: \"verified\"` -- update this case alongside it, but the "
 			+ "silent path must keep a test: a build with no playable music is supported forever.")

@@ -27,6 +27,9 @@ const DIRECTOR_SCRIPT: String = "res://scripts/audio/audio_director.gd"
 const MANIFEST_SCRIPT: String = "res://scripts/audio/music_manifest.gd"
 const OVERRIDE_SCRIPT: String = "res://scripts/audio/music_licence_override.gd"
 const SHIPPED_MANIFEST: String = "res://content/audio/manifest.json"
+## The pre-clearance manifest, verbatim: the override cases need pending rows,
+## and the shipped rows were cleared on 2026-09-20 (owner confirmation).
+const PENDING_FIXTURE: String = "res://tests/fixtures/audio_manifest_pending.json"
 
 ## The file this project ships a real, delivered, UNVERIFIED track as. Used to
 ## prove the override needs a real file and cannot invent one.
@@ -429,7 +432,8 @@ func _test_the_override_cannot_soften_the_gate():
 	var director: Node = _director_script.new()
 	director.warn_on_licence_refusal = false
 	var catalogue: RefCounted = load(MANIFEST_SCRIPT).new()
-	catalogue.load_file(SHIPPED_MANIFEST)
+	catalogue.load_file(PENDING_FIXTURE)
+	director.set_manifest(catalogue)
 
 	director.allow_unverified_music = true
 	for track_id: String in catalogue.track_ids():

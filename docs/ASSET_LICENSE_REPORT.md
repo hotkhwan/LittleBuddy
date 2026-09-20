@@ -34,7 +34,7 @@ must stay there. We credit Kenney anyway — it costs nothing and it is right.
 
 Commercial rights follow Meshy's paid-plan terms. **Action before public
 release:** save a dated copy of the Meshy terms and the plan receipt to
-`docs/licenses/` as evidence, the same way music tracks must carry
+`docs/licences/` as evidence, the same way music tracks must carry
 `licenseEvidence`. Generated-asset terms change, and "we were on a paid plan"
 is not evidence a year later.
 
@@ -84,7 +84,7 @@ required before public release, not for a closed preview.
 
 ## Actions before any public store release
 
-1. Archive dated Meshy terms + plan receipt to `docs/licenses/`.
+1. Archive dated Meshy terms + plan receipt to `docs/licences/`.
 2. Add a third-party notices screen (Godot, MoltenVK, Kenney, Nieobie) — reachable
    from Parent Corner.
 3. Per-track music licence evidence for every shipped track.

@@ -37,9 +37,9 @@ evidence has been supplied for either of them.
 |---|---|
 | `little_days_theme.ogg` | 1.35 MiB, 92.72 s, `menu` — plays `littleDaysTheme` at −12 dB |
 | `hungry_bunny.ogg` | 0.95 MiB, 64.40 s, `miniGame` — plays `hungryBunny` at −16 dB |
-| `commercialUse` | `"pending"` on both |
-| `licenseEvidence` | `"OWNER TO CONFIRM"` on both |
-| Consequence | the licence gate refuses both; the game is silent |
+| `commercialUse` | `"verified"` on both since 2026-09-20 (owner confirmation; see `docs/licences/music/`) |
+| `licenseEvidence` | the owner confirmation record for each track; Suno plan-at-generation recorded as unverified |
+| Consequence | the gate clears both; menu and Mission 01 play music in a normal build. The silent path is still tested against `tests/fixtures/audio_manifest_pending.json`. |
 
 That is the gate working, not a fault. **To ship the music, establish the rights, capture the
 evidence, and set `commercialUse` to `"verified"`** — §5, step 4. The owner-facing sheet that
