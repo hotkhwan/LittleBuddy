@@ -397,6 +397,12 @@ func get_affordance(actor: Node3D) -> Dictionary:
 	_ensure_resolved()
 	if not target_enabled:
 		return {}
+	# A target that belongs to something which speaks for itself -- Bunny's
+	# `child_actor.gd` answers the contract directly -- says nothing, or the
+	# child would see two badges argue over one person.
+	var owner_node: Node = get_parent()
+	if owner_node != null and owner_node.has_method("get_affordance"):
+		return {}
 	var context: Dictionary = {}
 	if _affordance_context.is_valid():
 		var supplied: Variant = _affordance_context.call(self, actor)

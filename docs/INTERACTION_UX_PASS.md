@@ -93,6 +93,25 @@ Next/Speak (while up) pushed by the HUD. Evidence: `ux2_feed*.png` (no badge
 under the bottle close-up), `ux_{ipad,iphone}_toybox_open.png` (badge clear of
 the stick; hit box asserted against every keep-out in the harness).
 
+## Follow-up 2 (integration c9fdcf5, QA defects)
+
+- Verbs are normalised (`AffordanceRules.normalize_verb`): providers may say
+  `"carry"`, `"place"`, `"take"`; the badge shows CARRY / PLACE / TAKE with
+  real pictures (child in arms; arrow onto a pad). An unknown word is dropped
+  (debug warning), never drawn as a dot.
+- Priority bands: door 3, character 3 (Bunny's own), furniture/station 2,
+  loose prop 1; mission target +10. A banana by the kitchen door no longer
+  beats ENTER.
+- `ActivityTarget` yields to a parent that is itself a provider, so Bunny has
+  one badge (his). Bunny's semantic id is read off `get_activity_target()` so
+  the mission can still prefer him.
+- Character targets: the speech bubble (`NeedBubble` backing half-extents,
+  projected) is a keep-out and the badge tries beside/below before above.
+  Evidence: `ux3_{ipad,iphone}_{story_hug,bedroom_bunny}.png`,
+  `ux3_harness_house_bedroom_ipad.png` (bubble fully legible), `carry_*.png`
+  (uppercase badges with glyphs), `ux3_*_door_enter.png` (ENTER beside a
+  floor prop). Suite 128.
+
 ## For the lead
 
 `docs/patches/agentB_house_world.gd.diff` (optional): mount the layer from the

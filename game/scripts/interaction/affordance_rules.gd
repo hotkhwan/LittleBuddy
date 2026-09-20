@@ -43,11 +43,19 @@ static func is_nothing(item: Variant) -> bool:
 	var text: String = String(item).strip_edges()
 	return text.is_empty() or text == "none"
 
-## Priorities a target reports by default. Higher wins. A door is the lowest:
-## when a child stands between the fridge and the doorway, the fridge is the
-## thing they came for.
-const PRIORITY_DOOR: int = 1
+## Priority bands. Higher wins; distance only breaks a tie inside a band.
+##
+##   3  doors and characters -- fixed, and the thing a beat is about
+##   2  furniture and kitchen stations
+##   1  loose floor props (`spawned_object.gd`, `drop_zone.gd` report their own)
+##
+## Doors used to share band 1 with props, so a banana dropped by the kitchen
+## door won on distance and the door read "take" (QA frames
+## `qa_ux_*_door_enter`). A door is a room; a banana is a banana.
+const PRIORITY_PROP: int = 1
 const PRIORITY_FURNITURE: int = 2
+const PRIORITY_STATION: int = PRIORITY_FURNITURE
+const PRIORITY_DOOR: int = 3
 const PRIORITY_CHARACTER: int = 3
 ## Added on top when the target is what the current mission beat is about.
 const MISSION_BONUS: int = 10
@@ -58,6 +66,17 @@ const DEFAULT_RADIUS: float = 1.6
 
 static func is_verb(verb: String) -> bool:
 	return VERBS.has(verb)
+
+
+## The canonical spelling of a provider's verb, or "" for a word this layer has
+## no picture for. The contract said lowercase (`"carry"`, `"place"`, `"take"`)
+## and the first providers did exactly that while the badge compared against
+## upper-case constants -- so the child saw a raw lowercase word over a dot.
+## Every spelling now lands on one constant; the constants are what the layer
+## draws and what `get_current_verb()` reports.
+static func normalize_verb(raw: Variant) -> String:
+	var verb: String = String(raw).strip_edges().to_upper()
+	return verb if VERBS.has(verb) else ""
 
 
 ## The one colour for a word. Unknown words get cream, never a new colour.
@@ -176,7 +195,7 @@ static func pick(candidates: Array, actor: Vector3, preferred_ids: Array = []) -
 		if not (entry is Dictionary):
 			continue
 		var offer: Dictionary = entry
-		var verb: String = String(offer.get("verb", ""))
+		var verb: String = normalize_verb(offer.get("verb", ""))
 		if verb.is_empty():
 			continue
 		if not (offer.get("anchor", null) is Vector3):
@@ -190,6 +209,7 @@ static func pick(candidates: Array, actor: Vector3, preferred_ids: Array = []) -
 		if preferred_ids.has(String(offer.get("targetId", ""))):
 			score += MISSION_BONUS
 		var copy: Dictionary = offer.duplicate()
+		copy["verb"] = verb
 		copy["distance"] = distance
 		copy["score"] = score
 		ranked.append(copy)

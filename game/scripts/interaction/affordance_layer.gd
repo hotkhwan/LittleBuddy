@@ -121,6 +121,10 @@ var _provided: Dictionary = {}
 
 var _current: Dictionary = {}
 var _shown_key: String = ""
+## The projected speech bubble of a character target, viewport px, or an empty
+## rect. A transient keep-out: it moves with him and only matters while the
+## badge is his.
+var _bubble_rect: Rect2 = Rect2()
 var _screen: Vector2 = Vector2.ZERO
 var _badge: Vector2 = Vector2.ZERO
 var _ring_px: float = RING_MIN_PX
@@ -347,8 +351,24 @@ func _candidates() -> Array:
 		if not (offer is Dictionary) or (offer as Dictionary).is_empty():
 			continue
 		var entry: Dictionary = offer
-		if not entry.has("targetId") and candidate.has_method("get_activity_target_id"):
-			entry["targetId"] = String(candidate.call("get_activity_target_id"))
+		# Providers may spell the verb any way they like; the badge speaks in
+		# one voice. A word with no picture is dropped here, loudly in debug.
+		var verb: String = AffordanceRules.normalize_verb(entry.get("verb", ""))
+		if verb.is_empty():
+			push_warning("AffordanceLayer: %s offered unknown verb '%s'; ignored."
+					% [str(candidate), str(entry.get("verb", ""))])
+			continue
+		entry["verb"] = verb
+		if not entry.has("targetId"):
+			if candidate.has_method("get_activity_target_id"):
+				entry["targetId"] = String(candidate.call("get_activity_target_id"))
+			elif candidate.has_method("get_activity_target"):
+				# Bunny: the provider is the actor, the semantic id lives on the
+				# target he carries, and the mission names THAT id.
+				var carried: Variant = candidate.call("get_activity_target")
+				if carried is Object and is_instance_valid(carried) \
+						and carried.has_method("get_activity_target_id"):
+					entry["targetId"] = String(carried.call("get_activity_target_id"))
 		if not entry.has("target"):
 			entry["target"] = candidate
 		offers.append(entry)
@@ -509,13 +529,76 @@ func _layout() -> void:
 	var view: Vector2 = get_viewport_rect().size
 	if view.x <= 0.0 or view.y <= 0.0:
 		view = size
+	var target: Variant = _current.get("target", null)
+	var character: bool = is_character_target(target)
+	var keep_outs: Array = get_keep_out_rects()
+	_bubble_rect = _bubble_keep_out(camera, target) if character else Rect2()
+	if _bubble_rect.size.x > 0.0:
+		keep_outs.append(_bubble_rect)
 	var placed: Dictionary = place_badge(
-		_screen, _ring_px, view, _top_keep_out, _actor_screen_x(camera), get_keep_out_rects())
+		_screen, _ring_px, view, _top_keep_out, _actor_screen_x(camera), keep_outs, character)
 	_badge = placed["centre"]
 	_placement = String(placed["placement"])
 	_hit.position = _badge - Vector2(HIT_SIZE, HIT_SIZE) * 0.5
 	_hit.visible = true
 	_laid_out = true
+
+
+## True for a person: the provider (or the target's owner) has a speech bubble.
+static func is_character_target(target: Variant) -> bool:
+	return _bubble_owner(target) != null
+
+
+static func _bubble_owner(target: Variant) -> Object:
+	if not (target is Object) or not is_instance_valid(target):
+		return null
+	if target.has_method("get_need_bubble"):
+		return target
+	if target is Node:
+		var parent: Node = (target as Node).get_parent()
+		if parent != null and parent.has_method("get_need_bubble"):
+			return parent
+	return null
+
+
+## The character's speech bubble on screen -- the backing panel's four corners
+## projected and boxed -- or an empty rect when there is none to avoid. His
+## line ("I'm hungry, Aliz!") is the one thing a badge about HIM must never
+## cover; the first build put HUG squarely on it.
+func _bubble_keep_out(camera: Camera3D, target: Variant) -> Rect2:
+	var owner_node: Object = _bubble_owner(target)
+	if owner_node == null or camera == null:
+		return Rect2()
+	if owner_node.has_method("is_bubble_suppressed") and bool(owner_node.call("is_bubble_suppressed")):
+		return Rect2()
+	var bubble: Variant = owner_node.call("get_need_bubble")
+	if not (bubble is Node3D) or not is_instance_valid(bubble) or not (bubble as Node3D).visible:
+		return Rect2()
+	var half: Vector2 = Vector2(0.42, 0.055)
+	if owner_node.has_method("get_bubble_backing_half_extents"):
+		half = owner_node.call("get_bubble_backing_half_extents")
+	half = Vector2(maxf(half.x, 0.05), maxf(half.y, 0.03))
+	var centre: Vector3 = SpatialUtil.world_position(bubble as Node3D)
+	var basis: Basis = SpatialUtil.world_transform(camera).basis
+	var rect: Rect2 = Rect2()
+	var first: bool = true
+	for sx: float in [-1.0, 1.0]:
+		for sy: float in [-1.0, 1.0]:
+			var corner: Vector3 = centre + basis.x * (half.x * sx) + basis.y * (half.y * sy)
+			if camera.is_position_behind(corner):
+				return Rect2()
+			var point: Vector2 = camera.unproject_position(corner)
+			if first:
+				rect = Rect2(point, Vector2.ZERO)
+				first = false
+			else:
+				rect = rect.expand(point)
+	return rect.grow(8.0)
+
+
+## The bubble rect the last layout kept out of, for a harness to assert against.
+func get_bubble_keep_out() -> Rect2:
+	return _bubble_rect
 
 
 ## The badge's on-screen footprint -- disc, outline and the word pill -- for a
@@ -538,6 +621,8 @@ static func badge_footprint(centre: Vector2) -> Rect2:
 ##   `top_keep_out` -- nothing above this line (the HUD's prompt band)
 ##   `actor_x`      -- Aliz's screen x, so a side placement steps AWAY from her
 ##   `keep_outs`    -- rects the badge may not cover: the stick, Home, Next ...
+##   `prefer_beside` -- a character: his bubble lives above his head, so the
+##                     order becomes beside, other side, below, and above last
 ##
 ## Order of preference: above the ring; beside it on the side away from Aliz;
 ## beside it on the other side; below it. The first spot that fits the screen
@@ -545,7 +630,7 @@ static func badge_footprint(centre: Vector2) -> Rect2:
 ## covers least does -- a badge the child can still see beats none at all.
 ## Returns `{"centre": Vector2, "placement": String}`.
 static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep_out: float,
-		actor_x: float, keep_outs: Array) -> Dictionary:
+		actor_x: float, keep_outs: Array, prefer_beside: bool = false) -> Dictionary:
 	var min_x: float = EDGE_MARGIN + BADGE_RADIUS + OUTLINE_PX
 	var max_x: float = maxf(min_x, view.x - min_x)
 	var min_y: float = maxf(top_keep_out, TOP_MARGIN) + BADGE_RADIUS
@@ -562,14 +647,15 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 	var side_offset: float = ring_px + SIDE_GAP + BADGE_RADIUS
 	var vertical_offset: float = ring_px + BADGE_LIFT + BADGE_RADIUS
 
-	var candidates: Array = [
-		{"placement": "above", "centre": screen + Vector2(0.0, -vertical_offset)},
-		{"placement": "left" if away_from_actor < 0.0 else "right",
-			"centre": screen + Vector2(away_from_actor * side_offset, -BADGE_RADIUS * 0.4)},
-		{"placement": "left" if away_from_actor > 0.0 else "right",
-			"centre": screen + Vector2(-away_from_actor * side_offset, -BADGE_RADIUS * 0.4)},
-		{"placement": "below", "centre": screen + Vector2(0.0, vertical_offset + LABEL_HEIGHT)},
-	]
+	var above: Dictionary = {"placement": "above", "centre": screen + Vector2(0.0, -vertical_offset)}
+	var near_side: Dictionary = {"placement": "left" if away_from_actor < 0.0 else "right",
+			"centre": screen + Vector2(away_from_actor * side_offset, -BADGE_RADIUS * 0.4)}
+	var far_side: Dictionary = {"placement": "left" if away_from_actor > 0.0 else "right",
+			"centre": screen + Vector2(-away_from_actor * side_offset, -BADGE_RADIUS * 0.4)}
+	var below: Dictionary = {"placement": "below",
+			"centre": screen + Vector2(0.0, vertical_offset + LABEL_HEIGHT)}
+	var candidates: Array = [near_side, far_side, below, above] if prefer_beside \
+			else [above, near_side, far_side, below]
 
 	# Pass 0: every spot exactly where it wants to be. Pass 1: each spot slid
 	# outward along its own direction until it clears whatever it landed on --
@@ -853,10 +939,11 @@ func _draw_glyph(verb: String, c: Vector2, box: float) -> void:
 			draw_line(c + Vector2(0.0, box * 0.04), c + Vector2(0.0, -box * 0.34), ink, w, true)
 			_arrow_head(c + Vector2(0.0, -box * 0.40), Vector2(0.0, -1.0), w * 2.6, ink)
 		AffordanceRules.VERB_PLACE:
-			# Down onto a surface.
-			draw_line(c + Vector2(0.0, -box * 0.36), c + Vector2(0.0, box * 0.06), ink, w, true)
-			_arrow_head(c + Vector2(0.0, box * 0.16), Vector2(0.0, 1.0), w * 2.6, ink)
-			draw_line(c + Vector2(-box * 0.34, box * 0.32), c + Vector2(box * 0.34, box * 0.32), ink, w * 1.2, true)
+			# Down onto a pad: the same oval the drop zones draw on the floor.
+			_oval(c + Vector2(0.0, box * 0.30), box * 0.36, box * 0.13, ink)
+			_oval(c + Vector2(0.0, box * 0.30), box * 0.36 - w * 0.9, box * 0.13 - w * 0.6, Palette.CREAM)
+			draw_line(c + Vector2(0.0, -box * 0.40), c + Vector2(0.0, -box * 0.02), ink, w, true)
+			_arrow_head(c + Vector2(0.0, box * 0.10), Vector2(0.0, 1.0), w * 2.6, ink)
 		AffordanceRules.VERB_ENTER:
 			# An arched doorway with an arrow going in.
 			var top: Vector2 = c + Vector2(0.0, -box * 0.12)
@@ -869,13 +956,19 @@ func _draw_glyph(verb: String, c: Vector2, box: float) -> void:
 			_heart(c + Vector2(0.0, -box * 0.02), box * 0.30, ink)
 			_heart(c + Vector2(0.0, -box * 0.02), box * 0.30 - w * 0.9, Palette.CREAM)
 		AffordanceRules.VERB_CARRY:
-			# A box held up in two arms.
-			var carried: Rect2 = Rect2(c + Vector2(-box * 0.24, -box * 0.30), Vector2(box * 0.48, box * 0.36))
-			draw_rect(carried, ink, true)
-			draw_rect(carried.grow(-w * 0.9), Palette.CREAM, true)
-			draw_arc(c + Vector2(0.0, box * 0.02), box * 0.34, PI * 0.15, PI * 0.85, 16, ink, w, true)
-			draw_circle(c + Vector2(-box * 0.30, box * 0.30), w * 0.9, ink)
-			draw_circle(c + Vector2(box * 0.30, box * 0.30), w * 0.9, ink)
+			# A small child -- round head, rounded body -- cradled in two arms.
+			var head: Vector2 = c + Vector2(0.0, -box * 0.24)
+			draw_circle(head, box * 0.15, ink)
+			draw_circle(head, box * 0.15 - w * 0.8, Palette.CREAM)
+			var body: Rect2 = Rect2(c + Vector2(-box * 0.17, -box * 0.08), Vector2(box * 0.34, box * 0.28))
+			draw_rect(body, ink, true)
+			draw_rect(body.grow(-w * 0.8), Palette.CREAM, true)
+			# The arms: two curves coming up under the body and around it.
+			draw_arc(c + Vector2(0.0, box * 0.02), box * 0.36, PI * 0.12, PI * 0.88, 18, ink, w * 1.1, true)
+			draw_line(c + Vector2(-box * 0.35, box * 0.14), c + Vector2(-box * 0.43, -box * 0.14), ink, w * 1.1, true)
+			draw_line(c + Vector2(box * 0.35, box * 0.14), c + Vector2(box * 0.43, -box * 0.14), ink, w * 1.1, true)
+			draw_circle(c + Vector2(-box * 0.43, -box * 0.14), w * 0.8, ink)
+			draw_circle(c + Vector2(box * 0.43, -box * 0.14), w * 0.8, ink)
 		AffordanceRules.VERB_FEED:
 			# Bunny's bottle: a capsule with a teat.
 			draw_line(c + Vector2(0.0, -box * 0.08), c + Vector2(0.0, box * 0.30), ink, box * 0.34, true)
@@ -885,6 +978,14 @@ func _draw_glyph(verb: String, c: Vector2, box: float) -> void:
 			draw_line(c + Vector2(-box * 0.10, box * 0.20), c + Vector2(box * 0.10, box * 0.20), ink, w * 0.7, true)
 		_:
 			draw_circle(c, box * 0.16, ink)
+
+
+func _oval(centre: Vector2, half_w: float, half_h: float, color: Color) -> void:
+	var points: PackedVector2Array = PackedVector2Array()
+	for index: int in range(28):
+		var angle: float = TAU * float(index) / 28.0
+		points.append(centre + Vector2(cos(angle) * half_w, sin(angle) * half_h))
+	draw_colored_polygon(points, color)
 
 
 func _arrow_head(tip: Vector2, direction: Vector2, half: float, color: Color) -> void:

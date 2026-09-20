@@ -63,6 +63,9 @@ func _run() -> void:
 	if args.size() > 3 and String(args[3]) == "toybox":
 		await _run_toy_box()
 		return
+	if args.size() > 3 and String(args[3]) == "bedroom":
+		await _run_bedroom()
+		return
 	# Free Play: the objective-free house, which is where a child meets the
 	# fridge without a mission steering the camera.
 	_world.call("set_progression_mode", 1)
@@ -151,14 +154,17 @@ func _run_story() -> void:
 	if _layer == null:
 		_fail.append("the Story HUD has no affordance layer")
 		return _finish()
-	# The first beat is "Go to Bunny", so Bunny -- the mission's own target --
-	# outranks the toy box beside him, and a character reads HUG, never TAKE.
-	_stand_at("bedroom.toyBox")
+	# The first beat is "Go to Bunny": Aliz on his interaction point, inside
+	# his own 1.1 m reach, where he -- the mission's target -- outranks the door
+	# and the toy box. Bunny answers for himself: CARRY, or HUG when he needs
+	# comfort; never TAKE. And never over his bubble.
+	_stand_at("bedroom.littleBuddy")
 	await _settle(0.7)
-	_expect("HUG", "bedroom.littleBuddy", "story_hug")
+	_expect_any(["CARRY", "HUG"], "bedroom.littleBuddy", "story_hug")
 	if float(_layer.call("get_top_keep_out")) <= 100.0:
 		_fail.append("story_hug: the HUD did not raise the keep-out under its prompt (%.0f)"
 				% float(_layer.call("get_top_keep_out")))
+	_expect_off_bubble("story_hug")
 	await _shot("%s_story_hug" % _prefix)
 	_finish()
 
@@ -197,6 +203,57 @@ func _run_toy_box() -> void:
 	print("  toybox_open: placement %s, hit %s" % [str(_layer.call("get_placement")), str(hit)])
 	await _shot("%s_toybox_open" % _prefix)
 	_finish()
+
+
+## The QA bedroom frame: Free Play, Aliz on Bunny's own interaction point,
+## his bubble up. The badge must be CARRY/HUG in capitals, with a picture,
+## and clear of the bubble.
+func _run_bedroom() -> void:
+	_world.call("set_progression_mode", 1)
+	_viewport.add_child(_world)
+	await _settle(0.8)
+	_director = _world.call("get_free_play_director")
+	_hud = _director.call("get_hud") if _director != null else null
+	_layer = _hud.call("get_affordance_layer") if _hud != null else null
+	if _layer == null:
+		_fail.append("the HUD has no affordance layer")
+		return _finish()
+	_world.call("place_in_room", "bedroom", "")
+	await _settle(0.6)
+	_quiet()
+	_stand_at("bedroom.littleBuddy")
+	await _settle(0.7)
+	_quiet()
+	_expect_any(["CARRY", "HUG"], "bedroom.littleBuddy", "bedroom_bunny")
+	_expect_off_bubble("bedroom_bunny")
+	await _shot("%s_bedroom_bunny" % _prefix)
+	_finish()
+
+
+func _expect_any(verbs: Array, target_id: String, shot: String) -> void:
+	var got_verb: String = String(_layer.call("get_current_verb"))
+	var got_id: String = String(_layer.call("get_current_target_id"))
+	if not verbs.has(got_verb) or got_id != target_id:
+		_fail.append("%s: the layer shows '%s' on '%s'; expected one of %s on %s"
+				% [shot, got_verb, got_id, str(verbs), target_id])
+	if got_verb != got_verb.to_upper():
+		_fail.append("%s: the verb '%s' is not in capitals" % [shot, got_verb])
+	if not bool(_layer.call("is_laid_out")):
+		_fail.append("%s: the badge was not laid out (no camera?)" % shot)
+	print("  %s: %s on %s at %s (%s)" % [shot, got_verb, got_id,
+			str(_layer.call("get_badge_centre")), str(_layer.call("get_placement"))])
+
+
+func _expect_off_bubble(shot: String) -> void:
+	var bubble: Rect2 = _layer.call("get_bubble_keep_out")
+	if bubble.size.x <= 0.0:
+		_fail.append("%s: no bubble keep-out was measured for the character" % shot)
+		return
+	var hit: Rect2 = _layer.call("get_hit_rect")
+	var footprint: Rect2 = _layer.call("badge_footprint", _layer.call("get_badge_centre"))
+	if footprint.intersects(bubble):
+		_fail.append("%s: the badge %s covers Bunny's bubble %s" % [shot, str(footprint), str(bubble)])
+	print("  %s: bubble %s, badge %s, hit %s" % [shot, str(bubble), str(footprint), str(hit)])
 
 
 func _finish() -> void:

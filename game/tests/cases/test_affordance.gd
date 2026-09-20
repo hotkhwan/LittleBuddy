@@ -14,6 +14,7 @@ const ActivityTarget := preload("res://scripts/navigation/activity_target.gd")
 const NavigationController := preload("res://scripts/navigation/navigation_controller.gd")
 const KitchenState := preload("res://scripts/kitchen/kitchen_state.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
+const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 
 
 ## A node that speaks the contract with a fixed answer.
@@ -99,6 +100,9 @@ func run():
 	failures.append_array(_test_a_character_is_never_taken())
 	failures.append_array(_test_badge_placement_avoids_keep_outs())
 	failures.append_array(_test_a_visible_care_overlay_silences_the_layer())
+	failures.append_array(_test_provider_verbs_are_normalised())
+	failures.append_array(_test_doors_outrank_loose_props())
+	failures.append_array(_test_a_character_badge_keeps_off_his_bubble())
 	return failures
 
 
@@ -259,8 +263,11 @@ func _test_activity_target_speaks_the_contract():
 	var door_offer: Dictionary = door.call("get_affordance", actor)
 	if String(door_offer.get("verb", "")) != "ENTER":
 		failures.append("affordance: a door target offers '%s', expected ENTER" % str(door_offer.get("verb")))
-	if int(door_offer.get("priority", 99)) >= int(offer.get("priority", 0)):
-		failures.append("affordance: a door does not rank below furniture")
+	if int(door_offer.get("priority", 0)) != Rules.PRIORITY_DOOR or int(offer.get("priority", 0)) != Rules.PRIORITY_FURNITURE:
+		failures.append("affordance: door/furniture priorities are %s/%s; expected %d/%d"
+				% [str(door_offer.get("priority")), str(offer.get("priority")), Rules.PRIORITY_DOOR, Rules.PRIORITY_FURNITURE])
+	if Rules.PRIORITY_DOOR <= Rules.PRIORITY_PROP or Rules.PRIORITY_FURNITURE <= Rules.PRIORITY_PROP:
+		failures.append("affordance: fixed targets do not sit in a band above loose props")
 
 	if not (bed.call("get_affordance", actor) as Dictionary).is_empty():
 		failures.append("affordance: a bed offers something; it has no verb in the vocabulary")
@@ -351,20 +358,20 @@ func _test_layer_priority_and_mission_relevance():
 	var actor: FakeActor = FakeActor.new()
 	actor.position = Vector3.ZERO
 	layer.call("set_actor", actor)
-	var door: FakeAffordable = _fake("kitchen.doorToBathroom", "ENTER", Vector3(0.6, 0.0, 0.0), 2.0, 1)
-	var fridge: FakeAffordable = _fake("kitchen.fridge", "OPEN", Vector3(1.4, 0.0, 0.0), 2.0, 2)
+	var door: FakeAffordable = _fake("kitchen.doorToBathroom", "ENTER", Vector3(1.4, 0.0, 0.0), 2.0, Rules.PRIORITY_DOOR)
+	var fridge: FakeAffordable = _fake("kitchen.fridge", "OPEN", Vector3(0.6, 0.0, 0.0), 2.0, Rules.PRIORITY_FURNITURE)
 	layer.call("set_candidate_sources", [door, fridge])
 
 	layer.call("step", 0.016)
-	if String(layer.call("get_current_verb")) != "OPEN":
-		failures.append("affordance: the nearer door outranked the fridge (got %s)" % str(layer.call("get_current_verb")))
-	layer.call("set_preferred_target_ids", ["kitchen.doorToBathroom"])
-	layer.call("step", 0.016)
 	if String(layer.call("get_current_verb")) != "ENTER":
-		failures.append("affordance: the mission's door did not win once preferred")
+		failures.append("affordance: the nearer fridge outranked the door (got %s)" % str(layer.call("get_current_verb")))
+	layer.call("set_preferred_target_ids", ["kitchen.fridge"])
+	layer.call("step", 0.016)
+	if String(layer.call("get_current_verb")) != "OPEN":
+		failures.append("affordance: the mission's fridge did not win once preferred")
 	layer.call("set_preferred_target_ids", [], true)
 	layer.call("step", 0.016)
-	if String(layer.call("get_current_verb")) != "OPEN":
+	if String(layer.call("get_current_verb")) != "ENTER":
 		failures.append("affordance: clearing the preference did not restore priority order")
 
 	layer.free()
@@ -641,4 +648,113 @@ func _test_a_visible_care_overlay_silences_the_layer():
 	ui.free()
 	fridge.free()
 	actor.free()
+	return failures
+
+
+## A provider that speaks the contract in lowercase, as `spawned_object.gd`,
+## `drop_zone.gd` and `child_actor.gd` do, and one that answers directly for
+## the target it owns.
+class FakeProviderOwner extends Node3D:
+	var verb: String = "carry"
+
+	func get_affordance(_actor: Node3D) -> Dictionary:
+		return {"verb": verb, "anchor": SpatialUtil.world_position(self), "radius": 1.5, "priority": 3, "target": self}
+
+	func perform_affordance(_actor: Node3D) -> bool:
+		return true
+
+	func get_need_bubble() -> Node3D:
+		return null
+
+	## As `child_actor.gd`: the semantic id lives on the target he carries.
+	func get_activity_target() -> Node:
+		return get_child(0) if get_child_count() > 0 else null
+
+
+## Providers say "carry"; the badge says CARRY. Every spelling lands on one
+## constant and an unknown word is dropped rather than drawn as a dot.
+func _test_provider_verbs_are_normalised():
+	var failures: Array = []
+	for pair: Array in [["carry", "CARRY"], ["place", "PLACE"], ["take", "TAKE"], [" Hug ", "HUG"], ["ENTER", "ENTER"], ["quit", ""], ["", ""]]:
+		var got: String = Rules.normalize_verb(pair[0])
+		if got != String(pair[1]):
+			failures.append("affordance: normalize_verb('%s') = '%s', expected '%s'" % [pair[0], got, pair[1]])
+
+	var layer: Control = LayerScript.new()
+	layer.call("build")
+	var actor: FakeActor = FakeActor.new()
+	layer.call("set_actor", actor)
+	var toy: FakeAffordable = _fake("bedroom.blocks", "take", Vector3(0.4, 0.0, 0.0), 1.0, Rules.PRIORITY_PROP)
+	var odd: FakeAffordable = _fake("bedroom.odd", "juggle", Vector3(0.2, 0.0, 0.0), 1.0, 9)
+	layer.call("set_candidate_sources", [toy, odd])
+	layer.call("step", 0.016)
+	if String(layer.call("get_current_verb")) != "TAKE":
+		failures.append("affordance: a lowercase 'take' offer shows as '%s'" % str(layer.call("get_current_verb")))
+	for verb: String in ["CARRY", "PLACE", "TAKE"]:
+		if Palette.is_grey(Rules.verb_color(verb)):
+			failures.append("affordance: %s has no colour of its own" % verb)
+
+	# Bunny's own ActivityTarget stays quiet once Bunny answers for himself.
+	var bunny: FakeProviderOwner = FakeProviderOwner.new()
+	var target: Area3D = _make_target("littleBuddy", "bedroom", ["talkTo", "comfort", "pickUp"], Vector3(0.66, 0.9, 0.66), Vector3.ZERO)
+	bunny.add_child(target)
+	if not (target.call("get_affordance", actor) as Dictionary).is_empty():
+		failures.append("affordance: a target whose owner is a provider still offers on its own")
+	layer.call("set_candidate_sources", [bunny, target])
+	layer.call("step", 0.016)
+	if String(layer.call("get_current_verb")) != "CARRY":
+		failures.append("affordance: Bunny's lowercase 'carry' shows as '%s'" % str(layer.call("get_current_verb")))
+	if String(layer.call("get_current_target_id")) != "bedroom.littleBuddy":
+		failures.append("affordance: Bunny's offer lost its semantic id (got '%s'); the mission could not prefer him"
+				% str(layer.call("get_current_target_id")))
+
+	layer.free()
+	toy.free()
+	odd.free()
+	bunny.free()
+	actor.free()
+	return failures
+
+
+## The QA frame: a banana by the kitchen door. The door is a room; it wins.
+func _test_doors_outrank_loose_props():
+	var failures: Array = []
+	var banana: Dictionary = {"verb": "take", "anchor": Vector3(0.3, 0.0, 0.0), "radius": 1.0, "priority": 1, "targetId": "banana"}
+	var door: Dictionary = {"verb": "ENTER", "anchor": Vector3(0.9, 0.0, 0.0), "radius": 1.8, "priority": Rules.PRIORITY_DOOR, "targetId": "kitchen.doorToLivingRoom"}
+	var picked: Dictionary = Rules.pick([banana, door], Vector3.ZERO)
+	if String(picked.get("verb", "")) != "ENTER":
+		failures.append("affordance: a banana by the door won over ENTER (got %s)" % str(picked.get("verb")))
+	# ...unless the banana is what the beat is about.
+	picked = Rules.pick([banana, door], Vector3.ZERO, ["banana"])
+	if String(picked.get("verb", "")) != "TAKE":
+		failures.append("affordance: the mission's own banana did not outrank the door")
+	return failures
+
+
+## A character's bubble is a keep-out and his badge prefers beside/below.
+func _test_a_character_badge_keeps_off_his_bubble():
+	var failures: Array = []
+	var view: Vector2 = Vector2(1334.0, 750.0)
+	var head: Vector2 = Vector2(760.0, 420.0)
+	# The bubble hangs above his head, right where "above" would put the badge.
+	var bubble: Rect2 = Rect2(640.0, 190.0, 240.0, 60.0)
+	var placed: Dictionary = LayerScript.place_badge(head, 60.0, view, 0.0, 600.0, [bubble], true)
+	var rect: Rect2 = LayerScript.badge_footprint(placed["centre"])
+	if rect.intersects(bubble):
+		failures.append("affordance: the character badge %s covers his bubble %s" % [str(rect), str(bubble)])
+	if String(placed["placement"]) == "above":
+		failures.append("affordance: a character badge went above him first; beside/below come first for a person")
+	if String(placed["placement"]) != "right":
+		failures.append("affordance: with Aliz on his left the badge should step right (got %s)" % str(placed["placement"]))
+	# Without the character flag the same geometry still keeps off the bubble.
+	var plain: Dictionary = LayerScript.place_badge(head, 60.0, view, 0.0, 600.0, [bubble])
+	if LayerScript.badge_footprint(plain["centre"]).intersects(bubble):
+		failures.append("affordance: a non-character badge covers a keep-out that sits above the object")
+	# A bubble-less target is not a character.
+	if LayerScript.is_character_target(null):
+		failures.append("affordance: null counted as a character")
+	var owner_node: FakeProviderOwner = FakeProviderOwner.new()
+	if not LayerScript.is_character_target(owner_node):
+		failures.append("affordance: a node with get_need_bubble() was not treated as a character")
+	owner_node.free()
 	return failures
