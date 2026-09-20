@@ -755,6 +755,51 @@ func get_transition_controller() -> Node:
 	return _transition
 
 
+## -- Leaving on purpose ----------------------------------------------------------
+##
+## The Home button's exit. A child (or a grown-up) who wants to stop must have a
+## way back to the title that does not lose anything: the profile is written
+## first, with the room the child is standing in, so "Continue" brings them back
+## here. A mission that was half-way is NOT marked done and awards nothing; the
+## runner writes stars the moment they are earned, so nothing already earned can
+## be lost, and the level simply starts again from its first beat next time. That
+## is the honest outcome and the one `CLAUDE.md`'s "no failure pressure" allows.
+##
+## The whole-scene swap is `change_scene_to_file()` because the TITLE needs no
+## configuration before `_ready()` -- it is the project's main scene -- unlike the
+## worlds, which `main.gd` instantiates by hand for exactly that reason.
+##
+## Idempotent: a second tap while the swap is in flight does nothing. Never quits
+## the app; a mobile game has no desktop-style Exit.
+const HOME_SCENE_PATH: String = "res://scenes/main/main.tscn"
+var _leaving: bool = false
+
+
+func leave_to_home() -> bool:
+	if _leaving:
+		return false
+	_leaving = true
+	var save: Node = get_node_or_null("/root/SaveService")
+	if save != null:
+		if save.has_method("set_world_location"):
+			save.call("set_world_location", get_current_room_id(), get_current_spawn_id())
+		if save.has_method("save_profile"):
+			save.call("save_profile")
+	if _character != null and _character.has_method("stop"):
+		_character.call("stop")
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		_leaving = false
+		return false
+	# Deferred: this is reached from a button press inside this very scene.
+	tree.call_deferred("change_scene_to_file", HOME_SCENE_PATH)
+	return true
+
+
+func is_leaving() -> bool:
+	return _leaving
+
+
 ## Story Mode's level loop, or null when it has not been built (Free Play, or a
 ## headless test that never asked for one).
 func get_level_director() -> Node:
