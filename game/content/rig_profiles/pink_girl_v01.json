@@ -1,0 +1,62 @@
+{
+  "profileId": "pinkGirlV01",
+  "description": "Aliz (Big Buddy), the Meshy-rigged caregiver. The ONLY file that may name one of her bones; gameplay speaks LB_Rig_v1 socket names through pink_girl_buddy.gd::get_socket().",
+  "skeletonNodeName": "Armature",
+  "skinnedMeshName": "char1",
+  "modelHeightUnits": 1.7,
+  "feetAtOrigin": true,
+  "facing": "+Z",
+  "boneMap": {
+    "head": "Head",
+    "chest": "Spine",
+    "hips": "Hips",
+    "leftHand": "LeftHand",
+    "rightHand": "RightHand"
+  },
+  "socketOffsetSpace": "boneLocalCentimetres",
+  "socketOffsets": {
+    "carryFront": {
+      "bone": "hips",
+      "offset": [
+        0.943,
+        -26.775,
+        37.519
+      ]
+    },
+    "hugTarget": {
+      "bone": "chest",
+      "offset": [
+        -0.59,
+        7.121,
+        19.985
+      ]
+    },
+    "itemHoldRight": {
+      "bone": "rightHand",
+      "offset": [
+        0.941,
+        -3.013,
+        -6.463
+      ]
+    },
+    "itemHoldLeft": {
+      "bone": "leftHand",
+      "offset": [
+        -0.753,
+        -4.419,
+        -5.664
+      ]
+    }
+  },
+  "clips": {
+    "walk": "pinkGirlBuddy_walk_v01.glb",
+    "run": "pinkGirlBuddy_run_v01.glb"
+  },
+  "notes": [
+    "Same rig family as meshy_baby_v01.json: 24 bones, spine chain named backwards (Spine02 lowest at 0.79 m of 1.7, Spine01 0.89, Spine 0.98 topmost), mitten hands, bones in CENTIMETRES under an Armature node carrying a 0.01 scale.",
+    "Offsets are inverseBindMatrix[bone] * targetPointInMeshSpace, mesh space being the 1.7-unit, +Z-facing space the GLB's vertices are in. Bone rest positions in that space: Hips (0, 0.70, 0), Spine (0, 0.98, -0.04), LeftHand (0.27, 0.65, 0), RightHand (-0.26, 0.68, 0), Head (0, 1.09, 0).",
+    "carryFront is where a CARRIED child's root (his feet) goes: 0.30 m up and 0.24 m in front of her in her own 1.65 m frame, hung off the hips so it rides her walk bounce without her torso lean swinging it. Only the socket's POSITION is used by carry_controller.gd; the child's yaw is hers.",
+    "itemHoldRight/Left reproduce kitchen_view.gd's tuned HAND_BONE_OFFSET (-0.005, 0.035, -0.06 in her frame from the wrist) so a bottle taken from the fridge renders exactly where docs/shots/world_carry_ipad.png shows it -- but bone-local, so it now closes with the mitt through the arm swing.",
+    "hugTarget is a chest-front point for anything aimed at her chest; nothing uses it yet."
+  ]
+}

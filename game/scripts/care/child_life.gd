@@ -47,9 +47,15 @@ const LIFE_DRINK: String = "drink"
 const LIFE_HAPPY: String = "celebrate"
 const LIFE_SLEEP: String = "sleep"
 const LIFE_WALK: String = "walk"
+## Held in the caregiver's arms: legs tucked up, hands resting, head looking
+## about. A posture, like sleep, so it beats the needs -- a hungry child being
+## carried is still hungry (the bubble says so) but he is not standing and
+## fussing in mid-air.
+const LIFE_CARRIED: String = "carried"
 
 const LIFE_CLIPS: Array[String] = [
 	LIFE_IDLE, LIFE_FUSS, LIFE_EAT, LIFE_DRINK, LIFE_HAPPY, LIFE_SLEEP, LIFE_WALK,
+	LIFE_CARRIED,
 ]
 
 ## -- The face --------------------------------------------------------------------
@@ -122,6 +128,10 @@ static func clip_for(stats: Dictionary, activity: String, walking: bool,
 		happy_left: float, detail: String = "") -> String:
 	if walking:
 		return LIFE_WALK
+	# Being carried is a whole-body posture; nothing else can play at the same
+	# time, and it is the caregiver's act, so it wins over the child's own state.
+	if activity == Present.ACTIVITY_CARRIED:
+		return LIFE_CARRIED
 	if activity == Present.ACTIVITY_FEEDING:
 		return feeding_clip(stats, detail)
 	# Bedtime beats the happy window as well as the need. Being tucked in IS the
@@ -155,6 +165,9 @@ static func face_for(clip: String) -> String:
 			return FACE_DELIGHTED
 		LIFE_SLEEP:
 			return FACE_ASLEEP
+		LIFE_CARRIED:
+			# Picked up is the thing a small child wants most; he beams.
+			return FACE_DELIGHTED
 		_:
 			return FACE_CONTENT
 

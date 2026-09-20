@@ -75,6 +75,8 @@ const FOLLOW_HUG: String = "hug"
 ## content objects are larger and a child aiming with a whole hand is not precise.
 const DEFAULT_RADIUS: float = 0.26
 
+const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+
 const MARKER_ALPHA: float = 0.32
 const MARKER_HEIGHT: float = 0.012
 
@@ -95,6 +97,23 @@ signal object_delivered(object_id: String)
 
 var _marker: MeshInstance3D = null
 
+## -- Affordances -------------------------------------------------------------------
+##
+## A zone offers `place` to an actor carrying an ITEM (a child in her arms is
+## put down through the child's own affordance, on a standable floor spot, not
+## on a zone). Performing it sets the item down AT the zone through the actor's
+## `put_down_carried()`, and when it lands the zone tells the item, which
+## delivers through the same funnel a drag does. `radius` here is the reach
+## offered to the HUD, not the zone's own catch radius.
+const AFFORDABLE_GROUP: String = "affordable"
+const AFFORD_VERB_PLACE: String = "place"
+const AFFORD_REACH: float = 1.0
+const AFFORD_ANCHOR_LIFT: float = 0.22
+const AFFORD_PRIORITY: int = 2
+
+var _pending_carry: Node = null
+var _pending_item: Node3D = null
+
 
 func _ready() -> void:
 	# Never a pick target and never a physics participant -- it exists purely as
@@ -104,6 +123,7 @@ func _ready() -> void:
 	monitorable = false
 	collision_layer = 0
 	collision_mask = 0
+	add_to_group(AFFORDABLE_GROUP)
 	if zone_id.is_empty():
 		zone_id = _zone_id_from_node_name(name)
 	if show_marker:
@@ -117,6 +137,7 @@ func _ready() -> void:
 ## -- Public API --------------------------------------------------------------
 
 func configure(new_zone_id: String, new_radius: float = DEFAULT_RADIUS) -> void:
+	add_to_group(AFFORDABLE_GROUP)
 	zone_id = new_zone_id
 	radius = maxf(0.05, new_radius)
 
@@ -150,6 +171,59 @@ func update_from_baby(baby_view: Node) -> void:
 
 func notify_delivered(object_id: String) -> void:
 	object_delivered.emit(object_id)
+
+
+func get_affordance(actor: Node3D) -> Dictionary:
+	if actor == null or not is_instance_valid(actor):
+		return {}
+	if not actor.has_method("is_carrying_node") or not bool(actor.call("is_carrying_node")):
+		return {}
+	var carried: Node = actor.call("get_carried_node") if actor.has_method("get_carried_node") else null
+	if carried == null or carried.has_method("set_carried_by"):
+		return {}  # the child is put down on the floor, not on a pad
+	if _pending_item != null:
+		return {}  # already landing something here
+	return {
+		"verb": AFFORD_VERB_PLACE,
+		"anchor": SpatialUtil.world_position(self) + Vector3(0.0, AFFORD_ANCHOR_LIFT, 0.0),
+		"radius": AFFORD_REACH,
+		"priority": AFFORD_PRIORITY,
+		"target": self,
+	}
+
+
+func perform_affordance(actor: Node3D) -> bool:
+	if get_affordance(actor).is_empty():
+		return false
+	var item: Node3D = actor.call("get_carried_node") as Node3D
+	if not bool(actor.call("put_down_carried", SpatialUtil.world_position(self))):
+		return false
+	# Deliver when it LANDS, not when it leaves her hand: the arrival is the
+	# thing the child watches, and a reaction that fires while the spoon is
+	# still in the air belongs to nothing on screen.
+	var carry: Node = actor.call("get_carry_controller") if actor.has_method("get_carry_controller") else null
+	if carry != null and carry.has_signal("carry_ended"):
+		_pending_carry = carry
+		_pending_item = item
+		carry.connect("carry_ended", _on_carry_landed, CONNECT_ONE_SHOT)
+	else:
+		_deliver(item)
+	return true
+
+
+func _on_carry_landed(node: Node3D) -> void:
+	var item: Node3D = _pending_item
+	_pending_item = null
+	_pending_carry = null
+	if node == item:
+		_deliver(item)
+
+
+func _deliver(item: Node3D) -> void:
+	if item == null or not is_instance_valid(item):
+		return
+	if item.has_method("deliver_placed"):
+		item.call("deliver_placed", self)
 
 
 ## -- Static helpers (pure, unit-testable) ------------------------------------
@@ -189,6 +263,8 @@ static func create(new_zone_id: String, new_radius: float = DEFAULT_RADIUS) -> A
 		return null
 	var zone: Area3D = Area3D.new()
 	zone.set_script(script)
+	# Grouped here as well as in `_ready()`, which the headless runner never fires.
+	zone.add_to_group(AFFORDABLE_GROUP)
 	zone.name = node_name_for_zone_id(new_zone_id) if is_known_zone_id(new_zone_id) else new_zone_id
 	zone.set("zone_id", new_zone_id)
 	zone.set("radius", maxf(0.05, new_radius))

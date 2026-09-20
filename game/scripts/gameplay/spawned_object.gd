@@ -19,6 +19,8 @@ extends "res://scripts/interaction/draggable_object.gd"
 ## The per-gesture latch lives in `DraggableObject._delivered_this_drag`.
 signal chosen(object_id: String)
 
+const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+
 const SETTLE_DURATION_SEC: float = 0.25
 const DIM_MIX: float = 0.5
 
@@ -35,10 +37,28 @@ var is_target: bool = false
 var _materials: Array = []
 var _base_colors: Array = []
 
+## -- Affordances -------------------------------------------------------------------
+##
+## The data half of the on-screen verb icons (see `child_actor.gd` for the
+## contract). A pickup offers exactly one verb, `take`, to an actor whose hands
+## are free and who is close enough; picking it up hands it to the actor's
+## `carry_node()` (`carry_controller.gd`), which lifts it visibly out of its
+## row and into her `itemHoldRight` socket. Putting it down is a `DropZone`'s
+## affordance, not this object's -- the zone is where it should go.
+const AFFORDABLE_GROUP: String = "affordable"
+const AFFORD_VERB_TAKE: String = "take"
+## Reach, metres from the object: an arm's length plus the object's own row
+## spacing, so an object at the edge of the row is still offered.
+const AFFORD_REACH: float = 1.0
+const AFFORD_ANCHOR_LIFT: float = 0.28
+## Below the child (3), level with furniture (1)... a prop is a small thing.
+const AFFORD_PRIORITY: int = 1
+
 
 ## -- Identity ----------------------------------------------------------------
 
 func configure(spec: Dictionary) -> void:
+	add_to_group(AFFORDABLE_GROUP)
 	object_id = String(spec.get("objectId", ""))
 	word = String(spec.get("word", ""))
 	category = String(spec.get("category", ""))
@@ -60,6 +80,58 @@ func set_home_position(position_value: Vector3) -> void:
 
 func get_home_position() -> Vector3:
 	return _home_transform.origin
+
+
+func get_affordance(actor: Node3D) -> Dictionary:
+	if actor == null or not is_instance_valid(actor) or not drag_enabled:
+		return {}
+	if not actor.has_method("carry_node"):
+		return {}
+	if actor.has_method("is_carrying_node") and bool(actor.call("is_carrying_node")):
+		return {}
+	if is_carried_by(actor):
+		return {}
+	return {
+		"verb": AFFORD_VERB_TAKE,
+		"anchor": SpatialUtil.world_position(self) + Vector3(0.0, AFFORD_ANCHOR_LIFT, 0.0),
+		"radius": AFFORD_REACH,
+		"priority": AFFORD_PRIORITY,
+		"target": self,
+	}
+
+
+func perform_affordance(actor: Node3D) -> bool:
+	if get_affordance(actor).is_empty():
+		return false
+	return bool(actor.call("carry_node", self, "itemHoldRight"))
+
+
+## True while this object is in `actor`'s hands (it is re-parented under the
+## actor's carry controller for the duration).
+func is_carried_by(actor: Node) -> bool:
+	if actor == null or not actor.has_method("get_carried_node"):
+		return false
+	return actor.call("get_carried_node") == self
+
+
+## The carry set this object down on `zone`. Counts as a delivery exactly as a
+## drag into the zone would, through the same single funnel -- so a child who
+## carries the spoon to the bowl and a child who drags it there are the same
+## child to every handler -- but only when the zone is the one this object was
+## told to deliver to, and only once.
+func deliver_placed(zone: Area3D) -> bool:
+	if zone == null or _drop_zone == null or zone != _drop_zone:
+		return false
+	if _delivered_this_drag:
+		return false
+	_delivered_this_drag = true
+	_on_dropped_in_zone()
+	if zone.has_method("notify_delivered"):
+		zone.call("notify_delivered", object_id)
+	# A fresh gesture may deliver again later, exactly as a drag's release
+	# re-arms the latch.
+	_delivered_this_drag = false
+	return true
 
 
 ## -- Delivery ------------------------------------------------------------------

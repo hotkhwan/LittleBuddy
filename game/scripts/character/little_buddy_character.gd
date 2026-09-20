@@ -53,6 +53,9 @@ const AnimationDriverScript := preload("res://scripts/character/animation_player
 const NavMapProviderScript := preload("res://scripts/navigation/nav_map_provider.gd")
 const NavMath := preload("res://scripts/navigation/nav_math.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+const CarryControllerScript := preload("res://scripts/interaction/carry_controller.gd")
+
+const CARRY_NODE_NAME: String = "CarryController"
 
 ## Emitted once per move request, when the character reaches the destination.
 ## Exactly once -- see `CharacterMovementController`'s arrival latch.
@@ -96,6 +99,8 @@ var _wired: bool = false
 var _last_state_name: String = ""
 var _driver_retries: int = 0
 var _last_running: bool = false
+## Picks things up and puts them down. Built on first use; null until then.
+var _carry: Node3D = null
 ## The view that owns the locomotion clips (`set_locomotion`), found once. Null
 ## until it appears; the procedural toddler never has one.
 var _locomotion_view: Node = null
@@ -315,6 +320,111 @@ func get_current_target_id() -> String:
 	return String(_controller.call("get_target_id"))
 
 
+## -- Carrying -------------------------------------------------------------------
+##
+## SCENE-LEVEL API, not mission API: these take a `Node` because the thing
+## being carried is a node in the room, and they are called by the room, by an
+## affordance (`child_actor.gd::perform_affordance()`, `spawned_object.gd`,
+## `drop_zone.gd`) or by the world -- never by content. The String-only rule
+## above still holds for everything a mission can say, and the signatures stay
+## free of every 3D type `test_character_api.gd` names.
+##
+## `carry_controller.gd` does the work; this joins it to the body: it advances
+## once per physics step after the body has moved, the movement state machine
+## is told it is CARRYING, and the view is asked for its carry arm pose.
+
+## Starts carrying `node` at `socket_name` (`carryFront` for a child,
+## `itemHoldRight` for a prop, chosen by kind when empty). False when the hands
+## are already full or the character is disabled.
+func carry_node(node: Node, socket_name: String = "") -> bool:
+	_ensure_wired()
+	if bool(_controller.call("is_disabled")):
+		return false
+	if not (node is Node3D):
+		return false
+	_ensure_carry()
+	if not bool(_carry.call("carry", node as Node3D, socket_name)):
+		return false
+	set_carrying(true)
+	if String(_carry.call("get_kind")) == CarryControllerScript.KIND_CHILD:
+		_set_view_carry_pose(true)
+	return true
+
+
+## Puts the carried thing down at `point` (world), or on the nearest standable
+## spot when no point is given. False when nothing is carried or there is
+## nowhere valid to put it.
+func put_down_carried(point: Variant = null) -> bool:
+	_ensure_wired()
+	if _carry == null:
+		return false
+	return bool(_carry.call("put_down", point))
+
+
+func get_carried_node() -> Node:
+	return _carry.call("get_carried") if _carry != null else null
+
+
+func is_carrying_node() -> bool:
+	return _carry != null and bool(_carry.call("is_carrying"))
+
+
+## "idle" | "pickingUp" | "held" | "placing".
+func get_carry_state() -> String:
+	return String(_carry.call("get_state")) if _carry != null else CarryControllerScript.STATE_IDLE
+
+
+func get_carry_controller() -> Node:
+	_ensure_wired()
+	_ensure_carry()
+	return _carry
+
+
+## A standable spot an arm's length away, or null -- the same rule put-down uses.
+func find_put_down_spot() -> Variant:
+	_ensure_wired()
+	_ensure_carry()
+	return _carry.call("find_put_down_spot")
+
+
+func _ensure_carry() -> void:
+	if _carry != null and is_instance_valid(_carry):
+		return
+	_carry = get_node_or_null(CARRY_NODE_NAME) as Node3D
+	if _carry == null:
+		_carry = CarryControllerScript.new()
+		_carry.name = CARRY_NODE_NAME
+		add_child(_carry)
+	_carry.call("bind", self, _find_socket_source(self), _controller.call("get_provider"))
+	if not _carry.is_connected("carry_ended", _on_carry_ended):
+		_carry.connect("carry_ended", _on_carry_ended)
+
+
+func _on_carry_ended(_node: Node) -> void:
+	set_carrying(false)
+	_set_view_carry_pose(false)
+
+
+func _set_view_carry_pose(active: bool) -> void:
+	var view: Node = _find_socket_source(self)
+	if view != null and view.has_method("set_carry_pose"):
+		view.call("set_carry_pose", active)
+
+
+## The child view that answers `get_socket()` -- Aliz's wrapper. Null for the
+## procedural placeholder, which has no sockets and gets the fallback offsets.
+func _find_socket_source(node: Node) -> Node:
+	for child: Node in node.get_children():
+		if child == _carry:
+			continue
+		if child.has_method("get_socket") and child.has_method("has_socket"):
+			return child
+		var deeper: Node = _find_socket_source(child)
+		if deeper != null:
+			return deeper
+	return null
+
+
 ## -- Activity target registry -------------------------------------------------
 
 ## Duck-typed: anything answering `get_activity_target_id()` and
@@ -421,6 +531,11 @@ func step_movement(delta: float) -> void:
 		arrived.emit(String(step.get("targetId", "")))
 	if bool(step.get("interactionReady", false)):
 		interaction_ready.emit(String(step.get("targetId", "")))
+	# The carried thing rides the body: pinned AFTER the body has moved this
+	# step, so it never trails by a frame.
+	if _carry != null:
+		_carry.call("sync", delta)
+
 	if bool(step.get("actionFinished", false)):
 		action_finished.emit(String(step.get("actionName", "")))
 	_sync_state_signal()

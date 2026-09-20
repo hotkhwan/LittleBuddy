@@ -317,6 +317,14 @@ func _place_hand() -> void:
 ## which is a different state from "not looked yet" (`_skeleton == null`).
 var _skeleton: Skeleton3D = null
 var _hand_bone: int = -1
+## Her wrapper, when it answers `get_socket()`: the `itemHoldRight` socket from
+## her rig profile is then where the item goes, and the bone search below is
+## only the fallback for a rig with no profile. Same point at rest -- the
+## profile's offset was computed from `HAND_BONE_OFFSET` -- but bone-local, so
+## the item closes with her mitt through the arm swing instead of holding a
+## fixed offset from the wrist.
+var _socket_source: Node = null
+const HAND_SOCKET: String = "itemHoldRight"
 ## Set once the subtree has been walked, so a character with no rig costs one
 ## search rather than one per frame.
 var _rig_searched: bool = false
@@ -350,6 +358,7 @@ func _follow_hand() -> void:
 		return
 	if not _rig_searched:
 		_rig_searched = true
+		_socket_source = _find_socket_source(_carrier)
 		_skeleton = _find_skeleton(_carrier)
 		_hand_bone = -1
 		if _skeleton != null:
@@ -361,6 +370,18 @@ func _follow_hand() -> void:
 			if _hand_bone < 0:
 				push_warning("The carried item has no hand to sit in: none of %s is a bone "
 						% str(HAND_BONES) + "on this rig, so it falls back to a fixed offset.")
+	# `get_child_count() > 0` is "already built": asking `has_socket()` of an
+	# unbuilt wrapper would BUILD it, and the kitchen is set up while the world
+	# is still assembling -- which made the caregiver's 3.9k-triangle model the
+	# first thing under her before the placeholder had bound its idle.
+	if _socket_source != null and is_instance_valid(_socket_source) \
+			and _socket_source.get_child_count() > 0 \
+			and bool(_socket_source.call("has_socket", HAND_SOCKET)):
+		var socket: Node3D = _socket_source.call("get_socket", HAND_SOCKET)
+		if socket != null and socket != _socket_source and socket.is_inside_tree():
+			_hand_root.position = _carrier.global_transform.affine_inverse() * socket.global_position
+			_hand_root.rotation = Vector3.ZERO
+			return
 	if _skeleton == null or _hand_bone < 0 or not _skeleton.is_inside_tree():
 		return
 	var wrist: Transform3D = (
@@ -378,6 +399,18 @@ func _find_skeleton(node: Node) -> Skeleton3D:
 		return node as Skeleton3D
 	for child: Node in node.get_children():
 		var found: Skeleton3D = _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _find_socket_source(node: Node) -> Node:
+	if node == null:
+		return null
+	for child: Node in node.get_children():
+		if child.has_method("get_socket") and child.has_method("has_socket"):
+			return child
+		var found: Node = _find_socket_source(child)
 		if found != null:
 			return found
 	return null

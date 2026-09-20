@@ -158,9 +158,10 @@ const CLIP_EAT: String = "eat"
 const CLIP_DRINK: String = "drink"
 const CLIP_CELEBRATE: String = "celebrate"
 const CLIP_SLEEP: String = "sleep"
+const CLIP_CARRIED: String = "carried"
 
 const CLIP_NAMES: Array[String] = [
-	CLIP_IDLE, CLIP_FUSS, CLIP_EAT, CLIP_DRINK, CLIP_CELEBRATE, CLIP_SLEEP,
+	CLIP_IDLE, CLIP_FUSS, CLIP_EAT, CLIP_DRINK, CLIP_CELEBRATE, CLIP_SLEEP, CLIP_CARRIED,
 ]
 
 ## How far the back of a sleeping child sits above the floor, in bone units
@@ -209,6 +210,8 @@ static func build(clip_name: String, skeleton: Skeleton3D, prefix: String) -> An
 			return _celebrate(skeleton, prefix)
 		CLIP_SLEEP:
 			return _sleep(skeleton, prefix)
+		CLIP_CARRIED:
+			return _carried(skeleton, prefix)
 		_:
 			return null
 
@@ -683,6 +686,73 @@ static func _sleep(skeleton: Skeleton3D, prefix: String) -> Animation:
 ## and it is worse here because `walk` drives all 24 bones.
 ##
 ## So every bone the clip has not already keyed gets one rest key at t = 0.
+## **Held.** How a small child sits in an adult's arms, facing out: knees drawn
+## up and a little apart, shins hanging, hands resting low in front, and a slow
+## look from side to side at the room going past. Looping, so it can be held
+## for as long as the carry lasts.
+##
+## Everything here is a static pose plus breath, and that is the point -- this
+## clip's job is to NOT be `idle` or `fuss`: a child carried across a room in
+## his standing pose, feet paddling at nothing 40 cm above the floor, is the
+## single most obvious way a carry reads as fake. The knees come up 78 degrees
+## because from the room camera the raised knees ARE the silhouette that says
+## "carried" -- lower, and he reads as standing on her arms.
+##
+## Signs follow `_fuss()`: a negative NOD on a thigh swings it forward, a
+## positive NOD on the shin folds the knee.
+static func _carried(skeleton: Skeleton3D, prefix: String) -> Animation:
+	var animation: Animation = _looping(3.6)
+	var breathe_in: float = 1.0
+	var breathe_out: float = 2.6
+
+	# A slight lean back into the arms that hold him, and the breath.
+	_hips(animation, skeleton, prefix, [
+		[0.0, [0.0, [[NOD, 6.0]]]],
+		[breathe_in, [0.3, [[NOD, 5.5]]]],
+		[breathe_out, [-0.1, [[NOD, 6.3]]]],
+		[3.6, [0.0, [[NOD, 6.0]]]]])
+	_bone(animation, skeleton, prefix, SPINE_LOW, [
+		[0.0, [[NOD, 1.0]]], [breathe_in, [[NOD, -0.8]]],
+		[breathe_out, [[NOD, 0.8]]], [3.6, [[NOD, 1.0]]]])
+	_bone(animation, skeleton, prefix, SPINE_MID, [
+		[0.0, [[NOD, 0.6]]], [breathe_in, [[NOD, -1.0]]],
+		[breathe_out, [[NOD, 0.5]]], [3.6, [[NOD, 0.6]]]])
+	_bone(animation, skeleton, prefix, SPINE_TOP, [[0.0, [[NOD, -1.5]]]])
+
+	# Looking about, held at each end, as `_idle()` does.
+	_bone(animation, skeleton, prefix, NECK, [[0.0, [[NOD, -2.0]]]])
+	_bone(animation, skeleton, prefix, HEAD, [
+		[0.0, [[TURN, 0.0], [NOD, -3.0]]],
+		[1.1, [[TURN, 12.0], [NOD, -4.0], [TILT, -2.0]]],
+		[1.9, [[TURN, 10.0], [NOD, -3.0], [TILT, -2.0]]],
+		[2.9, [[TURN, -11.0], [NOD, -4.0], [TILT, 2.0]]],
+		[3.6, [[TURN, 0.0], [NOD, -3.0]]]])
+
+	for side: int in [-1, 1]:
+		# Knees up and a little apart; shins hang.
+		_bone(animation, skeleton, prefix, _thigh(side), [
+			[0.0, [[NOD, -78.0], [TILT, -side * 10.0]]],
+			[1.8, [[NOD, -76.0], [TILT, -side * 11.0]]],
+			[3.6, [[NOD, -78.0], [TILT, -side * 10.0]]]])
+		_bone(animation, skeleton, prefix, _shin(side), [
+			[0.0, [[NOD, 82.0]]], [1.8, [[NOD, 78.0]]], [3.6, [[NOD, 82.0]]]])
+		# Hands resting low in front, elbows soft and a little out so they clear
+		# the arms holding him.
+		_bone(animation, skeleton, prefix, _shoulder(side), [[0.0, [[TILT, -side * 4.0]]]])
+		_bone(animation, skeleton, prefix, _arm(side), [
+			[0.0, [[NOD, -22.0], [TILT, -side * 12.0]]],
+			[1.8, [[NOD, -25.0], [TILT, -side * 13.0]]],
+			[3.6, [[NOD, -22.0], [TILT, -side * 12.0]]]])
+		_bone(animation, skeleton, prefix, _forearm(side), [
+			[0.0, [[NOD, -38.0], [TILT, side * 14.0]]],
+			[1.8, [[NOD, -42.0], [TILT, side * 15.0]]],
+			[3.6, [[NOD, -38.0], [TILT, side * 14.0]]]])
+		_bone(animation, skeleton, prefix, _hand(side), [[0.0, [[NOD, -10.0]]]])
+
+	_rest_the_others(animation, skeleton, prefix)
+	return animation
+
+
 static func _rest_the_others(animation: Animation, skeleton: Skeleton3D, prefix: String) -> void:
 	var keyed: Dictionary = {}
 	for track: int in range(animation.get_track_count()):

@@ -163,6 +163,12 @@ var _built: bool = false
 ## side it was already on instead of having to invent one.
 var _bubble_side: float = -1.0
 
+## -- Being carried -----------------------------------------------------------------
+## The caregiver holding him, or null. While set, this node's transform belongs to
+## her `carry_controller.gd`; the follower, the attention turn and his tap target
+## all stand down. See `set_carried_by()`.
+var _carrier: Node3D = null
+
 ## -- Accompaniment -------------------------------------------------------------
 var _follow_state: String = Follower.STATE_WAITING
 var _following: Node3D = null
@@ -227,6 +233,9 @@ func build() -> void:
 		return
 	_built = true
 	_state = StatsScript.new()
+	# The affordance contract: anything in this group answers `get_affordance()`
+	# and `perform_affordance()`, and the HUD draws the verb it returns.
+	add_to_group(AFFORDABLE_GROUP)
 
 	_wrapper = WrapperScript.new()
 	_wrapper.name = "Model"
@@ -389,7 +398,8 @@ func get_follow_state() -> String:
 ## Advances the walk. Split out of `_process` so a headless smoke test drives
 ## exactly the same code a device does.
 func step(delta: float) -> void:
-	if not _built or _attending or _following == null:
+	# Carried: the follower stands down entirely. His transform is hers.
+	if not _built or _carrier != null or _attending or _following == null:
 		return
 	var target: Vector3 = Follower.follow_point(
 		_following.global_position, -_following.global_transform.basis.z)
@@ -427,10 +437,17 @@ func _process(delta: float) -> void:
 func room_changed(new_room: Node3D, buddy: Node3D) -> void:
 	build()
 	if new_room != null and get_parent() != new_room:
-		var keep: Transform3D = global_transform
-		get_parent().remove_child(self)
+		var keep: Transform3D = SpatialUtil.world_transform(self)
+		if get_parent() != null:
+			get_parent().remove_child(self)
 		new_room.add_child(self)
-		global_transform = keep
+		SpatialUtil.set_world_position(self, keep.origin)
+		if is_inside_tree():
+			global_transform = keep
+	# In her arms he stays in her arms: the carry controller re-pins him to her
+	# socket on its next step, so no follow point is wanted here.
+	if _carrier != null:
+		return
 	if buddy != null:
 		global_position = Follower.follow_point(
 			buddy.global_position, -buddy.global_transform.basis.z)
@@ -859,6 +876,13 @@ func get_bubble_world_offset() -> Vector3:
 func _attend_to_caregiver(delta: float) -> void:
 	if _wrapper == null or _walking or _attending:
 		return
+	if _carrier != null:
+		# On her chest he faces the way she faces; turning to look at her would
+		# put his face in her dress.
+		_watching = false
+		_model_yaw = Life.turn_towards(_model_yaw, 0.0, delta)
+		_wrapper.rotation.y = deg_to_rad(_model_yaw)
+		return
 	var caregiver: Node3D = _find_caregiver()
 	var wanted: float = 0.0
 	if caregiver != null:
@@ -1012,6 +1036,121 @@ func _find_player(node: Node) -> AnimationPlayer:
 		if found != null:
 			return found
 	return null
+
+
+## -- Being carried ------------------------------------------------------------------
+##
+## The signature interaction: Aliz picks Bunny up and carries him. The carrying
+## itself -- lifting to the socket, riding it, setting down on a standable spot
+## -- is `carry_controller.gd`'s, hung off HER; this node's part is to know it
+## is in her arms and to stop doing the things a standing child does.
+##
+## Nothing about him changes except his transform and his posture. He is not
+## re-parented, not duplicated, not hidden: the same node, the same `ChildStats`,
+## the same bubble, the same `ActivityTarget` (disabled while held, so a tap on
+## him in her arms does not send her walking to a point on her own chest). His
+## hunger when he is put down is his hunger when he was picked up.
+
+## The moment the lift begins. `carrier` is the caregiver's body.
+func set_carried_by(carrier: Node3D) -> void:
+	build()
+	_carrier = carrier
+	_following = null
+	_attending = false
+	_walking = false
+	_follow_state = Follower.STATE_WAITING
+	_watching = false
+	if _target != null and _target.has_method("set_target_enabled"):
+		_target.call("set_target_enabled", false)
+	set_activity(Present.ACTIVITY_CARRIED)
+
+
+## Back on the floor. Restores everything `set_carried_by()` stood down.
+func release_carried() -> void:
+	build()
+	_carrier = null
+	if _target != null and _target.has_method("set_target_enabled"):
+		_target.call("set_target_enabled", true)
+	if _activity == Present.ACTIVITY_CARRIED:
+		set_activity(Present.ACTIVITY_IDLE)
+
+
+func is_carried() -> bool:
+	return _carrier != null
+
+
+func get_carrier() -> Node3D:
+	return _carrier
+
+
+## -- Affordances ----------------------------------------------------------------------
+##
+## The data half of the on-screen verb icons. Anything in the `affordable` group
+## answers `get_affordance(actor)` with what `actor` could do to it right now --
+## or `{}` -- and `perform_affordance(actor)` does it. The HUD owns the icons
+## and the tap; this owns the meaning.
+##
+## For Bunny that is one verb at a time, in this order:
+##   * `place` -- he is in this actor's arms: put him down (on a standable spot).
+##   * `hug`   -- he needs comfort or is crying: a cuddle answers it.
+##   * `carry` -- otherwise: pick him up.
+## `radius` is the reach the icon should honour, in metres from his origin; the
+## anchor is just above his head so the icon never covers his face.
+
+const AFFORDABLE_GROUP: String = "affordable"
+const AFFORD_VERB_CARRY: String = "carry"
+const AFFORD_VERB_PLACE: String = "place"
+const AFFORD_VERB_HUG: String = "hug"
+## An arm's length plus a little: a caregiver standing on his interaction point
+## (0.62 m in front of him) is inside it with room for a step of her walk cycle.
+const AFFORD_REACH: float = 1.1
+const AFFORD_ANCHOR_LIFT: float = 0.16
+## Above furniture (1) and a door (1); below nothing, because he IS the game.
+const AFFORD_PRIORITY: int = 3
+
+
+func get_affordance(actor: Node3D) -> Dictionary:
+	build()
+	if actor == null or not is_instance_valid(actor):
+		return {}
+	var anchor: Vector3 = SpatialUtil.world_position(self) \
+			+ Vector3(0.0, CHILD_HEAD_HEIGHT + AFFORD_ANCHOR_LIFT, 0.0)
+	var verb: String = AFFORD_VERB_CARRY
+	if _carrier != null:
+		if actor != _carrier:
+			return {}
+		verb = AFFORD_VERB_PLACE
+	elif actor.has_method("is_carrying_node") and bool(actor.call("is_carrying_node")):
+		# Her hands are full of something else; nothing to offer on him.
+		return {}
+	elif _need == Needs.NEEDS_COMFORT or _need == Needs.CRYING:
+		verb = AFFORD_VERB_HUG
+	return {
+		"verb": verb,
+		"anchor": anchor,
+		"radius": AFFORD_REACH,
+		"priority": AFFORD_PRIORITY,
+		"target": self,
+	}
+
+
+func perform_affordance(actor: Node3D) -> bool:
+	var offer: Dictionary = get_affordance(actor)
+	if offer.is_empty():
+		return false
+	match String(offer["verb"]):
+		AFFORD_VERB_PLACE:
+			if not actor.has_method("put_down_carried"):
+				return false
+			return bool(actor.call("put_down_carried"))
+		AFFORD_VERB_CARRY:
+			if not actor.has_method("carry_node"):
+				return false
+			return bool(actor.call("carry_node", self, "carryFront"))
+		AFFORD_VERB_HUG:
+			satisfy(_need)
+			return true
+	return false
 
 
 ## -- What the child needs -------------------------------------------------------

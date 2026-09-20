@@ -154,6 +154,16 @@ extends Node3D
 const ActionDriverScript := preload("res://scripts/character/character_action_driver.gd")
 const AnimationDriverScript := preload("res://scripts/character/animation_player_action_driver.gd")
 const LocomotionScript := preload("res://scripts/character/locomotion.gd")
+const CarryPoseScript := preload("res://scripts/characters/buddy/buddy_carry_pose.gd")
+
+## Where the bone-name adapter lives. The ONLY file that may name one of her
+## bones; everything above `get_socket()` speaks `LB_Rig_v1` and nothing else.
+## Same shape as `meshy_baby_v01.json`, same rig family.
+const RIG_PROFILE_PATH: String = "res://content/rig_profiles/pink_girl_v01.json"
+
+## Seconds the carry arms take to wrap and to let go (the modifier's `influence`
+## is eased rather than switched, so picking up reads as a gesture).
+const CARRY_POSE_BLEND_SEC: float = 0.35
 
 ## Emitted when a requested action begins. Emitted even though nothing is shown,
 ## so a caller's await is symmetric with `LittleBuddyCharacter`'s.
@@ -235,10 +245,16 @@ const MODEL_NODE_NAME: String = "Model"
 
 var _model_root: Node3D = null
 var _mesh: MeshInstance3D = null
+var _skeleton: Skeleton3D = null
 var _driver: RefCounted = null
 var _pending_action: String = ""
 var _built: bool = false
 var _measured: Dictionary = {}
+## `LB_Rig_v1` socket names that resolved on this skeleton. See `_build_sockets()`.
+var _sockets: Array = []
+## The carry arm pose, a `SkeletonModifier3D` under the skeleton. Null without a rig.
+var _carry_pose: SkeletonModifier3D = null
+var _carry_pose_wanted: bool = false
 
 
 func _ready() -> void:
@@ -571,6 +587,9 @@ func _build_model() -> void:
 	_apply_art_bible_material()
 	_normalise(instance as Node3D)
 	_merge_clips(instance)
+	_skeleton = _find_skeleton(instance)
+	_sockets = _build_sockets()
+	_build_carry_pose()
 
 
 ## Merges the locomotion clips onto the model's own `AnimationPlayer`.
@@ -688,6 +707,169 @@ func _apply_art_bible_material() -> void:
 		fixed.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 		fixed.emission_enabled = false
 		_mesh.set_surface_override_material(surface, fixed)
+
+
+# ---------------------------------------------------------------------------
+# Sockets -- LB_Rig_v1 names, never a bone
+# ---------------------------------------------------------------------------
+
+## Where a carried child, a held bottle or a hug is aimed on HER. Same contract
+## as `baby_little_buddy.gd::get_socket()`: **never returns null.** A socket is
+## a node in a skeleton; without one (no model in this build) every lookup
+## resolves to this node, which is the specified degradation.
+func get_socket(socket_name: String) -> Node3D:
+	build()
+	if _model_root == null:
+		return self
+	if not is_inside_tree():
+		# Out of the tree no frame ever runs, so a `BoneAttachment3D` would sit at
+		# the skeleton's origin rather than on its bone. The headless runner is
+		# exactly that case, and a socket that answers differently there than
+		# on a device is a socket no test can trust.
+		refresh_sockets()
+	var socket: Node = _model_root.find_child("Socket_" + socket_name, true, false)
+	if socket is Node3D:
+		return socket as Node3D
+	return self
+
+
+## True when `socket_name` resolves to a real skeleton-driven node rather than
+## to the whole-character fallback.
+func has_socket(socket_name: String) -> bool:
+	build()
+	return _sockets.has(socket_name)
+
+
+## Every `LB_Rig_v1` socket that actually resolved.
+func available_sockets() -> Array:
+	build()
+	return _sockets.duplicate()
+
+
+func get_skeleton() -> Skeleton3D:
+	build()
+	return _skeleton
+
+
+## Forces every socket onto its bone's current pose now, without waiting for
+## the skeleton's own deferred update. Cheap: a pose flush and one transform
+## per attachment.
+func refresh_sockets() -> void:
+	if _skeleton == null:
+		return
+	if _skeleton.has_method("force_update_all_bone_transforms"):
+		_skeleton.call("force_update_all_bone_transforms")
+	for child: Node in _skeleton.get_children():
+		if child is BoneAttachment3D and child.has_method("on_skeleton_update"):
+			child.call("on_skeleton_update")
+
+
+## Builds one `BoneAttachment3D` per socket from the `RigProfile` -- a bone for
+## the `boneMap` entries, a `Marker3D` at a bone-local offset for
+## `socketOffsets`. Identical in shape to the child's, so the two rigs are
+## addressed the same way. A socket whose bone is absent is skipped and simply
+## not reported, never silently placed at the origin.
+func _build_sockets() -> Array:
+	var built: Array = []
+	if _skeleton == null:
+		return built
+	var profile: Dictionary = _load_rig_profile()
+	if profile.is_empty():
+		return built
+	var bone_map: Dictionary = profile.get("boneMap", {})
+
+	for socket_name: String in bone_map.keys():
+		var bone: String = String(bone_map[socket_name])
+		if _skeleton.find_bone(bone) == -1:
+			push_warning("PinkGirlBuddy: socket '%s' -> bone '%s' not on this skeleton"
+					% [socket_name, bone])
+			continue
+		var attachment := BoneAttachment3D.new()
+		attachment.name = "Socket_" + socket_name
+		_skeleton.add_child(attachment)
+		# By INDEX, after parenting: `bone_name` alone binds on entering the tree,
+		# and out of the tree (the headless runner) the attachment would sit at
+		# the skeleton's origin forever. Setting the index binds and poses it now.
+		attachment.bone_idx = _skeleton.find_bone(bone)
+		built.append(socket_name)
+
+	for socket_name: String in (profile.get("socketOffsets", {}) as Dictionary).keys():
+		var spec: Dictionary = profile["socketOffsets"][socket_name]
+		var via: String = String(spec.get("bone", ""))
+		var bone: String = String(bone_map.get(via, ""))
+		if bone.is_empty() or _skeleton.find_bone(bone) == -1:
+			continue
+		var attachment := BoneAttachment3D.new()
+		attachment.name = "Attach_" + socket_name
+		_skeleton.add_child(attachment)
+		attachment.bone_idx = _skeleton.find_bone(bone)
+		var marker := Marker3D.new()
+		marker.name = "Socket_" + socket_name
+		var offset: Array = spec.get("offset", [0.0, 0.0, 0.0])
+		marker.position = Vector3(float(offset[0]), float(offset[1]), float(offset[2]))
+		attachment.add_child(marker)
+		built.append(socket_name)
+	return built
+
+
+func _load_rig_profile() -> Dictionary:
+	if not FileAccess.file_exists(RIG_PROFILE_PATH):
+		return {}
+	var file: FileAccess = FileAccess.open(RIG_PROFILE_PATH, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	return parsed if parsed is Dictionary else {}
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node as Skeleton3D
+	for child: Node in node.get_children():
+		var found: Skeleton3D = _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+# ---------------------------------------------------------------------------
+# The carry pose -- arms round the child, legs still walking
+# ---------------------------------------------------------------------------
+
+func _build_carry_pose() -> void:
+	if _skeleton == null:
+		return
+	_carry_pose = CarryPoseScript.new()
+	_carry_pose.name = "CarryPose"
+	_carry_pose.call("settle")
+	_skeleton.add_child(_carry_pose)
+
+
+## Wraps her arms round whatever she is carrying (true) or lets them swing again
+## (false). The modifier eases its own `influence` over `CARRY_POSE_BLEND_SEC`
+## inside the skeleton's modification pass -- this file runs no frame loop of
+## its own, by rule (`test_buddy_avatar.gd`). Without a rig this is a recorded
+## wish and nothing else, which is the honest degradation.
+func set_carry_pose(active: bool) -> void:
+	build()
+	_carry_pose_wanted = active
+	if _carry_pose == null:
+		return
+	_carry_pose.set("blend_seconds", CARRY_POSE_BLEND_SEC)
+	_carry_pose.call("set_target", active)
+	if not is_inside_tree():
+		# No modification passes will ease this; land it, so a headless caller
+		# sees the pose it asked for.
+		_carry_pose.call("settle")
+
+
+func is_carry_pose_active() -> bool:
+	return _carry_pose_wanted
+
+
+func get_carry_pose() -> SkeletonModifier3D:
+	build()
+	return _carry_pose
 
 
 # ---------------------------------------------------------------------------
