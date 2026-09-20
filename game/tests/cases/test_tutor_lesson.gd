@@ -405,6 +405,8 @@ func _test_progress_round_trip():
 			failures.append("tutorProgress key '%s' is not camelCase" % str(key))
 	if int(entry.get("stepIndex", -1)) != 3 or int(entry.get("correctFirstTry", -1)) != 1:
 		failures.append("saved stepIndex/correctFirstTry expected 3/1, got %s/%s" % [str(entry.get("stepIndex")), str(entry.get("correctFirstTry"))])
+	if entry.has("completedAt"):
+		failures.append("an unfinished lesson must not carry completedAt")
 
 	var resumed: RefCounted = LessonEngineScript.new()
 	resumed.load_lesson(FIRST_LESSON_ID)
@@ -524,6 +526,32 @@ func _test_completion_awards_exactly_once():
 	var entry: Dictionary = (save.get_setting("tutorProgress", {}) as Dictionary).get(FIRST_LESSON_ID, {})
 	if entry.has("stars"):
 		failures.append("tutorProgress must not store stars; the profile star total is the only ledger")
+	# completedAt: ISO-8601 UTC, written on completion, read back, tolerated when absent.
+	var completed_at: String = String(entry.get("completedAt", ""))
+	var iso: RegEx = RegEx.new()
+	iso.compile("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$")
+	if iso.search(completed_at) == null:
+		failures.append("completedAt should be an ISO-8601 UTC string like 2026-09-20T15:19:21Z, got '%s'" % completed_at)
+	var parsed_unix: int = int(Time.get_unix_time_from_datetime_string(completed_at.trim_suffix("Z")))
+	var now_unix: int = int(Time.get_unix_time_from_system())
+	if parsed_unix <= 0 or absi(now_unix - parsed_unix) > 300:
+		failures.append("completedAt should be about now (UTC): %s vs unix %d" % [completed_at, now_unix])
+	var reloaded: RefCounted = LessonEngineScript.new()
+	reloaded.load_lesson(FIRST_LESSON_ID)
+	reloaded.load_progress(save)
+	if String(reloaded.progress().get("completedAt", "")) != completed_at:
+		failures.append("completedAt must survive a load_progress round trip")
+	reloaded.save_progress(save)
+	if String(((save.get_setting("tutorProgress", {}) as Dictionary).get(FIRST_LESSON_ID, {}) as Dictionary).get("completedAt", "")) != completed_at:
+		failures.append("re-saving a completed lesson must keep its completedAt")
+	# An entry written before completedAt existed still loads.
+	save.settings["tutorProgress"] = {FIRST_LESSON_ID: {"stepIndex": 18, "stepCount": 18, "correctFirstTry": 12, "completed": true, "rewardGranted": true}}
+	var legacy: RefCounted = LessonEngineScript.new()
+	legacy.load_lesson(FIRST_LESSON_ID)
+	if not legacy.load_progress(save) or not legacy.is_complete() or not String(legacy.progress().get("completedAt", "x")).is_empty():
+		failures.append("an entry without completedAt must load as complete with an empty completedAt")
+	if legacy.save_progress(save) != 0:
+		failures.append("a legacy completed entry must not be paid again")
 	return failures
 
 

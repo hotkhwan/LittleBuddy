@@ -60,7 +60,10 @@ extends RefCounted
 ## ## Persistence
 ##
 ## `settings.tutorProgress` (camelCase) is a map keyed by lessonId:
-## `{stepIndex, stepCount, correctFirstTry, completed, rewardGranted}`. The
+## `{stepIndex, stepCount, correctFirstTry, completed, rewardGranted,
+## completedAt}` -- `completedAt` is an ISO-8601 UTC string
+## ("2026-09-20T15:19:21Z") written when the lesson completes; the parent
+## settings' Learning history shows it as a local date. The
 ## save service is duck-typed: it needs `get_setting(key, default)`,
 ## `set_setting(key, value)` and `add_stars(amount)`; anything missing is skipped
 ## with `has_method()` so a bare stub still runs.
@@ -128,6 +131,8 @@ var _attempts: int = 0
 var _correct_first_try: int = 0
 var _completed: bool = false
 var _reward_granted: bool = false
+## ISO-8601 UTC time of the latest completion, "" until the lesson completes.
+var _completed_at: String = ""
 ## Step indices already passed (answered, taught, or spoken). After an
 ## interjection jump, `advance()` skips these and, before the celebrate,
 ## returns to any question the jump left behind.
@@ -365,6 +370,7 @@ func advance() -> void:
 		_step_index = _steps.size()
 		if not _completed:
 			_completed = true
+			_completed_at = _now_utc_iso()
 			var reward: Dictionary = completion_reward()
 			lesson_completed.emit(_lesson_id, int(reward.get("stars", 0)), String(reward.get("stickerId", "")))
 	else:
@@ -405,6 +411,7 @@ func progress() -> Dictionary:
 		"correctFirstTry": _correct_first_try,
 		"completed": is_complete() and not _steps.is_empty(),
 		"rewardGranted": _reward_granted,
+		"completedAt": _completed_at,
 	}
 
 
@@ -459,13 +466,18 @@ func save_progress(save_service: Object) -> int:
 		reward_granted.emit(_lesson_id, stars, String(reward.get("stickerId", "")))
 	if save_service.has_method("get_setting") and save_service.has_method("set_setting"):
 		var all_progress: Dictionary = _read_progress_map(save_service)
-		all_progress[_lesson_id] = {
+		if is_complete() and _completed_at.is_empty():
+			_completed_at = _now_utc_iso()
+		var entry: Dictionary = {
 			"stepIndex": mini(_step_index, _steps.size()),
 			"stepCount": _steps.size(),
 			"correctFirstTry": _correct_first_try,
 			"completed": is_complete(),
 			"rewardGranted": _reward_granted,
 		}
+		if not _completed_at.is_empty():
+			entry["completedAt"] = _completed_at
+		all_progress[_lesson_id] = entry
 		save_service.call("set_setting", PROGRESS_SETTING_KEY, all_progress)
 	return granted_now
 
@@ -486,6 +498,9 @@ func load_progress(save_service: Object) -> bool:
 		return false
 	var entry: Dictionary = raw
 	_reward_granted = bool(entry.get("rewardGranted", false))
+	# Older entries have no completedAt; keep "" (the history shows no date).
+	var saved_at: Variant = entry.get("completedAt", null)
+	_completed_at = String(saved_at) if typeof(saved_at) == TYPE_STRING else ""
 	var saved_count: int = int(entry.get("stepCount", -1))
 	_resolved = {}
 	if saved_count != _steps.size():
@@ -557,6 +572,7 @@ func subjects() -> Array:
 
 func _reset_state() -> void:
 	_resolved = {}
+	_completed_at = ""
 	_lesson = {}
 	_lesson_id = ""
 	_steps = []
@@ -769,6 +785,12 @@ static func _generated_answer_line(canonical: String) -> String:
 
 static func _is_colour_or_number(word: String) -> bool:
 	return BARE_WORDS.has(word) or word.is_valid_int()
+
+
+## "2026-09-20T15:19:21Z": UTC, second precision, the form the Learning
+## history parses. `Time.get_datetime_string_from_system(true)` is UTC.
+static func _now_utc_iso() -> String:
+	return Time.get_datetime_string_from_system(true) + "Z"
 
 
 static func _non_empty(value: String, fallback: String) -> String:
