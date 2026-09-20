@@ -128,14 +128,33 @@ func _run() -> void:
 	_table.call("drag_to_mouth")
 	await _settle(1.5)
 
-	# Finish the mission properly for the summary: every remaining task by its
-	# own gesture, or by touch for the findIt / sayIt ones.
+	# The summary: a fresh run of the whole mission, every task played -- the
+	# feeding ones by their own gesture, findIt / sayIt by touch.
+	_room.call("_start_next_mission", MISSION_ID)
+	await _settle(0.8)
+	_runner = _room.get_node_or_null("MissionRunner")
 	var guard: int = 0
+	var slipped: bool = false
 	while bool(_runner.call("is_running")) and guard < 12:
 		guard += 1
 		var task: Dictionary = _runner.call("get_current_task")
 		if Rules.handles_task(task):
+			_table = _room.call("get_feeding_table")
 			var target: String = String(task.get("objectId", ""))
+			if not slipped:
+				# One honest slip on the first feeding task, so the summary shows
+				# its "So close!" half star.
+				slipped = true
+				for other: String in Rules.tray_item_ids(target):
+					if other == target:
+						continue
+					if Rules.needs_peel(other):
+						_table.call("tap_item", other)
+						await _settle(0.5)
+					_table.call("begin_drag", other)
+					_table.call("drag_to_mouth")
+					await _settle(1.8)
+					break
 			if Rules.needs_peel(target):
 				_table.call("tap_item", target)
 				await _settle(0.5)

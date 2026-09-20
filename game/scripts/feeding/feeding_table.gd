@@ -84,7 +84,7 @@ const FALLBACK_MOUTH_LOCAL: Vector3 = Vector3(0.0, 0.452, 0.161)
 const DRAG_LIFT: float = 0.06
 ## Where a cup sits while a sip is held: base below and in front of the mouth,
 ## so the tipped spout lands on the lips.
-const DRINK_POSE_OFFSET: Vector3 = Vector3(0.0, -0.11, 0.10)
+const DRINK_POSE_OFFSET: Vector3 = Vector3(0.0, -0.08, 0.10)
 const EAT_POSE_OFFSET: Vector3 = Vector3(0.0, -0.02, 0.05)
 const SNAP_SECONDS: float = 0.16
 const RETURN_SECONDS: float = 0.42

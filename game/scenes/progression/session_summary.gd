@@ -203,6 +203,11 @@ func show_summary(stars_earned: int, total_stars: int, new_stickers: Array = [],
 			_sticker_label.text = String(sticker.get("displayName", sticker.get("word", "")))
 
 	visible = true
+	# Now and again after the layout pass: the first `resized` can fire before
+	# `_ensure_resolved()` has connected to it.
+	_fit_panel()
+	if is_inside_tree():
+		call_deferred("_fit_panel")
 
 	# Only celebrate the first time this instance is shown, so reopening the
 	# summary never replays the reward moment (or its sound) for the same run.
@@ -266,7 +271,10 @@ func get_almost_count() -> int:
 func _fit_panel() -> void:
 	if _center == null:
 		return
-	var height: float = _center.size.y
+	# The HOST's height, not the centre container's: a container grows to its
+	# children's minimum size, so its own height is never short.
+	var host: Control = _center.get_parent() as Control
+	var height: float = host.size.y if host != null else _center.size.y
 	if height <= 0.0:
 		return
 	var factor: float = clampf(height / DESIGN_HEIGHT, 0.6, 1.0)
