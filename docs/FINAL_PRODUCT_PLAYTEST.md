@@ -87,7 +87,38 @@ keys inside the repo, and unsigned bundles. Details and Play Console blockers:
 
 ## 5. Independent QA on the integrated HEAD
 
-QA_PLACEHOLDER
+Run by a separate QA agent in its own worktree at `841d682` (the same code as
+`fa650bd` minus two doc commits), 63 frames, report `docs/QA_INTEGRATED_841d682.md`,
+key frames copied as `docs/shots/qa_*.png`. Verbatim: suite **PASS - 128
+case(s)**; run-vs-walk `1.05 m/s → 1.55 m/s, ratio 1.48x`; both mission smokes
+PASS with stars persisting across replay; audio smoke PASS (menu theme, mission
+track, one player, no restart, duck gain 0.316 while speaking, mute); speech
+probe with the plugin linked `backend: ios, available: true, fallbackActive:
+false` — the mock was never selected.
+
+| State | Result |
+|---|---|
+| Main menu: Aliz + Bunny only, four buttons, cottage, title | PASS |
+| House entry / bedroom | **FAIL → fixed in follow-up** — HUG badge covered Bunny's speech line (`qa_harness_house_bedroom_ipad.png`) |
+| Walking / running | PASS (1.05 / 1.55 m/s) |
+| Bunny hungry, backed bubble, gone when satisfied | PASS (all six stagings, both viewports) |
+| Carry Bunny / place Bunny | PASS (one Bunny, held via socket, floor gap 0.000 m) |
+| Prop take / place | PASS |
+| Fridge OPEN, bottle TAKE, prepare milk, feed, Snack Time | PASS |
+| Feed close-up: real Bunny, "Time to drink!", no bubble, no badge under overlay | PASS |
+| Home + pause card, version label | PASS |
+| Save / load | PASS (smokes and save tests) |
+| Door ENTER badge when a prop lies near the door | **FAIL → fixed in follow-up** — a banana outranked the door (priority tie broken by distance) |
+| Story HUG on iPhone | **FAIL → fixed in follow-up** — badge overprinted the bubble |
+| carry / place / take badges | **cosmetic → fixed in follow-up** — lowercase, no glyph (verb-case mismatch between the providers and the layer) |
+
+No crashes, no wrong character, no duplicate Bunny, no floating objects, no
+wrong-size frames, no mock speech success. Cosmetic leftovers QA listed and we
+did not fix today: the target ring sits on Aliz's face when she stands right in
+front of a station; the version label is very small; the HUD prompt can sit over
+the 3D KITCHEN sign on iPhone; `shots_kitchen.gd` runs on the live profile.
+
+FOLLOWUP_PLACEHOLDER
 
 ## 6. Honest limits and blockers
 

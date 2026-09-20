@@ -506,7 +506,7 @@ func _report() -> void:
 	print("")
 	if _fail.is_empty():
 		print("SMOKE PASS -- both delivered tracks play in the real game, one at a time,")
-		print("              they duck for English, and the shipping default is still silent")
+		print("              they duck for English, and a pending manifest stays silent")
 		print("              because no licence evidence has been supplied.")
 		quit(0)
 	else:
