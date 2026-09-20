@@ -30,13 +30,16 @@ export function createMockProvider(opts = {}) {
 
       /** @type {Record<string, unknown>} */
       let turn;
+      const successLine = firstString(ctx.successLine);
+      const answerLine = firstString(ctx.answerLine);
       if (outcome === 'correct') {
         const praise = PRAISE[seed % PRAISE.length];
-        const echo = answer ? ` ${cap(answer)}!` : '';
-        if (next) {
+        const echo = successLine ? ` ${successLine}` : answer ? ` ${cap(answer)}!` : '';
+        const finishing = !next || ctx.lessonAction === 'complete' || ctx.lessonAction === 'end_session';
+        if (!finishing) {
           turn = { speech: clip(`${praise}${echo} ${next}`, MAX_SPEECH), emotion: 'happy', gesture: 'clap', visual, lessonAction: 'next_question', nextQuestion: clip(next, MAX_NEXT_QUESTION) };
         } else {
-          turn = { speech: clip(`${praise}${echo} You did the whole lesson. Great job today!`, MAX_SPEECH), emotion: 'happy', gesture: 'wave', visual, lessonAction: ctx.lessonAction === 'end_session' ? 'end_session' : 'complete' };
+          turn = { speech: clip(`${praise}${echo} ${next || 'You did the whole lesson. Great job today!'}`, MAX_SPEECH), emotion: 'happy', gesture: 'wave', visual, lessonAction: ctx.lessonAction === 'end_session' ? 'end_session' : 'complete' };
         }
       } else if (outcome === 'incorrect') {
         const enc = ENCOURAGE[seed % ENCOURAGE.length];
@@ -48,7 +51,7 @@ export function createMockProvider(opts = {}) {
       } else {
         // unclear (or unknown outcome): never a fail state; move gently on.
         if (ctx.lessonAction === 'next_question' && next) {
-          turn = { speech: clip(`Good try! The word is ${answer || 'this one'}. ${next}`, MAX_SPEECH), emotion: 'smile', gesture: 'nod', visual, lessonAction: 'next_question', nextQuestion: clip(next, MAX_NEXT_QUESTION) };
+          turn = { speech: clip(`Good try! ${answerLine || `The word is ${answer || 'this one'}.`} ${next}`, MAX_SPEECH), emotion: 'smile', gesture: 'nod', visual, lessonAction: 'next_question', nextQuestion: clip(next, MAX_NEXT_QUESTION) };
         } else {
           turn = { speech: clip(`I did not quite hear you. ${hint || 'Can you say it one more time?'}`, MAX_SPEECH), emotion: 'listening', gesture: 'tilt', visual, lessonAction: 'retry' };
         }

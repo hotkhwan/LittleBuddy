@@ -29,12 +29,17 @@ export function createQuota({ store, config, now }) {
     return Math.max(0, Math.min(seconds, 24 * 3600));
   }
 
+  /** @param {'free'|'family_club'} entitlement */
+  function turnAllowanceFor(entitlement) {
+    return entitlement === 'family_club' ? config.familyClubDailyTurns : config.freeDailyTurns;
+  }
+
   /** @param {string} userKey */
   function record(userKey) {
     const day = utcDayKey(now());
     const existing = store.usage.get(userKey);
-    if (existing && existing.dayKey === day) return existing;
-    return { dayKey: day, usedSeconds: 0 };
+    if (existing && existing.dayKey === day) return { turns: 0, ...existing };
+    return { dayKey: day, usedSeconds: 0, turns: 0 };
   }
 
   /**
@@ -51,7 +56,27 @@ export function createQuota({ store, config, now }) {
       usedSeconds: round1(used),
       remainingSeconds: round1(Math.max(0, allowance - used)),
       resetAtUtc: nextUtcMidnightIso(now()),
+      dailyTurnAllowance: turnAllowanceFor(entitlement),
+      usedTurns: rec.turns,
     };
+  }
+
+  /**
+   * Count one served turn against the day (finding H4: cost is per call, not
+   * per second). Returns true when the cap is already reached BEFORE this turn.
+   * @param {string} userKey
+   * @param {'free'|'family_club'} entitlement
+   */
+  function turnCapReached(userKey, entitlement) {
+    return record(userKey).turns >= turnAllowanceFor(entitlement);
+  }
+
+  /** @param {string} userKey */
+  function countTurn(userKey) {
+    const rec = record(userKey);
+    rec.turns += 1;
+    store.usage.set(userKey, rec);
+    return rec.turns;
   }
 
   /**
@@ -87,7 +112,7 @@ export function createQuota({ store, config, now }) {
     return state(userKey, entitlement).remainingSeconds <= 0;
   }
 
-  return { allowanceFor, state, charge, gapSeconds, isExhausted };
+  return { allowanceFor, turnAllowanceFor, state, charge, gapSeconds, isExhausted, turnCapReached, countTurn };
 }
 
 /** @param {number} n */

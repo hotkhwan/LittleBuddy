@@ -37,7 +37,11 @@ this directory contains a secret and no key may ever be committed.**
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` / `HOST` | `8787` / `127.0.0.1` | Listen address. |
-| `CORS_ORIGIN` | `*` | `Access-Control-Allow-Origin` for web exports. |
+| `CORS_ORIGINS` | (none) | Comma-separated origin allowlist; without it no CORS headers are sent (the Godot client needs none). `*` is not accepted. |
+| `TRUST_PROXY` | off | `1` takes the client IP from the last `X-Forwarded-For` hop (behind your own reverse proxy only). |
+| `LESSONS_DIR` | `game/content/tutor/lessons` | Lesson files the server resolves `stepId` against. With none loaded, sessions are refused outside DEV_MODE. |
+| `RETENTION_DAYS` | `30` | Sessions, per-turn rows and quota-day rows older than this are purged on start and hourly. |
+| `FREE_DAILY_TURNS` / `FAMILY_CLUB_DAILY_TURNS` | `60` / `360` | Per-client daily provider-call caps, independent of seconds. |
 | `DATA_DIR` | `backend/data` | JSON persistence (sessions, usage, entitlements, idempotency keys, receipts, spend, turns). Gitignored. |
 | `DEV_MODE` | off | `1` enables the dev parent token, `/api/v1/dev/*` routes and mock billing validation. Never in production. |
 | `PARENT_APPROVAL_SECRET` | (none) | HMAC secret for signed parent-approval tokens. Required outside DEV_MODE (no session can be approved without it). |
@@ -49,12 +53,12 @@ this directory contains a secret and no key may ever be committed.**
 | `OPENAI_API_KEY` | (none) | Enables the OpenAI adapter. Server only. Not present on this machine; tests use a fake fetch. |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | For proxies / gateways. |
 | `TUTOR_MODEL` | `gpt-4o-mini` | Small model by default. Must exist in `config/prices.json` for cost estimates. |
-| `OPENAI_EXTRA_HEADERS` | `{}` | JSON object of extra request headers (data-retention / project hooks). |
+| `OPENAI_EXTRA_HEADERS` | `{}` | JSON object of extra request headers (data-retention / project hooks). `authorization`, `content-type`, `host` are dropped. |
 | `PROVIDER_TIMEOUT_MS` | `6000` | Provider call timeout; on expiry the deterministic mock answers instead. |
 | `HANDLER_TIMEOUT_MS` | `10000` | Whole-request timeout -> `504 timeout`. |
 | `MAX_BODY_BYTES` | `32768` | Request size limit -> `413`. |
-| `MONTHLY_BUDGET_USD` | (none) | When the estimated spend for the UTC month reaches this, sessions and turns get `429 quota_exhausted` with `reason: "monthly_budget"`. |
-| `STT_MODE` / `STT_MODEL` | `device` / `gpt-4o-mini-transcribe` | Cost model only: `device` costs reported audio seconds at 0. |
+| `MONTHLY_BUDGET_USD` | `25` (always on) | When the estimated spend for the UTC month reaches this, sessions and turns get `429 quota_exhausted` with `reason: "monthly_budget"`. Env can raise it; `0`/invalid falls back to the default, never to unlimited. |
+| `STT_MODE` / `STT_MODEL` | `device` / `gpt-4o-mini-transcribe` | Cost model only; client-reported `audioSeconds` are never costed (no server STT today). |
 | `TTS_MODE` / `TTS_MODEL` | `device` / `tts-1` | Cost model only: `device` costs synthesized characters at 0. |
 | `TURN_CACHE_TTL_SECONDS` | `86400` | Cache for identical `(lessonId, stepId, outcome, hasHint)` instructional turns from a real provider. `0` disables. |
 | `RATE_LIMIT_IP_PER_MINUTE` | `120` | Per client IP (all API routes; `/healthz` exempt). |
@@ -76,6 +80,8 @@ backend/
   src/turn_validator.js    contract rules + safe fallback turn
   src/turn_cache.js        response cache for instructional turns
   src/usage.js             per-turn/session accounting, cost estimate, monthly budget
+  src/lessons.js           server-side lesson authority (LESSONS_DIR), stepId resolution
+  src/retention.js         purge job + per-client delete
   src/providers/mock_provider.js    deterministic; full lesson offline
   src/providers/openai_provider.js  strict JSON schema, store:false, fake-fetch tested
   config/prices.json       OpenAI list prices with source URL + fetch date
@@ -88,6 +94,8 @@ backend/
 Quota is keyed on `clientId`, and a session is only created when the request
 carries a parent-approval token **bound to that clientId** (HMAC-signed with
 `PARENT_APPROVAL_SECRET`; in DEV_MODE the literal dev token is also accepted).
+The session is then bound to that exact token: `/turns` and `/end` must send
+it (`X-Parent-Approval` header) and it is re-verified every call.
 A new session, a restart of the server, or a re-used token with a different
 `clientId` never resets the day's usage. What this does *not* prevent: a
 device without an account can be reinstalled, obtain a new `clientId`, and a
@@ -101,54 +109,66 @@ allowance is still served with `endAtBoundary: true`; the next one is
 
 ## Happy path in DEV_MODE (real transcript, 2026-09-20)
 
-Server started with `DEV_MODE=1 PORT=8787 DATA_DIR=<tmp> node src/server.js`.
+Server started with `DEV_MODE=1 PORT=8787 DATA_DIR=<tmp> LESSONS_DIR=backend/test/fixtures/lessons node src/server.js`
+(the shared `game/content/tutor/lessons/` directory is the default when present).
 
 ```
 $ curl -s localhost:8787/healthz
-{"ok":true,"service":"little-days-tutor-backend","apiVersion":"v1","provider":"mock","devMode":true,"allowlistSource":"default","uptimeSeconds":1}
+{"ok":true,"service":"little-days-tutor-backend","apiVersion":"v1","provider":"mock","devMode":true,"allowlistSource":"default","lessons":2,"uptimeSeconds":1}
 
 $ curl -s -X POST localhost:8787/api/v1/tutor/sessions -H "content-type: application/json" \
-    -d '{"lessonId":"fruits_1","clientId":"ipad-demo","parentApprovalToken":"dev-parent-approval"}'
-{"sessionId":"3d3b93a9-9b1c-4be1-af31-0ff0b3be532d","entitlement":"free","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0,"remainingSeconds":300,"resetAtUtc":"2026-09-21T00:00:00.000Z"},"lessonId":"fruits_1"}
+    -d '{"lessonId":"colors_red_blue","clientId":"ipad-demo","parentApprovalToken":"dev-parent-approval"}'
+{"sessionId":"255d6e02-9149-466f-838f-7aa7330eebce","entitlement":"free","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0,"remainingSeconds":300,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":0},"lessonId":"colors_red_blue","lessonKnown":true}
 
-$ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/turns -H "content-type: application/json" -H "Idempotency-Key: t1" \
-    -d '{"transcript":"apple","lessonContext":{"stepId":"s1","outcome":"correct","expectedAnswers":["apple"],"nextQuestionText":"What color is the banana?","visualAssetId":"apple_red"}}'
-{"turn":{"speech":"Well done! Apple! What color is the banana?","subtitle":"Well done! Apple! What color is the banana?","emotion":"happy","gesture":"clap","visual":{"type":"flashcard","assetId":"apple_red"},"lessonAction":"next_question","nextQuestion":"What color is the banana?"},"quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0,"remainingSeconds":300,"resetAtUtc":"2026-09-21T00:00:00.000Z"},"endAtBoundary":false,"turnIndex":1,"chargedSeconds":0,"provider":"mock","cached":false,"fallback":null,"usage":{"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"ttsChars":43,"latencyMs":2,"costUsd":0}}
+$ T="X-Parent-Approval: dev-parent-approval"   # the token that created the session, on every session call
+$ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/turns -H "content-type: application/json" -H "$T" -H "Idempotency-Key: t1" \
+    -d '{"transcript":"red","lessonContext":{"stepId":"s02_red","outcome":"correct","matched":"red","hint":"IGNORED BY SERVER"}}'
+{"turn":{"speech":"Nice! Yes! Red! What colour is this?","subtitle":"Nice! Yes! Red! What colour is this?","emotion":"happy","gesture":"clap","visual":{"type":"flashcard","assetId":"color_red"},"lessonAction":"next_question","nextQuestion":"What colour is this?"},"quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":1},"endAtBoundary":false,"turnIndex":1,"chargedSeconds":0.1,"provider":"mock","cached":false,"fallback":null,"contextSource":"server","usage":{"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"ttsChars":36,"latencyMs":2,"costUsd":0}}
 
 $ # same Idempotency-Key again -> replayed, not charged
-$ curl -s -i -X POST ... -H "Idempotency-Key: t1" ... | grep -i idempotent
 idempotent-replayed: true
 
-$ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/turns -H "content-type: application/json" \
-    -d '{"transcript":"red","lessonContext":{"stepId":"s2","outcome":"incorrect","expectedAnswers":["yellow"],"hint":"It is the color of the sun.","visualAssetId":"banana_yellow"}}'
-{"turn":{"speech":"Let's try together! It is the color of the sun.","subtitle":"Let's try together! It is the color of the sun.","emotion":"encouraging","gesture":"point","visual":{"type":"flashcard","assetId":"banana_yellow"},"lessonAction":"give_hint"},"quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z"},"endAtBoundary":false,"turnIndex":2,"chargedSeconds":0,"provider":"mock","cached":false,"fallback":null,"usage":{"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"ttsChars":47,"latencyMs":1,"costUsd":0}}
+$ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/turns -H "content-type: application/json" -H "$T" \
+    -d '{"transcript":"green","lessonContext":{"stepId":"s03_blue","outcome":"incorrect"}}'
+{"turn":{"speech":"Let's try together! It's the colour of the sky and the sea. Blue!","subtitle":"Let's try together! It's the colour of the sky and the sea. Blue!","emotion":"encouraging","gesture":"point","visual":{"type":"flashcard","assetId":"color_blue"},"lessonAction":"give_hint"},"quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":2},"endAtBoundary":false,"turnIndex":2,"chargedSeconds":0,"provider":"mock","cached":false,"fallback":null,"contextSource":"server","usage":{"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"ttsChars":65,"latencyMs":0,"costUsd":0}}
 
+$ # without the session token -> 403
 $ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/end
-{"sessionId":"3d3b93a9-9b1c-4be1-af31-0ff0b3be532d","endedAt":"2026-09-20T15:19:21.676Z","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z"},"usage":{"turns":2,"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"cachedInputTokens":0,"ttsChars":90,"latencyMs":3,"cachedTurns":0,"costUsd":0}}
+{"error":{"code":"not_approved","message":"This session belongs to another approval."}}
+
+$ curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/end -H "$T"
+{"sessionId":"255d6e02-9149-466f-838f-7aa7330eebce","endedAt":"2026-09-20T15:59:19.797Z","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":2},"usage":{"turns":2,"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"cachedInputTokens":0,"ttsChars":101,"latencyMs":2,"cachedTurns":0,"costUsd":0}}
 
 $ curl -s "localhost:8787/api/v1/tutor/entitlement?clientId=ipad-demo"
-{"clientId":"ipad-demo","entitlement":"free","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z"},"products":["little_days.family_club.monthly","little_days.family_club.yearly"]}
-
-$ # without a parent-approval token
-$ curl -s -X POST localhost:8787/api/v1/tutor/sessions -H "content-type: application/json" -d '{"lessonId":"fruits_1","clientId":"ipad-demo","parentApprovalToken":"nope"}'
-{"error":{"code":"not_approved","message":"A parent needs to approve tutor time first."}}
+{"clientId":"ipad-demo","entitlement":"free","quota":{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":0.1,"remainingSeconds":299.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":60,"usedTurns":2},"products":["little_days.family_club.monthly","little_days.family_club.yearly"]}
 
 $ curl -s -X POST localhost:8787/api/v1/dev/billing/mock-purchase -H "content-type: application/json" -d '{"clientId":"ipad-demo","productId":"little_days.family_club.monthly"}'
-{"clientId":"ipad-demo","platform":"mock","receipt":{"receiptId":"78295ccf-5c27-466f-b0b8-8fb4abcc6690","clientId":"ipad-demo","productId":"little_days.family_club.monthly","purchasedAt":"2026-09-20T15:19:21.701Z","expiresAt":"2026-10-20T15:19:21.701Z","platform":"mock","signature":"a985189883f4128d6715a30e82f469e60ac40e87a3fa505665cb5ec58f31191b"},"next":"POST /api/v1/tutor/billing/validate with {clientId, platform, receipt}"}
+{"clientId":"ipad-demo","platform":"mock","receipt":{"receiptId":"97c4733e-6137-47ee-8d3e-8a3e43f0b1d3","clientId":"ipad-demo","productId":"little_days.family_club.monthly","purchasedAt":"2026-09-20T15:59:19.813Z","expiresAt":"2026-10-20T15:59:19.813Z","platform":"mock","signature":"98b1f44d135ee6e819f4efe8bf2be28678aa6e1678ac24a00a5407a8b2a277f5"},"next":"POST /api/v1/tutor/billing/validate with {clientId, platform, receipt}"}
 
 $ # the client forwards the receipt; the SERVER validates it and grants family_club
 $ curl -s -X POST localhost:8787/api/v1/tutor/billing/validate -H "content-type: application/json" -d '{"clientId":"ipad-demo","platform":"mock","receipt":<receipt from above>}'
-{"clientId":"ipad-demo","entitlement":"family_club","expiresAt":"2026-10-20T15:19:21.701Z","receiptId":"78295ccf-5c27-466f-b0b8-8fb4abcc6690","quota":{"entitlement":"family_club","dailyAllowanceSeconds":1800,"usedSeconds":0.1,"remainingSeconds":1799.9,"resetAtUtc":"2026-09-21T00:00:00.000Z"}}
+{"clientId":"ipad-demo","entitlement":"family_club","expiresAt":"2026-10-20T15:59:19.813Z","receiptId":"97c4733e-6137-47ee-8d3e-8a3e43f0b1d3","quota":{"entitlement":"family_club","dailyAllowanceSeconds":1800,"usedSeconds":0.1,"remainingSeconds":1799.9,"resetAtUtc":"2026-09-21T00:00:00.000Z","dailyTurnAllowance":360,"usedTurns":2}}
+
+$ curl -s -X DELETE localhost:8787/api/v1/tutor/clients/ipad-demo -H "$T"
+{"clientId":"ipad-demo","deleted":{"sessions":1,"turns":2,"usage":1,"idempotency":1}}
+
+$ tail -3 server.log   # access log: route pattern only, no ids or query strings
+[tutor-backend] POST /api/v1/dev/billing/mock-purchase -> 200 1ms
+[tutor-backend] POST /api/v1/tutor/billing/validate -> 200 1ms
+[tutor-backend] DELETE /api/v1/tutor/clients/{clientId} -> 200 0ms
 ```
 
 ## Tests
 
-`npm test` runs 60 tests (session lifecycle, quota exhaustion at exactly 300 s
-across a restart, no-reset tricks, idempotent turns, rate limits, validator
-truth table + fixtures, provider timeout/error/invalid -> fallback, client
-cancellation, handler timeout, OpenAI request shape with a fake fetch, budget
-guard, cost arithmetic, entitlement/billing, store persistence). The suite
-also runs `game/content/tutor/turn_fixtures.json` when that shared file exists.
+`npm test` runs the suites in `test/` (session lifecycle, quota exhaustion at
+exactly 300 s across a restart, no-reset tricks, idempotent turns, rate limits,
+validator truth table + fixtures, provider timeout/error/invalid -> fallback,
+client cancellation, handler timeout, OpenAI request shape with a fake fetch,
+budget guard, cost arithmetic, entitlement/billing, store persistence, and the
+security hardening: session ownership, turn caps, log redaction, server-side
+lesson authority, salted idempotency, retention + delete, proxy trust, CORS).
+Tests use `test/fixtures/lessons/` as `LESSONS_DIR`. The suite also runs
+`game/content/tutor/turn_fixtures.json` when that shared file exists.
 
 ## Non-goals here
 

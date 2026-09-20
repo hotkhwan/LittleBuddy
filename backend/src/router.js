@@ -5,7 +5,7 @@
  */
 
 export function createRouter() {
-  /** @type {{method: string, parts: string[], handler: Handler}[]} */
+  /** @type {{method: string, pattern: string, parts: string[], handler: Handler}[]} */
   const routes = [];
 
   /**
@@ -14,13 +14,13 @@ export function createRouter() {
    * @param {Handler} handler
    */
   function add(method, pattern, handler) {
-    routes.push({ method: method.toUpperCase(), parts: split(pattern), handler });
+    routes.push({ method: method.toUpperCase(), pattern, parts: split(pattern), handler });
   }
 
   /**
    * @param {string} method
    * @param {string} pathname
-   * @returns {{handler: Handler, params: Record<string, string>} | {allowed: string[]} | null}
+   * @returns {{handler: Handler, params: Record<string, string>, pattern: string} | {allowed: string[]} | null}
    */
   function match(method, pathname) {
     const parts = split(pathname);
@@ -28,7 +28,7 @@ export function createRouter() {
     for (const route of routes) {
       const params = matchParts(route.parts, parts);
       if (!params) continue;
-      if (route.method === method.toUpperCase()) return { handler: route.handler, params };
+      if (route.method === method.toUpperCase()) return { handler: route.handler, params, pattern: route.pattern };
       allowed.push(route.method);
     }
     return allowed.length ? { allowed } : null;

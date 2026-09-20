@@ -92,11 +92,12 @@ test('per-turn usage is recorded with every field and session totals add up', as
       for (const f of ['sttSeconds', 'llmInputTokens', 'llmOutputTokens', 'ttsChars', 'latencyMs', 'costUsd']) assert.equal(typeof e[f], 'number', f);
       assert.equal(e.provider, 'mock');
     }
-    assert.equal(entries[0].sttSeconds, 4.5);
-    assert.equal(entries[1].sttSeconds, 30, 'client-reported audio seconds are clamped');
+    assert.equal(entries[0].sttSeconds, 0, 'client-reported audio is never costed as STT');
+    assert.equal(entries[0].clientReportedAudioSeconds, 4.5);
+    assert.equal(entries[1].clientReportedAudioSeconds, 30, 'client-reported audio seconds are clamped');
     const totals = s.app.usage.sessionTotals(sessionId);
     assert.equal(totals.turns, 2);
-    assert.equal(totals.sttSeconds, 34.5);
+    assert.equal(totals.sttSeconds, 0);
     assert.equal(totals.ttsChars, entries[0].ttsChars + entries[1].ttsChars);
   } finally {
     await s.close();

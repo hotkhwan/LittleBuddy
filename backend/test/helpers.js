@@ -6,6 +6,9 @@ import path from 'node:path';
 import { loadConfig } from '../src/config.js';
 import { createApp } from '../src/app.js';
 import { createHttpServer } from '../src/server.js';
+import { fileURLToPath } from 'node:url';
+
+export const FIXTURE_LESSONS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'lessons');
 
 export const DEV_TOKEN = 'dev-parent-approval';
 export const T0 = Date.UTC(2026, 8, 20, 10, 0, 0); // 2026-09-20T10:00:00Z
@@ -25,7 +28,7 @@ export function tempDir() {
 export async function startServer(opts = {}) {
   const dataDir = opts.dataDir ?? tempDir();
   const clock = opts.clock ?? makeClock();
-  const env = { DEV_MODE: '1', DATA_DIR: dataDir, PARENT_APPROVAL_SECRET: 'test-secret', ...(opts.env ?? {}) };
+  const env = { DEV_MODE: '1', DATA_DIR: dataDir, PARENT_APPROVAL_SECRET: 'test-secret', LESSONS_DIR: FIXTURE_LESSONS_DIR, ...(opts.env ?? {}) };
   const config = loadConfig(env);
   const app = createApp({ config, now: clock.now, provider: opts.provider, fetchImpl: opts.fetchImpl, persist: true });
   const server = createHttpServer({ app });
@@ -34,12 +37,16 @@ export async function startServer(opts = {}) {
   const base = `http://127.0.0.1:${port}`;
 
   /**
+   * Session routes need the parent token that created the session; the dev
+   * token is sent by default. Pass `{'x-parent-approval': ''}` to omit it.
    * @param {string} method @param {string} p @param {any} [body] @param {Record<string,string>} [headers]
    */
   async function api(method, p, body, headers = {}) {
+    const h = { 'content-type': 'application/json', 'x-parent-approval': DEV_TOKEN, ...headers };
+    if (!h['x-parent-approval']) delete h['x-parent-approval'];
     const res = await fetch(base + p, {
       method,
-      headers: { 'content-type': 'application/json', ...headers },
+      headers: h,
       body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
     });
     const text = await res.text();
@@ -57,13 +64,23 @@ export async function startServer(opts = {}) {
 
 /** Create a session with the dev token. */
 export async function createSession(api, { clientId = 'client-a', lessonId = 'fruits_1', token = DEV_TOKEN } = {}) {
-  return api('POST', '/api/v1/tutor/sessions', { lessonId, clientId, parentApprovalToken: token });
+  return api('POST', '/api/v1/tutor/sessions', { lessonId, clientId, parentApprovalToken: token }, { 'x-parent-approval': token });
 }
 
+/** A turn for the unknown lesson `fruits_1` (DEV_MODE client-context path). */
 export function turnBody(overrides = {}) {
   return {
     transcript: 'apple',
     lessonContext: { stepId: 's1', outcome: 'correct', expectedAnswers: ['apple'], nextQuestionText: 'What color is the banana?', visualAssetId: 'apple_red' },
+    ...overrides,
+  };
+}
+
+/** A turn for the fixture lesson `colors_red_blue` (server-resolved path). */
+export function lessonTurnBody(overrides = {}) {
+  return {
+    transcript: 'red',
+    lessonContext: { stepId: 's02_red', outcome: 'correct', matched: 'red' },
     ...overrides,
   };
 }

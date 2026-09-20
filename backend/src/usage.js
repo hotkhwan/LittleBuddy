@@ -82,7 +82,9 @@ export function createUsage({ store, config, now, prices }) {
    * Record one turn's usage against a session and the monthly spend ledger.
    * @param {string} sessionId
    * @param {number} turnIndex
-   * @param {{sttSeconds?: number, llmInputTokens?: number, llmOutputTokens?: number, cachedInputTokens?: number, ttsChars?: number, latencyMs?: number, cached?: boolean, provider?: string}} u
+   * @param {{sttSeconds?: number, clientReportedAudioSeconds?: number, llmInputTokens?: number, llmOutputTokens?: number, cachedInputTokens?: number, ttsChars?: number, latencyMs?: number, cached?: boolean, provider?: string}} u
+   * `sttSeconds` is only non-zero when the SERVER ran speech recognition (none
+   * today); `clientReportedAudioSeconds` is informational and never costed (finding L4).
    */
   function recordTurn(sessionId, turnIndex, u) {
     const cost = estimateTurnCost(u, pricing);
@@ -91,6 +93,7 @@ export function createUsage({ store, config, now, prices }) {
       turnIndex,
       at: new Date(now()).toISOString(),
       sttSeconds: num(u.sttSeconds),
+      clientReportedAudioSeconds: num(u.clientReportedAudioSeconds),
       llmInputTokens: num(u.llmInputTokens),
       llmOutputTokens: num(u.llmOutputTokens),
       cachedInputTokens: num(u.cachedInputTokens),
@@ -122,9 +125,8 @@ export function createUsage({ store, config, now, prices }) {
     return store.spend.get(key) ?? { monthKey: key, spentUsd: 0, turns: 0 };
   }
 
-  /** True when a monthly budget is configured and already spent. */
+  /** True when the month's estimated spend has reached the (always configured) budget. */
   function budgetExceeded() {
-    if (config.monthlyBudgetUsd === null || config.monthlyBudgetUsd === undefined) return false;
     return monthlySpend().spentUsd >= config.monthlyBudgetUsd;
   }
 

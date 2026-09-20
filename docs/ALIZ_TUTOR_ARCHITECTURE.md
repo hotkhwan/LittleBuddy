@@ -52,7 +52,17 @@ future cloud STT/TTS hop, but no audio is ever uploaded.
      the server.
    - It cannot start a session without a parent-approval token bound to its
      `clientId` (HMAC with `PARENT_APPROVAL_SECRET`, expiry, constant-time
-     compare). Dev literal token only in DEV_MODE.
+     compare). Dev literal token only in DEV_MODE. The session is bound to that
+     exact token (salted HMAC stored on the session); `/turns` and `/end`
+     re-verify it on every call, so a leaked session id is useless and an
+     expired approval stops a live session.
+   - It cannot put words in Aliz's mouth: the server loads the lesson files
+     and resolves `stepId` itself; the client's hint/question/answers are
+     ignored for known lessons and unknown lessons are refused outside
+     DEV_MODE. The transcript is the only free text from the device.
+   - Provider calls are capped per client per day (60 free / 360 Family Club)
+     independently of the seconds quota, and a server-wide monthly budget
+     (default USD 25) is always on.
    - Every turn is validated on the server before it leaves, and again on the
      client with the same rules and the same fixture file.
    - Input is bounded: 32 KB bodies, 500-char transcripts, allowlisted asset
@@ -85,6 +95,25 @@ When true, the backend is still the authority for quota and entitlement, and
 the scripted provider remains the fallback for `provider_unavailable`,
 `timeout`, and network errors.
 
+## Privacy controls in the backend
+
+- Access logs: method, route pattern (`/api/v1/tutor/sessions/{id}/turns`),
+  status, latency. Never the URL, query string, ids, headers or bodies.
+- Idempotency rows: salted HMAC (per-server random salt in `DATA_DIR/meta.json`)
+  of key and body, 24 h TTL. Transcripts are never persisted anywhere.
+- Retention: sessions, per-turn usage rows and quota-day rows older than
+  `RETENTION_DAYS` (30) are purged on start and hourly;
+  `DELETE /api/v1/tutor/clients/{clientId}` (parent token) implements
+  "Delete learning history" server-side. Entitlement/receipts are kept as the
+  purchase record.
+- No end-user identifier (`user` / `safety_identifier`) is sent to the
+  provider: a hashed clientId would still be a persistent identifier of a
+  child's device disclosed to a third party. Abuse tracing stays server-side
+  (per-client caps, per-session rate limits).
+- `X-Forwarded-For` is honoured only with `TRUST_PROXY=1` (last hop); CORS
+  headers only for `CORS_ORIGINS`; `/healthz` is `{ok, apiVersion}` outside
+  DEV_MODE.
+
 ## Persistence
 
 `backend/src/store.js`: one JSON file per collection under `DATA_DIR`
@@ -102,7 +131,7 @@ test suite proves by restarting the app on the same directory mid-lesson.
 | Provider HTTP error / refusal / bad JSON | Same fallback (`provider_error:<status>`) | Same |
 | Provider returns unsafe or malformed content | Validator rejects; mock answers (`invalid_turn:<reason>`) | Same; unsafe text never reaches the device |
 | Whole request > 10 s | `504 timeout`, in-flight provider call aborted | Game falls back to the scripted turn |
-| Client disconnects mid-turn | Provider call aborted via AbortController; nothing charged or recorded | Nothing |
+| Client disconnects mid-turn | Provider call aborted via AbortController; quota is charged only after a turn is served, so nothing is charged or recorded | Nothing |
 | Daily allowance reached | Last turn served with `endAtBoundary: true`; next is `429 quota_exhausted` + `resetAtUtc` | Break screen: "Great job today! Come back tomorrow." |
 | Monthly budget reached | `429 quota_exhausted`, `reason: monthly_budget` for everyone | Same break screen |
 | No parent approval | `403 not_approved` | Parental gate |

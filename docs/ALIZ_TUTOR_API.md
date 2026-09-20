@@ -11,28 +11,41 @@ Run locally: `DEV_MODE=1 node backend/src/server.js` (see `backend/README.md`).
 | --- | --- | --- |
 | `GET` | `/healthz` | Liveness + which provider/allowlist is active. Not rate limited. |
 | `POST` | `/api/v1/tutor/sessions` | Start a lesson session (needs parent approval). |
-| `POST` | `/api/v1/tutor/sessions/{id}/turns` | One conversational turn. Supports `Idempotency-Key`. |
-| `POST` | `/api/v1/tutor/sessions/{id}/end` | End the session; returns usage totals. Idempotent. |
+| `POST` | `/api/v1/tutor/sessions/{id}/turns` | One conversational turn. Needs the session's parent token. Supports `Idempotency-Key`. |
+| `POST` | `/api/v1/tutor/sessions/{id}/end` | End the session; returns usage totals. Needs the session's parent token. Idempotent. |
 | `GET` | `/api/v1/tutor/entitlement?clientId=` | Current entitlement + quota for a client. |
+| `DELETE` | `/api/v1/tutor/clients/{clientId}` | "Delete learning history": removes that client's sessions, per-turn usage, quota-day rows and idempotency rows. Needs a valid parent token for that clientId. |
 | `POST` | `/api/v1/tutor/billing/validate` | Server-side receipt validation (mock in DEV_MODE; Google Play / Apple are `501` TODOs). |
 | `POST` | `/api/v1/dev/entitlement` | DEV_MODE only: grant/revoke `free` / `family_club`. |
 | `POST` | `/api/v1/dev/billing/mock-purchase` | DEV_MODE only: mint a fake receipt for `billing/validate`. |
 | `POST` | `/api/v1/dev/parent-approval` | DEV_MODE only: mint a signed parent-approval token for a clientId. |
-| `GET` | `/api/v1/dev/spend` | DEV_MODE only: month-to-date estimated spend, budget, cache stats. |
+| `GET` | `/api/v1/dev/spend` | DEV_MODE only: month-to-date estimated spend, budget, cache stats, loaded lesson ids. |
+| `POST` | `/api/v1/dev/retention/purge` | DEV_MODE only: run the retention purge now; returns counts. |
 
 Outside DEV_MODE the `/api/v1/dev/*` routes do not exist (`404`).
 
-Common headers: `content-type: application/json`; CORS preflight (`OPTIONS`)
-answers `204` with `access-control-allow-headers: content-type, idempotency-key`.
-Request bodies over 32 KB get `413`. Whole-request timeout is 10 s (`504 timeout`).
+Common headers: `content-type: application/json`; `X-Parent-Approval: <token>`
+on every session-scoped route (`/turns`, `/end`, `DELETE /clients/{clientId}`);
+the token may alternatively be sent as `parentApprovalToken` in the body.
+CORS headers are emitted only for origins listed in `CORS_ORIGINS` (default:
+none; the Godot client needs none). Request bodies over 32 KB get `413`.
+Whole-request timeout is 10 s (`504 timeout`). Access logs record method,
+route pattern, status and latency only (never URLs, ids, headers or bodies).
+
+### Session ownership
+A session is bound to the exact parent-approval token that created it. Calls
+to `/turns` and `/end` must present that same token (header or body); it must
+still verify (unexpired, bound to the session's clientId). Anything else is
+`403 not_approved`, so a leaked session id alone cannot be used.
 
 ## Schemas
 
 ### Quota
 ```json
-{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":120.5,"remainingSeconds":179.5,"resetAtUtc":"2026-09-21T00:00:00.000Z"}
+{"entitlement":"free","dailyAllowanceSeconds":300,"usedSeconds":120.5,"remainingSeconds":179.5,"resetAtUtc":"2026-09-21T00:00:00.000Z",
+ "dailyTurnAllowance":60,"usedTurns":7}
 ```
-`free` = 300 s per UTC day; `family_club` = `FAMILY_CLUB_DAILY_SECONDS` (default 1800). Never unlimited.
+`free` = 300 s and 60 turns per UTC day; `family_club` = `FAMILY_CLUB_DAILY_SECONDS` (default 1800) and `FAMILY_CLUB_DAILY_TURNS` (default 360). Seconds are measured from server timestamps (each gap capped at 45 s) and charged after a turn is served; turns are counted per provider call. Never unlimited. A server-wide monthly budget (`MONTHLY_BUDGET_USD`, default 25, always on) sits above both.
 
 ### TutorTurn (validated server side; identical rules on the client)
 ```json
@@ -52,11 +65,20 @@ Request bodies over 32 KB get `413`. Whole-request timeout is 10 s (`504 timeout
 
 ### LessonContext (sent by the game from its LessonEngine)
 ```json
-{"stepId":"s1","outcome":"correct","expectedAnswers":["apple"],"hint":"It is red.",
- "nextQuestionText":"What color is the banana?","visualAssetId":"apple_red",
- "matched":"apple","lessonAction":"next_question"}
+{"stepId":"s02_red","outcome":"correct","matched":"red","lessonAction":"next_question"}
 ```
-`stepId` and `outcome` (`correct | incorrect | unclear`) are required. Unknown `visualAssetId`s are dropped, never echoed.
+`stepId` and `outcome` (`correct | incorrect | unclear`) are required. **The
+server is the authority for lesson text**: it loads the same lesson files the
+game ships (`LESSONS_DIR`, default `game/content/tutor/lessons/`) and resolves
+`stepId` itself to obtain `expectedAnswers`, `hint`, the next question, the
+visual asset and the lesson lines. From the client it honours only `stepId`,
+`outcome`, `matched` (kept only if it is one of the step's expected answers)
+and `lessonAction` (plausibility-checked against the outcome and step). Any
+`hint` / `nextQuestionText` / `expectedAnswers` / `visualAssetId` the client
+sends are ignored for known lessons. An unknown `stepId` is `400 invalid_turn`.
+Unknown `lessonId`s are `400 unknown_lesson` at session creation, except in
+DEV_MODE where the client-supplied fields are used as a fallback (the response
+then says `contextSource: "client_dev"`).
 
 ## `POST /api/v1/tutor/sessions`
 Request:
@@ -67,7 +89,8 @@ Response `201`:
 ```json
 {"sessionId":"3d3b93a9-...","entitlement":"free","lessonId":"fruits_1","quota":{...}}
 ```
-Errors: `403 not_approved` (missing/invalid/expired token or token bound to another clientId), `429 quota_exhausted`, `429 rate_limited`, `400 bad_request`.
+Response also carries `lessonKnown` (false only in DEV_MODE for an unknown lesson).
+Errors: `403 not_approved` (missing/invalid/expired token or token bound to another clientId), `400 unknown_lesson`, `429 quota_exhausted` (`reason` `daily_quota`, `daily_turns` or `monthly_budget`), `429 rate_limited`, `400 bad_request`.
 
 `parentApprovalToken`: minted by the server for a clientId after the game's
 parental gate (`POST /api/v1/dev/parent-approval` in DEV_MODE; a production
@@ -75,13 +98,17 @@ consent endpoint is a follow-up). In DEV_MODE the literal `dev-parent-approval`
 is also accepted.
 
 ## `POST /api/v1/tutor/sessions/{id}/turns`
-Headers: `Idempotency-Key: <client-generated unique string>` (recommended; retries with the same key replay the same response and are not charged; the same key with a different body gives `422 idempotency_mismatch`).
+Headers: `X-Parent-Approval: <the token that created the session>` (required);
+`Idempotency-Key: <client-generated unique string>` (recommended; retries with
+the same key within 24 h replay the same response and are not charged; the
+same key with a different body gives `422 idempotency_mismatch`; the server
+stores only a salted HMAC of the key and body, never the transcript).
 
 Request:
 ```json
-{"transcript":"apple","audioSeconds":3.2,"lessonContext":{...}}
+{"transcript":"red","audioSeconds":3.2,"lessonContext":{"stepId":"s02_red","outcome":"correct","matched":"red"}}
 ```
-`transcript` <= 500 chars (may be empty for `unclear`). `audioSeconds` is optional, clamped to 30, used only for usage/cost reporting.
+`transcript` <= 500 chars (may be empty for `unclear`). `audioSeconds` is optional, clamped to 30, recorded as `clientReportedAudioSeconds` for information only; it is never costed (no server-side STT runs today).
 
 Response `200`:
 ```json
@@ -93,16 +120,17 @@ Response `200`:
  "provider":"mock",
  "cached":false,
  "fallback":null,
- "usage":{"sttSeconds":3.2,"llmInputTokens":0,"llmOutputTokens":0,"ttsChars":43,"latencyMs":2,"costUsd":0}}
+ "contextSource":"server",
+ "usage":{"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"ttsChars":43,"latencyMs":2,"costUsd":0}}
 ```
-- `endAtBoundary: true` means this turn used the last of today's allowance; the game finishes the current beat and shows the break screen (the next turn would be `429 quota_exhausted`).
+- `endAtBoundary: true` means this turn used the last of today's seconds or turns (or the lesson asked to `end_session`); the game finishes the current beat and shows the break screen (the next turn would be `429 quota_exhausted`).
 - `fallback` is `null`, or a reason such as `provider_timeout`, `provider_error:503`, `invalid_turn:speech:url` when the real provider failed and the deterministic mock answered instead. The turn is always valid.
 - `chargedSeconds` is the server-measured gap since the previous event, capped by `TUTOR_TURN_CAP_SECONDS`.
 
-Errors: `400 invalid_turn` (bad `lessonContext`), `400 bad_request`, `404 not_found`, `409 session_ended`, `422 idempotency_mismatch`, `429 quota_exhausted`, `429 rate_limited`, `503 provider_unavailable`, `504 timeout`.
+Errors: `403 not_approved` (wrong/missing/expired token for this session), `400 invalid_turn` (bad `lessonContext` or unknown `stepId`), `400 bad_request`, `404 not_found`, `409 session_ended`, `422 idempotency_mismatch`, `429 quota_exhausted`, `429 rate_limited`, `503 provider_unavailable`, `504 timeout`.
 
 ## `POST /api/v1/tutor/sessions/{id}/end`
-Body optional: `{"reason":"home_button"}`. Response `200`:
+Header `X-Parent-Approval` required (the session's token). Body optional: `{"reason":"home_button"}`. Response `200`:
 ```json
 {"sessionId":"...","endedAt":"2026-09-20T15:19:21.676Z","quota":{...},
  "usage":{"turns":2,"sttSeconds":0,"llmInputTokens":0,"llmOutputTokens":0,"cachedInputTokens":0,"ttsChars":90,"latencyMs":3,"cachedTurns":0,"costUsd":0}}
@@ -113,6 +141,15 @@ Calling it twice is safe; the second call charges nothing.
 ```json
 {"clientId":"ipad-demo","entitlement":"free","quota":{...},"products":["little_days.family_club.monthly","little_days.family_club.yearly"]}
 ```
+
+## `DELETE /api/v1/tutor/clients/{clientId}`
+Header `X-Parent-Approval` with a valid token for that `clientId`. Response `200`:
+```json
+{"clientId":"ipad-demo","deleted":{"sessions":3,"turns":27,"usage":1,"idempotency":27}}
+```
+Entitlement and receipts (the purchase record) are kept. Independently of this,
+the server purges sessions, per-turn rows and quota-day rows older than
+`RETENTION_DAYS` (default 30) on start and hourly, and idempotency rows after 24 h.
 
 ## `POST /api/v1/tutor/billing/validate`
 ```json
@@ -127,8 +164,9 @@ server decides. `mock` works only in DEV_MODE; `google_play` and `apple` return
 
 | HTTP | code | Game behaviour |
 | --- | --- | --- |
-| 429 | `quota_exhausted` | Break screen: "Great job today! Come back tomorrow." Body carries `quota.resetAtUtc`; `reason` is `daily_quota` or `monthly_budget`. |
-| 403 | `not_approved` | Return to the parental gate. |
+| 429 | `quota_exhausted` | Break screen: "Great job today! Come back tomorrow." Body carries `quota.resetAtUtc`; `reason` is `daily_quota`, `daily_turns` or `monthly_budget`. |
+| 403 | `not_approved` | Return to the parental gate (also returned when a session is used with a token other than the one that created it). |
+| 400 | `unknown_lesson` | The server does not ship this lesson: use the scripted tutor. |
 | 503 | `provider_unavailable` | Fall back to the local scripted tutor. |
 | 429 | `rate_limited` | Wait `retryAfterSeconds` (also `Retry-After` header), keep listening state. |
 | 400 | `invalid_turn` | Client bug: the lessonContext was malformed. Use the scripted turn. |
@@ -146,18 +184,24 @@ DEV_MODE=1 node backend/src/server.js &
 curl -s localhost:8787/healthz
 
 SID=$(curl -s -X POST localhost:8787/api/v1/tutor/sessions -H 'content-type: application/json' \
-  -d '{"lessonId":"fruits_1","clientId":"ipad-demo","parentApprovalToken":"dev-parent-approval"}' \
+  -d '{"lessonId":"colors_red_blue","clientId":"ipad-demo","parentApprovalToken":"dev-parent-approval"}' \
   | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).sessionId')
 
-curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/turns \
-  -H 'content-type: application/json' -H 'Idempotency-Key: t1' \
-  -d '{"transcript":"apple","lessonContext":{"stepId":"s1","outcome":"correct","expectedAnswers":["apple"],"nextQuestionText":"What color is the banana?","visualAssetId":"apple_red"}}'
+# every session-scoped call carries the same parent token
+T='X-Parent-Approval: dev-parent-approval'
 
 curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/turns \
-  -H 'content-type: application/json' \
-  -d '{"transcript":"red","lessonContext":{"stepId":"s2","outcome":"incorrect","expectedAnswers":["yellow"],"hint":"It is the color of the sun.","visualAssetId":"banana_yellow"}}'
+  -H 'content-type: application/json' -H "$T" -H 'Idempotency-Key: t1' \
+  -d '{"transcript":"red","lessonContext":{"stepId":"s02_red","outcome":"correct","matched":"red"}}'
 
-curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/end
+curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/turns \
+  -H 'content-type: application/json' -H "$T" \
+  -d '{"transcript":"green","lessonContext":{"stepId":"s03_blue","outcome":"incorrect"}}'
+
+curl -s -X POST localhost:8787/api/v1/tutor/sessions/$SID/end -H "$T"
+
+# parent deletes this device's learning history
+curl -s -X DELETE localhost:8787/api/v1/tutor/clients/ipad-demo -H "$T"
 
 curl -s 'localhost:8787/api/v1/tutor/entitlement?clientId=ipad-demo'
 

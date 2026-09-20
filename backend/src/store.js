@@ -12,6 +12,7 @@ export const COLLECTIONS = /** @type {const} */ ([
   'receipts',
   'spend',
   'turns',
+  'meta',
 ]);
 
 /**
@@ -97,6 +98,7 @@ export function createStore({ dataDir, persist = true }) {
     receipts: collection('receipts'),
     spend: collection('spend'),
     turns: collection('turns'),
+    meta: collection('meta'),
     flushAll: () => COLLECTIONS.forEach(flush),
   };
 }

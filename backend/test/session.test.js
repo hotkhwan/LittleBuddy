@@ -12,7 +12,7 @@ test('session lifecycle: create -> turns -> end, with validated turns and quota'
     const created = await createSession(s.api);
     assert.equal(created.status, 201);
     assert.equal(created.body.entitlement, 'free');
-    assert.deepEqual(Object.keys(created.body.quota).sort(), ['dailyAllowanceSeconds', 'entitlement', 'remainingSeconds', 'resetAtUtc', 'usedSeconds']);
+    assert.deepEqual(Object.keys(created.body.quota).sort(), ['dailyAllowanceSeconds', 'dailyTurnAllowance', 'entitlement', 'remainingSeconds', 'resetAtUtc', 'usedSeconds', 'usedTurns']);
     assert.equal(created.body.quota.dailyAllowanceSeconds, 300);
     assert.equal(created.body.quota.resetAtUtc, '2026-09-21T00:00:00.000Z');
     const id = created.body.sessionId;
@@ -60,7 +60,7 @@ test('session creation requires parent approval', async () => {
     const bad = await createSession(s.api, { token: 'nope' });
     assert.equal(bad.status, 403);
     assert.equal(bad.body.error.code, 'not_approved');
-    const missing = await s.api('POST', '/api/v1/tutor/sessions', { lessonId: 'fruits_1', clientId: 'client-a' });
+    const missing = await s.api('POST', '/api/v1/tutor/sessions', { lessonId: 'fruits_1', clientId: 'client-a' }, { 'x-parent-approval': '' });
     assert.equal(missing.status, 403);
 
     const minted = await s.api('POST', '/api/v1/dev/parent-approval', { clientId: 'client-b' });
@@ -77,13 +77,16 @@ test('session creation requires parent approval', async () => {
 test('dev token is refused outside DEV_MODE; signed tokens still work', async () => {
   const s = await startServer({ env: { DEV_MODE: '0' } });
   try {
-    const bad = await createSession(s.api, { token: DEV_TOKEN });
+    const bad = await createSession(s.api, { token: DEV_TOKEN, lessonId: 'colors_red_blue' });
     assert.equal(bad.status, 403);
     const dev = await s.api('POST', '/api/v1/dev/parent-approval', { clientId: 'x' });
     assert.equal(dev.status, 404, 'dev routes are absent outside DEV_MODE');
     const token = s.app.approval.mint('client-z');
-    const ok = await createSession(s.api, { clientId: 'client-z', token });
+    const ok = await createSession(s.api, { clientId: 'client-z', token, lessonId: 'colors_red_blue' });
     assert.equal(ok.status, 201);
+    const unknown = await createSession(s.api, { clientId: 'client-z', token, lessonId: 'fruits_1' });
+    assert.equal(unknown.status, 400, 'unknown lessons are refused outside DEV_MODE');
+    assert.equal(unknown.body.error.code, 'unknown_lesson');
   } finally {
     await s.close();
   }
@@ -118,8 +121,7 @@ test('CORS preflight and unknown routes', async () => {
   try {
     const res = await fetch(`${s.base}/api/v1/tutor/sessions`, { method: 'OPTIONS' });
     assert.equal(res.status, 204);
-    assert.equal(res.headers.get('access-control-allow-origin'), '*');
-    assert.match(res.headers.get('access-control-allow-headers'), /idempotency-key/);
+    assert.equal(res.headers.get('access-control-allow-origin'), null, 'no CORS headers without an allowlist');
     const nf = await s.api('GET', '/nope');
     assert.equal(nf.status, 404);
     const wrongMethod = await s.api('GET', '/api/v1/tutor/sessions');

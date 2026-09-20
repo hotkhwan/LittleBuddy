@@ -148,7 +148,7 @@ test('client cancellation propagates to the provider via AbortSignal', async () 
   try {
     const { body: { sessionId } } = await createSession(s.api);
     const ac = new AbortController();
-    const p = fetch(`${s.base}/api/v1/tutor/sessions/${sessionId}/turns`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(turnBody()), signal: ac.signal });
+    const p = fetch(`${s.base}/api/v1/tutor/sessions/${sessionId}/turns`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-parent-approval': 'dev-parent-approval' }, body: JSON.stringify(turnBody()), signal: ac.signal });
     await new Promise((r) => setTimeout(r, 50));
     assert.ok(providerSignal && !providerSignal.aborted, 'provider is running');
     ac.abort();
@@ -157,6 +157,7 @@ test('client cancellation propagates to the provider via AbortSignal', async () 
     assert.equal(providerSignal.aborted, true, 'provider call was cancelled');
     assert.equal(String(providerSignal.reason?.message), 'client_cancelled');
     assert.equal(s.app.usage.sessionTotals(sessionId).turns, 0, 'nothing recorded for a cancelled turn');
+    assert.equal(s.app.quota.state('client-a', 'free').usedSeconds, 0, 'nothing charged for a cancelled turn');
   } finally {
     await s.close();
   }

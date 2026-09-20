@@ -16,7 +16,7 @@ test('openai provider: request shape (never a real network call)', async () => {
     calls.push({ url, init });
     return completion({ speech: 'Great! Apple! What color is the banana?', subtitle: null, emotion: 'happy', gesture: 'clap', visual: { type: 'flashcard', assetId: 'apple_red' }, lessonAction: 'next_question', nextQuestion: 'What color is the banana?' });
   };
-  const p = createOpenAIProvider({ apiKey: 'sk-test-not-real', model: 'gpt-4o-mini', fetchImpl: fakeFetch, extraHeaders: { 'x-data-retention': 'zdr' } });
+  const p = createOpenAIProvider({ apiKey: 'test-key-not-real', model: 'gpt-4o-mini', fetchImpl: fakeFetch, extraHeaders: { 'x-data-retention': 'zdr', authorization: 'Bearer attacker' } });
   const ac = new AbortController();
   const result = await p.generateTurn({
     transcript: 'apple',
@@ -29,9 +29,10 @@ test('openai provider: request shape (never a real network call)', async () => {
   const { url, init } = calls[0];
   assert.equal(url, 'https://api.openai.com/v1/chat/completions');
   assert.equal(init.method, 'POST');
-  assert.equal(init.headers.authorization, 'Bearer sk-test-not-real');
+  assert.equal(init.headers.authorization, 'Bearer test-key-not-real');
   assert.equal(init.headers['content-type'], 'application/json');
   assert.equal(init.headers['x-data-retention'], 'zdr', 'extra header hook is applied');
+  assert.equal(init.headers.authorization, 'Bearer test-key-not-real', 'extra headers cannot override authorization');
   assert.equal(init.signal, ac.signal, 'abort signal is passed to fetch');
 
   const body = JSON.parse(init.body);

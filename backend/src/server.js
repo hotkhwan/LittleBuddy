@@ -17,12 +17,19 @@ export function createHttpServer({ app, log = () => {} }) {
     const ac = new AbortController();
     let responded = false;
 
-    const corsHeaders = {
-      'access-control-allow-origin': config.corsOrigin,
-      'access-control-allow-methods': 'GET, POST, OPTIONS',
-      'access-control-allow-headers': 'content-type, idempotency-key',
-      'access-control-max-age': '600',
-    };
+    // CORS only for origins on the explicit allowlist (finding L2); the Godot
+    // client needs none. Unknown origins get no CORS headers at all.
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
+    const corsHeaders = origin && config.corsOrigins.includes(origin)
+      ? {
+        'access-control-allow-origin': origin,
+        'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
+        'access-control-allow-headers': 'content-type, idempotency-key, x-parent-approval',
+        'access-control-max-age': '600',
+        vary: 'Origin',
+      }
+      : {};
+    let route = req.method === 'OPTIONS' ? 'preflight' : 'unmatched';
 
     /** @param {number} status @param {unknown} body @param {Record<string,string>} [headers] */
     const send = (status, body, headers = {}) => {
@@ -32,7 +39,9 @@ export function createHttpServer({ app, log = () => {} }) {
       const payload = JSON.stringify(body);
       res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(payload), 'cache-control': 'no-store', ...corsHeaders, ...headers });
       res.end(payload);
-      log(`${req.method} ${req.url} -> ${status} ${Date.now() - started}ms`);
+      // Access log: method + route pattern + status + ms. Never the URL (it
+      // carries clientId / session ids), never headers or bodies (finding M1).
+      log(`${req.method} ${route} -> ${status} ${Date.now() - started}ms`);
     };
 
     const timer = setTimeout(() => {
@@ -52,7 +61,7 @@ export function createHttpServer({ app, log = () => {} }) {
     }
 
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const ip = (typeof req.headers['x-forwarded-for'] === 'string' && config.devMode ? req.headers['x-forwarded-for'].split(',')[0].trim() : '') || req.socket.remoteAddress || 'unknown';
+    const ip = clientIp(req, config.trustProxy);
 
     /** @type {Buffer[]} */
     const chunks = [];
@@ -87,6 +96,7 @@ export function createHttpServer({ app, log = () => {} }) {
       const headers = {};
       for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers[k.toLowerCase()] = v;
       const result = await app.dispatch({ method: req.method ?? 'GET', url, params: {}, headers, body, ip, signal: ac.signal });
+      route = result.route ?? route;
       send(result.status, result.body, result.headers);
     });
   });
@@ -95,14 +105,36 @@ export function createHttpServer({ app, log = () => {} }) {
   return server;
 }
 
+/**
+ * Client address for rate limiting. X-Forwarded-For is honoured only when
+ * TRUST_PROXY=1 (finding M5), and then the LAST hop (the one appended by our
+ * own proxy) is used, so a client cannot spoof it by sending the header.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {boolean} trustProxy
+ */
+export function clientIp(req, trustProxy) {
+  if (trustProxy) {
+    const xff = req.headers['x-forwarded-for'];
+    const raw = Array.isArray(xff) ? xff.join(',') : xff;
+    if (typeof raw === 'string' && raw.trim()) {
+      const hops = raw.split(',').map((h) => h.trim()).filter(Boolean);
+      if (hops.length) return hops[hops.length - 1];
+    }
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
+
 const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 if (isMain) {
   const config = loadConfig(process.env);
   const log = (msg) => console.log(`[tutor-backend] ${msg}`);
   const app = createApp({ config, log });
   const server = createHttpServer({ app, log });
+  const stopRetention = app.retention.start();
+  server.on('close', stopRetention);
   server.listen(config.port, config.host, () => {
-    log(`listening on http://${config.host}:${config.port}  devMode=${config.devMode} provider=${app.providerNote} dataDir=${config.dataDir} allowlist=${app.allowlist.source}`);
+    log(`listening on http://${config.host}:${config.port}  devMode=${config.devMode} provider=${app.providerNote} dataDir=${config.dataDir} allowlist=${app.allowlist.source} lessons=${app.lessons.lessons.size} budgetUsd=${config.monthlyBudgetUsd} retentionDays=${config.retentionDays}`);
+    if (app.lessons.lessons.size === 0) log(`WARNING: no lessons loaded from ${config.lessonsDir}; sessions will be refused outside DEV_MODE (set LESSONS_DIR).`);
     if (!config.devMode && !app.approval.configured) log('WARNING: PARENT_APPROVAL_SECRET is not set; no session can be approved outside DEV_MODE.');
   });
   const shutdown = () => {

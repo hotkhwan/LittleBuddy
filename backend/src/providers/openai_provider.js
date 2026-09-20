@@ -115,7 +115,8 @@ export function createOpenAIProvider(opts) {
       };
       const res = await fetchImpl(`${baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${opts.apiKey}`, ...extraHeaders },
+        // Extra headers first so they can never override the credentials or content type (finding L6).
+        headers: { ...extraHeaders, 'content-type': 'application/json', authorization: `Bearer ${opts.apiKey}` },
         body: JSON.stringify(body),
         signal,
       });

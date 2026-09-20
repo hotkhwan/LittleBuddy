@@ -11,7 +11,8 @@ export const FAMILY_CLUB_PRODUCT_IDS = Object.freeze(['little_days.family_club.m
  * @param {{store: ReturnType<import('./store.js').createStore>, config: import('./config.js').Config, now: () => number}} deps
  */
 export function createEntitlements({ store, config, now }) {
-  const mockSecret = config.parentApprovalSecret || 'dev-only-mock-billing-secret';
+  // Separate key from the parent-approval HMAC (finding L1): HKDF with its own info label.
+  const mockSecret = crypto.hkdfSync('sha256', config.parentApprovalSecret || 'dev-only-mock-billing-secret', 'little-days', 'mock-billing', 32);
 
   /** @param {string} clientId @returns {'free'|'family_club'} */
   function get(clientId) {
