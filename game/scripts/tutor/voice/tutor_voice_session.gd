@@ -95,6 +95,11 @@ const REASON_CHILD: String = "child_asked"
 const REASON_UNAVAILABLE: String = "recognition_unavailable"
 const REASON_STOPPED: String = "stopped"
 
+## "stop" / "I'm done" / "bye" said as a plain answer ends the session politely
+## (the engine's own list when it has one; this is the fallback).
+const STOP_PHRASES_FALLBACK: Array[String] = ["stop", "i'm done", "im done", "i am done", "all done", "bye", "bye bye", "goodbye", "finished", "no more"]
+const GOODBYE_LINE: String = "Okay! Great job today! Bye bye!"
+
 ## Aliz's loudspeaker level assumed while she speaks and nothing measures it
 ## (device TTS with no bus to read): conservative, so the echo gate is strict.
 const PLAYBACK_ASSUMED_LEVEL: float = 0.5
@@ -506,6 +511,10 @@ func _on_final(text: String) -> void:
 	child_speech_ended.emit(text)
 	var phase: String = _pending_phase if not _pending_phase.is_empty() else ConversationProviderScript.PHASE_ANSWER
 	_pending_phase = ""
+	if phase == ConversationProviderScript.PHASE_ANSWER and is_stop_phrase(text):
+		_current_phase = phase
+		_speak(TurnValidator.make(_goodbye_line(), "happy", "wave", "end_session"), phase)
+		return
 	_request_turn(text, phase)
 
 
@@ -725,6 +734,50 @@ func _do_barge_in() -> void:
 	child_speech_started.emit()
 	_recognition.begin_listening(_locale)
 	_update_capture()
+
+
+## Letters-only, whole-phrase match against the engine's STOP_PHRASES (or the
+## fallback list): "Stop!" and "I'm done." end the session; "stop sign" does not.
+func is_stop_phrase(text: String) -> bool:
+	var normalised: String = _letters_and_spaces(text)
+	if normalised.is_empty():
+		return false
+	for phrase: Variant in _stop_phrases():
+		if _letters_and_spaces(String(phrase)) == normalised:
+			return true
+	return false
+
+
+func _stop_phrases() -> Array:
+	if _engine != null:
+		var script: Variant = _engine.get_script()
+		if script is GDScript:
+			var constants: Dictionary = (script as GDScript).get_script_constant_map()
+			if constants.has("STOP_PHRASES") and typeof(constants["STOP_PHRASES"]) == TYPE_ARRAY:
+				return constants["STOP_PHRASES"]
+	return STOP_PHRASES_FALLBACK
+
+
+func _goodbye_line() -> String:
+	if _engine != null:
+		var script: Variant = _engine.get_script()
+		if script is GDScript:
+			var constants: Dictionary = (script as GDScript).get_script_constant_map()
+			if constants.has("END_SESSION_LINE"):
+				return String(constants["END_SESSION_LINE"])
+	return GOODBYE_LINE
+
+
+static func _letters_and_spaces(text: String) -> String:
+	var out: String = ""
+	var lower: String = text.to_lower()
+	for i: int in range(lower.length()):
+		var code: int = lower.unicode_at(i)
+		if (code >= 0x61 and code <= 0x7A) or code == 0x27:
+			out += lower[i]
+		elif code == 0x20 and not out.ends_with(" "):
+			out += " "
+	return out.strip_edges()
 
 
 # -- Internals ---------------------------------------------------------------------------------
