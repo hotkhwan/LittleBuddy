@@ -31,6 +31,15 @@ extends Node
 ##     mission_started / level_started      -> miniGame
 ##     mission_completed / level_finished   -> (stays on miniGame; see below)
 ##     session_summary closed/again/next    -> house
+##     anything else (splash, parent settings, dressing, an overlay) -> KEEP CURRENT
+##
+## An unrecognised scene never changes the music. The splash keeps boot silence
+## until `main.gd` arrives; Parent Corner opened from the title keeps the title
+## theme; a scene added next month inherits whatever was playing instead of
+## cutting to silence. Since 2026-09-20 `littleDaysTheme` is mapped to BOTH
+## `menu` and `house`, so title -> house is a level settle on the same voice
+## (`AudioDirector._sync` retargets a voice already on the right track and never
+## restarts it); only house <-> miniGame is a crossfade.
 ##
 ## **`task_plan_changed` and `transition_started` are not connected, on purpose.**
 ## An objective changing and a child walking through a door are the two things

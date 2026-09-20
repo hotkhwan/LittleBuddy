@@ -13,7 +13,7 @@
       "loopStart": 0.0,
       "loopEnd": 0.0,
       "volumeDb": -12.0,
-      "usageScenes": ["menu"],
+      "usageScenes": ["menu", "house"],
       "masterFile": "~/Music/LittleDays/masters/Little Days.wav",
       "masterFormat": "WAV 48000 Hz, 2 ch, 16-bit PCM",
       "masterBytes": 17816080,

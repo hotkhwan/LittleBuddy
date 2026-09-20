@@ -175,6 +175,17 @@ func _test_shipped_manifest_is_cleared():
 		failures.append("menu resolves to '%s', expected littleDaysTheme" % manifest.playable_track_for_scene("menu"))
 	if manifest.playable_track_for_scene("miniGame") != "hungryBunny":
 		failures.append("miniGame resolves to '%s', expected hungryBunny" % manifest.playable_track_for_scene("miniGame"))
+	# Changed deliberately on 2026-09-20 (audio pass): the house used to resolve to
+	# "" and was silent between missions. The title theme now follows the child
+	# into the house (`usageScenes: ["menu", "house"]`); the same track on both
+	# means the title -> house hand-off is a level settle, never a restart.
+	if manifest.playable_track_for_scene("house") != "littleDaysTheme":
+		failures.append("house resolves to '%s', expected littleDaysTheme (the house must not be silent between missions)"
+				% manifest.playable_track_for_scene("house"))
+	# Reward keeps the mission track by design: no third track, no reward row.
+	if manifest.playable_track_for_scene("reward") != "":
+		failures.append("reward resolved to '%s'; the celebration keeps the mission track, there is no reward row"
+				% manifest.playable_track_for_scene("reward"))
 	if manifest.playable_track_for_scene("somethingElse") != "":
 		failures.append("an unknown scene resolved to a track")
 

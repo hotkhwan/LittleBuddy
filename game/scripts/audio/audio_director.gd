@@ -124,6 +124,22 @@ const DEFAULT_DUCK_DB: float = -10.0
 const DUCK_ATTACK_SECONDS: float = 0.18
 const DUCK_RELEASE_SECONDS: float = 0.8
 
+## Per-scene trim, in dB, applied on top of the track's own `volumeDb`. The
+## manifest has no per-scene level (one `volumeDb` per track), and the same
+## track -- `littleDaysTheme` -- now plays on the title screen AND in the house
+## between missions. On the title it is the whole soundscape; in the house it
+## sits under footsteps, Bunny, and a spoken prompt, so it is trimmed a little.
+## A state not listed here is 0 dB. Ramped over `SCENE_GAIN_SECONDS` so a
+## menu -> house hand-off on the same track is a settle, not a step.
+const SCENE_GAIN_DB: Dictionary = {
+	"house": -4.0,
+}
+const SCENE_GAIN_SECONDS: float = 1.2
+
+## The 0..1 slider floor: at or below this the music is treated as muted rather
+## than played at a whisper nobody can hear but the mixer still pays for.
+const SLIDER_MUTE_DB: float = -40.0
+
 ## Profile setting consulted before music plays, mirroring `SfxPlayer`'s use of
 ## `soundEnabled`. A parent turning sound off must silence music too.
 const SOUND_ENABLED_SETTING: String = "soundEnabled"
@@ -190,6 +206,7 @@ var _save_service: Node = null
 ## ramped in `advance()` so it is testable without a mixer.
 var _ducked: bool = false
 var _duck_gain: float = 1.0
+var _scene_gain: float = 1.0
 var _override_reported: Dictionary = {}
 
 
@@ -412,6 +429,35 @@ func get_music_volume_db() -> float:
 	return music_volume_db
 
 
+## The parent's slider, 0..1 linear, mapped to a trim in dB. 1.0 is the manifest
+## level (0 dB trim); anything that lands at or under `SLIDER_MUTE_DB` is a mute
+## (`MIN_TRIM_DB`), so the bottom of the slider really is silence.
+static func slider_to_db(linear: float) -> float:
+	var amount: float = clampf(linear, 0.0, 1.0)
+	if amount <= 0.0:
+		return MIN_TRIM_DB
+	var db: float = linear_to_db(amount)
+	if db <= SLIDER_MUTE_DB:
+		return MIN_TRIM_DB
+	return clampf(db, MIN_TRIM_DB, MAX_TRIM_DB)
+
+
+## The inverse, for putting a saved trim back on a slider.
+static func db_to_slider(db: float) -> float:
+	if db <= SLIDER_MUTE_DB:
+		return 0.0
+	return clampf(db_to_linear(minf(db, MAX_TRIM_DB)), 0.0, 1.0)
+
+
+## Sets the music trim from a 0..1 slider value. See `slider_to_db()`.
+func set_music_volume_linear(linear: float) -> void:
+	set_music_volume_db(slider_to_db(linear))
+
+
+func get_music_volume_linear() -> float:
+	return db_to_slider(music_volume_db)
+
+
 func set_sfx_volume_db(value: float) -> void:
 	sfx_volume_db = clampf(value, MIN_TRIM_DB, MAX_TRIM_DB)
 	_apply_mix()
@@ -448,8 +494,14 @@ func effective_music_volume_db(track_id: String = "") -> float:
 	var track_db: float = MusicCatalogue.FALLBACK_VOLUME_DB
 	if not id.is_empty():
 		track_db = manifest().volume_db_for(id)
-	var total: float = master_volume_db + music_volume_db + track_db
+	var total: float = master_volume_db + music_volume_db + track_db + scene_gain_db()
 	return clampf(total, MusicCatalogue.MIN_VOLUME_DB, MusicCatalogue.MAX_VOLUME_DB)
+
+
+## The trim the CURRENT state adds, in dB. See `SCENE_GAIN_DB`.
+func scene_gain_db(state: String = "") -> float:
+	var key: String = state if not state.is_empty() else _machine.state()
+	return float(SCENE_GAIN_DB.get(key, 0.0))
 
 
 ## The level effects play at. Returns `OFF_DB` when muted.
@@ -523,6 +575,7 @@ func duck_target_gain() -> float:
 ## that would otherwise outlive the ramp.
 func finish_duck() -> void:
 	_duck_gain = duck_target_gain()
+	_scene_gain = scene_gain_target()
 	for index in range(_voice_level.size()):
 		_apply_voice_level(index)
 
@@ -534,7 +587,8 @@ func audible_music_volume_db(track_id: String = "") -> float:
 	var target_db: float = effective_music_volume_db(track_id)
 	if target_db <= SILENCE_DB:
 		return OFF_DB
-	return linear_to_db(maxf(db_to_linear(target_db) * _duck_gain, 0.00001))
+	var base_db: float = target_db - scene_gain_db()
+	return linear_to_db(maxf(db_to_linear(base_db) * _duck_gain * _scene_gain, 0.00001))
 
 
 ## Moves `_duck_gain` towards its target. Called from `advance()`.
@@ -553,6 +607,30 @@ func _advance_duck(delta: float) -> void:
 		var closed: float = db_to_linear(clampf(duck_db, MIN_TRIM_DB, MAX_TRIM_DB))
 		var span: float = maxf(absf(1.0 - closed), 0.0001)
 		_duck_gain = move_toward(_duck_gain, target, span * delta / duration)
+	for index in range(_voice_level.size()):
+		_apply_voice_level(index)
+
+
+## Where the scene trim is heading, as a linear gain.
+func scene_gain_target() -> float:
+	return db_to_linear(scene_gain_db())
+
+
+## The scene trim's current linear gain. Diagnostics and tests.
+func scene_gain() -> float:
+	return _scene_gain
+
+
+## Moves `_scene_gain` towards the current state's trim. Called from `advance()`.
+func _advance_scene_gain(delta: float) -> void:
+	var target: float = scene_gain_target()
+	if is_equal_approx(_scene_gain, target):
+		_scene_gain = target
+		return
+	if SCENE_GAIN_SECONDS <= 0.0:
+		_scene_gain = target
+	else:
+		_scene_gain = move_toward(_scene_gain, target, delta / SCENE_GAIN_SECONDS)
 	for index in range(_voice_level.size()):
 		_apply_voice_level(index)
 
@@ -595,6 +673,7 @@ func advance(delta: float) -> void:
 	if delta <= 0.0:
 		return
 	_advance_duck(delta)
+	_advance_scene_gain(delta)
 	for index in range(_voice_level.size()):
 		var fade: Dictionary = _voice_fade[index]
 		if not bool(fade.get("active", false)):
@@ -865,8 +944,11 @@ func _apply_voice_level(index: int) -> void:
 	# Fade in LINEAR amplitude, then convert. A dB-linear fade sounds like it
 	# happens all at once at the quiet end. The duck is a second, independent
 	# gain: a crossfade and a spoken prompt can overlap, and multiplying two
-	# gains handles that where two writers of `volume_db` would fight.
-	var linear: float = db_to_linear(target_db) * level * _duck_gain
+	# gains handles that where two writers of `volume_db` would fight. The scene
+	# gain is a third: `target_db` already holds its destination, so the ramp is
+	# applied as the ratio of where it is to where it is going.
+	var base_db: float = target_db - scene_gain_db()
+	var linear: float = db_to_linear(base_db) * level * _duck_gain * _scene_gain
 	voice.volume_db = linear_to_db(maxf(linear, 0.00001))
 
 
