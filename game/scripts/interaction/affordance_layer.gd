@@ -576,6 +576,7 @@ func is_room_open(room_id: String) -> bool:
 func _station_context(station_id: String, described: Dictionary, held: String) -> Dictionary:
 	var opens: bool = false
 	var can_place: bool = false
+	var can_cook: bool = false
 	var rules_path: String = "res://scripts/kitchen/kitchen_rules.gd"
 	if ResourceLoader.exists(rules_path):
 		var rules: GDScript = load(rules_path)
@@ -585,14 +586,15 @@ func _station_context(station_id: String, described: Dictionary, held: String) -
 			if AffordanceRules.is_nothing(resting):
 				resting = AffordanceRules.NONE
 			if not AffordanceRules.is_nothing(held):
-				can_place = bool(rules.can_place(station_id, held, resting)) \
-						or not AffordanceRules.is_nothing(rules.combination(station_id, resting, held))
+				can_cook = not AffordanceRules.is_nothing(rules.combination(station_id, resting, held))
+				can_place = bool(rules.can_place(station_id, held, resting)) or can_cook
 	return {
 		"opens": opens,
 		"isOpen": bool(described.get("open", false)),
 		"inside": described.get("inside", []),
 		"on": String(described.get("on", AffordanceRules.NONE)),
 		"canPlace": can_place,
+		"canCook": can_cook,
 	}
 
 

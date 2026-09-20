@@ -556,6 +556,16 @@ func _test_default_context_reads_the_kitchen():
 	if bool(layer.call("is_showing")):
 		failures.append("affordance: the table offered %s for a raw banana" % str(layer.call("get_current_verb")))
 
+	# Put the banana on the counter, take the bowl: bowl in hand over a banana
+	# on the counter COMBINES, and the word for that is COOK.
+	world.kitchen.call("place", "counter")
+	world.kitchen.call("take", "counter", "bowl")
+	actor.position = Vector3(-0.8, 0.0, -1.0)
+	layer.call("step", 0.016)
+	if String(layer.call("get_current_verb")) != "COOK":
+		failures.append("affordance: a bowl over the banana on the counter says %s, not COOK"
+				% str(layer.call("get_current_verb")))
+
 	world.free()
 	return failures
 
