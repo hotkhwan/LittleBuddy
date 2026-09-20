@@ -913,8 +913,6 @@ func _choose_subject(subject_id: String) -> void:
 			if not ids.is_empty():
 				lesson_id = String(ids[0])
 				title = String(entry.get("title", ""))
-	if lesson_id.is_empty() and not _welcomed_twice and subject_id.is_empty() and _pending_phase != PHASE_WELCOME:
-		pass
 	if lesson_id.is_empty():
 		if not _welcomed_twice and not _subjects.is_empty():
 			_welcomed_twice = true
