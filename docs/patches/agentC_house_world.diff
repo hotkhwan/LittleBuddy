@@ -1,0 +1,41 @@
+# OPTIONAL convenience hooks for house_world.gd (lead-owned). Not required:
+# Agent B's affordance layer drives the carry through Bunny's own
+# `perform_affordance()` (group "affordable"), and cross-room carrying is
+# handled inside carry_controller.gd via `get_current_room()` / Bunny's
+# `room_changed()`. Apply only if the lead wants a direct tap-routing entry
+# point (e.g. "tap Bunny while standing next to him picks him up").
+--- a/game/scripts/house/house_world.gd
++++ b/game/scripts/house/house_world.gd
+@@ func get_character() -> Node:
+ 	build_world()
+ 	return _character
+ 
+ 
++## -- Carrying (Agent C hooks) -------------------------------------------------
++
++## Picks `node` up with the caregiver (Bunny, or a prop). False when her hands
++## are full or the character cannot carry. Guarded so a build without the carry
++## layer degrades to "nothing happens".
++func request_carry(node: Node) -> bool:
++	build_world()
++	if _character == null or not _character.has_method("carry_node"):
++		return false
++	return bool(_character.call("carry_node", node))
++
++
++## Sets whatever she is carrying down on the nearest standable spot.
++func request_put_down() -> bool:
++	build_world()
++	if _character == null or not _character.has_method("put_down_carried"):
++		return false
++	return bool(_character.call("put_down_carried"))
++
++
++## True while the caregiver has something in her arms.
++func is_carrying() -> bool:
++	build_world()
++	return _character != null and _character.has_method("is_carrying_node") \
++			and bool(_character.call("is_carrying_node"))
++
++
+ func get_transition_controller() -> Node:

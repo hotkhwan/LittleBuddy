@@ -71,6 +71,18 @@ func _run() -> void:
 	await _settle(0.8)
 
 	_aliz = _world.call("get_character")
+	# Free Play's idle nudge (a pointing hand over some prop) is a harness
+	# artefact here -- nobody is idle, the harness is driving -- and it lands on
+	# the frame. Hidden, and kept hidden.
+	var free_play: Node = _world.call("get_free_play_director") if _world.has_method("get_free_play_director") else null
+	if free_play != null and free_play.has_method("get_hint"):
+		var hint: Control = free_play.call("get_hint")
+		if hint != null:
+			hint.visible = false
+			# ...and every time the director re-shows it (it does, on its idle
+			# timer, through `show_tap`), which is why a one-off hide was not enough.
+			if free_play.has_signal("hint_shown"):
+				free_play.connect("hint_shown", func(_id: String) -> void: hint.visible = false)
 	var room: Node = _world.call("get_current_room")
 	for child: Node in room.get_children():
 		if child.has_method("set_carried_by"):

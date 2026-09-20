@@ -37,10 +37,10 @@ static func pose_for() -> Dictionary:
 		var forearm: String = "LeftForeArm" if side < 0 else "RightForeArm"
 		var hand: String = "LeftHand" if side < 0 else "RightHand"
 		var shoulder: String = "LeftShoulder" if side < 0 else "RightShoulder"
-		pose[shoulder] = [[TILT, -side * 4.0]]
-		pose[arm] = [[NOD, -38.0], [TILT, side * 14.0]]
-		pose[forearm] = [[NOD, -58.0], [TILT, side * 26.0]]
-		pose[hand] = [[NOD, -12.0], [TILT, side * 10.0]]
+		pose[shoulder] = [[TILT, -side * 3.0]]
+		pose[arm] = [[NOD, -27.0], [TILT, side * 8.0]]
+		pose[forearm] = [[NOD, -8.0], [TILT, side * 15.0]]
+		pose[hand] = [[NOD, -10.0], [TILT, side * 12.0]]
 	return pose
 
 
@@ -95,6 +95,11 @@ func _ease(delta: float) -> void:
 ## a frame and read the result back off the skeleton.
 func apply() -> void:
 	var skeleton: Skeleton3D = get_skeleton()
+	if skeleton == null:
+		# Out of the tree the modifier has not bound to its parent yet (that
+		# happens on entering it), and the headless runner never enters. The
+		# parent IS the skeleton here, by construction.
+		skeleton = get_parent() as Skeleton3D
 	if skeleton == null:
 		return
 	for bone_name: String in pose.keys():

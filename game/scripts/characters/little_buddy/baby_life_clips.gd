@@ -736,18 +736,20 @@ static func _carried(skeleton: Skeleton3D, prefix: String) -> Animation:
 			[3.6, [[NOD, -78.0], [TILT, -side * 10.0]]]])
 		_bone(animation, skeleton, prefix, _shin(side), [
 			[0.0, [[NOD, 82.0]]], [1.8, [[NOD, 78.0]]], [3.6, [[NOD, 82.0]]]])
-		# Hands resting low in front, elbows soft and a little out so they clear
-		# the arms holding him.
-		_bone(animation, skeleton, prefix, _shoulder(side), [[0.0, [[TILT, -side * 4.0]]]])
+		# Hands resting in front of his tummy, on the arms holding him -- inward
+		# (`TILT side*`, as `_fuss()` brings them in), never out to the sides:
+		# rendered with an outward tilt he read as a child cheering, arms spread
+		# at shoulder height, which is not what being carried looks like.
+		_bone(animation, skeleton, prefix, _shoulder(side), [[0.0, [[TILT, -side * 3.0]]]])
 		_bone(animation, skeleton, prefix, _arm(side), [
-			[0.0, [[NOD, -22.0], [TILT, -side * 12.0]]],
-			[1.8, [[NOD, -25.0], [TILT, -side * 13.0]]],
-			[3.6, [[NOD, -22.0], [TILT, -side * 12.0]]]])
+			[0.0, [[NOD, -30.0], [TILT, side * 6.0]]],
+			[1.8, [[NOD, -33.0], [TILT, side * 7.0]]],
+			[3.6, [[NOD, -30.0], [TILT, side * 6.0]]]])
 		_bone(animation, skeleton, prefix, _forearm(side), [
-			[0.0, [[NOD, -38.0], [TILT, side * 14.0]]],
-			[1.8, [[NOD, -42.0], [TILT, side * 15.0]]],
-			[3.6, [[NOD, -38.0], [TILT, side * 14.0]]]])
-		_bone(animation, skeleton, prefix, _hand(side), [[0.0, [[NOD, -10.0]]]])
+			[0.0, [[NOD, -48.0], [TILT, side * 16.0]]],
+			[1.8, [[NOD, -52.0], [TILT, side * 17.0]]],
+			[3.6, [[NOD, -48.0], [TILT, side * 16.0]]]])
+		_bone(animation, skeleton, prefix, _hand(side), [[0.0, [[NOD, -14.0]]]])
 
 	_rest_the_others(animation, skeleton, prefix)
 	return animation
