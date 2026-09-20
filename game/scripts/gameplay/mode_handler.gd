@@ -501,6 +501,14 @@ func _distractor_pool() -> Array:
 func _speak(text: String, interrupt: bool = true) -> void:
 	if text.strip_edges().is_empty():
 		return
+	# Through the voice pack first, so an instruction that is one of the owner's
+	# recorded lines plays as the recording and sits in the pack's queue with
+	# everything else Aliz says. False means there is no Voice: fall through.
+	if is_inside_tree() and ResourceLoader.exists("res://scripts/voice/voice_bridge.gd"):
+		var bridge: GDScript = load("res://scripts/voice/voice_bridge.gd")
+		if bridge != null and bridge.has_method("say_text") \
+				and bool(bridge.call("say_text", self, text, {"interrupt": interrupt})):
+			return
 	var tts: Object = _context.get(CTX_TTS, null)
 	if tts == null and is_inside_tree():
 		tts = get_node_or_null("/root/TtsService")
