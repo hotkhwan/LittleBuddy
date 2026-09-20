@@ -9,13 +9,28 @@ extends RefCounted
 ## preview or a test run where no autoload exists. Nothing here touches the
 ## network, and no key outside the ones below is ever written.
 
+const Localization := preload("res://scripts/localization/localization.gd")
+
 const KEY_THAI_HINTS := "thaiHints"
 const KEY_SPEECH_ENABLED := "speechEnabled"
 const KEY_TTS_SPEED := "ttsSpeed"
+## 0..1 linear slider values. 1.0 is the manifest / platform level.
+const KEY_MUSIC_VOLUME := "musicVolume"
+const KEY_VOICE_VOLUME := "voiceVolume"
+## "th" / "zh" / "ar" / "hi" / "ja" / "off". Supersedes `thaiHints`, which is
+## kept in step so every existing reader of the boolean keeps working.
+const KEY_HELPER_LANGUAGE := "helperLanguage"
+const KEY_TEACHING_LANGUAGE := "teachingLanguage"
 
 const DEFAULT_THAI_HINTS := true
 const DEFAULT_SPEECH_ENABLED := true
 const DEFAULT_TTS_SPEED := "normal"
+const DEFAULT_MUSIC_VOLUME := 1.0
+## Matches `TtsService.SPEECH_VOLUME` (85 of 100) so an untouched slider changes
+## nothing about how the game has sounded until now.
+const DEFAULT_VOICE_VOLUME := 0.85
+const DEFAULT_HELPER_LANGUAGE := "th"
+const TEACHING_LANGUAGE := "en"
 
 const TTS_SPEED_SLOW := "slow"
 const TTS_SPEED_NORMAL := "normal"
@@ -40,8 +55,60 @@ func get_thai_hints() -> bool:
 	return _read_bool(KEY_THAI_HINTS, DEFAULT_THAI_HINTS)
 
 
+## The legacy on/off. Off is `helperLanguage = "off"`; on restores Thai unless
+## another language is already chosen.
 func set_thai_hints(enabled: bool) -> void:
-	_write(KEY_THAI_HINTS, enabled)
+	if not enabled:
+		set_helper_language(Localization.HELPER_OFF)
+		return
+	if get_helper_language() == Localization.HELPER_OFF:
+		set_helper_language(DEFAULT_HELPER_LANGUAGE)
+	else:
+		_write(KEY_THAI_HINTS, true)
+
+
+## -- helper language -----------------------------------------------------------
+
+## "th" by default; "off" when a pre-`helperLanguage` profile has `thaiHints = false`.
+func get_helper_language() -> String:
+	var stored: Variant = _read(KEY_HELPER_LANGUAGE, null)
+	if typeof(stored) == TYPE_STRING and not String(stored).is_empty():
+		return Localization.normalise(stored)
+	if not _read_bool(KEY_THAI_HINTS, DEFAULT_THAI_HINTS):
+		return Localization.HELPER_OFF
+	return DEFAULT_HELPER_LANGUAGE
+
+
+## Persists the choice, keeps `thaiHints` in step, and applies it to
+## `Localization` at once so the next prompt is already in the new language.
+func set_helper_language(code: String) -> void:
+	var value: String = Localization.normalise(code)
+	_write(KEY_HELPER_LANGUAGE, value)
+	_write(KEY_THAI_HINTS, value != Localization.HELPER_OFF)
+	_write(KEY_TEACHING_LANGUAGE, TEACHING_LANGUAGE)
+	Localization.set_helper_language(value)
+
+
+func get_teaching_language() -> String:
+	return TEACHING_LANGUAGE
+
+
+## -- volumes -------------------------------------------------------------------
+
+func get_music_volume() -> float:
+	return _read_unit(KEY_MUSIC_VOLUME, DEFAULT_MUSIC_VOLUME)
+
+
+func set_music_volume(value: float) -> void:
+	_write(KEY_MUSIC_VOLUME, _unit(value))
+
+
+func get_voice_volume() -> float:
+	return _read_unit(KEY_VOICE_VOLUME, DEFAULT_VOICE_VOLUME)
+
+
+func set_voice_volume(value: float) -> void:
+	_write(KEY_VOICE_VOLUME, _unit(value))
 
 
 func get_speech_enabled() -> bool:
@@ -94,6 +161,22 @@ func _read(key: String, default_value: Variant) -> Variant:
 	if _cache.has(key):
 		return _cache[key]
 	return default_value
+
+
+## A 0..1 number, or the default for anything that is not a finite number.
+func _read_unit(key: String, default_value: float) -> float:
+	var value: Variant = _read(key, default_value)
+	if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
+		var number: float = float(value)
+		if is_finite(number):
+			return _unit(number)
+	return default_value
+
+
+static func _unit(value: float) -> float:
+	if not is_finite(value):
+		return 0.0
+	return snappedf(clampf(value, 0.0, 1.0), 0.01)
 
 
 func _read_bool(key: String, default_value: bool) -> bool:

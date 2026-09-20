@@ -86,8 +86,16 @@ func _test_keys_written():
 		failures.append("voice toggle should write speechEnabled=false, got %s" % service.settings)
 	if service.settings.get("ttsSpeed", "") != "slow":
 		failures.append("speed control should write ttsSpeed=\"slow\", got %s" % service.settings)
-	if service.settings.size() != 3:
-		failures.append("only the three parent settings may be written, got %s" % service.settings)
+	# Changed deliberately 2026-09-20: the Thai toggle is now the helper-language
+	# selector underneath, so turning it off also records helperLanguage="off" and
+	# teachingLanguage="en". Still nothing outside the parent settings' own keys.
+	var allowed: Array = ["thaiHints", "speechEnabled", "ttsSpeed",
+			"helperLanguage", "teachingLanguage", "musicVolume", "voiceVolume"]
+	for key: Variant in service.settings.keys():
+		if not allowed.has(String(key)):
+			failures.append("the model wrote an unexpected key %s: %s" % [str(key), service.settings])
+	if service.settings.get("helperLanguage", "") != "off":
+		failures.append("thaiHints=false must also record helperLanguage=off, got %s" % service.settings)
 
 	# Reading back reflects what was stored.
 	if model.get_thai_hints() != false or model.get_speech_enabled() != false:

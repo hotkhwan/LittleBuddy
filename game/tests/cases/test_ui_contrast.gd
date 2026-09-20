@@ -65,10 +65,19 @@ const CHECKS: Dictionary = {
 		"SafeArea/Layout/Header/Progress/ProgressRow/CountLabel": CREAM_PANEL,
 	},
 	PARENT_SCENE: {
-		"SafeArea/Center/Panel/Margin/Content/Title": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/Header/Title": CREAM_PANEL,
 		"SafeArea/Center/Panel/Margin/Content/Subtitle": CREAM_PANEL,
-		"SafeArea/Center/Panel/Margin/Content/ThaiRow/ThaiText/ThaiTitle": CREAM_PANEL,
-		"SafeArea/Center/Panel/Margin/Content/ThaiRow/ThaiText/ThaiHelp": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/MusicRow/MusicText/MusicTitle": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/MusicRow/MusicText/MusicHelp": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/MusicRow/MusicSliderBox/MusicValue": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/VoiceVolumeRow/VoiceVolumeText/VoiceVolumeTitle": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/VoiceVolumeRow/VoiceVolumeText/VoiceVolumeHelp": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/HelperRow/HelperText/HelperTitle": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/HelperRow/HelperText/HelperHelp": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/TeachingRow/TeachingText/TeachingTitle": CREAM_PANEL,
+		"SafeArea/Center/Panel/Margin/Content/TeachingRow/TeachingText/TeachingHelp": CREAM_PANEL,
+		"SafeArea/GateScreen/GateCard/GateMargin/GateColumn/GateTitle": CREAM_PANEL,
+		"SafeArea/GateScreen/GateCard/GateMargin/GateColumn/GateHelp": CREAM_PANEL,
 		"SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceText/VoiceTitle": CREAM_PANEL,
 		"SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceText/VoiceHelp": CREAM_PANEL,
 		"SafeArea/Center/Panel/Margin/Content/SpeedRow/SpeedText/SpeedTitle": CREAM_PANEL,
@@ -82,8 +91,12 @@ const CHECKS: Dictionary = {
 ## Buttons whose two label colours both have to survive: `font_color` on the
 ## unselected face and `font_pressed_color` on the selected one.
 const TOGGLE_BUTTONS: Array[String] = [
-	"SafeArea/Center/Panel/Margin/Content/ThaiRow/ThaiButtons/ThaiOnButton",
-	"SafeArea/Center/Panel/Margin/Content/ThaiRow/ThaiButtons/ThaiOffButton",
+	"SafeArea/Center/Panel/Margin/Content/HelperRow/HelperButtons/HelperOffButton",
+	"SafeArea/Center/Panel/Margin/Content/HelperRow/HelperButtons/HelperThButton",
+	"SafeArea/Center/Panel/Margin/Content/HelperRow/HelperButtons/HelperZhButton",
+	"SafeArea/Center/Panel/Margin/Content/HelperRow/HelperButtons/HelperArButton",
+	"SafeArea/Center/Panel/Margin/Content/HelperRow/HelperButtons/HelperHiButton",
+	"SafeArea/Center/Panel/Margin/Content/HelperRow/HelperButtons/HelperJaButton",
 	"SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceButtons/VoiceOnButton",
 	"SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceButtons/VoiceOffButton",
 	"SafeArea/Center/Panel/Margin/Content/SpeedRow/SpeedButtons/SpeedSlowButton",
@@ -181,6 +194,8 @@ func _test_toggles():
 	for node_path: String in [
 		"SafeArea/Center/Panel/Margin/Content/BottomRow/ResetRow/ResetButton",
 		"SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmButtons/CancelResetButton",
+		"SafeArea/Center/Panel/Margin/Content/Header/CloseButton",
+		"SafeArea/GateScreen/GateCard/GateMargin/GateColumn/GateBackButton",
 	]:
 		var button: Button = root.get_node_or_null(NodePath(node_path)) as Button
 		if button == null:

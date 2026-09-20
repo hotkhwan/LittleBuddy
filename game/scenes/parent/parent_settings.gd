@@ -1,14 +1,29 @@
 extends Control
 
-## Parent Settings overlay, behind a press-and-hold parental gate.
+## Parent Settings, behind a press-and-hold parental gate.
 ##
-## Self-contained and instantiable from anywhere: add it as a child of a
-## CanvasLayer (or push it as a scene) and it does the rest. While locked it
-## renders nothing but a small, dull gear in a corner and passes every other
-## touch straight through to the game underneath.
+## Self-contained and instantiable from anywhere, in two modes:
 ##
-## The caller decides what "done" means -- this scene only emits `closed()` and
-## never changes scenes itself.
+##   * **Overlay** (the pause card, the Baby Room): added under a CanvasLayer of a
+##     running scene. While locked it renders nothing but a small, dull gear in a
+##     corner and passes every other touch through to the game. Done / Close
+##     emit `closed()` and the host takes the overlay down.
+##   * **Standalone** (the title screen's Grown-ups button): pushed as the current
+##     scene, with nothing underneath. It shows a full gate card -- a big
+##     hold-for-3-seconds bar and a Back button -- and when the grown-up is done
+##     it returns to the title itself, because there is nobody else to.
+##
+## ## The freeze this fixes (2026-09-20)
+##
+## `main.gd` pushes this scene as a full scene. It used to come up in overlay
+## mode regardless: the title was freed, the backdrop and panel were hidden, and
+## all that was on screen was the 84 px gear in the top-right corner -- on a
+## plain clear-colour background, at 38 % alpha. Nothing said "hold me". A tap
+## did nothing (the gate needs a 3 s hold), and even a grown-up who found the
+## gear and got in pressed Done and landed back on the same empty screen,
+## because `closed()` had no listener and nothing navigated. To the owner that
+## was "Grown-ups freezes the game". The fix is mode detection plus the gate
+## card plus a way home; nothing in `main.gd` had to change.
 ##
 ## Offline only: local settings via the SaveService autoload (accessed
 ## defensively), no analytics, no network.
@@ -36,11 +51,43 @@ const ParentalGateScript := preload("res://scripts/parent_settings/parental_gate
 const Palette := preload("res://scripts/ui/palette.gd")
 const FreeStarter := preload("res://scripts/entitlement/free_starter.gd")
 const EntitlementServiceScript := preload("res://scripts/entitlement/entitlement_service.gd")
+const Localization := preload("res://scripts/localization/localization.gd")
+
+## Where a standalone panel goes when it is done.
+const HOME_SCENE: String = "res://scenes/main/main.tscn"
+
+## Helper-language buttons in the scene, by node name -> language code. Static in
+## the .tscn (rather than built in code) so the contrast test can see their
+## colours; `test_parent_settings_screen.gd` asserts this list matches
+## `Localization.available_languages()` so a language cannot be added to one and
+## not the other.
+const HELPER_BUTTONS: Dictionary = {
+	"HelperOffButton": Localization.HELPER_OFF,
+	"HelperThButton": "th",
+	"HelperZhButton": "zh",
+	"HelperArButton": "ar",
+	"HelperHiButton": "hi",
+	"HelperJaButton": "ja",
+}
+
+## Settings rows whose small helper subtitle is shown in the chosen language.
+## Row name -> Localization key.
+const ROW_HELPER_KEYS: Dictionary = {
+	"Music": "music_volume",
+	"VoiceVolume": "voice_volume",
+	"Voice": "voice_practice",
+	"Speed": "speaking_speed",
+	"Helper": "helper_language",
+	"Teaching": "teaching_language",
+}
 
 ## Emitted when the grown-up taps Done (or the settings panel is closed).
 signal closed()
 ## Emitted once the gate has been held long enough and the panel is showing.
 signal opened()
+## Emitted when the grown-up asks to leave without opening (the gate card's
+## Back button). A standalone panel then goes home by itself.
+signal back_requested()
 
 ## When false the panel is shown immediately with no gate -- for callers that
 ## push this as a full scene from their own (already gated) entry point.
@@ -48,12 +95,26 @@ signal opened()
 
 var _model: ParentSettingsModelScript
 var _syncing: bool = false
+## True when this scene IS the current scene (pushed by the title screen), as
+## opposed to an overlay inside a running room. Decided once, in `_ready()`.
+var _standalone: bool = false
+var _going_home: bool = false
 
 @onready var _entry_gate: ParentalGateScript = %EntryGate
+@onready var _gate_screen: Control = %GateScreen
+@onready var _gate_hold: ParentalGateScript = %GateHold
+@onready var _gate_hold_label: Label = %GateHoldLabel
+@onready var _gate_back_button: Button = %GateBackButton
 @onready var _backdrop: ColorRect = %Backdrop
+@onready var _scroll: ScrollContainer = %Center
 @onready var _panel: PanelContainer = %Panel
-@onready var _thai_on: Button = %ThaiOnButton
-@onready var _thai_off: Button = %ThaiOffButton
+@onready var _close_button: Button = %CloseButton
+@onready var _music_slider: HSlider = %MusicSlider
+@onready var _music_value: Label = %MusicValue
+@onready var _voice_volume_slider: HSlider = %VoiceVolumeSlider
+@onready var _voice_volume_value: Label = %VoiceVolumeValue
+@onready var _helper_buttons: Control = %HelperButtons
+@onready var _teaching_en: Button = %TeachingEnButton
 @onready var _voice_on: Button = %VoiceOnButton
 @onready var _voice_off: Button = %VoiceOffButton
 @onready var _speed_slow: Button = %SpeedSlowButton
@@ -79,22 +140,35 @@ var _speech_check_button: Button = null
 ## test that drives the real panel. Same node, same "null is fine" contract, no
 ## error in the log.
 func _save_service() -> Node:
-	if not is_inside_tree():
-		return null
-	var tree_root: Node = get_tree().root
-	return tree_root.get_node_or_null(NodePath("SaveService")) if tree_root != null else null
+	return _autoload("SaveService")
+
+
+## The running SceneTree, whether or not this node counts as "inside" it yet.
+## Under the `--script` runner a node added to the root during `_initialize()`
+## reports `is_inside_tree() == false` while its `_ready()` has already run, so
+## `get_tree()` cannot be relied on; the main loop can.
+static func _scene_tree() -> SceneTree:
+	return Engine.get_main_loop() as SceneTree
 
 
 func _ready() -> void:
 	_model = ParentSettingsModelScript.new(_save_service())
+	_standalone = _detect_standalone()
 
 	_entry_gate.unlocked.connect(_on_gate_unlocked)
+	_gate_hold.unlocked.connect(_on_gate_unlocked)
+	_gate_back_button.pressed.connect(_on_back_pressed)
 	_confirm_hold.unlocked.connect(_on_reset_confirmed)
 	_done_button.pressed.connect(_on_done_pressed)
+	_close_button.pressed.connect(_on_done_pressed)
 	_reset_button.pressed.connect(_on_reset_requested)
 	_cancel_reset_button.pressed.connect(_hide_reset_confirmation)
-	_thai_on.pressed.connect(_on_thai_chosen.bind(true))
-	_thai_off.pressed.connect(_on_thai_chosen.bind(false))
+	_music_slider.value_changed.connect(_on_music_volume_changed)
+	_voice_volume_slider.value_changed.connect(_on_voice_volume_changed)
+	for node_name: String in HELPER_BUTTONS.keys():
+		var button: Button = _helper_buttons.get_node_or_null(NodePath(node_name)) as Button
+		if button != null:
+			button.pressed.connect(_on_helper_language_chosen.bind(String(HELPER_BUTTONS[node_name])))
 	_voice_on.pressed.connect(_on_voice_chosen.bind(true))
 	_voice_off.pressed.connect(_on_voice_chosen.bind(false))
 	_speed_slow.pressed.connect(_on_speed_chosen.bind(ParentSettingsModelScript.TTS_SPEED_SLOW))
@@ -108,6 +182,29 @@ func _ready() -> void:
 		_show_locked()
 	else:
 		open_settings()
+
+
+## A panel with nothing underneath it: added straight under the tree root, the
+## way `main.gd` pushes a scene. An overlay lives under a room's CanvasLayer.
+func _detect_standalone() -> bool:
+	var tree: SceneTree = _scene_tree()
+	return tree != null and tree.root != null and get_parent() == tree.root
+
+
+func is_standalone() -> bool:
+	return _standalone
+
+
+## Back / Escape at any time: the same as Done when the panel is open, the same
+## as the gate card's Back when it is not. Nothing here can trap a grown-up.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		if _panel.visible:
+			close_settings()
+			get_viewport().set_input_as_handled()
+		elif _standalone:
+			_on_back_pressed()
+			get_viewport().set_input_as_handled()
 
 
 ## The on-device speech check, behind the parental gate.
@@ -433,8 +530,11 @@ func entitlement_service() -> Object:
 ## grown-up entry point).
 func open_settings() -> void:
 	_entry_gate.visible = false
+	_gate_screen.visible = false
 	_backdrop.visible = true
+	_scroll.visible = true
 	_panel.visible = true
+	_scroll.scroll_vertical = 0
 	_hide_reset_confirmation()
 	_collapse_songs_for_fun()
 	_set_status("")
@@ -442,16 +542,25 @@ func open_settings() -> void:
 	opened.emit()
 
 
-## Returns to the locked state (gear only) and emits `closed()`.
+## Returns to the locked state and emits `closed()`. A standalone panel then
+## goes home to the title, because a grown-up who pressed Done is finished here
+## and there is no scene underneath to come back to.
 func close_settings() -> void:
 	_show_locked()
 	closed.emit()
+	if _standalone:
+		_go_home()
 
 
 func _show_locked() -> void:
 	_entry_gate.reset()
-	_entry_gate.visible = show_gate
-	_backdrop.visible = false
+	_gate_hold.reset()
+	_entry_gate.visible = show_gate and not _standalone
+	_gate_screen.visible = show_gate and _standalone
+	# Standalone there is nothing behind us: the backdrop stays, so the gate card
+	# sits on cream rather than on the bare clear colour.
+	_backdrop.visible = _standalone
+	_scroll.visible = false
 	_panel.visible = false
 	_hide_reset_confirmation()
 	# The external link never survives a close: locking the panel puts it away.
@@ -466,13 +575,57 @@ func _on_done_pressed() -> void:
 	close_settings()
 
 
+## The gate card's Back: leave without opening anything.
+func _on_back_pressed() -> void:
+	back_requested.emit()
+	if _standalone:
+		_go_home()
+
+
+## Replaces this scene with the title. Deferred, so it never happens in the
+## middle of the button signal that asked for it, and once only.
+##
+## A SceneTree that runs a script -- the headless test runner, a screenshot
+## harness -- owns its own navigation, and here that call is skipped: the
+## harness asked for this panel and is the one that takes it down.
+func _go_home() -> void:
+	if _going_home:
+		return
+	var tree: SceneTree = _scene_tree()
+	if tree == null or tree.get_script() != null:
+		return
+	if not ResourceLoader.exists(HOME_SCENE):
+		return
+	_going_home = true
+	tree.call_deferred("change_scene_to_file", HOME_SCENE)
+
+
+## True while the standalone gate card is showing. Tests.
+func is_gate_card_visible() -> bool:
+	return _gate_screen != null and _gate_screen.visible
+
+
+## True while the settings panel itself is on screen. Tests.
+func is_panel_visible() -> bool:
+	return _panel != null and _panel.visible
+
+
 # -- settings ----------------------------------------------------------------
 
 func _sync_from_model() -> void:
 	_syncing = true
-	var thai: bool = _model.get_thai_hints()
-	_thai_on.button_pressed = thai
-	_thai_off.button_pressed = not thai
+	var helper_language: String = _model.get_helper_language()
+	Localization.set_helper_language(helper_language)
+	for node_name: String in HELPER_BUTTONS.keys():
+		var button: Button = _helper_buttons.get_node_or_null(NodePath(node_name)) as Button
+		if button != null:
+			button.set_pressed_no_signal(String(HELPER_BUTTONS[node_name]) == helper_language)
+	_teaching_en.set_pressed_no_signal(true)
+	_music_slider.set_value_no_signal(_model.get_music_volume())
+	_music_value.text = _percent(_model.get_music_volume())
+	_voice_volume_slider.set_value_no_signal(_model.get_voice_volume())
+	_voice_volume_value.text = _percent(_model.get_voice_volume())
+	_refresh_row_helpers()
 	var voice: bool = _model.get_speech_enabled()
 	_voice_on.button_pressed = voice
 	_voice_off.button_pressed = not voice
@@ -484,10 +637,86 @@ func _sync_from_model() -> void:
 	_syncing = false
 
 
-func _on_thai_chosen(enabled: bool) -> void:
+func _on_helper_language_chosen(code: String) -> void:
 	if _syncing:
 		return
-	_model.set_thai_hints(enabled)
+	_model.set_helper_language(code)
+	_refresh_row_helpers()
+
+
+## The small second line under each row title, in the chosen helper language --
+## the same thing the child sees under an English prompt, applied to the
+## parent's own screen so a Thai (or Japanese, or Arabic) grown-up can read
+## what each control does. Hidden when the helper is off.
+func _refresh_row_helpers() -> void:
+	var content: Node = _status_label.get_parent() if _status_label != null else null
+	if content == null:
+		return
+	var rtl: bool = Localization.is_rtl()
+	for row_name: String in ROW_HELPER_KEYS.keys():
+		var label: Label = content.get_node_or_null(
+				NodePath("%sRow/%sText/%sHelper" % [row_name, row_name, row_name])) as Label
+		if label == null:
+			continue
+		var text: String = Localization.helper(String(ROW_HELPER_KEYS[row_name]), "")
+		label.text = text
+		label.visible = not text.is_empty()
+		label.text_direction = Control.TEXT_DIRECTION_RTL if rtl else Control.TEXT_DIRECTION_AUTO
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if rtl else HORIZONTAL_ALIGNMENT_LEFT
+	# The gate card's own helper, so the hold instruction is readable too.
+	var hold_hint: String = Localization.helper("hold_for_3_seconds_to_open", "")
+	_gate_hold_label.text = "Hold for 3 seconds to open" \
+			if hold_hint.is_empty() else "Hold for 3 seconds to open\n%s" % hold_hint
+
+
+## -- volumes -------------------------------------------------------------------
+
+## The music slider, applied live through the `Audio` autoload (`AudioDirector`)
+## and persisted as `musicVolume` 0..1. `slider_to_db` puts the bottom of the
+## slider at a true mute (-40 dB floor -> off) rather than a whisper.
+func _on_music_volume_changed(value: float) -> void:
+	if _syncing:
+		return
+	_model.set_music_volume(value)
+	_music_value.text = _percent(value)
+	var audio: Node = _autoload("Audio")
+	if audio != null and audio.has_method("set_music_volume_linear"):
+		audio.call("set_music_volume_linear", value)
+
+
+## The voice slider: TTS volume (and any bundled voice line) through
+## `TtsService`, persisted as `voiceVolume` 0..1.
+func _on_voice_volume_changed(value: float) -> void:
+	if _syncing:
+		return
+	_model.set_voice_volume(value)
+	_voice_volume_value.text = _percent(value)
+	var tts: Node = _autoload("TtsService")
+	if tts != null and tts.has_method("set_voice_volume"):
+		tts.call("set_voice_volume", value)
+
+
+static func _percent(value: float) -> String:
+	return "%d%%" % int(round(clampf(value, 0.0, 1.0) * 100.0))
+
+
+## An autoload by name, resolved relative to the tree root so a detached panel
+## (a preview, a test) gets null instead of an engine error.
+func _autoload(node_name: String) -> Node:
+	var tree: SceneTree = _scene_tree()
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(NodePath(node_name))
+
+
+## The language code each helper button selects. Tests.
+func helper_button_languages() -> Dictionary:
+	return HELPER_BUTTONS.duplicate()
+
+
+## The model behind the controls. Tests.
+func model() -> RefCounted:
+	return _model
 
 
 func _on_voice_chosen(enabled: bool) -> void:

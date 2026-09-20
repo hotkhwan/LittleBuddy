@@ -143,6 +143,9 @@ const SLIDER_MUTE_DB: float = -40.0
 ## Profile setting consulted before music plays, mirroring `SfxPlayer`'s use of
 ## `soundEnabled`. A parent turning sound off must silence music too.
 const SOUND_ENABLED_SETTING: String = "soundEnabled"
+## The parent's music slider, 0..1, written by `ParentSettingsModel`. Read once
+## at boot; the settings screen applies later changes live.
+const MUSIC_VOLUME_SETTING: String = "musicVolume"
 const SAVE_SERVICE_PATH: String = "/root/SaveService"
 ## The existing `SfxPlayer` autoload, bound automatically when present.
 const SFX_AUTOLOAD_PATH: String = "/root/Sfx"
@@ -216,6 +219,7 @@ func _ready() -> void:
 		allow_unverified_music = LicenceOverride.is_armed()
 	_ensure_voices()
 	_ensure_manifest()
+	apply_saved_music_volume()
 	# One mixer should own every level. Binding the SFX autoload here means an
 	# autoload registration needs no configuration at all, and a composed instance
 	# picks it up too. `bind_sfx_player()` overrides it; a missing `Sfx` is fine.
@@ -509,6 +513,21 @@ func effective_sfx_volume_db() -> float:
 	if muted or not is_sound_enabled():
 		return OFF_DB
 	return clampf(master_volume_db + sfx_volume_db, MIN_TRIM_DB, MAX_TRIM_DB)
+
+
+## Puts the profile's `musicVolume` slider (0..1) on the music trim. A profile
+## without the key, or with junk in it, leaves the trim where it is.
+func apply_saved_music_volume() -> void:
+	var service: Node = _get_save_service()
+	if service == null or not service.has_method("get_setting"):
+		return
+	var value: Variant = service.call("get_setting", MUSIC_VOLUME_SETTING, null)
+	if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
+		return
+	var linear: float = float(value)
+	if not is_finite(linear):
+		return
+	set_music_volume_linear(linear)
 
 
 ## Reads `soundEnabled` from the SaveService autoload when it exists. Defaults to
