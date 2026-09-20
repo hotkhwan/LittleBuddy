@@ -35,6 +35,7 @@ extends RefCounted
 const Joystick := preload("res://scripts/input/virtual_joystick.gd")
 const HouseHud := preload("res://scripts/gameplay/house_hud.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
+const Movement := preload("res://scripts/character/character_movement_controller.gd")
 
 const JOYSTICK_SOURCE: String = "res://scripts/input/virtual_joystick.gd"
 
@@ -74,6 +75,7 @@ func run():
 	failures.append_array(_test_it_never_steals_from_the_hud_or_a_drag())
 	failures.append_array(_test_palette_is_the_locked_mint())
 	failures.append_array(_test_hud_geometry_still_agrees())
+	failures.append_array(_test_run_band_agrees_and_is_reachable())
 	return failures
 
 
@@ -552,6 +554,34 @@ func _test_hud_geometry_still_agrees():
 				% HouseHud.SPEAK_HALF_WIDTH)
 	if Joystick.CENTRE_CLEARANCE <= 0.0:
 		failures.append("there is no clearance left between the stick and the Speak button")
+	return failures
+
+
+## The walk/run boundary is one number in two files (the input layer may not
+## import the character layer). Here is where they are held together -- and the
+## boundary must be somewhere a thumb can actually find: a real ring radius
+## strictly between the dead zone and the rim, with a gentle push walking and a
+## push to the ring running.
+func _test_run_band_agrees_and_is_reachable():
+	var failures: Array = []
+	if not is_equal_approx(Joystick.RUN_MAGNITUDE, Movement.RUN_MAGNITUDE):
+		failures.append("the stick draws the walk/run boundary at %.2f and the character runs "
+				% Joystick.RUN_MAGNITUDE + "from %.2f; the ring would lie" % Movement.RUN_MAGNITUDE)
+	var dead: float = Joystick.MAX_RADIUS * Joystick.DEAD_ZONE_RATIO
+	var ring: float = Joystick.run_ring_radius()
+	if ring <= dead + 20.0 or ring >= Joystick.MAX_RADIUS - 15.0:
+		failures.append("the run ring sits at %.0f px (dead zone %.0f, rim %.0f): a thumb cannot "
+				% [ring, dead, Joystick.MAX_RADIUS] + "tell walking from running there")
+	var origin: Vector2 = Vector2(300.0, 800.0)
+	var gentle: Dictionary = Joystick.resolve(origin, origin + Vector2(dead + (ring - dead) * 0.5, 0.0))
+	if bool(gentle["running"]):
+		failures.append("a push halfway to the run ring is already running")
+	var hard: Dictionary = Joystick.resolve(origin, origin + Vector2(Joystick.MAX_RADIUS, 0.0))
+	if not bool(hard["running"]):
+		failures.append("a push out to the ring is not running")
+	var on_ring: Dictionary = Joystick.resolve(origin, origin + Vector2(ring + 1.0, 0.0))
+	if not bool(on_ring["running"]):
+		failures.append("just past the run ring must be running; the ring is drawn in the wrong place")
 	return failures
 
 

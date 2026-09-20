@@ -21,7 +21,8 @@ extends RefCounted
 ##
 ## And two rules the stick brings with it:
 ##
-##   * it may never exceed `WALK_SPEED` (1.05 m/s, the top of the walk range for
+##   * it may never exceed `RUN_SPEED` at full deflection, nor `WALK_SPEED` inside
+##     the walk band (1.05 m/s, the top of the walk range for
 ##     a 0.22 m leg at Froude ~ 0.51 -- past it no walk cycle reads as walking);
 ##   * it may never put the child somewhere the level cannot recover from. Direct
 ##     drive points wherever a thumb points, so it is clamped to the navigation
@@ -123,12 +124,19 @@ func _test_drive_is_walking_not_a_side_channel():
 	return failures
 
 
-## The ceiling, from every angle and from an input that is over-length on
+## The ceilings, from every angle and from an input that is over-length on
 ## purpose (a caller that forgot to normalise must not become a sprint).
+##
+## Two of them since the run landed: a stick held INSIDE the walk band may never
+## exceed `WALK_SPEED`, and a stick held anywhere may never exceed `RUN_SPEED`.
+## Full deflection must actually reach the run, and the boundary itself must be
+## exactly a full walk -- continuous, so there is no step under the thumb.
 func _test_drive_never_exceeds_walk_speed():
 	var failures: Array = []
-	var top: float = MovementController.WALK_SPEED
+	var top: float = MovementController.RUN_SPEED
+	var walk: float = MovementController.WALK_SPEED
 	var reached: float = 0.0
+	var reached_walking: float = 0.0
 
 	for step: int in range(16):
 		var angle: float = TAU * float(step) / 16.0
@@ -140,23 +148,66 @@ func _test_drive_never_exceeds_walk_speed():
 			var speed: float = (result["velocity"] as Vector3).length()
 			reached = maxf(reached, speed)
 			if speed > top + SPEED_EPSILON:
-				failures.append("the stick reached %.4f m/s at %.0f degrees; WALK_SPEED is %.2f "
+				failures.append("the stick reached %.4f m/s at %.0f degrees; RUN_SPEED is %.2f "
 						% [speed, rad_to_deg(angle), top]
 						+ "and it is a ceiling, not a suggestion")
+				break
+		# The same angle, held exactly at the walk/run boundary: a full walk and
+		# not a metre per second more.
+		var walker: RefCounted = MovementController.create(null)
+		var band: float = MovementController.RUN_MAGNITUDE
+		walker.call("set_drive", cos(angle) * band, sin(angle) * band)
+		for _frame: int in range(90):
+			var result: Dictionary = walker.call("advance", Vector3.ZERO, 0.0, DT)
+			var speed: float = (result["velocity"] as Vector3).length()
+			reached_walking = maxf(reached_walking, speed)
+			if speed > walk + SPEED_EPSILON:
+				failures.append("inside the walk band the stick reached %.4f m/s at %.0f degrees; "
+						% [speed, rad_to_deg(angle)]
+						+ "WALK_SPEED %.2f is the ceiling there" % walk)
+				break
+			if bool(walker.call("is_running")):
+				failures.append("is_running() answered true at the walk/run boundary (%.3f m/s)"
+						% speed)
 				break
 
 	if reached < top - 0.01:
 		failures.append("full deflection only ever reached %.3f m/s of a possible %.2f; the "
-				% [reached, top] + "stick cannot ask for the walk it is supposed to ask for")
+				% [reached, top] + "stick cannot ask for the run it is supposed to ask for")
+	if reached_walking < walk - 0.01:
+		failures.append("the walk/run boundary only reached %.3f m/s; it must be a full walk (%.2f)"
+				% [reached_walking, walk])
+	# The mapping is continuous and monotonic across the boundary.
+	var previous: float = -1.0
+	for i: int in range(101):
+		var speed: float = MovementController.drive_speed_for(float(i) / 100.0)
+		if speed < previous - 0.0001:
+			failures.append("drive_speed_for() went backwards at magnitude %.2f" % (float(i) / 100.0))
+			break
+		previous = speed
+	if not is_equal_approx(MovementController.drive_speed_for(MovementController.RUN_MAGNITUDE), walk):
+		failures.append("the walk band does not end at exactly WALK_SPEED")
+	if not is_equal_approx(MovementController.drive_speed_for(1.0), top):
+		failures.append("full deflection is not exactly RUN_SPEED")
 
-	# ...and a half-push really is slower than a full one, in proportion.
+	# ...and a half-push really is slower than a full one, in proportion: the
+	# stick is analog, not a run button. Half deflection sits inside the walk
+	# band, so it is half of the way to the boundary's full walk -- and the body
+	# actually reaches exactly what the mapping promises.
 	var half: RefCounted = MovementController.create(null)
 	half.call("set_drive", 0.0, -0.5)
 	for _frame: int in range(90):
 		half.call("advance", Vector3.ZERO, 0.0, DT)
 	var half_speed: float = (half.call("get_drive_velocity") as Vector3).length()
-	if absf(half_speed - top * 0.5) > 0.01:
-		failures.append("half deflection gave %.3f m/s, not half of %.2f" % [half_speed, top])
+	var promised: float = MovementController.drive_speed_for(0.5)
+	if absf(half_speed - promised) > 0.01:
+		failures.append("half deflection gave %.3f m/s, not the %.3f the mapping promises"
+				% [half_speed, promised])
+	if not is_equal_approx(promised, walk * 0.5 / MovementController.RUN_MAGNITUDE):
+		failures.append("half deflection is not proportional inside the walk band (%.3f)" % promised)
+	if half_speed >= walk - 0.01:
+		failures.append("half deflection (%.3f m/s) is already a full walk; the stick is binary"
+				% half_speed)
 	return failures
 
 

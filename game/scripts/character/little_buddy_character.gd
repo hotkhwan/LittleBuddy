@@ -70,6 +70,9 @@ signal interaction_ready(target_id: String)
 signal move_failed(target_id: String, reason: String)
 
 signal move_started(target_id: String)
+## The character crossed the walk/run boundary in either direction. Emitted only
+## on the change, so a HUD can show a run badge without polling `is_running()`.
+signal running_changed(running: bool)
 signal action_started(action_name: String)
 signal action_finished(action_name: String)
 signal state_changed(state_name: String)
@@ -92,6 +95,10 @@ var _targets: Dictionary = {}
 var _wired: bool = false
 var _last_state_name: String = ""
 var _driver_retries: int = 0
+var _last_running: bool = false
+## The view that owns the locomotion clips (`set_locomotion`), found once. Null
+## until it appears; the procedural toddler never has one.
+var _locomotion_view: Node = null
 
 
 func _ready() -> void:
@@ -142,8 +149,9 @@ func move_to_ground(x: float, z: float) -> bool:
 
 ## Walks in a DIRECTION rather than to a place: the virtual thumbstick.
 ##
-## `(x, z)` is a horizontal vector in WORLD space with magnitude 0..1, scaled to
-## `CharacterMovementController.WALK_SPEED`. Plain floats, like everything else
+## `(x, z)` is a horizontal vector in WORLD space with magnitude 0..1. Up to
+## `CharacterMovementController.RUN_MAGNITUDE` it asks for a walk, beyond it a
+## run (`RUN_SPEED` at full deflection). Plain floats, like everything else
 ## here, so the input layer never needs a 3D type either.
 ##
 ## Called every physics frame while a thumb is on the stick. The first call of a
@@ -175,6 +183,19 @@ func stop_driving() -> void:
 func is_driving() -> bool:
 	_ensure_wired()
 	return bool(_controller.call("is_driving"))
+
+
+## True while travelling faster than a walk -- the outer band of the stick. A
+## pathed walk never runs. `running_changed` fires on the transitions.
+func is_running() -> bool:
+	_ensure_wired()
+	return bool(_controller.call("is_running"))
+
+
+## Ground speed this frame, m/s.
+func get_speed() -> float:
+	_ensure_wired()
+	return float(_controller.call("get_speed"))
 
 
 ## Shows a semantic action: "drink", "eat", "sit", "brushTeeth", "celebrate"...
@@ -403,6 +424,7 @@ func step_movement(delta: float) -> void:
 	if bool(step.get("actionFinished", false)):
 		action_finished.emit(String(step.get("actionName", "")))
 	_sync_state_signal()
+	_sync_running_signal()
 
 
 ## -- Internals ----------------------------------------------------------------
@@ -473,9 +495,10 @@ func _action_seconds(action_name: String, requested: float) -> float:
 ## a caller requests, it is a consequence of moving, and routing it through
 ## `play_action("walk")` would let a mission think it had asked for something.
 func _sync_locomotion(speed: float) -> void:
-	var view: Node = _find_locomotion_view(self)
-	if view != null:
-		view.call("set_locomotion", speed)
+	if _locomotion_view == null or not is_instance_valid(_locomotion_view):
+		_locomotion_view = _find_locomotion_view(self)
+	if _locomotion_view != null:
+		_locomotion_view.call("set_locomotion", speed)
 
 
 func _find_locomotion_view(node: Node) -> Node:
@@ -500,6 +523,13 @@ func _apply_carry_effect(action_name: String) -> void:
 ## to scale.
 func _sync_locomotion_rate(speed: float) -> void:
 	if _driver == null or not _driver.has_method("set_locomotion_scale"):
+		return
+	# A view with its own locomotion (`set_locomotion`, above) owns the clip AND
+	# its rate: it picks walk or run by speed and trims each to the ground. The
+	# driver's clamp tops out at 1.0x of the walk clip, and letting it write
+	# `speed_scale` after the view did was exactly how the run clip ended up
+	# playing at walking cadence under a running body.
+	if _locomotion_view != null and is_instance_valid(_locomotion_view):
 		return
 	_driver.call("set_locomotion_scale", speed / MovementControllerScript.WALK_SPEED)
 
@@ -532,6 +562,14 @@ func _ensure_driver() -> void:
 	var player: AnimationPlayer = _find_animation_player(self)
 	if player != null:
 		_driver = AnimationDriverScript.create(player)
+
+
+func _sync_running_signal() -> void:
+	var running: bool = bool(_controller.call("is_running"))
+	if running == _last_running:
+		return
+	_last_running = running
+	running_changed.emit(running)
 
 
 func _sync_state_signal() -> void:

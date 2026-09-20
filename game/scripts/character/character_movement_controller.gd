@@ -114,6 +114,41 @@ const STATE_NAMES: Dictionary = {
 ## skate), and `test_movement_controller.gd` now checks that the speed and the
 ## clip still agree, so neither can be changed alone again.
 const WALK_SPEED: float = 1.05
+
+## The run. Added 2026-09-20 after the owner played the thumbstick and reported
+## "run is not faster than walk" -- and measured, it was not: every mode of travel
+## topped out at exactly `WALK_SPEED`, and `locomotion.gd` was already playing
+## the RUN clip at that speed (1.05 m/s is a jog for a 1.65 m caregiver). So the
+## character LOOKED like she was running and covered the room at walking pace.
+##
+## 1.6 m/s is 1.52x the walk: a 4 m room in 2.5 s rather than 3.8 s, which is a
+## difference a child can feel under the thumb without becoming an action game.
+## The run clip's natural speed is 0.989 m/s (`locomotion.gd`), so the feet keep
+## up at a 1.62x trim -- inside `Locomotion.MAX_SCALE` -- and the cadence stays
+## planted. `test_run_vs_walk.gd` measures the displacement of the REAL character
+## in both modes and asserts the ratio.
+##
+## Only the thumbstick runs. Tap-to-walk stays at `WALK_SPEED`: a tap is a calm
+## instruction, a hard push is urgency, and a run to every tapped bottle would
+## make the calm pace impossible to ask for.
+const RUN_SPEED: float = 1.6
+
+## The stick's walk/run boundary, as a magnitude of its 0..1 output.
+##
+## Up to here the thumb asks for a walk, scaled so that this deflection is
+## exactly `WALK_SPEED`; past it the speed climbs linearly to `RUN_SPEED` at full
+## deflection. 0.70 puts the boundary where a MOBA thumb expects it: a gentle or
+## half push walks, a push out to the ring runs. Continuous and monotonic, so
+## there is no step under the thumb at the boundary, and `is_running()` reports
+## which side of it the character is on so the HUD can say so.
+## `virtual_joystick.gd` mirrors this number to draw the boundary; `test_joystick.gd`
+## asserts the two still agree.
+const RUN_MAGNITUDE: float = 0.70
+
+## Above this ground speed the character counts as running, for `is_running()`.
+## A little over the walk ceiling rather than exactly on it, so a full walk at
+## the boundary does not flicker the report.
+const RUN_REPORT_SPEED: float = WALK_SPEED * 1.06
 ## Radians/second. Fast enough that a child sees an immediate response to a tap,
 ## slow enough that the turn is visible rather than a snap.
 ##
@@ -167,7 +202,7 @@ const DRIVE_STOP_SPEED: float = 0.02
 ## off the navmesh is a dead end, and this game does not have those.
 ##
 ## SMALLER THAN ONE FRAME OF TRAVEL, deliberately. At `WALK_SPEED` and 60 Hz a
-## frame covers 17.5 mm, so a tolerance of 20 mm let every other frame slip past
+## frame covers 17.5 mm (27 mm at `RUN_SPEED`), so a tolerance of 20 mm let every other frame slip past
 ## the mesh edge unclamped and get pulled back on the next one: rendered against
 ## a wall, the character sat in a 2 cm buzz with the walk velocity never settling.
 ## At 5 mm the edge holds still.
@@ -293,7 +328,8 @@ func request_move(destination: Vector3, options: Dictionary = {}) -> int:
 ## -- Direct drive --------------------------------------------------------------
 
 ## Steers by DIRECTION rather than by destination: `(x, z)` is a horizontal
-## vector with magnitude 0..1, which is scaled to `WALK_SPEED`.
+## vector with magnitude 0..1. The magnitude picks the pace through
+## `drive_speed_for()`: a walk up to `RUN_MAGNITUDE`, a run beyond it.
 ##
 ## Re-asserted every frame while a thumb is on the stick, so it is deliberately
 ## cheap and idempotent: only the FIRST call of a gesture tears down whatever the
@@ -314,9 +350,9 @@ func set_drive(x: float, z: float) -> bool:
 		clear_drive()
 		return false
 	if magnitude > 1.0:
-		# A ceiling, not a suggestion. `WALK_SPEED` is the top of the walk range
-		# for a 0.22 m leg (Froude ~ 0.51); anything past it reads as a run and no
-		# walk cycle can be authored to cover it.
+		# A ceiling, not a suggestion: full deflection is `RUN_SPEED` and an
+		# over-length input from a caller that forgot to normalise must not become
+		# a sprint past what the run clip can cover.
 		input /= magnitude
 
 	if not _drive_active:
@@ -349,9 +385,32 @@ func is_driving() -> bool:
 
 
 ## The velocity direct drive is applying right now, m/s. Never longer than
-## `WALK_SPEED`.
+## `RUN_SPEED`.
 func get_drive_velocity() -> Vector3:
 	return _drive_velocity
+
+
+## The ground speed a stick magnitude asks for. Static and pure, so the walk/run
+## mapping is assertable without a controller.
+static func drive_speed_for(magnitude: float) -> float:
+	var m: float = clampf(magnitude, 0.0, 1.0)
+	if m <= RUN_MAGNITUDE:
+		return WALK_SPEED * m / RUN_MAGNITUDE
+	return lerpf(WALK_SPEED, RUN_SPEED, (m - RUN_MAGNITUDE) / (1.0 - RUN_MAGNITUDE))
+
+
+## True while the character is travelling faster than a walk. Only the stick
+## can make that true; a pathed walk never runs.
+func is_running() -> bool:
+	return _drive_velocity.length() > RUN_REPORT_SPEED
+
+
+## The ground speed being applied this frame, m/s -- the driven velocity while
+## the stick (or its coast-down) is steering, else the last pathed step.
+func get_speed() -> float:
+	if _drive_active or not _drive_velocity.is_zero_approx():
+		return _drive_velocity.length()
+	return _last_speed
 
 
 ## Plays a semantic action ("drink", "brushTeeth", "celebrate"...).
@@ -530,6 +589,7 @@ func _advance_walking(position: Vector3, yaw: float, delta: float, step: Diction
 			step["yaw"] = NavMath.step_yaw(yaw, heading, TURN_SPEED * delta)
 		return
 
+	_last_speed = 0.0
 	# Position is done. Report arrival once, then turn to face if asked.
 	if not _arrived_emitted:
 		_arrived_emitted = true
@@ -555,16 +615,18 @@ func _advance_walking(position: Vector3, yaw: float, delta: float, step: Diction
 ##
 ##   1. the wanted velocity is approached rather than snapped to, so a grab
 ##      accelerates and a release decelerates (`DRIVE_ACCELERATION`);
-##   2. the result is hard-clamped to `WALK_SPEED`, because the stick may never
-##      make Little Buddy faster than the walk cycle he is animated with;
+##   2. the result is hard-clamped to `RUN_SPEED`, because the stick may never
+##      make the character faster than the run cycle she is animated with;
 ##   3. the resulting STEP is clamped to the navigation mesh, so a thumb pointed
 ##      at a wall slides along it and a thumb pointed out of the room does
 ##      nothing at all.
 func _advance_driven(position: Vector3, yaw: float, delta: float, step: Dictionary) -> void:
-	var wanted: Vector3 = _drive_input * WALK_SPEED if _drive_active else Vector3.ZERO
+	var wanted: Vector3 = Vector3.ZERO
+	if _drive_active and _drive_input.length_squared() > 0.0:
+		wanted = _drive_input.normalized() * drive_speed_for(_drive_input.length())
 	_drive_velocity = _drive_velocity.move_toward(wanted, DRIVE_ACCELERATION * maxf(delta, 0.0))
-	if _drive_velocity.length() > WALK_SPEED:
-		_drive_velocity = _drive_velocity.normalized() * WALK_SPEED
+	if _drive_velocity.length() > RUN_SPEED:
+		_drive_velocity = _drive_velocity.normalized() * RUN_SPEED
 	if not _drive_active and _drive_velocity.length() <= DRIVE_STOP_SPEED:
 		_drive_velocity = Vector3.ZERO
 
@@ -606,8 +668,8 @@ func _clamp_to_navigable(position: Vector3, velocity: Vector3, delta: float) -> 
 
 	var corrected: Vector3 = (snapped - position) / delta
 	corrected.y = 0.0
-	if corrected.length() > WALK_SPEED:
-		corrected = corrected.normalized() * WALK_SPEED
+	if corrected.length() > RUN_SPEED:
+		corrected = corrected.normalized() * RUN_SPEED
 	return corrected
 
 
@@ -630,6 +692,7 @@ func _advance_interacting(delta: float, step: Dictionary) -> void:
 ## Ends the walk without touching the arrival latches -- they belong to the
 ## request, not to the walk, and are only cleared when a new request is accepted.
 func _finish_walk(_step: Dictionary) -> void:
+	_last_speed = 0.0
 	_path = PackedVector3Array()
 	_path_index = 0
 	_state = _resting_state()
@@ -685,6 +748,8 @@ func is_busy() -> bool:
 ## advanced (seeded by `set_position()`) keeps `request_move()` a pure function of
 ## known state instead of requiring the caller to pass a position it already gave us.
 var _last_known_position: Vector3 = Vector3.ZERO
+## The pathed step's ground speed, for `get_speed()`.
+var _last_speed: float = 0.0
 
 
 func set_position(position: Vector3) -> void:

@@ -36,9 +36,11 @@ extends Control
 ##   * **A floor under the output** (`MIN_OUTPUT`). Any deflection past the dead
 ##     zone produces a *visible* walk. A stick that can ask for 0.04 m/s reads as
 ##     a broken game, not as fine control.
-##   * **A hard ceiling at 1.0**, which the character maps to `WALK_SPEED`
-##     (1.05 m/s). The pace is deliberately calm and derived from gait physics
-##     (Froude ~ 0.51 for a 0.22 m leg); the stick may not exceed it.
+##   * **A hard ceiling at 1.0**, which the character maps to `RUN_SPEED`
+##     (1.6 m/s). Up to `RUN_MAGNITUDE` of that the thumb asks for a walk
+##     (`WALK_SPEED`, 1.05 m/s, at the boundary); a push out towards the ring
+##     runs. The boundary is drawn as a second, fainter ring so the child can
+##     see where walking becomes running.
 ##
 ## ## Coexistence
 ##
@@ -133,6 +135,12 @@ const ZONE_MAX_WIDTH: float = 620.0
 const ZONE_HEIGHT_RATIO: float = 0.60
 const ZONE_MIN_HEIGHT: float = 380.0
 const ZONE_MAX_HEIGHT: float = 660.0
+
+## Where a walk becomes a run, as a magnitude of this stick's output. MIRRORS
+## `CharacterMovementController.RUN_MAGNITUDE` rather than importing it: the
+## input layer must not depend on the character layer. `test_joystick.gd`
+## asserts the two numbers still agree, so neither can be changed alone.
+const RUN_MAGNITUDE: float = 0.70
 
 ## Half-width of `house_hud.gd`'s Speak button, which is anchored centre-bottom.
 ## Mirrored here rather than imported: the input layer must not depend on the
@@ -247,8 +255,8 @@ static func rest_origin(zone: Rect2) -> Vector2:
 
 ## Output magnitude for `travel`, the dead-zone-compensated 0..1 deflection.
 ##
-## Never greater than 1.0 -- the character multiplies this by `WALK_SPEED` and
-## the walk speed is a ceiling, not a suggestion.
+## Never greater than 1.0 -- full deflection is the character's `RUN_SPEED` and
+## that is a ceiling, not a suggestion.
 static func response(travel: float) -> float:
 	var t: float = clampf(travel, 0.0, 1.0)
 	if t <= 0.0:
@@ -257,10 +265,32 @@ static func response(travel: float) -> float:
 	return clampf(MIN_OUTPUT + (1.0 - MIN_OUTPUT) * shaped, 0.0, 1.0)
 
 
+## The knob offset (pixels from the origin) at which the output reaches
+## `RUN_MAGNITUDE` -- the radius of the walk/run ring. The response curve is
+## monotonic, so this is found by bisection rather than by inverting it by hand.
+static func run_ring_radius() -> float:
+	var dead: float = MAX_RADIUS * DEAD_ZONE_RATIO
+	var low: float = 0.0
+	var high: float = 1.0
+	for _i: int in range(24):
+		var mid: float = (low + high) * 0.5
+		if response(mid) < RUN_MAGNITUDE:
+			low = mid
+		else:
+			high = mid
+	return dead + (MAX_RADIUS - dead) * high
+
+
+## True when a stick output of `magnitude` asks the character to run.
+static func is_run_magnitude(magnitude: float) -> bool:
+	return magnitude > RUN_MAGNITUDE
+
+
 ## The whole stick, as a function of where the thumb landed and where it is now.
 ##
 ## Returns camelCase:
 ##   `live`      bool    -- past the dead zone
+##   `running`   bool    -- past the walk/run boundary
 ##   `x` / `y`   float   -- analog output, screen axes, magnitude <= 1
 ##   `magnitude` float
 ##   `knob`      Vector2 -- offset of the knob from the origin, clamped to
@@ -274,13 +304,14 @@ static func resolve(origin: Vector2, current: Vector2) -> Dictionary:
 
 	var dead: float = MAX_RADIUS * DEAD_ZONE_RATIO
 	if distance <= dead or distance <= 0.0:
-		return {"live": false, "x": 0.0, "y": 0.0, "magnitude": 0.0, "knob": knob}
+		return {"live": false, "running": false, "x": 0.0, "y": 0.0, "magnitude": 0.0, "knob": knob}
 
 	var travel: float = (distance - dead) / maxf(MAX_RADIUS - dead, 0.001)
 	var magnitude: float = response(travel)
 	var direction: Vector2 = offset / distance
 	return {
 		"live": true,
+		"running": is_run_magnitude(magnitude),
 		"x": direction.x * magnitude,
 		"y": direction.y * magnitude,
 		"magnitude": magnitude,
@@ -398,6 +429,12 @@ func is_enabled() -> bool:
 func is_active() -> bool:
 	build()
 	return _live
+
+
+## True while the thumb is past the walk/run boundary.
+func is_running() -> bool:
+	build()
+	return _live and is_run_magnitude(_output.length())
 
 
 ## True while a thumb is down, whether or not it has left the dead zone.
@@ -537,6 +574,15 @@ func _draw() -> void:
 	draw_circle(centre, MAX_RADIUS, _mint(BASE_FILL_ALPHA * opacity))
 	draw_arc(centre, MAX_RADIUS, 0.0, TAU, 48, _rim(BASE_RING_ALPHA * opacity),
 			RING_WIDTH, true)
+
+	# The walk/run boundary: a thin ring at the radius where the output crosses
+	# `RUN_MAGNITUDE`. Faint at rest; while the thumb is past it the base ring
+	# brightens to full, which is the whole of the "you are running" cue on the
+	# stick itself (the HUD may add a badge off `LittleBuddyCharacter.running_changed`).
+	var running: bool = held and is_run_magnitude(_output.length())
+	draw_arc(centre, run_ring_radius(), 0.0, TAU, 40,
+			_rim((KNOB_RIM_ALPHA if running else BASE_RING_ALPHA * 0.55) * opacity),
+			RING_WIDTH * 0.6, true)
 
 	# Knob: mint, brighter, rimmed in `deep(mint)` for the same reason. `#000000`
 	# is banned; §3's "Deep" step (22% toward `ink`) is the palette's own way of

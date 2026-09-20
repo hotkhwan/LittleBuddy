@@ -12,7 +12,10 @@ extends RefCounted
 ## | `walk` | 1.067 s | 0.498 m | **0.467 m/s** |
 ## | `run`  | 0.667 s | 0.659 m | **0.989 m/s** |
 ##
-## and `CharacterMovementController.WALK_SPEED` is **1.05 m/s**.
+## and `CharacterMovementController.WALK_SPEED` is **1.05 m/s**; since 2026-09-20
+## the thumbstick's outer band runs at `RUN_SPEED`, **1.6 m/s**, which the run
+## clip covers at a 1.62x trim -- still inside `MAX_SCALE`, so the feet stay
+## planted at the top of the range too (`test_locomotion.gd` sweeps to it).
 ##
 ## So driving the walk clip at 1.0x while moving at 1.05 m/s meant the feet were
 ## delivering 0.467 m/s under a body travelling 1.05 -- the body outran its own

@@ -55,9 +55,10 @@ func _test_the_float_is_gone_at_the_real_speed():
 
 func _test_no_slip_across_the_whole_range():
 	var failures: Array = []
-	# Every speed the character can actually travel at, not just the top one.
+	# Every speed the character can actually travel at, not just the top one --
+	# and since the run landed the top one is `RUN_SPEED`, not the walk.
 	var speed: float = Locomotion.IDLE_SPEED
-	while speed <= Movement.WALK_SPEED + 0.001:
+	while speed <= Movement.RUN_SPEED + 0.001:
 		var slip: float = Locomotion.slip_ratio(speed)
 		if slip > MAX_SLIP:
 			failures.append("at %.2f m/s the feet slip %.0f%% (clip '%s' at %.2fx)"
@@ -98,14 +99,14 @@ func _test_scale_is_trimmed_not_stretched():
 	var failures: Array = []
 	# The whole point of choosing by speed is that the correction stays small.
 	var speed: float = Locomotion.IDLE_SPEED
-	while speed <= Movement.WALK_SPEED + 0.001:
+	while speed <= Movement.RUN_SPEED + 0.001:
 		var scale: float = Locomotion.scale_for_speed(speed)
 		if scale < Locomotion.MIN_SCALE or scale > Locomotion.MAX_SCALE:
 			failures.append("at %.2f m/s playback is %.2fx, outside the legible range"
 					% [speed, scale])
 		speed += 0.05
 	# describe() must never disagree with the two accessors.
-	for probe: float in [0.0, 0.3, 0.6, 1.05]:
+	for probe: float in [0.0, 0.3, 0.6, 1.05, Movement.RUN_SPEED]:
 		var described: Dictionary = Locomotion.describe(probe)
 		if String(described["clip"]) != Locomotion.clip_for_speed(probe):
 			failures.append("describe() and clip_for_speed() disagree at %.2f" % probe)
