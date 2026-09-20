@@ -1,0 +1,22 @@
+# Agent E (voice) -- proposed copy change for the lead-owned care overlay.
+# Mission 01 conversation: Bunny asks Aliz by name, Aliz answers in the same
+# small vocabulary, and the last line is the mission's outro word for word.
+# Apply with: git apply docs/patches/agentE_care_overlay.diff
+--- a/game/scripts/care/care_overlay.gd
++++ b/game/scripts/care/care_overlay.gd
+@@ -86,12 +86,12 @@ const COPY: Dictionary = {
+ 	MIX: {
+-		"title": "Make the milk!", "word": "milk", "thai": "ผสมนม",
++		"title": "Let's make some milk!", "word": "milk", "thai": "ผสมนม",
+ 		"hint": "Hold the jug over the bottle, then shake it.",
+-		"childLine": "I'm hungry!", "doneLine": "The milk is ready!",
++		"childLine": "I'm hungry, Aliz!", "doneLine": "The milk is ready!",
+ 	},
+ 	FEED: {
+-		"title": "Drink!", "word": "drink", "thai": "ดื่มนม",
++		"title": "Time to drink!", "word": "drink", "thai": "ดื่มนม",
+ 		"hint": "Hold the bottle at Bunny's mouth.",
+-		"childLine": "Milk, please!", "doneLine": "Yum! Thank you!",
++		"childLine": "Milk, please, Aliz!", "doneLine": "Thank you, Aliz!",
+ 	},
+ }

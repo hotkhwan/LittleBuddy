@@ -91,7 +91,7 @@ func stop_listening() -> void:
 
 
 func _on_partial_due() -> void:
-	if not _is_listening or _partial_offered:
+	if not _is_listening or _partial_offered or _simulate_failure or not emit_partial:
 		return
 	_partial_offered = true
 	partial_recognized.emit(next_transcript)

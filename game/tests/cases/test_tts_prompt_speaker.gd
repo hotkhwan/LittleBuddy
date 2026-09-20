@@ -20,6 +20,7 @@ func run():
 	failures.append_array(_test_queues_never_interrupts())
 	failures.append_array(_test_attach_is_safe())
 	failures.append_array(_test_mission_intro_and_outro_become_audible())
+	failures.append_array(_test_encouragement_is_spoken_as_a_reaction())
 	return failures
 
 
@@ -179,4 +180,51 @@ func _test_mission_intro_and_outro_become_audible():
 	runner.cancel()
 	runner.free()
 	harness["tts"].free()
+	return failures
+
+
+func _test_encouragement_is_spoken_as_a_reaction():
+	var failures: Array = []
+	var harness = _make_tts()
+	var tts = harness["tts"]
+	var runner: Node = MissionRunnerScript.new()
+	var speaker: Node = PromptSpeakerScript.attach(runner, tts)
+	if speaker == null:
+		runner.free()
+		tts.free()
+		return ["attach() returned null for a runner with an encouragement signal"]
+	if not runner.is_connected("encouragement", speaker.on_encouragement):
+		failures.append("the runner's encouragement signal is not connected; 'Great!' stays silent")
+
+	# The order a mode handler produces on a success: the encouragement, then the
+	# next task's prompt in the same breath.
+	runner.encouragement.emit("Great!")
+	if tts.get_current_text() != "Great!":
+		failures.append("encouragement should be spoken immediately, got '%s'" % tts.get_current_text())
+	tts.speak("Where is the bottle?")
+	if tts.get_current_text() != "Great!":
+		failures.append("the next prompt cut 'Great!' short")
+	if not tts.get_pending_texts().has("Where is the bottle?"):
+		failures.append("the next prompt should be waiting behind 'Great!'")
+
+	# A gentle retry: "Try again!" then the repeated ask.
+	tts.stop()
+	runner.encouragement.emit("Try again!")
+	tts.speak("Can you say milk?")
+	speaker.on_prompt("Can you say milk?", "")
+	speaker.flush()
+	if tts.get_current_text() != "Try again!":
+		failures.append("'Try again!' should be heard before the repeated prompt")
+	if tts.get_pending_texts().count("Can you say milk?") != 1:
+		failures.append("the repeated prompt should be queued exactly once, got %s"
+				% str(tts.get_pending_texts()))
+
+	# Blank encouragement is ignored.
+	tts.stop()
+	runner.encouragement.emit("  ")
+	if tts.is_speaking():
+		failures.append("blank encouragement must not speak")
+
+	runner.free()
+	tts.free()
 	return failures

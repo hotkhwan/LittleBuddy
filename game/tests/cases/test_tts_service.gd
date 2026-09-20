@@ -39,6 +39,10 @@ func run():
 	failures.append_array(_test_duration_estimate_scales_with_rate())
 	failures.append_array(_test_platform_argument_order())
 	failures.append_array(_test_degrades_without_voice_or_tree())
+	failures.append_array(_test_voice_chain_prefers_a_bright_natural_voice())
+	failures.append_array(_test_voice_chain_never_picks_a_novelty_voice_first())
+	failures.append_array(_test_reaction_is_not_cut_by_the_next_prompt())
+	failures.append_array(_test_reaction_protection_lapses())
 	return failures
 
 
@@ -376,5 +380,175 @@ func _test_degrades_without_voice_or_tree():
 	if typeof(available) != TYPE_BOOL:
 		failures.append("degrade: is_available() must return a bool")
 
+	service.free()
+	return failures
+
+
+# -- Voice choice ---------------------------------------------------------------
+
+
+## The list this Mac actually returned on 2026-09-20 (en-* entries), plus the
+## downloadable voices a parent may have installed, so the chain is exercised
+## against real identifiers rather than invented ones.
+func _mac_voices():
+	return [
+		{"name": "Samantha", "id": "com.apple.voice.compact.en-US.Samantha", "language": "en-US"},
+		{"name": "Eddy", "id": "com.apple.eloquence.en-US.Eddy", "language": "en-US"},
+		{"name": "Flo", "id": "com.apple.eloquence.en-US.Flo", "language": "en-US"},
+		{"name": "Junior", "id": "com.apple.speech.synthesis.voice.Junior", "language": "en-US"},
+		{"name": "Superstar", "id": "com.apple.speech.synthesis.voice.Princess", "language": "en-US"},
+		{"name": "Bubbles", "id": "com.apple.speech.synthesis.voice.Bubbles", "language": "en-US"},
+		{"name": "Daniel", "id": "com.apple.voice.super-compact.en-GB.Daniel", "language": "en-GB"},
+		{"name": "Karen", "id": "com.apple.voice.super-compact.en-AU.Karen", "language": "en-AU"},
+		{"name": "Kyoko", "id": "com.apple.voice.compact.ja-JP.Kyoko", "language": "ja-JP"},
+	]
+
+
+func _test_voice_chain_prefers_a_bright_natural_voice():
+	var failures: Array = []
+
+	# What this Mac has today: the only natural en-US voice is compact Samantha,
+	# and the chain must land there -- NOT on the list's first entry by accident,
+	# and never on "Junior", which is child-named and robot-sounding.
+	var today: Dictionary = TtsServiceScript.choose_voice(_mac_voices())
+	if String(today.get("id", "")) != "com.apple.voice.compact.en-US.Samantha":
+		failures.append("voice: on this Mac's list expected compact Samantha, got %s" % str(today))
+	if String(today.get("tier", "")) != "compact":
+		failures.append("voice: tier should read 'compact', got '%s'" % String(today.get("tier", "")))
+
+	# Once a parent downloads a better voice it must win without a code change.
+	var with_zoe: Array = _mac_voices()
+	with_zoe.append({"name": "Zoe", "id": "com.apple.voice.premium.en-US.Zoe", "language": "en-US"})
+	with_zoe.append({"name": "Samantha", "id": "com.apple.voice.enhanced.en-US.Samantha", "language": "en-US"})
+	var upgraded: Dictionary = TtsServiceScript.choose_voice(with_zoe)
+	if String(upgraded.get("id", "")) != "com.apple.voice.premium.en-US.Zoe":
+		failures.append("voice: premium Zoe should beat every other voice, got %s" % str(upgraded))
+
+	var with_enhanced: Array = _mac_voices()
+	with_enhanced.append({"name": "Samantha", "id": "com.apple.voice.enhanced.en-US.Samantha", "language": "en-US"})
+	var enhanced: Dictionary = TtsServiceScript.choose_voice(with_enhanced)
+	if String(enhanced.get("id", "")) != "com.apple.voice.enhanced.en-US.Samantha":
+		failures.append("voice: enhanced Samantha should beat compact Samantha, got %s" % str(enhanced))
+
+	# A female natural en-US voice that is not on the preferred list still beats
+	# a male one and beats every novelty engine.
+	var other: Array = [
+		{"name": "Tom", "id": "com.apple.voice.enhanced.en-US.Tom", "language": "en-US"},
+		{"name": "Kathy", "id": "com.apple.voice.enhanced.en-US.Kathy", "language": "en-US"},
+		{"name": "Junior", "id": "com.apple.speech.synthesis.voice.Junior", "language": "en-US"},
+	]
+	var pick: Dictionary = TtsServiceScript.choose_voice(other)
+	if String(pick.get("name", "")) != "Kathy":
+		failures.append("voice: a natural female en-US voice should win the fallback rung, got %s" % str(pick))
+
+	# No English voice at all: an empty answer, never a Japanese one.
+	var none: Dictionary = TtsServiceScript.choose_voice([
+		{"name": "Kyoko", "id": "com.apple.voice.compact.ja-JP.Kyoko", "language": "ja-JP"}])
+	if not none.is_empty():
+		failures.append("voice: with no English voice the choice must be empty, got %s" % str(none))
+	if not TtsServiceScript.choose_voice([]).is_empty():
+		failures.append("voice: an empty platform list must give an empty choice")
+	return failures
+
+
+func _test_voice_chain_never_picks_a_novelty_voice_first():
+	var failures: Array = []
+	# Only last-resort engines available: the chain still answers (something is
+	# better than silence) but a natural voice anywhere in English beats them.
+	var novelty_only: Array = [
+		{"name": "Junior", "id": "com.apple.speech.synthesis.voice.Junior", "language": "en-US"},
+		{"name": "Flo", "id": "com.apple.eloquence.en-US.Flo", "language": "en-US"},
+	]
+	if TtsServiceScript.choose_voice(novelty_only).is_empty():
+		failures.append("voice: with only novelty voices the service must still speak")
+	var with_au: Array = novelty_only.duplicate()
+	with_au.append({"name": "Karen", "id": "com.apple.voice.compact.en-AU.Karen", "language": "en-AU"})
+	var pick: Dictionary = TtsServiceScript.choose_voice(with_au)
+	if String(pick.get("name", "")) != "Karen":
+		failures.append("voice: a natural en-AU voice must beat en-US novelty engines, got %s" % str(pick))
+	for prefix: String in TtsServiceScript.LAST_RESORT_ID_PREFIXES:
+		for wanted: String in TtsServiceScript.PREFERRED_VOICE_IDS:
+			if wanted.begins_with(prefix):
+				failures.append("voice: preferred list contains a last-resort engine: %s" % wanted)
+	return failures
+
+
+# -- Reactions ------------------------------------------------------------------
+
+
+func _test_reaction_is_not_cut_by_the_next_prompt():
+	var failures: Array = []
+	var harness = _make_service()
+	var service = harness["service"]
+
+	# Drag the bottle: "Great!" then, in the same call stack, the next task's
+	# prompt with interrupt=true. The prompt must wait its turn.
+	service.react("Great!")
+	if service.get_current_text() != "Great!":
+		failures.append("react: the reaction should start at once, got '%s'" % service.get_current_text())
+	if not service.is_reaction_protected():
+		failures.append("react: a fresh reaction must be protected")
+	service.speak("I'm hungry, Aliz!")
+	service.speak("Go to Bunny.", false)
+	if service.get_current_text() != "Great!":
+		failures.append("react: an interrupting prompt cut the reaction ('%s' is speaking)"
+				% service.get_current_text())
+	if service.get_pending_texts() != ["I'm hungry, Aliz!", "Go to Bunny."]:
+		failures.append("react: the prompts should be queued behind the reaction in order, got %s"
+				% str(service.get_pending_texts()))
+
+	# A second reaction during a protected one goes NEXT, ahead of the prompts.
+	service.react("You can tap it too!")
+	if service.get_current_text() != "Great!":
+		failures.append("react: a second reaction must not cut the first")
+	if service.get_pending_texts()[0] != "You can tap it too!":
+		failures.append("react: a second reaction should be spoken before the queued prompts, got %s"
+				% str(service.get_pending_texts()))
+
+	# The reaction finishing releases the queue in that order.
+	_fire(harness, 0)
+	if service.get_current_text() != "You can tap it too!":
+		failures.append("react: expected the second reaction next, got '%s'" % service.get_current_text())
+	_fire(harness, 1)
+	if service.get_current_text() != "I'm hungry, Aliz!":
+		failures.append("react: expected the prompt after the reactions, got '%s'" % service.get_current_text())
+
+	# An ordinary prompt is NOT protected: a reaction may cut it (the child acted).
+	service.react("Nice!")
+	if service.get_current_text() != "Nice!":
+		failures.append("react: a reaction should interrupt an ordinary prompt")
+	if service.get_pending_count() != 0:
+		failures.append("react: interrupting clears the stale queue, %d left" % service.get_pending_count())
+
+	# stop() still stops everything, protection or not.
+	service.stop()
+	if service.is_speaking() or service.is_reaction_protected():
+		failures.append("react: stop() must end a protected reaction too")
+
+	# Empty reactions are ignored like empty prompts.
+	service.react("   ")
+	if service.is_speaking():
+		failures.append("react: blank text must not start an utterance")
+
+	service.free()
+	return failures
+
+
+func _test_reaction_protection_lapses():
+	var failures: Array = []
+	var harness = _make_service()
+	var service = harness["service"]
+	service.react("Great!")
+	# Rewind the protection deadline instead of sleeping.
+	service._reaction_protected_until_msec = Time.get_ticks_msec() - 1
+	if service.is_reaction_protected():
+		failures.append("react: protection must lapse after REACTION_PROTECT_SECONDS")
+	service.speak("Where is the bottle?")
+	if service.get_current_text() != "Where is the bottle?":
+		failures.append("react: once protection lapses an interrupting prompt takes over, got '%s'"
+				% service.get_current_text())
+	if TtsServiceScript.REACTION_PROTECT_SECONDS < 1.0 or TtsServiceScript.REACTION_PROTECT_SECONDS > 4.0:
+		failures.append("react: protection window %.1f s is outside the sensible 1-4 s band"
+				% TtsServiceScript.REACTION_PROTECT_SECONDS)
 	service.free()
 	return failures

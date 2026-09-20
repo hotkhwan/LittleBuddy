@@ -1,0 +1,13 @@
+# Agent E (voice) -- proposed copy change in game/content/care/tasks.json
+# (Mission 01's tasks live here, not in feeding/tasks.json). Bunny's opening
+# line is spoken first-person, matching the mission introPhrase and the bubble
+# line in child_needs.gd; Aliz's mixing line matches the overlay title.
+# Apply with: git apply docs/patches/agentE_care_tasks.diff
+--- a/game/content/care/tasks.json
++++ b/game/content/care/tasks.json
+@@ bunnyIsHungry @@
+-      "prompt": "Bunny is hungry!",
++      "prompt": "I'm hungry, Aliz!",
+@@ prepareMilkCare @@
+-      "prompt": "Let's make the milk!",
++      "prompt": "Let's make some milk!",

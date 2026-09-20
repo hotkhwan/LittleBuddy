@@ -113,6 +113,9 @@ const LAST_RESORT_ID_PREFIXES: Array[String] = [
 	"com.apple.speech.synthesis.voice.",
 ]
 
+## How often the platform voice list is re-read for `get_selected_voice()`.
+const VOICE_CACHE_SECONDS: float = 10.0
+
 ## How long a reaction is protected from being cut by the next prompt. Long
 ## enough for "Well done!" on the slow setting, short enough that a stuck
 ## utterance can never hold a prompt hostage.
@@ -133,6 +136,16 @@ const WORDS_PER_SECOND: float = 2.5
 ## first. Give it generous headroom so the timer cannot cut a prompt short.
 const NATIVE_TIMEOUT_FACTOR: float = 1.6
 const NATIVE_TIMEOUT_PAD_SECONDS: float = 0.8
+## Once the platform has reported an utterance STARTED, it is polled at this
+## interval and the utterance is completed as soon as the platform says it has
+## stopped speaking. Measured on this Mac (2026-09-20): the ENDED callback does
+## not arrive from AVSpeechSynthesizer in a plain run, so before this poll every
+## line held the queue for the full safety estimate -- "Great!" occupied 1.7 s
+## for 0.5 s of sound, and the loop felt slow for exactly that reason.
+const NATIVE_POLL_SECONDS: float = 0.1
+## The platform can report "not speaking" for a beat right after STARTED while
+## the synthesiser spins up; do not trust a silent poll before this much time.
+const NATIVE_POLL_MIN_SECONDS: float = 0.25
 ## If the platform still reports itself speaking when the safety timer fires,
 ## wait this much longer rather than starting the next prompt over the top of it.
 const TIMER_EXTENSION_SECONDS: float = 0.5
@@ -157,6 +170,10 @@ var _queue: Array[String] = []
 ## Set when the current utterance was handed to a real voice; drives how much
 ## headroom the safety timer gets.
 var _current_used_native: bool = false
+## Set by the platform's STARTED callback for the current utterance; from then
+## on `tts_is_speaking()` going false means the line has been heard in full.
+var _current_started_natively: bool = false
+var _current_begin_msec: int = 0
 ## Optional `func(duration: float, callback: Callable) -> void` used instead of a
 ## `SceneTreeTimer`. The headless test runner has no frame loop, so this is how
 ## the tests drive the queue one utterance at a time; production leaves it unset.
@@ -167,6 +184,12 @@ var _current_is_reaction: bool = false
 var _reaction_protected_until_msec: int = 0
 ## The voice id handed to the platform for the last utterance, for diagnostics.
 var _last_voice_id: String = ""
+## `choose_voice()` result, cached: enumerating the platform's voices costs
+## tens of milliseconds (180 entries on a Mac) and would otherwise run on every
+## utterance. Re-read every `VOICE_CACHE_SECONDS`, so a voice the parent
+## downloads in Settings is picked up within seconds, no restart needed.
+var _voice_cache: Dictionary = {}
+var _voice_cache_msec: int = -1
 
 
 func _ready() -> void:
@@ -181,6 +204,9 @@ func _ensure_initialised() -> void:
 	_initialised = true
 	_tts_feature_supported = _has_tts_feature()
 	if _tts_feature_supported:
+		DisplayServer.tts_set_utterance_callback(
+			DisplayServer.TTS_UTTERANCE_STARTED, _on_utterance_started
+		)
 		DisplayServer.tts_set_utterance_callback(
 			DisplayServer.TTS_UTTERANCE_ENDED, _on_utterance_ended
 		)
@@ -319,7 +345,12 @@ func get_speech_rate() -> float:
 func get_selected_voice() -> Dictionary:
 	if not _has_tts_feature():
 		return {}
-	return choose_voice(DisplayServer.tts_get_voices())
+	var now: int = Time.get_ticks_msec()
+	if _voice_cache_msec >= 0 and now - _voice_cache_msec < int(VOICE_CACHE_SECONDS * 1000.0):
+		return _voice_cache
+	_voice_cache = choose_voice(DisplayServer.tts_get_voices())
+	_voice_cache_msec = now
+	return _voice_cache
 
 
 ## One line for the parent diagnostic: "Samantha (compact)" or "none".
@@ -469,6 +500,8 @@ func _begin(text: String, is_reaction: bool = false) -> void:
 	_current_text = text
 	_is_speaking = true
 	_current_used_native = false
+	_current_started_natively = false
+	_current_begin_msec = Time.get_ticks_msec()
 	_current_is_reaction = is_reaction
 	if is_reaction:
 		_reaction_protected_until_msec = Time.get_ticks_msec() \
@@ -482,6 +515,8 @@ func _begin(text: String, is_reaction: bool = false) -> void:
 	# A started utterance is never left unresolved: either the platform reports
 	# it, or this timer does.
 	_schedule_fallback(utterance_id, _timeout_for(text, _current_used_native))
+	if _current_used_native:
+		_schedule_poll(utterance_id)
 
 
 func _try_speak_native(text: String, utterance_id: int) -> bool:
@@ -549,6 +584,36 @@ func _schedule_fallback(
 	_complete_utterance(utterance_id)
 
 
+## Polls the platform after STARTED so a finished line releases the queue at
+## once instead of waiting out the safety estimate. Uses the same timer seam as
+## the safety timer; outside a tree (headless tests) `_schedule_fallback` has
+## already resolved the utterance, so there is nothing to poll.
+func _schedule_poll(utterance_id: int) -> void:
+	if _timer_factory.is_valid():
+		return  # tests drive the queue by hand through the safety timer
+	var main_loop: MainLoop = Engine.get_main_loop()
+	if not (main_loop is SceneTree) or not is_inside_tree():
+		return
+	var timer: SceneTreeTimer = (main_loop as SceneTree).create_timer(NATIVE_POLL_SECONDS)
+	timer.timeout.connect(func() -> void: _on_poll(utterance_id))
+
+
+func _on_poll(utterance_id: int) -> void:
+	if utterance_id != _current_utterance_id or not _is_speaking:
+		return
+	var platform_speaking: bool = _platform_is_speaking()
+	if platform_speaking:
+		# Seeing the platform speak is as good as its STARTED callback, which
+		# does not arrive reliably on every platform/run.
+		_current_started_natively = true
+	var elapsed: float = float(Time.get_ticks_msec() - _current_begin_msec) / 1000.0
+	if _current_started_natively and elapsed >= NATIVE_POLL_MIN_SECONDS \
+			and not platform_speaking:
+		_complete_utterance(utterance_id)
+		return
+	_schedule_poll(utterance_id)
+
+
 ## The safety timer fired. If a real voice is demonstrably still talking, wait a
 ## little longer rather than starting the next prompt over the top of it: the
 ## timer is only an estimate, and talking over the child's prompt is worse than
@@ -588,6 +653,11 @@ func _pump() -> void:
 	if _is_speaking or _queue.is_empty():
 		return
 	_begin(_queue.pop_front())
+
+
+func _on_utterance_started(utterance_id: int) -> void:
+	if utterance_id == _current_utterance_id:
+		_current_started_natively = true
 
 
 func _on_utterance_ended(utterance_id: int) -> void:
