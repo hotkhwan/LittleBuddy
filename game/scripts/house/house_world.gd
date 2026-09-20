@@ -53,6 +53,9 @@ const NavMath := preload("res://scripts/navigation/nav_math.gd")
 const NavMapProviderScript := preload("res://scripts/navigation/nav_map_provider.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 const VirtualJoystickScript := preload("res://scripts/input/virtual_joystick.gd")
+## `load()`ed, not `preload()`ed, for the same reason as the registry: a world
+## must still parse if the interaction layer is ever moved.
+const AFFORDANCE_LAYER_SCRIPT_PATH: String = "res://scripts/interaction/affordance_layer.gd"
 
 ## Owned by agentCAM. Adopted if it exists, ignored if it does not.
 const ROOM_CAMERA_SCRIPT_PATH: String = "res://scripts/camera/room_camera.gd"
@@ -135,6 +138,9 @@ var _registered_target_ids: Array = []
 ## The RoV-style thumbstick, built into the world's own `UI` layer so it exists
 ## in Story, in Free Play and during first run alike.
 var _joystick: Control = null
+## The proximity affordance badges (OPEN / TAKE / PLACE / ENTER ...). Built into
+## the world's own `UI` layer so first run, Free Play and Story all have it.
+var _affordance_layer: Control = null
 var _world_state: RefCounted = null
 ## Story Mode's level loop, built on the first frame. Null in Free Play and in
 ## every headless test that never asks for it.
@@ -284,6 +290,7 @@ func build_world() -> void:
 	_build_navigation()
 	_wire_character()
 	_build_joystick()
+	_build_affordance_layer()
 
 	_world_state = WorldStateScript.create()
 	var start: Dictionary = WorldStateScript.resolve(
@@ -548,6 +555,33 @@ func _build_joystick() -> void:
 
 	if _nav_controller != null and _nav_controller.has_method("set_press_claimant"):
 		_nav_controller.call("set_press_claimant", stick)
+
+
+## Mounts `affordance_layer.gd` UNDER the joystick (index 0) so every button
+## the directors add later draws over it and gets its presses first. The HUD
+## detects this sibling by name and stands its own copy down, so there is never
+## a second set of badges.
+func _build_affordance_layer() -> void:
+	var ui: Node = get_node_or_null("UI")
+	if ui == null or _character == null:
+		return
+	if not ResourceLoader.exists(AFFORDANCE_LAYER_SCRIPT_PATH):
+		return
+	var script: GDScript = load(AFFORDANCE_LAYER_SCRIPT_PATH)
+	if script == null:
+		return
+	var layer: Control = script.new()
+	layer.name = "AffordanceLayer"
+	ui.add_child(layer)
+	ui.move_child(layer, 0)
+	layer.call("build")
+	layer.call("bind", self)
+	_affordance_layer = layer
+
+
+func get_affordance_layer() -> Control:
+	build_world()
+	return _affordance_layer
 
 
 func get_joystick() -> Control:
