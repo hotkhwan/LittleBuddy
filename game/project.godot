@@ -42,6 +42,11 @@ window/handheld/orientation=4
 
 pointing/emulate_mouse_from_touch=true
 
+[little_days]
+
+ai_tutor/cloud_enabled=false
+ai_tutor/backend_url=""
+
 [rendering]
 
 renderer/rendering_method="mobile"
