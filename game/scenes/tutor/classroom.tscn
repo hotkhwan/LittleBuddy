@@ -1,0 +1,35 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/tutor/tutor_scene.gd" id="1"]
+
+; The classroom's own light: one directional sun from the front-left, warm,
+; no shadows (CLAUDE.md: max one DirectionalLight3D, minimal shadows, no GI),
+; and a warm cream ambient so the pastel walls never go muddy. The room,
+; Aliz, the HUD and the break card are all built in code by tutor_scene.gd.
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 1
+background_color = Color(0.827, 0.906, 0.957, 1)
+ambient_light_source = 2
+ambient_light_color = Color(1, 0.965, 0.898, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 0
+glow_enabled = false
+fog_enabled = false
+
+[node name="Classroom" type="Node3D"]
+script = ExtResource("1")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+fov = 40.0
+near = 0.05
+far = 30.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+light_color = Color(1, 0.96, 0.9, 1)
+light_energy = 0.95
+shadow_enabled = false
+
+[node name="UI" type="CanvasLayer" parent="."]

@@ -1,0 +1,342 @@
+{
+  "schemaVersion": 1,
+  "description": "Shared truth table for the TutorTurn validator. The client (scripts/tutor/turn/tutor_turn.gd) and the server (backend/src/turn_validator.js) both run every case: `valid` says whether the turn must be accepted as-is; an invalid turn must be replaced by `fallback`.",
+  "fallback": {
+    "speech": "Let's try together!",
+    "emotion": "encouraging",
+    "gesture": "tilt",
+    "visual": {
+      "type": "none"
+    },
+    "lessonAction": "retry"
+  },
+  "cases": [
+    {
+      "id": "valid_flashcard_next_question",
+      "valid": true,
+      "reason": "the canonical example from the contract",
+      "turn": {
+        "speech": "Yes! It is an apple. Well done!",
+        "subtitle": "Yes! It is an apple.",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "apple_red"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "What is this?"
+      }
+    },
+    {
+      "id": "valid_minimal_no_visual",
+      "valid": true,
+      "reason": "subtitle, nextQuestion and visual are optional; visual defaults to none",
+      "turn": {
+        "speech": "Can you say banana?",
+        "emotion": "listening",
+        "gesture": "tilt",
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "valid_hint_with_model_visual",
+      "valid": true,
+      "reason": "model visuals are allowed with an approved id",
+      "turn": {
+        "speech": "It is yellow and long. Ba-na-na!",
+        "emotion": "encouraging",
+        "gesture": "point",
+        "visual": {
+          "type": "model",
+          "assetId": "banana_yellow"
+        },
+        "lessonAction": "give_hint"
+      }
+    },
+    {
+      "id": "valid_complete_with_curly_apostrophe",
+      "valid": true,
+      "reason": "typographic apostrophes and an em dash are common punctuation",
+      "turn": {
+        "speech": "That’s all for today — great job!",
+        "emotion": "smile",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "complete"
+      }
+    },
+    {
+      "id": "valid_end_session_neutral",
+      "valid": true,
+      "reason": "end_session with a neutral face and no gesture",
+      "turn": {
+        "speech": "Bye bye! See you tomorrow.",
+        "emotion": "neutral",
+        "gesture": "none",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "end_session"
+      }
+    },
+    {
+      "id": "valid_speech_at_limit",
+      "valid": true,
+      "reason": "exactly 160 characters is allowed",
+      "turn": {
+        "speech": "Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple appl",
+        "emotion": "happy",
+        "gesture": "nod",
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "valid_number_card",
+      "valid": true,
+      "reason": "short numbers in speech are fine and number cards are approved",
+      "turn": {
+        "speech": "One, two, three! Can you count with me?",
+        "emotion": "happy",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "number_3"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_speech_too_long",
+      "valid": false,
+      "reason": "161 characters",
+      "turn": {
+        "speech": "Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple Apple apple",
+        "emotion": "happy",
+        "gesture": "nod",
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_unknown_emotion",
+      "valid": false,
+      "reason": "angry is not in the emotion set",
+      "turn": {
+        "speech": "Try again.",
+        "emotion": "angry",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_unknown_gesture",
+      "valid": false,
+      "reason": "shrug is not in the gesture set",
+      "turn": {
+        "speech": "Hmm, what is it?",
+        "emotion": "thinking",
+        "gesture": "shrug",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_asset_not_on_allowlist",
+      "valid": false,
+      "reason": "only approved asset ids may be shown",
+      "turn": {
+        "speech": "Look at the truck!",
+        "emotion": "happy",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard",
+          "assetId": "truck_red"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_flashcard_without_asset",
+      "valid": false,
+      "reason": "a flashcard needs an assetId",
+      "turn": {
+        "speech": "Look!",
+        "emotion": "happy",
+        "gesture": "point",
+        "visual": {
+          "type": "flashcard"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_visual_type",
+      "valid": false,
+      "reason": "video is not a visual type",
+      "turn": {
+        "speech": "Watch this.",
+        "emotion": "happy",
+        "gesture": "none",
+        "visual": {
+          "type": "video",
+          "assetId": "apple_red"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_lesson_action",
+      "valid": false,
+      "reason": "skip is not a lesson action",
+      "turn": {
+        "speech": "Next one!",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "skip"
+      }
+    },
+    {
+      "id": "invalid_missing_speech",
+      "valid": false,
+      "reason": "speech is required",
+      "turn": {
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_empty_speech",
+      "valid": false,
+      "reason": "speech may not be blank",
+      "turn": {
+        "speech": "   ",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_url_in_speech",
+      "valid": false,
+      "reason": "no links, ever",
+      "turn": {
+        "speech": "Visit https://example.com for more!",
+        "emotion": "happy",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_long_digit_run",
+      "valid": false,
+      "reason": "a number longer than 20 digits",
+      "turn": {
+        "speech": "Call 123456789012345678901 now",
+        "emotion": "happy",
+        "gesture": "none",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_banned_word",
+      "valid": false,
+      "reason": "the age filter rejects harsh words",
+      "turn": {
+        "speech": "That is wrong, stupid.",
+        "emotion": "neutral",
+        "gesture": "none",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      }
+    },
+    {
+      "id": "invalid_emoji",
+      "valid": false,
+      "reason": "only ASCII-printable plus common punctuation",
+      "turn": {
+        "speech": "Great job 🍎",
+        "emotion": "happy",
+        "gesture": "clap",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question"
+      }
+    },
+    {
+      "id": "invalid_next_question_too_long",
+      "valid": false,
+      "reason": "121 characters",
+      "turn": {
+        "speech": "Good.",
+        "emotion": "happy",
+        "gesture": "nod",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "What is this thing that is red and round and sweet and grows on a tree in the garden behind the little pink house we saw today?"
+      }
+    },
+    {
+      "id": "invalid_not_an_object",
+      "valid": false,
+      "reason": "a bare string is not a turn",
+      "turn": "Hello there"
+    },
+    {
+      "id": "invalid_unknown_key",
+      "valid": false,
+      "reason": "extra keys are rejected so nothing unvalidated reaches the scene",
+      "turn": {
+        "speech": "Hi!",
+        "emotion": "happy",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry",
+        "toolCall": "open_url"
+      }
+    },
+    {
+      "id": "invalid_purchase_prompt",
+      "valid": false,
+      "reason": "no purchase prompts reach a child",
+      "turn": {
+        "speech": "Ask a grown-up to buy more lessons!",
+        "emotion": "happy",
+        "gesture": "wave",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "end_session"
+      }
+    }
+  ]
+}
