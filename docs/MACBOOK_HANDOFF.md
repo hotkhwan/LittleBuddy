@@ -1,4 +1,4 @@
-# MacBook Handoff — 2026-09-19
+# MacBook Handoff — updated 2026-09-20
 
 Supersedes the 2026-09-17 handoff (that one targeted `mac-mini-handoff-20260917`
 and expected a 30-case suite; both are out of date).
@@ -6,10 +6,10 @@ and expected a 30-case suite; both are out of date).
 | | |
 |---|---|
 | **Branch** | `feature/overnight-production-candidate` |
-| **Commit** | branch tip — `git log -1` after pulling. This doc was written against `09d4784` (*fix: a fresh clone's test suite is green*) and is itself the commit after it. |
+| **Commit** | **`87408c1`** — *feat(visual): Aliz repaired locally, Bunny expressive, four rooms dressed*. Pushed and verified on the remote. |
 | **Version** | `0.1.0` |
 | **Remote** | `https://github.com/hotkhwan/LittleBuddy.git` |
-| **Expected suite** | `PASS - 97 case(s), 0 failure(s)` |
+| **Expected suite** | `PASS - 122 case(s), 0 failure(s)` |
 
 A fresh clone of this branch was made into a temp directory and run end to end
 before this was written — the suite is green there, and both characters load.
@@ -29,7 +29,7 @@ git pull
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path game --script res://tests/run_tests.gd
 ```
 
-Expected: `PASS - 97 case(s), 0 failure(s)`.
+Expected: `PASS - 122 case(s), 0 failure(s)`.
 
 If that passes, the project is sound and you can open it in the editor. **You do
 not need to build the speech plugin to run, edit, test or export the game** — see
@@ -122,6 +122,72 @@ Xcode project. That is root-caused in the plugin README under *"Why a macOS
 build"*.
 
 ---
+
+## 4b. Android — toolchain is NOT in the repo either
+
+An Android debug APK builds here, but **none of the toolchain comes from Git**.
+A fresh MacBook needs all of it:
+
+| Needed | Version here | Where |
+|---|---|---|
+| JDK | **Temurin 17.0.20.1 (arm64)** | `~/Library/Java/JavaVirtualMachines/temurin-17.jdk` |
+| Android SDK | cmdline-tools 19.0, platform-tools 37.0.1 | `~/Library/Android/sdk` |
+| Build tools / platform | `build-tools;36.1.0`, `platforms;android-36` | same |
+| Debug keystore | generated locally | `~/Library/Application Support/Godot/keystores/debug.keystore` — **outside the repo, never committed** |
+
+⚠️ `/usr/bin/java` on a clean macOS is a **stub** — `which java` finds it and it
+prints *"Unable to locate a Java Runtime"*. Do not take its presence as a JDK.
+Install Temurin 17 (the version Godot 4.7.2's own `config.gradle` pins). The
+`brew install --cask temurin@17` route runs a `.pkg` that prompts for an admin
+password; unpacking the Adoptium tarball into
+`~/Library/Java/JavaVirtualMachines/` works identically with no sudo.
+
+Godot's Editor Settings must point at both (`java_sdk_path`, `android_sdk_path`)
+— a GUI export fails with a confusing path error otherwise.
+
+Godot's **Android export templates are a separate download** from the iOS ones.
+
+## 4c. Audio — the tracks ship, and are silent on purpose
+
+Both of Anny's tracks **are tracked** and come with the clone
+(`game/audio/music/*.ogg`, 2.3 MB). A normal build plays **no music**, and that
+is correct, not a bug: `commercialUse: "pending"`, `licenseEvidence: "OWNER TO
+CONFIRM"`, and the licence gate fails closed.
+
+To resolve, complete `docs/MUSIC_RIGHTS_CHECKLIST.md` with Anny. The deciding
+fact is **which Suno plan was active at the moment of generation**, and it cannot
+be recovered later.
+
+The master WAVs are **not** in the repo (they live in `~/Music/LittleDays/masters/`
+on the Mac Mini). Copy them across separately if you want them; nothing in the
+build needs them.
+
+## 4d. Exact commands
+
+```bash
+# tests — the first thing to run after cloning
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path game --script res://tests/run_tests.gd
+
+# the two mission walkthroughs (real game, not unit tests)
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path game --script res://tests/smoke_mission01.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path game --script res://tests/smoke_mission01.gd -- snackTime
+
+# audio: a normal build must be SILENT (this passing means the gate works)
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path game --script res://tests/smoke_audio_silent_build.gd
+
+# iOS export -> build/ios/LittleBuddy.xcodeproj
+./tools/export_ios.sh
+
+# arm64 device build (no signing needed to prove it compiles)
+cd build/ios && xcodebuild -project LittleBuddy.xcodeproj -scheme LittleBuddy \
+  -sdk iphoneos -configuration Release -arch arm64 CODE_SIGNING_ALLOWED=NO build
+
+# Android debug APK -> build/android/LittleDays-debug.apk
+./tools/export_android.sh debug
+```
+
+⚠️ `tools/export_ios.sh` does `rm -rf build/ios` first, so a signing team set
+inside Xcode is destroyed by the next export. Set it in the preset, not the IDE.
 
 ## 5. What will NOT come from Git
 
