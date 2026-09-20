@@ -46,3 +46,16 @@ separately, as required, and **none of it is in this project**:
 No art, model, texture, font, sound, prefab, scene or UI layout was taken from the
 reference project. Every kitchen prop in this game is either procedural geometry
 built in `scripts/house/` or an asset this project generated for itself.
+
+## Fonts for the helper line (2026-09-20)
+
+No font file was added for the helper-language work. The helper line
+(Thai / Chinese / Arabic / Hindi / Japanese) is drawn with Godot's default font
+plus **system fonts already installed on the device** -- PingFang / Hiragino
+(Apple, shipped with iOS and macOS), Thonburi, Geeza Pro, Kohinoor Devanagari --
+resolved and validated at runtime by `game/scripts/localization/helper_font.gd`.
+System fonts are used under the operating system's own licence and are not
+redistributed with the app, so no notice is required here. A language whose
+script no installed font can draw is shown as unavailable in Grown-ups rather
+than rendered as boxes. Should a Noto subset ever be bundled instead, its
+SIL Open Font License 1.1 text must be added to this file alongside it.

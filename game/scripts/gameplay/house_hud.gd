@@ -40,6 +40,7 @@ const PauseMenuScript := preload("res://scripts/ui/pause_menu.gd")
 const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
 const SafeAreaScript := preload("res://scripts/ui/safe_area.gd")
 const Localization := preload("res://scripts/localization/localization.gd")
+const HelperFont := preload("res://scripts/localization/helper_font.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 
@@ -252,6 +253,8 @@ func build() -> void:
 	_hint = _add_label("ThaiHint", HINT_FONT_SIZE, SOFT_PINK)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.visible = false
+	# The helper line is the one label that has to draw five scripts.
+	HelperFont.apply(_hint)
 
 	# The assist / praise line. It used to be a FOURTH line in the same top
 	# column as the prompt and the hint, which is how the stack reached 35% of an
@@ -339,6 +342,7 @@ func build() -> void:
 	_word.visible = false
 
 	_word_thai = _add_label("WordThai", WORD_THAI_FONT_SIZE, INK)
+	HelperFont.apply(_word_thai)
 	_word_thai.add_theme_color_override("font_outline_color", CREAM)
 	_word_thai.add_theme_constant_override("outline_size", 10)
 	_word_thai.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)

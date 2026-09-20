@@ -36,14 +36,16 @@ extends RefCounted
 ## the tables are plain JSON under `res://content/localization/`. A test drives
 ## it with no tree at all.
 ##
-## ## Fonts
+## ## Fonts, and languages a device cannot draw
 ##
-## The project ships no font of its own: Godot's default font has
-## `allow_system_fallback` on, so Thai, CJK, Arabic and Devanagari come from the
-## OS font set -- present on every iPad and every Mac. That is verified by the
-## rendered frames in `docs/shots/` (see the audio/settings pass report), not
-## assumed: a language is listed in `LANGUAGES` only once a frame has shown its
-## script rendering rather than as tofu.
+## The project ships no font of its own. `HelperFont` (same directory) builds
+## the helper label's font from the default font plus system fonts it has
+## VALIDATED at runtime, and tells this file which languages that chain can
+## draw (`set_language_available()`). A language it cannot draw is still listed
+## -- the selector shows it as not available on this device -- but `helper()`
+## answers with the fallback for it, so no screen ever shows tofu. Thai, Arabic
+## and Hindi are drawn by the default font's own system fallback (verified in
+## `docs/shots/house_helper_*`); the two Han languages depend on the chain.
 
 const CONTENT_DIR: String = "res://content/localization"
 const FILE_PATTERN: String = "helpers_%s.json"
@@ -72,6 +74,8 @@ const LANGUAGES: Array[Dictionary] = [
 
 static var _language: String = DEFAULT_HELPER_LANGUAGE
 static var _tables: Dictionary = {}
+## code -> false when the device cannot draw the script. Absent means available.
+static var _unavailable: Dictionary = {}
 
 
 # -----------------------------------------------------------------------------
@@ -79,13 +83,28 @@ static var _tables: Dictionary = {}
 # -----------------------------------------------------------------------------
 
 
-## `[{code, nativeName, englishName, isRtl}, ...]`, copies, in selector order.
-## "off" is not a language and is not listed; the selector adds it itself.
+## `[{code, nativeName, englishName, isRtl, isAvailable}, ...]`, copies, in
+## selector order. "off" is not a language and is not listed; the selector adds
+## it itself. `isAvailable` is false when `HelperFont` found no font for it.
 static func available_languages() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for row: Dictionary in LANGUAGES:
-		out.append(row.duplicate())
+		var copy: Dictionary = row.duplicate()
+		copy["isAvailable"] = is_language_available(String(row["code"]))
+		out.append(copy)
 	return out
+
+
+## Recorded by `HelperFont` after it probes the device's fonts.
+static func set_language_available(code: String, available: bool) -> void:
+	if available:
+		_unavailable.erase(code)
+	else:
+		_unavailable[code] = true
+
+
+static func is_language_available(code: String) -> bool:
+	return not _unavailable.has(code)
 
 
 static func is_supported(code: String) -> bool:
@@ -209,6 +228,8 @@ static func helper(key: String, english_fallback: String = "", language: String 
 	var code: String = normalise(language) if not language.is_empty() else _language
 	if code == HELPER_OFF:
 		return ""
+	if not is_language_available(code):
+		return english_fallback
 	var table: Dictionary = _table(code)
 	if table.has(key):
 		return String(table[key])
@@ -218,7 +239,7 @@ static func helper(key: String, english_fallback: String = "", language: String 
 ## True when the current (or given) language has its own words for `key`.
 static func has_helper(key: String, language: String = "") -> bool:
 	var code: String = normalise(language) if not language.is_empty() else _language
-	if code == HELPER_OFF:
+	if code == HELPER_OFF or not is_language_available(code):
 		return false
 	return _table(code).has(key)
 
@@ -234,7 +255,7 @@ static func has_helper(key: String, language: String = "") -> bool:
 ## line is noise, not help, so "no translation" shows nothing.
 static func helper_line(english: String, thai_hint: String = "", language: String = "") -> String:
 	var code: String = normalise(language) if not language.is_empty() else _language
-	if code == HELPER_OFF:
+	if code == HELPER_OFF or not is_language_available(code):
 		return ""
 	var key: String = key_for(english)
 	if code == DEFAULT_HELPER_LANGUAGE:

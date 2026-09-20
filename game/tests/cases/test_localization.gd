@@ -4,6 +4,7 @@ extends RefCounted
 ## tables, and the legacy `thaiHints` bridge. No tree, no autoload.
 
 const L10n := preload("res://scripts/localization/localization.gd")
+const HelperFont := preload("res://scripts/localization/helper_font.gd")
 
 ## Every helper language must carry at least these, in its own script: the core
 ## of Mission 01, feeding, and the UI chrome the child and the parent see.
@@ -42,7 +43,68 @@ func run():
 	failures.append_array(_test_helper_line_rules())
 	failures.append_array(_test_settings_bridge())
 	failures.append_array(_test_scripts_are_really_in_their_script())
+	failures.append_array(_test_unavailable_language_never_shows_tofu())
+	failures.append_array(_test_helper_font_chain())
 	L10n.set_helper_language(L10n.DEFAULT_HELPER_LANGUAGE)
+	return failures
+
+
+## A language the device cannot draw is listed, flagged, and answered with the
+## fallback -- never with glyphs that would render as boxes.
+func _test_unavailable_language_never_shows_tofu():
+	var failures: Array = []
+	L10n.set_language_available("ja", false)
+	var rows: Array = L10n.available_languages()
+	var ja_row: Dictionary = {}
+	for row: Dictionary in rows:
+		if String(row["code"]) == "ja":
+			ja_row = row
+	if ja_row.is_empty() or bool(ja_row.get("isAvailable", true)):
+		failures.append("an unavailable language must still be listed, flagged isAvailable=false: %s" % str(ja_row))
+	if L10n.helper("great", "Great!", "ja") != "Great!":
+		failures.append("helper() for an unavailable language must return the English fallback")
+	if L10n.helper_line("Great!", "", "ja") != "":
+		failures.append("helper_line() for an unavailable language must be empty")
+	if L10n.has_helper("great", "ja"):
+		failures.append("has_helper() must be false for an unavailable language")
+	L10n.set_language_available("ja", true)
+	if L10n.helper("great", "Great!", "ja") != "すごい！":
+		failures.append("re-enabling the language must restore its helpers")
+	return failures
+
+
+## The helper font validates system families rather than trusting their names,
+## and its verdict is what Localization reports. Which families exist depends on
+## the machine, so this asserts the mechanics, not a particular chain.
+func _test_helper_font_chain():
+	var failures: Array = []
+	HelperFont.reset()
+	if HelperFont.validate_family("No Such Font Family 12345", 0x8A9E) != null:
+		failures.append("an unknown family validated")
+	if HelperFont.validate_family("", 0x8A9E) != null:
+		failures.append("an empty family validated")
+	var font: Font = HelperFont.font()
+	if font == null:
+		failures.append("HelperFont.font() is null")
+	elif not font.has_char(65):
+		failures.append("the helper font cannot draw Latin")
+	var availability: Dictionary = HelperFont.availability()
+	for code: String in ["th", "zh", "ar", "hi", "ja"]:
+		if not availability.has(code):
+			failures.append("HelperFont did not decide on %s" % code)
+		elif bool(availability[code]) != L10n.is_language_available(code):
+			failures.append("HelperFont says %s available=%s but Localization says %s"
+					% [code, str(availability[code]), str(L10n.is_language_available(code))])
+	for code: String in HelperFont.ALWAYS_AVAILABLE:
+		if not bool(availability.get(code, false)):
+			failures.append("%s is drawn by the default font's system fallback and must stay available" % code)
+	# A Han language is available only when a validated family holds its probe.
+	for code: String in ["zh", "ja"]:
+		var expected: bool = HelperFont.can_draw(String(HelperFont.LANGUAGE_PROBES[code]), font)
+		if bool(availability[code]) != expected:
+			failures.append("%s availability %s disagrees with what the chain can draw (%s)"
+					% [code, str(availability[code]), str(expected)])
+	print("    helper font chain: %s; availability %s" % [str(HelperFont.chain_names()), str(availability)])
 	return failures
 
 

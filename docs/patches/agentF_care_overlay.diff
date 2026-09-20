@@ -1,0 +1,91 @@
+--- a/game/scripts/care/care_overlay.gd	2026-09-20 17:20:12
++++ b/game/scripts/care/care_overlay.gd	2026-09-20 18:16:11
+@@ -54,6 +54,8 @@
+ ## have no failure state, so the only outcomes are "still going" and "done".
+ 
+ const Palette := preload("res://scripts/ui/palette.gd")
++const Localization := preload("res://scripts/localization/localization.gd")
++const HelperFont := preload("res://scripts/localization/helper_font.gd")
+ 
+ signal care_completed(care_kind: String)
+ signal care_progress(value: float)
+@@ -160,6 +162,9 @@
+ var _mouth_screen: Vector2 = Vector2.ZERO
+ var _bar: ProgressBar = null
+ var _title: Label = null
++## The helper line under the title: the family's language (Thai by default,
++## from the act's own `thai` copy), through `Localization`. Never English.
++var _helper: Label = null
+ var _hint: Label = null
+ var _child_line: Label = null
+ 
+@@ -227,6 +232,20 @@
+ 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+ 	add_child(_title)
+ 
++	_helper = Label.new()
++	_helper.name = "Helper"
++	_helper.mouse_filter = Control.MOUSE_FILTER_IGNORE
++	_helper.add_theme_font_size_override("font_size", 28)
++	_helper.add_theme_color_override("font_color", Palette.SOFT_PINK)
++	_helper.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
++	_helper.offset_left = -440.0
++	_helper.offset_right = 440.0
++	_helper.offset_top = 112.0
++	_helper.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
++	_helper.visible = false
++	HelperFont.apply(_helper)
++	add_child(_helper)
++
+ 	_hint = Label.new()
+ 	_hint.name = "Hint"
+ 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+@@ -235,7 +254,7 @@
+ 	_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+ 	_hint.offset_left = -360.0
+ 	_hint.offset_right = 360.0
+-	_hint.offset_top = 116.0
++	_hint.offset_top = 152.0
+ 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+ 	add_child(_hint)
+ 
+@@ -292,6 +311,7 @@
+ 	set_process(HOLD_KINDS.has(_kind))
+ 	var copy: Dictionary = COPY[_kind]
+ 	_title.text = String(copy["title"])
++	_refresh_helper()
+ 	_hint.text = String(copy["hint"])
+ 	_child_line.text = String(copy["childLine"])
+ 	_bar.value = 0.0
+@@ -369,6 +389,31 @@
+ 	return _finished
+ 
+ 
++## The helper line for the current act, in the chosen language. Thai uses the
++## act's own `thai` copy; other languages use the Localization table keyed by
++## the English title; Arabic is laid out right-to-left; Off hides it.
++func _refresh_helper() -> void:
++	if _helper == null:
++		return
++	var save: Node = null
++	var tree: SceneTree = Engine.get_main_loop() as SceneTree
++	if tree != null and tree.root != null:
++		save = tree.root.get_node_or_null(NodePath("SaveService"))
++	if save != null:
++		Localization.sync_from_settings(save)
++	var text: String = Localization.helper_line(_title.text, thai_for(_kind))
++	_helper.text = text
++	_helper.visible = not text.is_empty()
++	_helper.text_direction = Control.TEXT_DIRECTION_RTL if Localization.is_rtl() \
++			else Control.TEXT_DIRECTION_AUTO
++
++
++## Re-derives the helper line after a language change. The HUD calls its own
++## `refresh_helper_language()` when Parent Corner closes; a host may call this.
++func refresh_helper_language() -> void:
++	_refresh_helper()
++
++
+ static func word_for(care_kind: String) -> String:
+ 	return String((COPY.get(care_kind, {}) as Dictionary).get("word", ""))
+ 

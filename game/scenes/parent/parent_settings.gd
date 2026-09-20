@@ -52,6 +52,7 @@ const Palette := preload("res://scripts/ui/palette.gd")
 const FreeStarter := preload("res://scripts/entitlement/free_starter.gd")
 const EntitlementServiceScript := preload("res://scripts/entitlement/entitlement_service.gd")
 const Localization := preload("res://scripts/localization/localization.gd")
+const HelperFont := preload("res://scripts/localization/helper_font.gd")
 
 ## Where a standalone panel goes when it is done.
 const HOME_SCENE: String = "res://scenes/main/main.tscn"
@@ -169,6 +170,20 @@ func _ready() -> void:
 		var button: Button = _helper_buttons.get_node_or_null(NodePath(node_name)) as Button
 		if button != null:
 			button.pressed.connect(_on_helper_language_chosen.bind(String(HELPER_BUTTONS[node_name])))
+			# The native names are in their own scripts; the helper font is the
+			# one chain proven to draw them all, and a language this device has no
+			# font for is offered as unavailable rather than as tofu.
+			HelperFont.apply(button)
+			var code: String = String(HELPER_BUTTONS[node_name])
+			if code != Localization.HELPER_OFF and not HelperFont.language_available(code):
+				button.disabled = true
+				button.tooltip_text = "Not available on this device"
+	HelperFont.apply(_gate_hold_label)
+	for row_name: String in ROW_HELPER_KEYS.keys():
+		var label: Label = get_node_or_null(
+				NodePath("SafeArea/Center/Panel/Margin/Content/%sRow/%sText/%sHelper" % [row_name, row_name, row_name])) as Label
+		if label != null:
+			HelperFont.apply(label)
 	_voice_on.pressed.connect(_on_voice_chosen.bind(true))
 	_voice_off.pressed.connect(_on_voice_chosen.bind(false))
 	_speed_slow.pressed.connect(_on_speed_chosen.bind(ParentSettingsModelScript.TTS_SPEED_SLOW))
@@ -182,6 +197,9 @@ func _ready() -> void:
 		_show_locked()
 	else:
 		open_settings()
+	# The gate card's hold instruction carries the family's language too.
+	Localization.set_helper_language(_model.get_helper_language())
+	_refresh_row_helpers()
 
 
 ## A panel with nothing underneath it: added straight under the tree root, the
@@ -193,6 +211,14 @@ func _detect_standalone() -> bool:
 
 func is_standalone() -> bool:
 	return _standalone
+
+
+## Forces the mode. For a harness that hosts the panel in a SubViewport (so it
+## cannot be under the root) and wants the standalone gate card photographed.
+func set_standalone(value: bool) -> void:
+	_standalone = value
+	if not _panel.visible:
+		_show_locked()
 
 
 ## Back / Escape at any time: the same as Done when the panel is open, the same
@@ -224,6 +250,7 @@ func _build_speech_check() -> void:
 	_speech_check_button = Button.new()
 	_speech_check_button.name = "SpeechCheckButton"
 	_speech_check_button.text = "Check speech"
+	_style_secondary_button(_speech_check_button)
 	_speech_check_button.pressed.connect(_on_speech_check_toggled)
 	parent.add_child(_speech_check_button)
 	parent.move_child(_speech_check_button, _status_label.get_index())
@@ -285,6 +312,7 @@ func _build_qa_replay() -> void:
 	_qa_replay_button = Button.new()
 	_qa_replay_button.name = "QaReplayButton"
 	_qa_replay_button.text = "Replay Mission 01"
+	_style_secondary_button(_qa_replay_button)
 	_qa_replay_button.pressed.connect(_on_qa_replay_pressed)
 	parent.add_child(_qa_replay_button)
 	parent.move_child(_qa_replay_button, _status_label.get_index())
@@ -363,6 +391,29 @@ const SONGS_FOR_FUN_BLURB: String = ("Free songs on YouTube, made by the same pe
 const SECTION_TITLE_FONT_SIZE: int = 30
 const SECTION_BODY_FONT_SIZE: int = 20
 
+## The same re-paletted Kenney frames the scene's own buttons use, for the
+## buttons this script builds (speech check, replay, Songs for Fun), so they
+## stop looking like engine defaults dropped into a cream panel.
+const SECONDARY_BUTTON_NORMAL: StyleBox = preload("res://assets/ui/styles/small/btn_cream.tres")
+const SECONDARY_BUTTON_PRESSED: StyleBox = preload("res://assets/ui/styles/small/btn_cream_flat.tres")
+const SECONDARY_BUTTON_FONT_SIZE: int = 26
+const SECONDARY_BUTTON_HEIGHT: float = 72.0
+const SECONDARY_BUTTON_INK: Color = Color(0.36, 0.29, 0.19, 1)
+
+
+## Cream frame, readable ink in every state, a grown-up-sized height.
+static func _style_secondary_button(button: Button) -> void:
+	if button == null:
+		return
+	button.focus_mode = Control.FOCUS_NONE
+	button.custom_minimum_size = Vector2(0.0, SECONDARY_BUTTON_HEIGHT)
+	button.add_theme_font_size_override("font_size", SECONDARY_BUTTON_FONT_SIZE)
+	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+		button.add_theme_color_override(state, SECONDARY_BUTTON_INK)
+	for state: String in ["normal", "hover", "focus"]:
+		button.add_theme_stylebox_override(state, SECONDARY_BUTTON_NORMAL)
+	button.add_theme_stylebox_override("pressed", SECONDARY_BUTTON_PRESSED)
+
 var _family_club_box: VBoxContainer = null
 var _songs_button: Button = null
 var _songs_box: VBoxContainer = null
@@ -419,6 +470,7 @@ func _build_family_club() -> void:
 	_songs_button = Button.new()
 	_songs_button.name = "SongsForFunButton"
 	_songs_button.text = SONGS_FOR_FUN_TITLE
+	_style_secondary_button(_songs_button)
 	_songs_button.pressed.connect(_on_songs_for_fun_toggled)
 	_family_club_box.add_child(_songs_button)
 
@@ -442,6 +494,7 @@ func _build_family_club() -> void:
 	_songs_copy_button = Button.new()
 	_songs_copy_button.name = "SongsForFunCopyButton"
 	_songs_copy_button.text = "Copy link"
+	_style_secondary_button(_songs_copy_button)
 	_songs_copy_button.pressed.connect(_on_songs_copy_pressed)
 	_songs_box.add_child(_songs_copy_button)
 
@@ -712,6 +765,15 @@ func _autoload(node_name: String) -> Node:
 ## The language code each helper button selects. Tests.
 func helper_button_languages() -> Dictionary:
 	return HELPER_BUTTONS.duplicate()
+
+
+## Languages the selector offers but this device cannot draw. Tests, runbook.
+func unavailable_languages() -> Array:
+	var out: Array = []
+	for code: Variant in HELPER_BUTTONS.values():
+		if String(code) != Localization.HELPER_OFF and not HelperFont.language_available(String(code)):
+			out.append(String(code))
+	return out
 
 
 ## The model behind the controls. Tests.
