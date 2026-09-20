@@ -56,7 +56,10 @@ extends RefCounted
 ##   `is_ready() -> bool`
 ##   `moods() -> Array[String]`                 the manifest's mood names
 ##   `blink_layer() -> String`
-##   `show(mood, eyes_closed, mouth_frame = 0) -> bool`  compose and upload
+##   `show(mood, eyes_closed, mouth_frame = 0, overlays = []) -> bool`  compose and upload
+##       (`overlays`: layer names laid over the mood and the frame, under the
+##       blink -- the speaking state's brow flick and glance live here, so
+##       they never change the mood)
 ##   `current_mood() -> String`, `eyes_closed() -> bool`
 ##   `current_mouth_frame() -> int`, `mouth_frame_count() -> int` (1 = no talk frames)
 ##   `mouth_frame_layer(index) -> String`
@@ -82,6 +85,7 @@ var _layers: Dictionary = {}
 var _mood: String = MOOD_CONTENT
 var _eyes_closed: bool = false
 var _mouth_frame: int = 0
+var _overlays: Array = []
 var _composed_once: bool = false
 
 
@@ -176,20 +180,27 @@ func eyes_closed() -> bool:
 ## Composes `mood`, then the talk frame `mouth_frame` (0 = the mood's own
 ## mouth), then the blink layer when `closed`, onto the base and uploads it.
 ## Idempotent: the same request twice does no work the second time.
-func show(mood: String, closed: bool, mouth_frame: int = 0) -> bool:
+func show(mood: String, closed: bool, mouth_frame: int = 0, overlays: Array = []) -> bool:
 	if _texture == null:
 		return false
 	var moods_table: Dictionary = _manifest.get("moods", {})
 	if not moods_table.has(mood):
 		return false
 	var frame: int = clampi(mouth_frame, 0, mouth_frame_count() - 1)
+	var extra: Array = []
+	for name: Variant in overlays:
+		if (_manifest.get("layers", {}) as Dictionary).has(String(name)) and not extra.has(String(name)):
+			extra.append(String(name))
 	if mood == _mood and closed == _eyes_closed and frame == _mouth_frame \
-			and _canvas != null and _composed_once:
+			and extra == _overlays and _canvas != null and _composed_once:
 		return true
 	var names: Array = (moods_table[mood] as Array).duplicate()
 	var talk: String = mouth_frame_layer(frame)
 	if not talk.is_empty():
 		names.append(talk)
+	for name: String in extra:
+		if not names.has(name):
+			names.append(name)
 	var blink: String = blink_layer()
 	if closed and not blink.is_empty() and not names.has(blink):
 		names.append(blink)
@@ -208,8 +219,13 @@ func show(mood: String, closed: bool, mouth_frame: int = 0) -> bool:
 	_mood = mood
 	_eyes_closed = closed
 	_mouth_frame = frame
+	_overlays = extra
 	_composed_once = true
 	return true
+
+
+func current_overlays() -> Array:
+	return _overlays.duplicate()
 
 
 

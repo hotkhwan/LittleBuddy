@@ -15,9 +15,15 @@ extends SkeletonModifier3D
 ## 0.1 m/s and fades a running one out when she moves off.
 ##
 ## Blend: in over `FADE_IN_SEC`, out over `FADE_OUT_SEC` from the clip's end (or
-## from `stop()`), so a gesture never pops. The listening posture is a second,
-## independent weight on the same node (`set_listening()`), eased the same way,
-## so a nod can play over the lean.
+## from `stop()`), so a gesture never pops. `play(name, scale)` caps the blend
+## at `scale`, which is how the tutor states get a half-size nod or a small
+## hand beat out of the same clips. Three more held layers ride on the same
+## node, each with its own eased weight, so a nod can play over all of them:
+##   * the listening posture (`set_listening()`, a lean-in);
+##   * the LOOK (`set_look(yaw)`), the head and neck turned toward whoever she
+##     is attending to -- barge-in turns her to the child;
+##   * the TALK motion (`set_talk_motion()`), +-1 degree of head nodding on two
+##     unrelated periods while she speaks, so a talking head is not a statue.
 ##
 ## Nothing here is a fixed timer or a per-frame sine on the model: the clock
 ## advances in the modification pass, and `step()` advances it by hand for a
@@ -28,6 +34,13 @@ const GestureClips := preload("res://scripts/characters/buddy/buddy_gesture_clip
 const FADE_IN_SEC: float = 0.12
 const FADE_OUT_SEC: float = 0.20
 const POSTURE_BLEND_SEC: float = 0.35
+const LOOK_BLEND_DEG_PER_SEC: float = 140.0
+const LOOK_MAX_DEG: float = 35.0
+const TALK_BLEND_SEC: float = 0.3
+## Degrees of head nod while talking, and the two periods it rides on.
+const TALK_NOD_DEG: float = 1.0
+const TALK_PERIOD_A: float = 1.7
+const TALK_PERIOD_B: float = 1.1
 
 ## Emitted when a gesture that started has run its length (or was stopped).
 signal gesture_finished(name: String)
@@ -37,9 +50,17 @@ var _current: String = ""
 var _time: float = 0.0
 var _weight: float = 0.0
 var _stopping: bool = false
+var _max_weight: float = 1.0
 var _posture: Dictionary = {}
 var _posture_target: float = 0.0
 var _posture_weight: float = 0.0
+## The look: a head yaw in degrees (+ = her left), eased toward its target.
+var _look_target_deg: float = 0.0
+var _look_deg: float = 0.0
+## Talk motion: 0..1 weight eased toward its target, and its own clock.
+var _talk_target: float = 0.0
+var _talk_weight: float = 0.0
+var _talk_time: float = 0.0
 ## When true the modification pass only APPLIES; the clock moves through
 ## `advance()`. For the contact-sheet tool, which wants a frame at 0.2 s
 ## exactly rather than whenever the renderer got round to it.
@@ -69,7 +90,7 @@ func has_gesture(name: String) -> bool:
 ## Starts `name` from its first frame, fading in. Returns the clip's length in
 ## seconds, or 0.0 when there is no such clip. A gesture already running is
 ## replaced (its `gesture_finished` still fires).
-func play(name: String) -> float:
+func play(name: String, scale: float = 1.0) -> float:
 	if not _clips.has(name):
 		return 0.0
 	if not _current.is_empty() and _current != name:
@@ -77,6 +98,7 @@ func play(name: String) -> float:
 	_current = name
 	_time = 0.0
 	_stopping = false
+	_max_weight = clampf(scale, 0.05, 1.0)
 	self.active = true
 	return (_clips[name] as Animation).length
 
@@ -119,12 +141,48 @@ func posture_weight() -> float:
 	return _posture_weight
 
 
+## Turns the head (70 %) and neck (30 %) `yaw_deg` toward her left (+) or
+## right (-), clamped to `LOOK_MAX_DEG`, eased at `LOOK_BLEND_DEG_PER_SEC`.
+## 0 looks straight ahead again.
+func set_look(yaw_deg: float) -> void:
+	_look_target_deg = clampf(yaw_deg, -LOOK_MAX_DEG, LOOK_MAX_DEG)
+	if not is_zero_approx(_look_target_deg):
+		self.active = true
+
+
+func look_deg() -> float:
+	return _look_deg
+
+
+func look_target_deg() -> float:
+	return _look_target_deg
+
+
+## +-1 degree head nodding on two periods while she talks; eased in and out.
+func set_talk_motion(active: bool) -> void:
+	_talk_target = 1.0 if active else 0.0
+	if active:
+		self.active = true
+
+
+func talk_weight() -> float:
+	return _talk_weight
+
+
+## The talk nod in degrees at `seconds` on the talk clock. Public for tests.
+static func talk_nod_at(seconds: float) -> float:
+	return TALK_NOD_DEG * (0.65 * sin(TAU * seconds / TALK_PERIOD_A)
+			+ 0.45 * sin(TAU * seconds / TALK_PERIOD_B))
+
+
 ## Jumps the eased weights to their targets -- for a node outside the tree,
 ## where no modification pass will ever move them.
 func settle() -> void:
 	_posture_weight = _posture_target
+	_look_deg = _look_target_deg
+	_talk_weight = _talk_target
 	if not _current.is_empty() and not _stopping:
-		_weight = 1.0
+		_weight = _max_weight
 
 
 ## The rotation this layer applied to `bone_name` in its last pass (identity
@@ -156,11 +214,17 @@ func step(seconds: float) -> void:
 
 ## Advances the clocks by `seconds` without applying.
 func advance(seconds: float) -> void:
-	# The posture eases toward its target on its own clock.
+	# The held layers ease toward their targets on their own clocks.
 	_posture_weight = move_toward(_posture_weight, _posture_target,
 			seconds / maxf(POSTURE_BLEND_SEC, 0.01))
+	_look_deg = move_toward(_look_deg, _look_target_deg, seconds * LOOK_BLEND_DEG_PER_SEC)
+	_talk_weight = move_toward(_talk_weight, _talk_target, seconds / TALK_BLEND_SEC)
+	if _talk_weight > 0.0:
+		_talk_time += seconds
 	if _current.is_empty():
-		if _posture_weight <= 0.0 and _posture_target <= 0.0 and self.active:
+		if self.active and _posture_weight <= 0.0 and _posture_target <= 0.0 \
+				and is_zero_approx(_look_deg) and is_zero_approx(_look_target_deg) \
+				and _talk_weight <= 0.0 and _talk_target <= 0.0:
 			self.active = false
 		return
 	_time += seconds
@@ -170,7 +234,7 @@ func advance(seconds: float) -> void:
 	if fading_out:
 		_weight = move_toward(_weight, 0.0, seconds / FADE_OUT_SEC)
 	else:
-		_weight = move_toward(_weight, 1.0, seconds / FADE_IN_SEC)
+		_weight = move_toward(_weight, _max_weight, seconds / FADE_IN_SEC)
 	if _time >= length or (_stopping and _weight <= 0.0):
 		var done: String = _current
 		_current = ""
@@ -198,6 +262,12 @@ func apply() -> void:
 			var turned: Quaternion = _turns_in_parent(skeleton, index, _posture[bone_name] as Array)
 			_apply_delta(skeleton, index, bone_name,
 					Quaternion.IDENTITY.slerp(turned, _posture_weight))
+	if not is_zero_approx(_look_deg):
+		_apply_turns(skeleton, GestureClips.HEAD, [[GestureClips.TURN, _look_deg * 0.7]])
+		_apply_turns(skeleton, GestureClips.NECK, [[GestureClips.TURN, _look_deg * 0.3]])
+	if _talk_weight > 0.0:
+		_apply_turns(skeleton, GestureClips.HEAD,
+				[[GestureClips.NOD, talk_nod_at(_talk_time) * _talk_weight]])
 	if _current.is_empty() or _weight <= 0.0:
 		return
 	var animation: Animation = _clips[_current]
@@ -214,6 +284,13 @@ func apply() -> void:
 		# The authored turn, in the parent's frame: sampled = turn * rest.
 		var turn: Quaternion = (sampled * rest.inverse()).normalized()
 		_apply_delta(skeleton, index, bone_name, Quaternion.IDENTITY.slerp(turn, _weight))
+
+
+func _apply_turns(skeleton: Skeleton3D, bone_name: String, turns: Array) -> void:
+	var index: int = skeleton.find_bone(bone_name)
+	if index == -1:
+		return
+	_apply_delta(skeleton, index, bone_name, _turns_in_parent(skeleton, index, turns))
 
 
 func _apply_delta(skeleton: Skeleton3D, index: int, bone_name: String, turn: Quaternion) -> void:

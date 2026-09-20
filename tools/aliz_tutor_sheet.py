@@ -22,6 +22,8 @@ FACE = (470, 240, 400, 290)
 DETAIL = (540, 300, 260, 180)
 ## Full frame, halved, for the gesture strips (arms need the whole body).
 GESTURE = (267, 0, 800, 750)
+## The face at the gesture camera, 1:1, under each state strip.
+STATE_FACE = (555, 225, 230, 180)
 
 LABELS = {"neutral": (120, 200, 120), "listening": (120, 160, 240), "thinking": (170, 120, 220),
           "happy": (240, 190, 60), "encouraging": (240, 140, 90), "smile": (230, 100, 140),
@@ -110,6 +112,16 @@ def main():
         keys = [str(k) for k in range(5)]
         out = os.path.join(shots, "%s_gesture_%s_strip.png" % (prefix, name))
         png_save(out, *tile([p("gesture_%s_%s" % (name, k)) for k in keys], GESTURE, 0.5, keys))
+        print("wrote", out)
+
+    for name in ["interrupted", "explaining", "celebrating"]:
+        keys = [str(k) for k in range(5)]
+        paths = [p("state_%s_%s" % (name, k)) for k in keys]
+        if not all(os.path.exists(x) for x in paths):
+            continue
+        out = os.path.join(shots, "%s_state_%s_strip.png" % (prefix, name))
+        png_save(out, *stack([tile(paths, GESTURE, 0.5, keys),
+                              tile(paths, STATE_FACE, 1, keys)]))
         print("wrote", out)
 
 

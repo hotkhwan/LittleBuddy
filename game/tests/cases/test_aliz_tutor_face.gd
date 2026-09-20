@@ -48,6 +48,10 @@ func run():
 	failures.append_array(_test_gestures(buddy))
 	failures.append_array(_test_gestures_refused_while_walking(buddy))
 	failures.append_array(_test_listening_pose(buddy))
+	failures.append_array(_test_layers_do_not_conflict(buddy))
+	failures.append_array(_test_tutor_states(buddy))
+	failures.append_array(_test_barge_in_timing(buddy))
+	failures.append_array(_test_speaking_and_explaining_schedules(buddy))
 	failures.append_array(_test_nothing_else_disturbed(buddy))
 	buddy.free()
 	return failures
@@ -678,7 +682,269 @@ func _test_listening_pose(buddy: Node3D):
 	return failures
 
 
-## -- 9. nothing else moved: idle, carry pose, moods, the sealed hierarchy -----------------------
+## -- 9. the layers never conflict: a gesture leaves the face alone and vice versa ----------------
+
+func _test_layers_do_not_conflict(buddy: Node3D):
+	var failures: Array = []
+	var face: RefCounted = buddy.get("_face")
+	var layer: SkeletonModifier3D = buddy.call("get_gesture_layer")
+	var skeleton: Skeleton3D = buddy.call("get_skeleton")
+	buddy.call("set_tutor_state", "idle")
+	buddy.call("set_expression", "thinking")
+	var before: Image = (face.call("canvas") as Image).duplicate()
+	buddy.call("play_gesture", "wave")
+	for _k: int in range(20):
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+	if String(buddy.call("get_expression")) != "thinking" or String(buddy.call("get_shown_face")) != "thinking":
+		failures.append("play_gesture('wave') changed the expression to '%s'" % String(buddy.call("get_shown_face")))
+	if not _same(before, face.call("canvas"), 2):
+		failures.append("play_gesture('wave') changed texels of the face")
+	# ...and changing the expression mid-gesture leaves the gesture running.
+	var t_before: float = float(layer.call("time"))
+	buddy.call("set_expression", "happy")
+	if String(buddy.call("get_current_gesture")) != "wave" or float(layer.call("time")) != t_before \
+			or float(layer.call("weight")) <= 0.0:
+		failures.append("set_expression('happy') disturbed the running wave")
+	# The mouth frames leave both alone.
+	buddy.call("set_speaking", true)
+	buddy.call("set_mouth_open", 1.0)
+	for _k: int in range(10):
+		buddy.call("step_mouth", STEP)
+	if String(buddy.call("get_current_gesture")) != "wave" or String(buddy.call("get_expression")) != "happy":
+		failures.append("the mouth frames disturbed the gesture or the expression")
+	buddy.call("set_speaking", false)
+	buddy.call("stop_gesture")
+	for _k: int in range(20):
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+	buddy.call("set_expression", "neutral")
+	return failures
+
+
+## -- 10. the composite tutor states set every layer as the table says ---------------------------
+
+func _test_tutor_states(buddy: Node3D):
+	var failures: Array = []
+	var layer: SkeletonModifier3D = buddy.call("get_gesture_layer")
+	var skeleton: Skeleton3D = buddy.call("get_skeleton")
+	for name: String in Buddy.TUTOR_STATES:
+		if not bool(buddy.call("set_tutor_state", name)):
+			failures.append("set_tutor_state('%s') returned false" % name)
+	if bool(buddy.call("set_tutor_state", "furious")):
+		failures.append("set_tutor_state() accepted a name outside the vocabulary")
+	var sfx: Array = []
+	var on_sfx: Callable = func(sfx_name: String) -> void: sfx.append(sfx_name)
+	buddy.connect("wants_sfx", on_sfx)
+	var expected: Dictionary = {
+		"idle": ["neutral", "", false], "listening": ["listening", "", false],
+		"thinking": ["thinking", "tilt", false], "speaking": ["smile", "", true],
+		"interrupted": ["listening", "", false], "happy": ["happy", "nod", false],
+		"encouraging": ["encouraging", "nod", false], "explaining": ["smile", "point", true],
+		"celebrating": ["happy", "clap", false],
+	}
+	for name: String in expected.keys():
+		# From idle each time: happy / encouraging / celebrating leave the mouth
+		# to the lip sync (a "Great job!" may be spoken over them), so what
+		# is_speaking() says after them depends on where they came from.
+		buddy.call("set_tutor_state", "idle")
+		for _k: int in range(20):
+			skeleton.reset_bone_poses()
+			layer.call("step", STEP)
+		buddy.call("set_tutor_state", name)
+		var want: Array = expected[name]
+		if String(buddy.call("get_tutor_state")) != name:
+			failures.append("get_tutor_state() is '%s' after '%s'" % [String(buddy.call("get_tutor_state")), name])
+		if String(buddy.call("get_expression")) != String(want[0]):
+			failures.append("state '%s' set expression '%s', expected '%s'"
+					% [name, String(buddy.call("get_expression")), String(want[0])])
+		if String(buddy.call("get_current_gesture")) != String(want[1]):
+			failures.append("state '%s' started gesture '%s', expected '%s'"
+					% [name, String(buddy.call("get_current_gesture")), String(want[1])])
+		if bool(buddy.call("is_speaking")) != bool(want[2]):
+			failures.append("state '%s' left is_speaking() = %s" % [name, str(buddy.call("is_speaking"))])
+		if not bool(buddy.call("is_blinking_enabled")):
+			failures.append("state '%s' switched the blink off" % name)
+	if sfx != ["laugh"]:
+		failures.append("celebrating should emit wants_sfx('laugh') exactly once; got %s" % str(sfx))
+	# The lean and the look: listening leans in and looks at the target.
+	buddy.call("set_tutor_state", "listening")
+	if not bool(buddy.call("is_listening_pose")):
+		failures.append("'listening' did not lean in")
+	buddy.call("set_tutor_state", "idle")
+	if bool(buddy.call("is_listening_pose")) or bool(buddy.call("is_speaking")):
+		failures.append("'idle' did not straighten up and close the mouth")
+	buddy.disconnect("wants_sfx", on_sfx)
+	return failures
+
+
+## -- 11. barge-in: interrupted closes the mouth, cancels the gesture, listens, turns -----------
+
+func _test_barge_in_timing(buddy: Node3D):
+	var failures: Array = []
+	var layer: SkeletonModifier3D = buddy.call("get_gesture_layer")
+	var skeleton: Skeleton3D = buddy.call("get_skeleton")
+	var head: int = skeleton.find_bone(GestureClips.HEAD)
+	var headfront: int = skeleton.find_bone("headfront")
+	# A child standing to HER left (wrapper -x), 1.5 m away.
+	var child := Node3D.new()
+	child.position = Vector3(-1.0, 0.9, -1.2)
+	buddy.call("set_attention_target", child)
+	# Mid-sentence: speaking, mouth wide, a point in progress.
+	buddy.call("set_tutor_state", "explaining")
+	buddy.call("set_mouth_open", 1.0)
+	for _k: int in range(15):
+		buddy.call("step_mouth", STEP)
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+	if int(buddy.call("get_mouth_frame")) != 3 or String(buddy.call("get_current_gesture")) != "point":
+		failures.append("the barge-in setup did not reach frame 3 with a point running (frame %d, gesture '%s')"
+				% [int(buddy.call("get_mouth_frame")), String(buddy.call("get_current_gesture"))])
+	buddy.call("set_tutor_state", "interrupted")
+	# Listening face: at once (the texture change is synchronous).
+	var face_at: float = 0.0
+	if String(buddy.call("get_shown_face")) != "listening":
+		failures.append("'interrupted' did not show the listening face at once (shows '%s')"
+				% String(buddy.call("get_shown_face")))
+	if bool(buddy.call("is_speaking")):
+		failures.append("'interrupted' left is_speaking() true")
+	# Mouth to 0 and gesture cancelled, stepping both clocks at 60 Hz.
+	var t: float = 0.0
+	var mouth_zero_at: float = -1.0
+	var gesture_gone_at: float = -1.0
+	while t < 0.5 and (mouth_zero_at < 0.0 or gesture_gone_at < 0.0):
+		buddy.call("step_mouth", STEP)
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+		t += STEP
+		if mouth_zero_at < 0.0 and float(buddy.call("get_mouth_open")) <= 0.0 \
+				and int(buddy.call("get_mouth_frame")) == 0:
+			mouth_zero_at = t
+		if gesture_gone_at < 0.0 and not bool(layer.call("is_playing")):
+			gesture_gone_at = t
+	print("      barge-in proof: listening face at %.0f ms, mouth 0 at %.0f ms, gesture cancelled at %.0f ms"
+			% [face_at * 1000.0, mouth_zero_at * 1000.0, gesture_gone_at * 1000.0])
+	if mouth_zero_at < 0.0 or mouth_zero_at > 0.12 + STEP * 0.5:
+		failures.append("'interrupted' took %.0f ms to close the mouth; the contract allows 120" % (mouth_zero_at * 1000.0))
+	if gesture_gone_at < 0.0 or gesture_gone_at > 0.2 + STEP * 0.5:
+		failures.append("'interrupted' took %.0f ms to cancel the point; the contract allows 200" % (gesture_gone_at * 1000.0))
+	# The head turned toward the child (her left = TURN +): headfront moves to model +x.
+	skeleton.reset_bone_poses()
+	layer.call("step", STEP)
+	var yaw: float = float(buddy.call("attention_yaw_deg"))
+	var front: Vector3 = _global(skeleton, headfront).origin - _global(skeleton, head).origin
+	var rest_front: Vector3 = skeleton.get_bone_global_rest(headfront).origin - skeleton.get_bone_global_rest(head).origin
+	var turned: float = rad_to_deg(atan2(front.x, front.z) - atan2(rest_front.x, rest_front.z))
+	print("      barge-in proof: attention yaw %.1f deg -> head turned %.1f deg" % [yaw, turned])
+	if yaw < 10.0:
+		failures.append("attention_yaw_deg() is %.1f for a child on her left; expected a positive yaw" % yaw)
+	if turned < 5.0:
+		failures.append("'interrupted' turned the head only %.1f degrees toward the child" % turned)
+	if not bool(buddy.call("is_listening_pose")):
+		failures.append("'interrupted' did not lean in")
+	# Straight ahead again in idle. No target and no camera -> world +Z, which
+	# is where the classroom camera sits; turned to face it (yaw 180) the
+	# fallback yaw is ~0, and facing away it is clamped to the 35 degree limit
+	# rather than trying to look through the back of her head.
+	buddy.call("set_tutor_state", "idle")
+	buddy.call("set_attention_target", null)
+	buddy.rotation = Vector3(0.0, PI, 0.0)
+	if absf(float(buddy.call("attention_yaw_deg"))) > 1.0:
+		failures.append("facing +Z with no target the fallback yaw is %.1f, expected ~0" % float(buddy.call("attention_yaw_deg")))
+	buddy.rotation = Vector3.ZERO
+	for _k: int in range(30):
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+	if absf(float(layer.call("look_deg"))) > 0.01:
+		failures.append("'idle' left the head turned %.1f degrees" % float(layer.call("look_deg")))
+	child.free()
+	return failures
+
+
+## -- 12. speaking and explaining keep moving: brows, glance, beats, nods, talk motion ----------
+
+func _test_speaking_and_explaining_schedules(buddy: Node3D):
+	var failures: Array = []
+	var driver: Node = buddy.call("get_tutor_state_driver")
+	var layer: SkeletonModifier3D = buddy.call("get_gesture_layer")
+	var skeleton: Skeleton3D = buddy.call("get_skeleton")
+	var face: RefCounted = buddy.get("_face")
+	# speaking, 8 s at 60 Hz with the mouth driven.
+	buddy.call("set_tutor_state", "speaking")
+	var expression: String = String(buddy.call("get_expression"))
+	var overlays_seen: Array = []
+	var talk_peak: float = 0.0
+	var head: int = skeleton.find_bone(GestureClips.HEAD)
+	var head_end: int = skeleton.find_bone("head_end")
+	for k: int in range(480):
+		buddy.call("set_mouth_open", 0.5 + 0.5 * sin(float(k) * 0.3))
+		buddy.call("step_mouth", STEP)
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+		driver.call("step", STEP)
+		for name: String in buddy.call("get_face_overlays"):
+			if not overlays_seen.has(name):
+				overlays_seen.append(name)
+		talk_peak = maxf(talk_peak, absf(_head_tip(skeleton, head, head_end).x))
+		if String(buddy.call("get_expression")) != expression:
+			failures.append("the speaking schedule changed the expression to '%s'" % String(buddy.call("get_expression")))
+			break
+	var fired: Dictionary = driver.call("fired")
+	print("      speaking schedule over 8 s: %s, overlays %s, talk-nod peak %.2f deg"
+			% [str(fired), str(overlays_seen), talk_peak])
+	if int(fired["brow"]) < 3:
+		failures.append("only %d brow raises in 8 s of speaking; expected one every ~1.8 s" % int(fired["brow"]))
+	if int(fired["glance"]) < 1:
+		failures.append("no glance in 8 s of speaking")
+	if int(fired["hand"]) < 2:
+		failures.append("only %d hand beats in 8 s of speaking; expected one every ~3 s" % int(fired["hand"]))
+	if not overlays_seen.has("browsUp") or not overlays_seen.has("eyesUpLeft"):
+		failures.append("the brow raise / glance overlays never reached the face: %s" % str(overlays_seen))
+	if talk_peak < 0.5 or talk_peak > 3.0:
+		failures.append("talk head motion peaked at %.2f degrees; expected about +-1" % talk_peak)
+	if not bool(buddy.call("is_blinking_enabled")):
+		failures.append("speaking switched the blink off")
+	# An overlay on the face is an overlay, not a mood change.
+	if (face.call("current_overlays") as Array).size() > 0 and String(face.call("current_mood")) != expression:
+		failures.append("an overlay changed the compositor's mood")
+	# explaining: point, then half nods every ~2.5 s while speaking.
+	buddy.call("set_tutor_state", "explaining")
+	var nods: int = 0
+	var seen_point: bool = String(buddy.call("get_current_gesture")) == "point"
+	var last: String = ""
+	for k: int in range(480):
+		buddy.call("set_mouth_open", 0.6)
+		buddy.call("step_mouth", STEP)
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+		driver.call("step", STEP)
+		var current: String = String(buddy.call("get_current_gesture"))
+		if current == "nod" and last != "nod":
+			nods += 1
+		last = current
+	print("      explaining schedule over 8 s: point %s, %d nods" % [str(seen_point), nods])
+	if not seen_point:
+		failures.append("'explaining' did not start with a point")
+	if nods < 2:
+		failures.append("'explaining' nodded %d times in 8 s; expected one every ~2.5 s" % nods)
+	# Not speaking -> the nods stop.
+	buddy.call("set_speaking", false)
+	var before: int = int((driver.call("fired") as Dictionary)["nod"])
+	for _k: int in range(300):
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+		driver.call("step", STEP)
+	if int((driver.call("fired") as Dictionary)["nod"]) != before:
+		failures.append("'explaining' kept nodding after the speech stopped")
+	buddy.call("set_tutor_state", "idle")
+	for _k: int in range(30):
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+	skeleton.reset_bone_poses()
+	return failures
+
+
+## -- 13. nothing else moved: idle, carry pose, moods, the sealed hierarchy ----------------------
 
 func _test_nothing_else_disturbed(buddy: Node3D):
 	var failures: Array = []

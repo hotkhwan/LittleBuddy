@@ -70,13 +70,23 @@ const GESTURE_WAVE: String = "wave"
 const GESTURE_NAMES: Array[String] = [
 	GESTURE_NOD, GESTURE_TILT, GESTURE_POINT, GESTURE_CLAP, GESTURE_WAVE,
 ]
+## The small conversational beats the `speaking` tutor state sprinkles in
+## every ~3 s: not in the TutorTurn vocabulary, playable through the layer.
+const MICRO_BEAT_RIGHT: String = "beatRight"
+const MICRO_BEAT_LEFT: String = "beatLeft"
+const MICRO_OPEN_HANDS: String = "openHands"
+const MICRO_NAMES: Array[String] = [MICRO_BEAT_RIGHT, MICRO_BEAT_LEFT, MICRO_OPEN_HANDS]
 ## Gestures that move the arms; refused while the carry pose has them.
-const ARM_GESTURES: Array[String] = [GESTURE_POINT, GESTURE_CLAP, GESTURE_WAVE]
+const ARM_GESTURES: Array[String] = [
+	GESTURE_POINT, GESTURE_CLAP, GESTURE_WAVE,
+	MICRO_BEAT_RIGHT, MICRO_BEAT_LEFT, MICRO_OPEN_HANDS,
+]
 
 ## Seconds. Read by the tests and by `play_gesture()`'s return value.
 const DURATIONS: Dictionary = {
 	GESTURE_NOD: 0.9, GESTURE_TILT: 1.2, GESTURE_POINT: 1.4,
 	GESTURE_CLAP: 1.1, GESTURE_WAVE: 1.3,
+	MICRO_BEAT_RIGHT: 0.9, MICRO_BEAT_LEFT: 0.9, MICRO_OPEN_HANDS: 1.0,
 }
 
 ## Degrees.
@@ -104,8 +114,13 @@ static func listening_posture() -> Dictionary:
 	}
 
 
+## A name the layer can play: the five contract gestures or a micro beat.
 static func is_gesture(name: String) -> bool:
-	return GESTURE_NAMES.has(name)
+	return GESTURE_NAMES.has(name) or MICRO_NAMES.has(name)
+
+
+static func is_micro(name: String) -> bool:
+	return MICRO_NAMES.has(name)
 
 
 static func duration_of(name: String) -> float:
@@ -119,7 +134,7 @@ static func build_all(skeleton: Skeleton3D, prefix: String = ".") -> Dictionary:
 	var clips: Dictionary = {}
 	if skeleton == null:
 		return clips
-	for name: String in GESTURE_NAMES:
+	for name: String in GESTURE_NAMES + MICRO_NAMES:
 		var animation: Animation = build(name, skeleton, prefix)
 		if animation != null:
 			clips[name] = animation
@@ -138,6 +153,12 @@ static func build(name: String, skeleton: Skeleton3D, prefix: String) -> Animati
 			return _clap(skeleton, prefix)
 		GESTURE_WAVE:
 			return _wave(skeleton, prefix)
+		MICRO_BEAT_RIGHT:
+			return _beat(skeleton, prefix, -1)
+		MICRO_BEAT_LEFT:
+			return _beat(skeleton, prefix, 1)
+		MICRO_OPEN_HANDS:
+			return _open_hands(skeleton, prefix)
 		_:
 			return null
 
@@ -220,6 +241,32 @@ static func _wave(skeleton: Skeleton3D, prefix: String) -> Animation:
 	_bone(animation, skeleton, prefix, FOREARM_R, _combine(
 			_scaled(raise, NOD, -WAVE_ELBOW_DEG), _scaled(swing, NOD, 24.0)))
 	_bone(animation, skeleton, prefix, HAND_R, _scaled(swing, TILT, 18.0))
+	return animation
+
+
+## A conversational beat: one forearm lifts a little and settles. `side` -1 is
+## her right arm, +1 her left.
+static func _beat(skeleton: Skeleton3D, prefix: String, side: int) -> Animation:
+	var animation: Animation = _one_shot(duration_of(MICRO_BEAT_RIGHT))
+	var beats: Array = [[0.0, 0.0], [0.3, 1.0], [0.55, 0.85], [0.9, 0.0]]
+	var arm: String = ARM_L if side > 0 else ARM_R
+	var forearm: String = FOREARM_L if side > 0 else FOREARM_R
+	var hand: String = HAND_L if side > 0 else HAND_R
+	_bone(animation, skeleton, prefix, arm, _scaled(beats, NOD, -10.0))
+	_bone(animation, skeleton, prefix, forearm, _scaled2(beats, NOD, -38.0, TILT, float(side) * 10.0))
+	_bone(animation, skeleton, prefix, hand, _scaled(beats, NOD, -12.0))
+	return animation
+
+
+## Both forearms open outward a little, palms toward the child, and settle.
+static func _open_hands(skeleton: Skeleton3D, prefix: String) -> Animation:
+	var animation: Animation = _one_shot(duration_of(MICRO_OPEN_HANDS))
+	var beats: Array = [[0.0, 0.0], [0.35, 1.0], [0.65, 0.9], [1.0, 0.0]]
+	for side: int in [-1, 1]:
+		var arm: String = ARM_L if side > 0 else ARM_R
+		var forearm: String = FOREARM_L if side > 0 else FOREARM_R
+		_bone(animation, skeleton, prefix, arm, _scaled2(beats, NOD, -14.0, TILT, float(side) * 6.0))
+		_bone(animation, skeleton, prefix, forearm, _scaled2(beats, NOD, -30.0, TILT, float(side) * 22.0))
 	return animation
 
 

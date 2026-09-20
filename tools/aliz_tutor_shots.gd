@@ -14,6 +14,11 @@ extends SceneTree
 ##       docs/shots/<prefix>_gesture_<name>_<n>.png, five frames per gesture at
 ##       10/30/50/70/90 % of its length, the layer's clock stepped by hand so
 ##       the frame is the frame; the idle is held at one pose underneath
+##   Godot --path game --script ../tools/aliz_tutor_shots.gd -- <prefix> state
+##       docs/shots/<prefix>_state_<name>_<n>.png, five frames each for the
+##       composite states interrupted (from mid-sentence explaining, a child
+##       marker on her left), explaining and celebrating, in real time at
+##       0 / 0.15 / 0.4 / 0.9 / 1.6 s after entry
 ##
 ## Blinking is off for every still (a blink on the capture frame would be a
 ## lie about the face). `tools/aliz_tutor_sheet.py` tiles the results.
@@ -91,6 +96,8 @@ func _run() -> void:
 			await _envelope(girl)
 		"gesture":
 			await _gesture(girl, cam)
+		"state":
+			await _states(girl, cam)
 		_:
 			await _expressions(girl)
 	quit()
@@ -174,6 +181,53 @@ func _gesture(girl: Node3D, cam: Camera3D) -> void:
 		print("  %s: %.2f s, five frames" % [name, length])
 	layer.set("manual_clock", false)
 	girl.call("set_expression", "neutral")
+
+
+func _states(girl: Node3D, cam: Camera3D) -> void:
+	_gesture_cam(cam)
+	var child := Node3D.new()
+	girl.get_parent().add_child(child)
+	# The camera sits on -Z here; a child a metre to HER left (world +x... her
+	# left when facing -Z is -x) and a little in front.
+	child.position = Vector3(-1.0, 0.9, -1.4)
+	girl.call("set_attention_target", child)
+	var when: Array = [0.0, 0.15, 0.4, 0.9, 1.6]
+	for name: String in ["interrupted", "explaining", "celebrating"]:
+		girl.call("set_tutor_state", "idle")
+		for _k: int in range(30):
+			await process_frame
+		if name == "interrupted":
+			# Mid-sentence: explaining with the mouth open and the point up.
+			girl.call("set_tutor_state", "explaining")
+			var t0: float = 0.0
+			while t0 < 0.7:
+				girl.call("set_mouth_open", 1.0)
+				await process_frame
+				t0 += _dt()
+		girl.call("set_tutor_state", name)
+		var t: float = 0.0
+		var n: int = 0
+		while n < when.size():
+			if name == "explaining":
+				girl.call("set_mouth_open", 0.6 + 0.4 * sin(t * 9.0))
+			if t >= float(when[n]) - 0.001:
+				await _shot("%s_state_%s_%d" % [_prefix, name, n])
+				t += 3.0 * _dt()
+				n += 1
+			else:
+				await process_frame
+				t += _dt()
+		print("  %s: five frames at %s s; state now '%s', expression '%s', gesture '%s', mouth frame %d"
+				% [name, str(when), String(girl.call("get_tutor_state")),
+				String(girl.call("get_expression")), String(girl.call("get_current_gesture")),
+				int(girl.call("get_mouth_frame"))])
+	girl.call("set_tutor_state", "idle")
+	child.queue_free()
+
+
+func _dt() -> float:
+	var d: float = get_root().get_process_delta_time()
+	return d if d > 0.0 else 1.0 / 60.0
 
 
 func _shot(name: String) -> void:

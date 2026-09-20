@@ -11,6 +11,7 @@ the top of that file). Follows `ALIZ_FACE_PASS.md`. Branch `wt4/face`.
 | Four mouth frames over `neutral`, 1:1 over 3x | `docs/shots/aliz_tutor_mouth_sheet.png` (cells `aliz_tutor_mouth_<n>.png`) |
 | Six frames of the mouth during a two-syllable synthetic envelope, 2x | `docs/shots/aliz_tutor_envelope_strip.png` (cells `aliz_tutor_env_<n>.png`) |
 | Five frames per gesture on the real model, 10/30/50/70/90 % of the clip | `docs/shots/aliz_tutor_gesture_<nod,tilt,point,clap,wave>_strip.png` |
+| Composite states, five frames at 0 / 0.15 / 0.4 / 0.9 / 1.6 s after entry, body over face | `docs/shots/aliz_tutor_state_<interrupted,explaining,celebrating>_strip.png` |
 | Atlas-side proof the patches land on the right texels (frames over `neutral` AND over `happy`) | `tools/aliz_mouth_frames.py` → `<prefix>_expressions.png`, `_mouth_frames.png`, `_mouth_on_happy.png` |
 | Headless prints: mouth amounts vs envelope, lip sync amounts vs tone, gesture bone deltas | `test_aliz_tutor_face.gd` (§5 below) |
 
@@ -141,6 +142,36 @@ from the classroom's three-quarter camera.
 head −3° to keep the eyes level), eased 0.35 s: the head moves 2.3 cm forward; a nod
 plays over it (asserted).
 
+## 4b. Composite tutor states — `buddy_tutor_state.gd` (owner addendum, contracts §"Aliz states")
+
+`set_tutor_state(name)` turns one word into a policy across the four layers — face
+texture, mouth frames, gesture layer, base clip — through the public calls above only,
+so no state can make two layers disagree; the blink runs in every state. Speaking-state
+micro-behaviour uses texture **overlays** (`browsUp`, `eyesUpLeft` laid over the
+expression, under the blink) so the expression itself never changes, and three new
+micro clips (`beatRight`, `beatLeft`, `openHands`, 0.9–1.0 s) played at 0.6 scale.
+
+| state | face | mouth | gesture layer |
+|---|---|---|---|
+| `idle` | neutral | closed | nothing; straight ahead |
+| `listening` | listening | closed | lean-in; head toward the attention target |
+| `thinking` | thinking | closed | half tilt on entry |
+| `speaking` | smile | lip sync | ±1° talk nods (two periods); brow raise 250 ms every ~1.8 s; glance 400 ms every ~4.5 s; a hand beat every ~3 s |
+| `interrupted` | listening, at once | `set_speaking(false)` first | running gesture stopped (0.2 s fade); head toward the target; lean-in |
+| `happy` / `encouraging` | happy / encouraging | untouched | half nod on entry |
+| `explaining` | smile | lip sync | `point` on entry, then a half nod every ~2.5 s while `is_speaking()`; brow raises |
+| `celebrating` | happy | untouched | `clap`; emits `wants_sfx("laugh")` once |
+
+`set_attention_target(node)` (null → the current camera, else world +Z, which is where
+the classroom camera sits) feeds `attention_yaw_deg()`; the look is a held head/neck
+yaw on the gesture layer, clamped ±35°, eased at 140°/s.
+
+Measured (headless, 60 Hz): **barge-in** from mid-sentence `explaining` (frame 3, point
+up) → listening face at 0 ms, mouth 0 at 17 ms, point cancelled at 200 ms, head turned
+35° toward a child on her left (yaw 39.8° clamped); **speaking** over 8 s: 4 brow raises,
+2 glances, 3 hand beats, talk-nod peak 1.09°, expression unchanged throughout;
+**explaining** over 8 s: point then 3 nods, and no more nods once speech stops.
+
 ## 5. Tests — `test_aliz_tutor_face.gd` (suite 141 cases, 0 failures; both mission smokes PASS)
 
 1. Six expressions listed, each changes ≥ 40 texels and none outside its layers' island
@@ -161,8 +192,20 @@ plays over it (asserted).
 7. Refused at 1.0 m/s, allowed at 0.05 m/s, fades within 0.2 s when locomotion starts,
    `point` refused while carrying, `nod` allowed.
 8. Listening lean 2–8 cm forward, nod over it, back to rest.
-9. `idle/walk/run` still in the player, no gesture merged into it, legacy moods present,
-   wrapper children exactly `[Model]`, modifiers `[CarryPose, GestureLayer, HairSway]`.
+9. Layers never conflict: `play_gesture("wave")` leaves the expression and every texel
+   alone; `set_expression()` mid-wave leaves the gesture's clock and weight alone; the
+   mouth frames disturb neither.
+10. All nine states accepted, an unknown one refused; each sets the expression, gesture
+    and speaking flag of the table; blink enabled in every state; `celebrating` emits
+    `wants_sfx("laugh")` exactly once; listening leans in, idle straightens.
+11. Barge-in timing: listening face ≤ 200 ms (0), mouth 0 ≤ 120 ms (17), gesture
+    cancelled ≤ 200 ms (200); head turned ≥ 5° toward a target on her left; fallback
+    yaw ~0 when she faces +Z with no target; idle returns the look to 0.
+12. Speaking schedule: ≥ 3 brow raises, ≥ 1 glance, ≥ 2 hand beats in 8 s, both overlays
+    reach the face, talk nod 0.5–3°, expression unchanged; explaining: point then ≥ 2
+    nods in 8 s, none after `set_speaking(false)`.
+13. `idle/walk/run` still in the player, no gesture merged into it, legacy moods present,
+    wrapper children exactly `[Model]`, modifiers `[CarryPose, GestureLayer, HairSway]`.
 
 `test_aliz_life.gd`, `test_aliz_face.gd`, `test_buddy_avatar.gd` unchanged and green
 (the wrapper still has no `_process`, no `Tween`, no hand-built player).
@@ -173,8 +216,8 @@ plays over it (asserted).
 |---|---|
 | `tools/aliz_expression_pass.py <glb> <atlas> <faces.json>` | paints the eight new layers, adds moods + `mouthFrames` + island `rects` to the manifest (additive; refuses a foreign atlas) |
 | `tools/aliz_mouth_frames.py <glb> <atlas> <faces.json> <prefix>` | atlas-side sheets: expressions, mouth frames over `neutral`, mouth frames over `happy` |
-| `tools/aliz_tutor_shots.gd -- <prefix> expr\|mouth\|envelope\|gesture` | in-engine stills at the tutor camera (1.2 m, fov 52) |
-| `tools/aliz_tutor_sheet.py docs/shots <prefix>` | tiles them: 1:1 + 3x sheets, envelope strip, gesture strips |
+| `tools/aliz_tutor_shots.gd -- <prefix> expr\|mouth\|envelope\|gesture\|state` | in-engine stills at the tutor camera (1.2 m, fov 52) |
+| `tools/aliz_tutor_sheet.py docs/shots <prefix>` | tiles them: 1:1 + 3x sheets, envelope strip, gesture and state strips |
 
 Restoring: `git checkout f0f212b -- game/assets/characters/buddy/pinkGirl/` then
 `Godot --headless --path game --import`; the compositor reports one mouth frame and no

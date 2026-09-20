@@ -106,6 +106,37 @@ extends Node3D
 ##                                   bones, head counter-nodded), eased 0.35 s;
 ##                                   the idle breath keeps running underneath.
 ##   `is_listening_pose() -> bool`.
+##   `play_gesture(name, scale)`     the optional second argument caps the blend
+##                                   (a half-size nod is `0.5`); the micro beats
+##                                   `beatRight` / `beatLeft` / `openHands` are
+##                                   playable too (not TutorTurn names).
+##
+## **Tutor states** (`buddy_tutor_state.gd`; addendum in
+## docs/ALIZ_TUTOR_CONTRACTS.md) -- one word becomes a policy across the four
+## layers (face texture, mouth frames, gesture layer, base clip), which never
+## conflict because each state only ever sets each layer through the calls
+## above; the blink runs in every state:
+##   `set_tutor_state(name) -> bool` "idle" | "listening" | "thinking" |
+##                                   "speaking" | "interrupted" | "happy" |
+##                                   "encouraging" | "explaining" | "celebrating"
+##                                   (`TUTOR_STATES`). `interrupted`: mouth to 0
+##                                   inside 120 ms, running gesture cancelled
+##                                   inside 200 ms, listening face at once, head
+##                                   turned to the attention target. `explaining`:
+##                                   point, then a half nod every ~2.5 s while
+##                                   speaking. `celebrating`: clap + happy +
+##                                   `wants_sfx("laugh")`. `speaking`: lip-sync
+##                                   mouth, +-1 degree head nods, a brow raise
+##                                   every ~1.8 s and a glance every ~4.5 s as
+##                                   texture OVERLAYS (the expression does not
+##                                   change), a small hand beat every ~3 s.
+##   `get_tutor_state() -> String`, `get_tutor_state_driver() -> Node`.
+##   `set_attention_target(node: Node3D)` whom `interrupted` / `listening` turn
+##                                   the head toward (yaw only, +-35 degrees);
+##                                   null = the current camera, else world +Z.
+##   `get_attention_target() -> Node3D`.
+##   signal `wants_sfx(name)`        "laugh" on `celebrating`; a hook, no audio
+##                                   is played here.
 ##
 ## ---------------------------------------------------------------------------
 ## ## Why it is OFF by default -- measured, not an opinion
@@ -251,6 +282,7 @@ const MouthScript := preload("res://scripts/characters/buddy/buddy_mouth.gd")
 const LipSyncScript := preload("res://scripts/characters/buddy/buddy_lip_sync.gd")
 const GestureClipsScript := preload("res://scripts/characters/buddy/buddy_gesture_clips.gd")
 const GestureLayerScript := preload("res://scripts/characters/buddy/buddy_gesture_layer.gd")
+const TutorStateScript := preload("res://scripts/characters/buddy/buddy_tutor_state.gd")
 const ContactHintScript := preload("res://scripts/characters/contact_shadow.gd")
 
 ## Where the bone-name adapter lives. The ONLY file that may name one of her
@@ -292,6 +324,16 @@ const EXPRESSIONS: Array[String] = [
 ## Above this ground speed a gesture is refused and a running one fades out:
 ## the arms belong to the walk and run clips while she travels.
 const GESTURE_MAX_SPEED_MPS: float = 0.1
+
+## The composite tutor states (`buddy_tutor_state.gd::STATES`).
+const TUTOR_STATES: Array[String] = [
+	"idle", "listening", "thinking", "speaking", "interrupted",
+	"happy", "encouraging", "explaining", "celebrating",
+]
+
+## Emitted by a tutor state that wants a sound ("laugh" on `celebrating`).
+## A hook for the scene; nothing here plays audio.
+signal wants_sfx(name: String)
 
 ## A blink: eyes shut for this long, every so often. Randomised so two Alizes
 ## in two menus would not blink in step, and so a child cannot count it.
@@ -409,6 +451,12 @@ var _lip_sync: Node = null
 ## The upper-body gesture layer, a `SkeletonModifier3D` under the skeleton.
 var _gesture_layer: SkeletonModifier3D = null
 var _listening_wanted: bool = false
+## Face overlays a tutor state lays over the expression (brow raise, glance).
+var _face_overlays: Array = []
+## The tutor state driver (`buddy_tutor_state.gd`), under `Model`.
+var _tutor: Node = null
+var _tutor_state_wanted: String = "idle"
+var _attention_target: Node3D = null
 ## The last ground speed `set_locomotion()` was given, m/s.
 var _locomotion_speed: float = 0.0
 ## True between the shut and the reopen of one blink.
@@ -766,6 +814,7 @@ func _build_model() -> void:
 	_build_hair_sway()
 	_build_blink_timer()
 	_build_mouth()
+	_build_tutor_state()
 	_build_contact_hint()
 
 
@@ -1226,7 +1275,21 @@ func _mood_closes_eyes() -> bool:
 func _show_face() -> void:
 	if _face == null:
 		return
-	_face.call("show", _wanted_face(), _blink_shut and not _mood_closes_eyes(), _mouth_frame)
+	_face.call("show", _wanted_face(), _blink_shut and not _mood_closes_eyes(), _mouth_frame,
+			_face_overlays)
+
+
+## Overlay layers (by manifest name) over the expression, under the blink; the
+## tutor state's brow raise and glance. The expression itself is untouched.
+func _set_face_overlays(names: Array) -> void:
+	if names == _face_overlays:
+		return
+	_face_overlays = names.duplicate()
+	_show_face()
+
+
+func get_face_overlays() -> Array:
+	return _face_overlays.duplicate()
 
 
 func _build_blink_timer() -> void:
@@ -1408,7 +1471,7 @@ func _build_gesture_layer() -> void:
 ## travelling faster than `GESTURE_MAX_SPEED_MPS`, or an arm gesture while the
 ## carry pose holds the arms. Nothing is emitted for a refusal, so a caller
 ## awaiting a duration of 0.0 is never left waiting.
-func play_gesture(name: String) -> float:
+func play_gesture(name: String, scale: float = 1.0) -> float:
 	build()
 	if not GestureClipsScript.is_gesture(name):
 		return 0.0
@@ -1418,7 +1481,7 @@ func play_gesture(name: String) -> float:
 		return 0.0
 	if _carry_pose_wanted and GestureClipsScript.ARM_GESTURES.has(name):
 		return 0.0
-	return float(_gesture_layer.call("play", name))
+	return float(_gesture_layer.call("play", name, scale))
 
 
 ## Fades a running gesture out over 0.2 s. Safe when none is running.
@@ -1459,6 +1522,89 @@ func set_listening_pose(active: bool) -> void:
 
 func is_listening_pose() -> bool:
 	return _listening_wanted
+
+
+# ---------------------------------------------------------------------------
+# TutorFace: composite states and the attention target
+# ---------------------------------------------------------------------------
+
+func _build_tutor_state() -> void:
+	if _model_root == null or _tutor != null:
+		return
+	_tutor = TutorStateScript.new()
+	_tutor.name = "TutorState"
+	_tutor.call("set_buddy", self)
+	_tutor.connect("wants_sfx", _on_tutor_wants_sfx)
+	_model_root.add_child(_tutor)
+
+
+## Applies a composite state (see the class doc). False for a name outside
+## `TUTOR_STATES`; without the model the wish is recorded and nothing shows.
+func set_tutor_state(name: String) -> bool:
+	build()
+	if not TUTOR_STATES.has(name):
+		return false
+	_tutor_state_wanted = name
+	if _tutor == null:
+		return true
+	var applied: bool = bool(_tutor.call("apply", name))
+	if applied and not is_inside_tree() and _gesture_layer != null:
+		# No modification pass will ease the look or the lean out here.
+		_gesture_layer.call("settle")
+	return applied
+
+
+func get_tutor_state() -> String:
+	return _tutor_state_wanted
+
+
+func get_tutor_state_driver() -> Node:
+	build()
+	return _tutor
+
+
+## Whom she turns her head toward when listening or interrupted. Null falls
+## back to the current camera (in the tree), else to world +Z.
+func set_attention_target(node: Node3D) -> void:
+	_attention_target = node
+	if _tutor != null and (_tutor_state_wanted == "listening" or _tutor_state_wanted == "interrupted"):
+		_look_at_attention(true)
+
+
+func get_attention_target() -> Node3D:
+	return _attention_target
+
+
+## Yaw from her facing to the attention target, degrees, + = her left. Uses
+## the wrapper's frame: yaw 0 faces -Z, her left is -X.
+func attention_yaw_deg() -> float:
+	var target: Vector3
+	if _attention_target != null and is_instance_valid(_attention_target):
+		target = _attention_target.global_position if _attention_target.is_inside_tree() \
+				else _attention_target.position
+	else:
+		var camera: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+		if camera != null:
+			target = camera.global_position
+		else:
+			target = (global_position if is_inside_tree() else position) + Vector3(0.0, 0.0, 1.0)
+	var frame: Transform3D = global_transform if is_inside_tree() else transform
+	var local: Vector3 = frame.affine_inverse() * target
+	local.y = 0.0
+	if local.length_squared() < 0.0001:
+		return 0.0
+	return rad_to_deg(atan2(-local.x, -local.z))
+
+
+## Turns the head toward the attention target (true) or straight ahead.
+func _look_at_attention(at_target: bool) -> void:
+	if _gesture_layer == null:
+		return
+	_gesture_layer.call("set_look", attention_yaw_deg() if at_target else 0.0)
+
+
+func _on_tutor_wants_sfx(name: String) -> void:
+	wants_sfx.emit(name)
 
 
 # ---------------------------------------------------------------------------
