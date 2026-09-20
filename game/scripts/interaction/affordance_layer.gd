@@ -347,6 +347,29 @@ func _default_context(target: Object) -> Dictionary:
 			if not String(described.get("role", "")).is_empty():
 				context["station"] = _station_context(local_id, described, held)
 
+	# A character's target (Bunny's `child_actor.gd` builds one) must never
+	# read TAKE off its `pickUp` action: the words for a person are HUG, CARRY
+	# and FEED. Detected off the actor API rather than a name, so a second
+	# child works the same. Carrying is Agent C's call and stays off here.
+	var owner_node: Node = (target as Node).get_parent() if target is Node else null
+	if owner_node != null and owner_node.has_method("satisfy") and owner_node.has_method("attend"):
+		var actions: Array = []
+		if target.has_method("get_supported_actions"):
+			actions = target.call("get_supported_actions")
+		var feedable: bool = false
+		var held_item: String = String(context.get("held", ""))
+		if not AffordanceRules.is_nothing(held_item):
+			var rules_path: String = "res://scripts/kitchen/kitchen_rules.gd"
+			if ResourceLoader.exists(rules_path):
+				var rules: GDScript = load(rules_path)
+				feedable = rules != null and bool(rules.is_feedable(held_item))
+		context["character"] = {
+			"canHug": actions.has("comfort") or actions.has("hug"),
+			"canCarry": false,
+			"canFeed": feedable,
+		}
+		return context
+
 	if not context.has("station") and _world.has_method("get_current_room"):
 		var room: Variant = _world.call("get_current_room")
 		if room is Object and is_instance_valid(room) and room.has_method("get_storage") \

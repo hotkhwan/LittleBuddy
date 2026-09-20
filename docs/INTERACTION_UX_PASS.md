@@ -62,16 +62,22 @@ from Aliz) when the top is taken by the prompt band. A tap falls through to
 
 `ActivityTarget` implements the read half: doors -> ENTER; `open` -> OPEN;
 `pickUp` -> TAKE; kitchen stations read live `KitchenState` (shut fridge OPEN,
-open fridge TAKE, holding an item PLACE where it can go); storages OPEN. Agent
-C's Bunny supplies `character: {canHug, canCarry, canFeed}` context or its own
-`get_affordance()`.
+open fridge TAKE, holding an item PLACE where it can go); storages OPEN. A
+character's target (`child_actor.gd`, sniffed by its `satisfy`/`attend` API)
+never reads TAKE: it is HUG, or FEED when the held item is in
+`kitchen_rules.FEEDABLE`; CARRY stays off until Agent C's Bunny supplies
+`character: {canHug, canCarry, canFeed}` context or its own `get_affordance()`
+/ `perform_affordance()`.
 
 ## Evidence
 
 `docs/shots/ux_{ipad,iphone}_{fridge_open,fridge_take,door_enter,pause,
-tap_hint,home_version}.png`, produced by `tests/shots_ux.gd` at 1334x750 and
-2340x1080 with the verb asserted before each frame and the PNG size asserted
-after. Tests: `test_affordance.gd`, `test_interaction_ux.gd` (suite 124).
+tap_hint,home_version,story_hug}.png`, produced by `tests/shots_ux.gd` at
+1334x750 and 2340x1080 (`-- <prefix> <W> <H> [story]`) with the verb asserted
+before each frame and the PNG size asserted after. `ux_story_feed*.png` (from
+`shots_rc.gd`) shows the icon'd Next button and the badge standing down under
+the care close-up. Tests: `test_affordance.gd`, `test_interaction_ux.gd`
+(suite 124). Smokes `imHungry` and `snackTime` pass.
 
 ## For the lead
 

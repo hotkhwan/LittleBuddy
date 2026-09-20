@@ -57,6 +57,9 @@ func _run() -> void:
 	root.add_child(_viewport)
 
 	_world = load("res://scenes/house/house_world.tscn").instantiate()
+	if args.size() > 3 and String(args[3]) == "story":
+		await _run_story()
+		return
 	# Free Play: the objective-free house, which is where a child meets the
 	# fridge without a mission steering the camera.
 	_world.call("set_progression_mode", 1)
@@ -128,6 +131,32 @@ func _run() -> void:
 	else:
 		_fail.append("could not stage the tap hint (hint %s, camera %s)" % [hint, camera])
 
+	_finish()
+
+
+## Story Mode, one frame: the first mission's prompt band is up and Aliz
+## stands between the toy box and Bunny, so the badge has to keep out from
+## under the prompt AND pick the mission's target. Proves both in the real game.
+func _run_story() -> void:
+	_viewport.add_child(_world)
+	await _settle(0.8)
+	var director: Node = _world.call("ensure_level_director")
+	director.call("start")
+	await _settle(1.0)
+	_hud = director.call("get_hud")
+	_layer = _hud.call("get_affordance_layer") if _hud != null else null
+	if _layer == null:
+		_fail.append("the Story HUD has no affordance layer")
+		return _finish()
+	# The first beat is "Go to Bunny", so Bunny -- the mission's own target --
+	# outranks the toy box beside him, and a character reads HUG, never TAKE.
+	_stand_at("bedroom.toyBox")
+	await _settle(0.7)
+	_expect("HUG", "bedroom.littleBuddy", "story_hug")
+	if float(_layer.call("get_top_keep_out")) <= 100.0:
+		_fail.append("story_hug: the HUD did not raise the keep-out under its prompt (%.0f)"
+				% float(_layer.call("get_top_keep_out")))
+	await _shot("%s_story_hug" % _prefix)
 	_finish()
 
 

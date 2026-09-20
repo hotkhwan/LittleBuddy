@@ -47,6 +47,26 @@ class FakeActor extends Node3D:
 		return state
 
 
+## Stands in for `child_actor.gd`: the two methods the layer sniffs for.
+class FakeChild extends Node3D:
+	func satisfy(_need: String, _amount: float) -> void:
+		pass
+
+	func attend(_point: Vector3) -> void:
+		pass
+
+
+## A kitchen that only answers what the layer asks, with a hand we can fill.
+class FakeKitchen extends RefCounted:
+	var in_hand: String = ""
+
+	func held() -> String:
+		return in_hand
+
+	func describe(_station_id: String) -> Dictionary:
+		return {"role": "", "open": false, "on": "", "inside": []}
+
+
 class FakeWorld extends Node:
 	var kitchen: RefCounted = null
 	var character: Node3D = null
@@ -76,6 +96,7 @@ func run():
 	failures.append_array(_test_layer_tap_falls_through_or_is_handled())
 	failures.append_array(_test_layer_stands_down_when_input_is_off())
 	failures.append_array(_test_default_context_reads_the_kitchen())
+	failures.append_array(_test_a_character_is_never_taken())
 	return failures
 
 
@@ -490,5 +511,45 @@ func _test_default_context_reads_the_kitchen():
 	if bool(layer.call("is_showing")):
 		failures.append("affordance: the table offered %s for a raw banana" % str(layer.call("get_current_verb")))
 
+	world.free()
+	return failures
+
+
+## Bunny's own target advertises `pickUp`; the words for a person are HUG,
+## CARRY and FEED, so the default context must turn that into HUG -- and into
+## FEED once Aliz is holding something he will eat.
+func _test_a_character_is_never_taken():
+	var failures: Array = []
+	var world: FakeWorld = FakeWorld.new()
+	var actor: FakeActor = FakeActor.new()
+	world.character = actor
+	world.kitchen = KitchenState.new()
+	var layer: Control = LayerScript.new()
+	world.add_child(layer)
+	layer.call("bind", world)
+	var bunny: FakeChild = FakeChild.new()
+	bunny.position = Vector3(0.5, 0.0, 0.0)
+	var target: Area3D = _make_target("littleBuddy", "bedroom", ["talkTo", "comfort", "pickUp"], Vector3(0.66, 0.9, 0.66), Vector3.ZERO)
+	bunny.add_child(target)
+	world.add_child(bunny)
+	layer.call("set_candidate_sources", [target])
+
+	layer.call("step", 0.016)
+	if String(layer.call("get_current_verb")) != "HUG":
+		failures.append("affordance: Bunny's target offers %s; a character is hugged, never taken"
+				% str(layer.call("get_current_verb")))
+	world.kitchen.call("set_open", "fridge", true)
+	world.kitchen.call("take", "fridge", "banana")
+	layer.call("step", 0.016)
+	if String(layer.call("get_current_verb")) != "HUG":
+		failures.append("affordance: a raw banana in hand should not offer FEED (got %s)" % str(layer.call("get_current_verb")))
+	# Only finished food feeds him: `kitchen_rules.FEEDABLE`, not the empty bottle.
+	var pantry: FakeKitchen = FakeKitchen.new()
+	pantry.in_hand = "bottleOfMilk"
+	world.kitchen = pantry
+	layer.call("step", 0.016)
+	if String(layer.call("get_current_verb")) != "FEED":
+		failures.append("affordance: holding the bottle of milk near Bunny should offer FEED (got %s)"
+				% str(layer.call("get_current_verb")))
 	world.free()
 	return failures
