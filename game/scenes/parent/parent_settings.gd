@@ -100,6 +100,10 @@ var _syncing: bool = false
 ## opposed to an overlay inside a running room. Decided once, in `_ready()`.
 var _standalone: bool = false
 var _going_home: bool = false
+## Overlay hosts that opened this on an explicit "Grown-ups" press (the pause
+## card) ask for the full gate card instead of the corner gear, so the grown-up
+## sees what to hold and has a Back. The Baby Room keeps the gear.
+var _card_requested: bool = false
 
 @onready var _entry_gate: ParentalGateScript = %EntryGate
 @onready var _gate_screen: Control = %GateScreen
@@ -217,6 +221,15 @@ func is_standalone() -> bool:
 ## cannot be under the root) and wants the standalone gate card photographed.
 func set_standalone(value: bool) -> void:
 	_standalone = value
+	if not _panel.visible:
+		_show_locked()
+
+
+## Shows the gate card (hold bar + Back) rather than the corner gear, for an
+## overlay host that was asked for Grown-ups explicitly. Back emits `closed()`
+## so the host takes the overlay down and gives the room back.
+func show_gate_card() -> void:
+	_card_requested = true
 	if not _panel.visible:
 		_show_locked()
 
@@ -608,11 +621,13 @@ func close_settings() -> void:
 func _show_locked() -> void:
 	_entry_gate.reset()
 	_gate_hold.reset()
-	_entry_gate.visible = show_gate and not _standalone
-	_gate_screen.visible = show_gate and _standalone
+	var card: bool = _standalone or _card_requested
+	_entry_gate.visible = show_gate and not card
+	_gate_screen.visible = show_gate and card
 	# Standalone there is nothing behind us: the backdrop stays, so the gate card
-	# sits on cream rather than on the bare clear colour.
-	_backdrop.visible = _standalone
+	# sits on cream rather than on the bare clear colour. An overlay's card sits
+	# on the same cream over the paused room.
+	_backdrop.visible = card
 	_scroll.visible = false
 	_panel.visible = false
 	_hide_reset_confirmation()
@@ -633,6 +648,9 @@ func _on_back_pressed() -> void:
 	back_requested.emit()
 	if _standalone:
 		_go_home()
+	elif _card_requested:
+		# The host removes the overlay on `closed()`, exactly as after Done.
+		closed.emit()
 
 
 ## Replaces this scene with the title. Deferred, so it never happens in the

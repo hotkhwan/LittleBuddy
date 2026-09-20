@@ -1081,6 +1081,10 @@ func open_grown_ups() -> void:
 	var host: Node = get_parent() if get_parent() != null else self
 	host.add_child(overlay)
 	host.move_child(overlay, host.get_child_count() - 1)
+	# The grown-up asked for this by name: show the hold bar and a Back, not an
+	# 84 px gear they would have to find in the corner of a paused room.
+	if overlay.has_method("show_gate_card"):
+		overlay.call("show_gate_card")
 	# The card steps aside but the world stays held until Done.
 	if _pause_menu != null and bool(_pause_menu.call("is_open")):
 		_pause_menu.call("close")

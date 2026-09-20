@@ -188,6 +188,15 @@ func _test_overlay_mode(tree: SceneTree):
 		failures.append("overlay: close_settings() must emit closed() once and hide the panel")
 	if gear == null or not gear.visible:
 		failures.append("overlay: the gear must come back after closing")
+	# An overlay host that asked for Grown-ups by name gets the card, and Back
+	# closes the overlay.
+	panel.call("show_gate_card")
+	if not bool(panel.call("is_gate_card_visible")) or gear.visible:
+		failures.append("overlay: show_gate_card() must swap the gear for the card")
+	var back: Button = panel.find_child("GateBackButton", true, false) as Button
+	back.pressed.emit()
+	if closed[0] != 2:
+		failures.append("overlay: Back on the requested card must emit closed() so the host removes it")
 	_teardown(panel)
 	return failures
 
