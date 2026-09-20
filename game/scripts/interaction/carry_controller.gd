@@ -217,6 +217,9 @@ func put_down(point: Variant = null, yaw: Variant = null) -> bool:
 		return false
 	var target: Variant = point if point is Vector3 else find_put_down_spot()
 	if target == null:
+		# Nowhere to put him -- a wall, a piece of furniture, her own feet. He
+		# stays in her arms and the arms say so with a small sway.
+		shake()
 		return false
 	_from = SpatialUtil.world_transform(_node)
 	var basis: Basis = _carrier_yaw_basis()

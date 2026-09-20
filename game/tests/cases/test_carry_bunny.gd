@@ -348,6 +348,20 @@ func _test_put_down_respects_the_room():
 		failures.append("put_down succeeded with nowhere to put him")
 	if not bool(bunny.call("is_carried")):
 		failures.append("a refused put-down dropped him anyway")
+	var carry: Node = aliz.call("get_carry_controller")
+	if not bool(carry.call("is_shaking")):
+		failures.append("a refused put-down gave no soft shake")
+	var held_before: Vector3 = SpatialUtil.world_position(bunny)
+	var swayed: bool = false
+	for _frame: int in range(12):
+		aliz.call("step_movement", DT)
+		if absf(SpatialUtil.world_position(bunny).x - held_before.x) > 0.005:
+			swayed = true
+	if not swayed:
+		failures.append("the refusal shake moved nothing")
+	_step(aliz, 40)
+	if bool(carry.call("is_shaking")):
+		failures.append("the shake did not settle")
 	# An explicit point is still honoured (the caller vouches for it).
 	if not bool(aliz.call("put_down_carried", Vector3(0.6, 0.0, -0.6))):
 		failures.append("an explicit put-down point was refused")
