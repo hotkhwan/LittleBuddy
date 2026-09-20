@@ -1,0 +1,41 @@
+{
+  "contentVersion": 1,
+  "note": "Subject index for Aliz Tutor Mode. Every lessonId resolves to res://content/tutor/lessons/<lessonId>.json and every subject lists at least one lesson so the selector never dead-ends.",
+  "subjects": [
+    {
+      "subjectId": "english_basics",
+      "title": "English Basics",
+      "description": "Everyday words with pictures: fruits and their colours.",
+      "ageBand": "3-6",
+      "lessonIds": ["english_colors_fruits"]
+    },
+    {
+      "subjectId": "numbers",
+      "title": "Numbers",
+      "description": "Count together: one, two, three.",
+      "ageBand": "3-6",
+      "lessonIds": ["numbers_one_two_three"]
+    },
+    {
+      "subjectId": "colors",
+      "title": "Colors",
+      "description": "Name the colours you see: red, blue, yellow, green.",
+      "ageBand": "3-6",
+      "lessonIds": ["colors_red_blue"]
+    },
+    {
+      "subjectId": "animals",
+      "title": "Animals",
+      "description": "Meet the pets: cat and dog.",
+      "ageBand": "3-6",
+      "lessonIds": ["animals_cat_dog"]
+    },
+    {
+      "subjectId": "everyday_life",
+      "title": "Everyday Life",
+      "description": "Things we use every day: a cup and a spoon.",
+      "ageBand": "3-6",
+      "lessonIds": ["everyday_cup_spoon"]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "lessonId": "numbers_one_two_three",
+  "subjectId": "numbers",
+  "title": "One, Two, Three",
+  "ageBand": "3-6",
+  "targetDurationSeconds": 60,
+  "language": "en",
+  "helperLanguageKeys": ["lets_count_together_one_two_three", "how_many_is_this", "you_can_count_to_three"],
+  "steps": [
+    {
+      "stepId": "s01_hello",
+      "kind": "teach",
+      "teachText": "Let's count together! One, two, three!",
+      "visualAssetId": "number_1"
+    },
+    {
+      "stepId": "s02_one",
+      "kind": "ask",
+      "questionText": "How many is this?",
+      "visualAssetId": "number_1",
+      "expectedAnswers": ["one", "1", "it's one", "number one"],
+      "objective": "Recognise the number one",
+      "hint": "Just one. Hold up one finger. One!",
+      "encouragement": "Let's try together! How many is this?",
+      "successLine": "Yes! One!",
+      "answerLine": "It's one! Say one."
+    },
+    {
+      "stepId": "s03_two",
+      "kind": "ask",
+      "questionText": "How many is this?",
+      "visualAssetId": "number_2",
+      "expectedAnswers": ["two", "2", "it's two", "number two", "to", "too"],
+      "objective": "Recognise the number two",
+      "hint": "One more than one. Hold up two fingers. Two!",
+      "encouragement": "Let's try together! How many is this?",
+      "successLine": "Yes! Two!",
+      "answerLine": "It's two! Say two."
+    },
+    {
+      "stepId": "s04_celebrate",
+      "kind": "celebrate",
+      "teachText": "You can count to three! Here is your sticker!",
+      "visualAssetId": "number_3"
+    }
+  ],
+  "completion": {
+    "stars": 1,
+    "stickerId": "starSticker"
+  }
+}

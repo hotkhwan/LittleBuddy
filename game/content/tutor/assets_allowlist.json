@@ -1,0 +1,19 @@
+{
+  "contentVersion": 1,
+  "note": "The only visual asset ids a tutor turn or lesson step may reference. Lead-owned contract (docs/ALIZ_TUTOR_CONTRACTS.md). Additive changes only; every consumer (LessonValidator, TutorTurn client and server validators) rejects anything outside this list.",
+  "assetIds": [
+    "apple_red",
+    "banana_yellow",
+    "cat",
+    "dog",
+    "number_1",
+    "number_2",
+    "number_3",
+    "color_blue",
+    "color_green",
+    "color_red",
+    "color_yellow",
+    "orange_orange",
+    "grapes_purple"
+  ]
+}

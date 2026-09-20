@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "lessonId": "everyday_cup_spoon",
+  "subjectId": "everyday_life",
+  "title": "Cup and Spoon",
+  "ageBand": "3-6",
+  "targetDurationSeconds": 60,
+  "language": "en",
+  "helperLanguageKeys": ["what_do_we_drink_from", "what_do_we_eat_soup_with", "you_know_a_cup_and_a_spoon"],
+  "steps": [
+    {
+      "stepId": "s01_hello",
+      "kind": "teach",
+      "teachText": "Snack time! We drink from a cup. We eat soup with a spoon. Cup and spoon!"
+    },
+    {
+      "stepId": "s02_cup",
+      "kind": "ask",
+      "questionText": "What do we drink from?",
+      "expectedAnswers": ["cup", "a cup", "the cup", "from a cup", "cups", "mug"],
+      "objective": "Recall the everyday word: cup",
+      "hint": "You hold it with your hand and drink your milk from it. A cup!",
+      "encouragement": "Let's try together! We drink from a...?",
+      "successLine": "Yes! A cup!",
+      "answerLine": "We drink from a cup! Say cup."
+    },
+    {
+      "stepId": "s03_spoon",
+      "kind": "ask",
+      "questionText": "What do we eat soup with?",
+      "expectedAnswers": ["spoon", "a spoon", "the spoon", "with a spoon", "spoons"],
+      "objective": "Recall the everyday word: spoon",
+      "hint": "It's small and round at the end. You scoop with it. A spoon!",
+      "encouragement": "Let's try together! We eat soup with a...?",
+      "successLine": "Yes! A spoon!",
+      "answerLine": "We eat soup with a spoon! Say spoon."
+    },
+    {
+      "stepId": "s04_celebrate",
+      "kind": "celebrate",
+      "teachText": "You know a cup and a spoon! Here is your sticker!"
+    }
+  ],
+  "completion": {
+    "stars": 1,
+    "stickerId": "milkSticker"
+  }
+}

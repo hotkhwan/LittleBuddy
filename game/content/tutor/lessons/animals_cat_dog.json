@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "lessonId": "animals_cat_dog",
+  "subjectId": "animals",
+  "title": "Cat and Dog",
+  "ageBand": "3-6",
+  "targetDurationSeconds": 60,
+  "language": "en",
+  "helperLanguageKeys": ["lets_meet_two_animals", "what_animal_is_this", "you_met_a_cat_and_a_dog"],
+  "steps": [
+    {
+      "stepId": "s01_hello",
+      "kind": "teach",
+      "teachText": "Let's meet two animals! A cat says meow. A dog says woof!",
+      "visualAssetId": "cat"
+    },
+    {
+      "stepId": "s02_cat",
+      "kind": "ask",
+      "questionText": "What animal is this?",
+      "visualAssetId": "cat",
+      "expectedAnswers": ["cat", "a cat", "it's a cat", "kitty", "kitten", "cats"],
+      "objective": "Name the animal: cat",
+      "hint": "It says meow. It has whiskers and a long tail. A cat!",
+      "encouragement": "Let's try together! What animal is this?",
+      "successLine": "Yes! It's a cat! Meow!",
+      "answerLine": "It's a cat! Say cat."
+    },
+    {
+      "stepId": "s03_dog",
+      "kind": "ask",
+      "questionText": "What animal is this?",
+      "visualAssetId": "dog",
+      "expectedAnswers": ["dog", "a dog", "it's a dog", "puppy", "doggy", "dogs"],
+      "objective": "Name the animal: dog",
+      "hint": "It says woof. It wags its tail. A dog!",
+      "encouragement": "Let's try together! What animal is this?",
+      "successLine": "Yes! It's a dog! Woof!",
+      "answerLine": "It's a dog! Say dog."
+    },
+    {
+      "stepId": "s04_celebrate",
+      "kind": "celebrate",
+      "teachText": "You met a cat and a dog! Here is your sticker!",
+      "visualAssetId": "dog"
+    }
+  ],
+  "completion": {
+    "stars": 1,
+    "stickerId": "heartSticker"
+  }
+}
