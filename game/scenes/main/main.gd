@@ -158,24 +158,35 @@ const CAMERA_TARGET: Vector3 = Vector3(0.0, 0.44, 0.0)
 const BUDDY_AVATAR_SCENE_PATH: String = "res://scenes/characters/buddy/PinkGirlBuddy.tscn"
 const BUDDY_AVATAR_SCRIPT_PATH: String = "res://scripts/characters/buddy/pink_girl_buddy.gd"
 
-## Behind Little Buddy and to his left, so the composition is "the child, with a
-## grown-up nearby" rather than "a grown-up, with a child". Art bible §4 is
-## explicit that adults must never dominate the frame, and a 1.65 m adult beside
-## a 0.85 m toddler will do exactly that unless it is set back.
-const BUDDY_AVATAR_POSITION: Vector3 = Vector3(-0.82, 0.0, -0.62)
+## The family on the path. Aliz stands at the centre, a half step back so the
+## two small ones in front of her read as "hers"; Bunny sits forward and to her
+## right, Little Buddy (`main.tscn`) to her left. Art bible §4 is explicit that
+## adults must never dominate the frame, and a 1.65 m adult beside a 0.78 m baby
+## will do exactly that unless she is set back and the camera is aimed low.
+const BUDDY_AVATAR_POSITION: Vector3 = Vector3(0.05, 0.0, -0.55)
 ## Yaw 0 faces -Z for every character in this project, so 180 faces the camera.
-## 200 faces the camera and turns slightly toward Little Buddy at the origin --
-## §4: "warm, attentive, frequently looking *at* Little Buddy."
-const BUDDY_AVATAR_YAW_DEG: float = 200.0
+const BUDDY_AVATAR_YAW_DEG: float = 182.0
 
-## The framing used ONLY when the avatar is on: further back and aimed higher, so
-## a 1.65 m figure and a 0.85 m one both sit clear of the title panel and the
-## buttons. Off, `CAMERA_POSITION`/`CAMERA_TARGET` are used unchanged.
-const CAMERA_POSITION_WITH_BUDDY: Vector3 = Vector3(0.94, 1.18, 3.05)
-const CAMERA_TARGET_WITH_BUDDY: Vector3 = Vector3(-0.22, 0.72, -0.30)
+## Bunny -- the REAL baby, through the same production wrapper the house uses.
+## `load()`ed like Aliz: a build without the asset comes up as a garden with one
+## fewer person in it, never as an error.
+const BUNNY_SCENE_PATH: String = "res://scenes/characters/little_buddy/BabyLittleBuddy.tscn"
+const BUNNY_SCRIPT_PATH: String = "res://scripts/characters/little_buddy/baby_little_buddy.gd"
+const BUNNY_POSITION: Vector3 = Vector3(0.82, 0.0, -0.22)
+## Facing the camera and turned a little toward Aliz, who is to his left.
+const BUNNY_YAW_DEG: float = 194.0
+
+## The framing used ONLY when the avatar is on: pulled back and aimed at chest
+## height, so a 1.65 m figure, a 0.85 m one and a 0.78 m one all sit between the
+## title and the button row with the house behind them. Off,
+## `CAMERA_POSITION`/`CAMERA_TARGET` are used unchanged.
+const CAMERA_POSITION_WITH_BUDDY: Vector3 = Vector3(0.10, 1.60, 4.45)
+const CAMERA_TARGET_WITH_BUDDY: Vector3 = Vector3(0.15, 0.70, -0.70)
 
 @onready var _play_button: Button = %PlayButton
 @onready var _free_play_button: Button = %FreePlayButton
+@onready var _dress_button: Button = %DressUpButton
+@onready var _parent_button: Button = %ParentButton
 @onready var _coming_soon_label: Label = %ComingSoonLabel
 
 ## Set once the menu has handed off, so the first-launch timer can never fire
@@ -185,6 +196,7 @@ var _handed_off: bool = false
 
 func _ready() -> void:
 	var showing_buddy: bool = _add_buddy_avatar()
+	_add_bunny()
 	var camera: Camera3D = get_node_or_null("Camera3D") as Camera3D
 	if camera != null:
 		if showing_buddy:
@@ -197,8 +209,10 @@ func _ready() -> void:
 	_coming_soon_label.visible = false
 	_play_button.pressed.connect(_on_play_pressed)
 	_free_play_button.pressed.connect(_on_free_play_pressed)
+	_dress_button.pressed.connect(_on_dress_up_pressed)
+	_parent_button.pressed.connect(_on_parent_pressed)
 	_label_play_button()
-	_build_secondary_menu()
+	_dress_buttons()
 
 	_arm_first_run()
 
@@ -260,79 +274,96 @@ func _has_progress() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# The secondary menu
+# The four buttons: shadow, squish, and where they go
 # ---------------------------------------------------------------------------
 
-## Dress Up and Grown-ups, as two small corner buttons.
+## Dress Up and Grown-ups sit in the same row as Play and Free Play now, at the
+## same size, in the same rounded frames, each with its own picture: a shirt with
+## a heart, and a gear. Four equal buttons a child can tell apart by colour and
+## picture beat two big ones plus two small text-only corners that nobody found.
+## Grown-ups is still the quietest of the four -- lavender is the parent chrome
+## colour (`Palette.PARENT_CHROME`) and its icon is the plainest.
 ##
-## They are built HERE rather than in `main.tscn` because they must not compete
-## with Play and Free Play. Those two are the child's whole decision and they own
-## the bottom of the screen; a five-button row would make the important choice
-## harder to find, which is the opposite of what the brief asks for ("do not
-## overwhelm a child with text... large visual buttons and short labels").
-##
-## So the secondary pair sits in the top corners, smaller, out of the way of both
-## the characters and the primary buttons. Grown-ups is deliberately the plainest
-## thing on screen: it leads to a parental gate, and a child should not be drawn
-## to it.
-const CORNER_BUTTON_SIZE := Vector2(148.0, 96.0)
-const CORNER_MARGIN: float = 26.0
-const SECONDARY_FONT_SIZE: int = 26
-
+## What the scene file cannot express is added here: a soft drop shadow under
+## each button and a small squish on press with the gentle tap sound, so a
+## finger on the glass always gets an answer even before the scene changes.
 const DRESS_UP_SCENE: String = "res://scenes/activities/dressing.tscn"
 const PARENT_SCENE: String = "res://scenes/parent/parent_settings.tscn"
 
-var _dress_button: Button = null
-var _parent_button: Button = null
+const SHADOW_SIZE: int = 22
+const SHADOW_OFFSET: Vector2 = Vector2(0.0, 12.0)
+const SHADOW_ALPHA: float = 0.20
+const SHADOW_CORNER: int = 44
+const PRESS_SCALE: Vector2 = Vector2(0.92, 0.92)
+const PRESS_SECONDS: float = 0.08
+const TAP_SFX: String = "gentle_tap"
+
+const Palette := preload("res://scripts/ui/palette.gd")
 
 
-func _build_secondary_menu() -> void:
-	var host: Node = _play_button.get_parent()
+func _menu_buttons() -> Array:
+	var buttons: Array = []
+	for button: Button in [_play_button, _free_play_button, _dress_button, _parent_button]:
+		if button != null:
+			buttons.append(button)
+	return buttons
+
+
+func _dress_buttons() -> void:
+	for button: Button in _menu_buttons():
+		_add_soft_shadow(button)
+		button.button_down.connect(_on_button_down.bind(button))
+		button.button_up.connect(_on_button_up.bind(button))
+
+
+## A `Panel` behind the button with only a blurred `StyleBoxFlat` shadow drawn --
+## the same anchors and offsets, so it follows the button through every layout.
+func _add_soft_shadow(button: Button) -> void:
+	var host: Node = button.get_parent()
 	if host == null:
 		return
+	var style := StyleBoxFlat.new()
+	style.draw_center = false
+	style.shadow_color = Color(Palette.INK, SHADOW_ALPHA)
+	style.shadow_size = SHADOW_SIZE
+	style.shadow_offset = SHADOW_OFFSET
+	style.set_corner_radius_all(SHADOW_CORNER)
+	var shadow := Panel.new()
+	shadow.name = "%sShadow" % button.name
+	shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shadow.add_theme_stylebox_override("panel", style)
+	host.add_child(shadow)
+	host.move_child(shadow, button.get_index())
+	shadow.anchor_left = button.anchor_left
+	shadow.anchor_top = button.anchor_top
+	shadow.anchor_right = button.anchor_right
+	shadow.anchor_bottom = button.anchor_bottom
+	shadow.offset_left = button.offset_left
+	shadow.offset_top = button.offset_top
+	shadow.offset_right = button.offset_right
+	shadow.offset_bottom = button.offset_bottom
+	shadow.grow_horizontal = button.grow_horizontal
+	shadow.grow_vertical = button.grow_vertical
 
-	_dress_button = _corner_button("DressUpButton", "Dress Up", true)
-	if _dress_button != null:
-		host.add_child(_dress_button)
-		_dress_button.pressed.connect(_on_dress_up_pressed)
 
-	_parent_button = _corner_button("ParentButton", "Grown-ups", false)
-	if _parent_button != null:
-		host.add_child(_parent_button)
-		_parent_button.pressed.connect(_on_parent_pressed)
+func _on_button_down(button: Button) -> void:
+	_squish(button, PRESS_SCALE)
+	var sfx: Node = _autoload("Sfx")
+	if sfx != null and sfx.has_method("play"):
+		sfx.call("play", TAP_SFX)
 
 
-func _corner_button(node_name: String, caption: String, left: bool) -> Button:
-	var button := Button.new()
-	button.name = node_name
-	# Styled from the same tres files the primary buttons use, so the menu keeps
-	# one visual language rather than gaining a third button look.
-	var normal: Resource = load("res://assets/ui/styles/btn_peach.tres" if left
-			else "res://assets/ui/styles/panel_cream.tres")
-	var pressed: Resource = load("res://assets/ui/styles/btn_peach_down.tres" if left
-			else "res://assets/ui/styles/panel_cream.tres")
-	if normal is StyleBox:
-		button.add_theme_stylebox_override("normal", normal)
-		button.add_theme_stylebox_override("hover", normal)
-		button.add_theme_stylebox_override("disabled", normal)
-	if pressed is StyleBox:
-		button.add_theme_stylebox_override("pressed", pressed)
-	button.text = caption
-	button.focus_mode = Control.FOCUS_NONE
-	button.add_theme_font_size_override("font_size", SECONDARY_FONT_SIZE)
-	button.add_theme_color_override("font_color", Color("#59422B"))
-	button.add_theme_color_override("font_pressed_color", Color("#59422B"))
-	button.add_theme_color_override("font_hover_color", Color("#59422B"))
-	button.set_anchors_preset(Control.PRESET_TOP_LEFT if left else Control.PRESET_TOP_RIGHT)
-	if left:
-		button.offset_left = CORNER_MARGIN
-		button.offset_right = CORNER_MARGIN + CORNER_BUTTON_SIZE.x
-	else:
-		button.offset_left = -(CORNER_MARGIN + CORNER_BUTTON_SIZE.x)
-		button.offset_right = -CORNER_MARGIN
-	button.offset_top = CORNER_MARGIN
-	button.offset_bottom = CORNER_MARGIN + CORNER_BUTTON_SIZE.y
-	return button
+func _on_button_up(button: Button) -> void:
+	_squish(button, Vector2.ONE)
+
+
+func _squish(button: Button, to: Vector2) -> void:
+	button.pivot_offset = button.size * 0.5
+	if not is_inside_tree():
+		button.scale = to
+		return
+	var tween: Tween = create_tween()
+	tween.tween_property(button, "scale", to, PRESS_SECONDS).set_trans(Tween.TRANS_SINE)
 
 
 func _on_dress_up_pressed() -> void:
@@ -494,6 +525,40 @@ func _add_buddy_avatar() -> bool:
 	return true
 
 
+## Bunny, through `BabyLittleBuddy.tscn` -- the same wrapper `child_actor.gd`
+## uses in the house, so the baby on the title screen IS the baby the child is
+## about to look after. Built, then asked for his hand-authored `idle` so he
+## breathes rather than stands like a statue; a wrapper without clips simply
+## holds its pose. Nothing else touches him: no needs, no bubble, no walking.
+func _add_bunny() -> bool:
+	if not ResourceLoader.exists(BUNNY_SCENE_PATH):
+		return false
+	var script: Resource = load(BUNNY_SCRIPT_PATH)
+	if script is GDScript and (script as GDScript).has_method("is_enabled") \
+			and not bool((script as GDScript).call("is_enabled")):
+		return false
+	var packed: Resource = load(BUNNY_SCENE_PATH)
+	if not (packed is PackedScene):
+		return false
+	var bunny: Node = (packed as PackedScene).instantiate()
+	if not (bunny is Node3D):
+		if bunny != null:
+			bunny.free()
+		return false
+	var placed := bunny as Node3D
+	placed.name = "Bunny"
+	placed.position = BUNNY_POSITION
+	placed.rotation = Vector3(0.0, deg_to_rad(BUNNY_YAW_DEG), 0.0)
+	add_child(placed)
+	if placed.has_method("build"):
+		placed.call("build")
+	if placed.has_method("get_animation_player"):
+		var player: AnimationPlayer = placed.call("get_animation_player") as AnimationPlayer
+		if player != null and player.has_animation("idle"):
+			player.play("idle")
+	return true
+
+
 ## The switch, read from the wrapper so there is exactly ONE of it in the
 ## project. `load()`ed rather than `preload()`ed for the same reason as every
 ## other optional script in this file: a build without the avatar must still
@@ -639,7 +704,7 @@ func _enter_scene(path: String, mode: int) -> bool:
 		_show_unavailable()
 		return false
 
-	var tree: SceneTree = get_tree()
+	var tree: SceneTree = _scene_tree()
 	if tree == null:
 		instance.free()
 		return false
@@ -681,6 +746,16 @@ static func build_scene(
 	if profile != null and instance.has_method("restore_from_profile"):
 		instance.call("restore_from_profile", profile)
 	return instance
+
+
+## The tree to hand off into. `get_tree()` is null for a node that is not in an
+## ACTIVE tree -- which is every node during the headless runner's
+## `_initialize()`, where `test_menu_wow.gd` presses the real buttons -- so the
+## main loop is the fallback. In the running game the two are the same tree.
+func _scene_tree() -> SceneTree:
+	if is_inside_tree():
+		return get_tree()
+	return Engine.get_main_loop() as SceneTree
 
 
 func _saved_profile() -> Variant:
