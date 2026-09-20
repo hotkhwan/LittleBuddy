@@ -13,6 +13,7 @@ extends SceneTree
 ##   success          the Great job! banner
 ##   muted            the Mute toggle on, the indicator saying Muted
 ##   interrupted      the child barged in: "I'm listening!"
+##   after_switch     the barge-in honoured: the banana on the board, its question up
 ##   exit_confirm     "Stop the lesson?"
 ##   fallback         no recogniser: Tap to talk and the answer cards
 ##   break_card       the lesson finished with time left
@@ -95,10 +96,16 @@ func _run() -> void:
 	# Interrupted: Aliz repeats the question, the child talks over her.
 	_scene.hud().press("repeat")
 	await _settle(0.4)
-	_scene.simulate("interrupt")
+	_scene.simulate("interrupt", "Wait! I want the banana!")
 	await _until_banner("interrupted", 4.0)
 	await _settle(0.1)
 	await _shot("interrupted")
+	# ...and the request is honoured: the board and the question move to the
+	# banana (QA B1 on a8a2e1f showed the old build staying on the apple).
+	await _until_ready(30.0)
+	if not String(_scene.board_asset_id()).contains("banana") if _scene.has_method("board_asset_id") else false:
+		_fail.append("after 'I want the banana' the board shows %s" % str(_scene.board_asset_id()))
+	await _shot("after_switch")
 
 	# Exit confirm.
 	await _until_ready(20.0)
