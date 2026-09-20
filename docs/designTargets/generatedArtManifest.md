@@ -19,3 +19,17 @@ Style: close-up feeding scene, clear baby expression, drag food to mouth, baby r
 ## game/assets/uiGenerated/ui/uiAssetSheet.png
 Use as the style target for buttons, stars, action badges, stickers, home/back/replay/next, interaction prompts.
 Style: rounded 3D pastel icons, high contrast, readable, child-friendly, polished.
+
+
+## Owner reference notes (2026-09-20 evening) — name mapping
+
+The owner's later note names the same five references differently. Mapping to
+the files above, with the owner's guidance for each:
+
+| Owner's name | File in this repo | Owner's guidance |
+|---|---|---|
+| 01_menuGardenReference.png | menu/mainMenuConcept.png | mood/tone for the home screen: bright, cute, alive |
+| 02_logoReference.png | branding/littleDaysLogo.png | brand direction; do not copy blindly, any adaptation must read better than before |
+| 03_learningMinigameReference.png | minigame/feedingConcept.png | toddler feeding minigame: a real drag to the mouth, a visible reaction right and wrong |
+| 04_uiIconSheetReference.png | ui/uiAssetSheet.png | style only; in-game buttons must be smaller, proportionate, never covering gameplay |
+| 05_cottageGardenReference.png | menu/mainMenuConcept.png (house and garden portion) | mood for the home screen and the house surroundings |
