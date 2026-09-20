@@ -61,21 +61,26 @@ Feed Bunny → Mission Complete → **Snack Time**.
 | # | Do this | PASS looks like | ☐ |
 |---|---|---|---|
 | 1 | Launch, hold landscape | No crash, no black frame, no sideways UI | ☐ |
-| 2 | Listen | **No music is correct.** Effects and the spoken prompt still play. Music playing is a FAIL. | ☐ |
+| 2 | Listen | **Music now plays**: the Little Days theme on the menu, the I'm Hungry! track in the mission (owner cleared the rights 2026-09-20). Effects and the spoken prompt too. Music stops on mute; it must not restart when Aliz changes room. | ☐ |
 | 3 | Look at Aliz | Pink hair, striped dress, on screen, not in the floor. Her rough hair and chin are already known. | ☐ |
-| 4 | Look at Bunny | A clearly different, smaller character, upright, "I'm hungry!" shown | ☐ |
+| 4 | Look at Bunny | A clearly different, smaller character, upright, "I'm hungry, Aliz!" in a cream speech bubble that never covers a face | ☐ |
 | 5 | Read the room signs | KITCHEN / BATHROOM readable from arm's length | ☐ |
-| 6 | Walk Aliz to the kitchen | Tap the floor or use the joystick. Legs move, no sliding, goes through the door | ☐ |
+| 6 | Walk, then run | Tap the floor to walk. Push the joystick past its inner ring: she **runs clearly faster** (about 1.5x). Legs match the pace, no sliding | ☐ |
+| 6b | Badges | Near the fridge, a door, the toy box or Bunny a round coloured badge appears (OPEN / ENTER / TAKE / HUG / CARRY). Tapping it acts. It never sits on the joystick, Home or Next | ☐ |
+| 6c | Carry Bunny | Near Bunny, tap CARRY: she picks him up and holds him in front of her body; walk a few steps; tap PLACE: he stands where you put him. Exactly one Bunny at all times | ☐ |
+| 6d | Carry a toy | TAKE the teddy (or a bottle), see it in her hand, PLACE it on its spot | ☐ |
 | 7 | Camera | Room framed, nothing important off the edge or under the rounded corners | ☐ |
 | 8 | Open the fridge, take the bottle | Door swings, bottle appears in her hands, not floating | ☐ |
 | 9 | Prepare the milk | Hold, then shake. Bar fills, liquid changes | ☐ |
 | 10 | Carry it back | Bottle stays in her hands through the door | ☐ |
 | 11 | Feed Bunny | Bottle at his mouth, he reacts, progress visible | ☐ |
-| 12 | Mission complete | Reward shown, Bunny happy | ☐ |
+| 12 | Mission complete | Reward shown, Bunny happy and his line is "Thank you, Aliz!" | ☐ |
+| 12b | Home | Tap the round Home button (top right): "Take a break?" card with Continue / Home / Grown-ups. Continue resumes exactly; Home returns to the title and "Continue" brings you back to the same room | ☐ |
+| 12c | Version | Tiny "0.1.0" bottom-right, not under Next or the joystick | ☐ |
 | 13 | Reward once | Stars go up **once**. Leave and come back: they must not go up again | ☐ |
 | 14 | Snack Time | Fridge → banana → counter → spoon → mash → feed | ☐ |
 | 15 | HUD | Text never covers Bunny's face; every word readable | ☐ |
-| 16 | **Speech** | Tap Speak, say "milk". Either it hears you, **or** it says voice is not ready and you can tap instead. | ☐ |
+| 16 | **Speech** | Tap Speak, say "milk". You should see "I hear: milk" then Great!, and the task completes. Or it honestly says voice is not ready and you can tap instead. The spoken voice is the device's best English voice (download "Zoe (Premium)" or "Samantha (Enhanced)" under Settings → Accessibility → Spoken Content → Voices for a warmer one). | ☐ |
 | 17 | **Silent test** | Tap Speak and say nothing. The task must **not** complete by itself. If it does, that is a hard FAIL. | ☐ |
 | 18 | Touch fallback | Parent Corner (Grown-ups) → Voice off. Every task still finishable by touch | ☐ |
 | 19 | Save, soft | Swipe the app away, relaunch. Stars and progress return | ☐ |
@@ -103,6 +108,6 @@ xcrun devicectl device copy from --device <UDID> \
 |---|---|
 | Date | |
 | Device (iPad / iPhone 14 Pro Max) + OS version | |
-| Passed | ___ / 20 (iPad) · ___ / 22 (iPhone) |
+| Passed | ___ / 26 (iPad) · ___ / 28 (iPhone) |
 | Speech heard "milk"? | ☐ Yes ☐ Unavailable ☐ Accepted a word I did not say |
 | **Ship the Founder Preview to the family?** | ☐ Yes ☐ No ☐ Fix first |
