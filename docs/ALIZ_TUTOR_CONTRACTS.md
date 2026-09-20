@@ -59,3 +59,44 @@ Orchestrates LessonEngine → provider → synthesis → face; HUD with Home, Mu
 
 ## Backend (Agent D) — `backend/` (Node 22, no external dependencies)
 Endpoints: `POST /api/v1/tutor/sessions`, `POST /api/v1/tutor/sessions/{id}/turns`, `GET /api/v1/tutor/entitlement`, `POST /api/v1/tutor/sessions/{id}/end`, plus dev-only `POST /api/v1/dev/entitlement` and mock billing. Server-side quota (UTC day), idempotency keys on turns, rate limits, timeouts, structured-output validation, usage/cost accounting, `MockConversationProvider` default, OpenAI adapter behind `OPENAI_API_KEY` (never present in the client; not present on this machine today).
+
+---
+
+## Addendum 2026-09-20 (evening): HANDS-FREE conversation supersedes push-to-talk
+
+Owner change request. The child does not press a microphone button per turn.
+Entering **Learn with Aliz** (after the parental gate and, for cloud, the
+compliance gate) starts an active tutor session with the microphone live for
+the whole session; Aliz welcomes the child; the system detects speech start
+and end; Aliz answers with streaming speech; the child can interrupt (barge-in)
+and Aliz stops and listens. Push-to-talk survives only as a **fallback** when
+hands-free is unavailable (permission denied, no recogniser) or turned off by a
+parent (`handsFreeMode` setting).
+
+### Microphone scope (hard rules, test-enforced)
+Capture only while `TutorVoiceSession.is_active()`. Never on the title screen,
+in Free Play, in the background, after Exit, after quota expiry, without the
+gate. Background → stop capture, stop streaming, suspend the session;
+foreground → do NOT reopen; the child must re-enter Tutor Mode. A visible mic
+activity indicator (live level) and an obvious Mute are mandatory.
+
+### TutorVoiceSession (Agent E) — `game/scripts/tutor/voice/tutor_voice_session.gd`
+States: `idle → welcoming → listening → child_speaking → thinking → aliz_speaking → (interrupted → listening) … → closing → ended`.
+- `start(lesson_id, opts)`, `stop(reason)`, `mute(bool)`, `is_active()`, `is_capturing()`, `get_state()`, `get_input_level()` (0..1 for the indicator)
+- signals `state_changed(from, to)`, `child_speech_started`, `child_speech_ended(transcript)`, `partial_transcript(text)`, `aliz_started(turn)`, `aliz_finished(turn)`, `barge_in`, `session_ended(reason)`
+- VAD (`game/scripts/tutor/voice/vad.gd`, pure): energy envelope with adaptive noise floor; speech start = level above floor+margin for ≥ 120 ms; speech end = below floor for `endSilenceMs` (900 ms), extended to 1600 ms when the utterance so far is < 600 ms or the last partial ends in a hesitation ("um", "uh", trailing "a", "the"); long pause 3000 ms with no speech = prompt again, never an AI reply; noise rejection: ignore bursts < 120 ms and single spikes. Tuned constants live in `game/content/tutor/vad_profile_child.json`. When the recogniser itself provides end-of-utterance (on-device SpeechService partial/final), VAD gates when to open and close it; when a server VAD exists (Realtime), the client VAD only drives barge-in and the indicator.
+- Barge-in: on `child_speech_started` during `aliz_speaking` → `Voice.stop()`, cancel the provider response (`transport.cancel()`), `set_speaking(false)` (mouth 0 within 120 ms), `set_expression("listening")` + turn toward the child (gesture `tilt`), flush queued audio/turns, capture the new turn with the correct context. No overlapping replies; cancelled audio is never replayed. Echo control: the mic is gated against playback — while Aliz speaks, barge-in requires level > playback-echo estimate + margin for ≥ 200 ms; on iOS the native plugin selects the voice-processing audio session mode (patch to `ios/speech_plugin/src`, lead rebuilds); barge-in is never disabled to hide an echo bug.
+- Transports (`game/scripts/tutor/voice/transports/`): `RealtimeTransport` interface (`connect_session(token)`, `send_audio(pcm)`/`send_text(text)`, `cancel()`, `close()`, signals `response_text_delta`, `response_audio_delta`, `response_done(turn)`, `input_transcript(text)`, `error`), `MockRealtimeTransport` (deterministic, synthetic: streams a scripted TutorTurn as text deltas plus an audio-like envelope; used by all tests and the offline demo), `OpenAIRealtimeTransport` (WebSocket to the official Realtime API using the CURRENT documented event names fetched from the docs today — cite them in `docs/ALIZ_TUTOR_REALTIME.md`; ephemeral client secret from the backend `POST /api/v1/tutor/realtime/token`; flag-gated; never holds a permanent key; untested live here because no key exists).
+- Offline demo (always available): hands-free with the on-device recogniser (SpeechService) + client VAD + `ScriptedConversationProvider` + the voice pack / device TTS. This is what runs on the Mac and on device today.
+
+### Lesson engine additions (Agent A)
+Step kind `choose` (Aliz asks "What would you like to learn today?"; expectedAnswers map to `subjectId`/`lessonId`; routes into that lesson), step kind `sound` ("Can you make a cat sound?" expects onomatopoeia synonyms: meow/miaow/mew), reaction fields on steps `{gesture, sfx, alizSound}` (Aliz laughs, claps and says "Meow!"), and `handle_interjection(transcript) -> Dictionary` for barge-in topic switches ("Wait! I want a dog!" → jump to the dog item in the current lesson or to the animals lesson; returns `{handled, lessonAction, line}`). Owner's example dialogue is the acceptance script.
+
+### Aliz states (Agent C)
+Add `interrupted` (stop mouth, turn toward camera, listening face within 200 ms), `explaining` (point + small nods while speaking), `celebrating` (clap + happy), keep blinking in every state; expressions, mouth and gestures on separate layers so they never conflict.
+
+### Backend (Agent D)
+`POST /api/v1/tutor/realtime/token` (ephemeral client secret per the official docs; DEV_MODE returns a mock token; quota session is created alongside; server-side usage from audio seconds reported by the transport's server events, never the client timer), `docs/ALIZ_TUTOR_REALTIME_EVALUATION.md` (Realtime vs STT→LLM→TTS on latency, cost, interruption, transcripts, lesson control, safety controls, platform compatibility, with cited current prices/docs).
+
+### Settings (Agent F)
+`handsFreeMode` (default on), `aiVoiceId` (configured list, default the cheerful youthful female preset name from the voice evaluation; on-device fallback), child learning history view (read-only list of completed lessons and stars) next to "Delete learning history".
