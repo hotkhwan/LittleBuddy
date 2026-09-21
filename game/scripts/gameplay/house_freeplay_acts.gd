@@ -166,6 +166,14 @@ static func decide(situation: Dictionary) -> Dictionary:
 			return {"act": ACT_NONE}
 		if opens and not is_open:
 			return {"act": ACT_KITCHEN_OPEN}
+		# QA 2026-09-22 B1: a station that keeps tools INSIDE (the counter's
+		# bowl and spoon) hands one of those over before re-taking what the
+		# child just put on top; otherwise arrive-place-arrive only picked the
+		# banana back up and no meal could ever be made by play alone. Stores
+		# with nothing inside (or a closed door) still return the top item.
+		var tool_for: String = String(station.get("toolFor", ""))
+		if not tool_for.is_empty():
+			return {"act": ACT_KITCHEN_TAKE, "item": tool_for}
 		if not on_top.is_empty():
 			return {"act": ACT_KITCHEN_TAKE, "item": on_top}
 		if not inside.is_empty() and (is_open or not opens):

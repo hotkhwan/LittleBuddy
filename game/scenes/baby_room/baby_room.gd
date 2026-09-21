@@ -59,6 +59,8 @@ const FEEDING_TABLE_SCENE: String = "res://scenes/feeding/feeding_table.tscn"
 ## directional light and environment.
 const FEEDING_TABLE_OFFSET: Vector3 = Vector3(40.0, 0.0, 0.0)
 const MAIN_MENU_SCENE: String = "res://scenes/main/main.tscn"
+## One Home departure per scene (a double tap must not call into a freed tree).
+var _leaving_home: bool = false
 
 const ENCOURAGEMENT_GREAT: String = "Great!"
 const ENCOURAGEMENT_TRY_AGAIN: String = "Try again!"
@@ -1729,14 +1731,20 @@ func _on_feeding_half_star(task_id: String) -> void:
 ## Home: save, then back to the menu. Nothing is lost -- every star was written
 ## the moment it was earned.
 func _on_feeding_home() -> void:
+	# QA 2026-09-22 B3: a double tap arrived after the scene had left the
+	# tree, and `get_tree()` was null. One departure per scene.
+	if _leaving_home:
+		return
+	_leaving_home = true
 	_play_sfx(SFX_GENTLE_TAP)
 	var save_service: Node = _autoload("SaveService")
 	if save_service != null and save_service.has_method("save_profile"):
 		save_service.call("save_profile")
 	if _runner != null and _runner.has_method("cancel"):
 		_runner.call("cancel")
-	if ResourceLoader.exists(MAIN_MENU_SCENE):
-		get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+	var tree: SceneTree = get_tree() if is_inside_tree() else null
+	if tree != null and ResourceLoader.exists(MAIN_MENU_SCENE):
+		tree.change_scene_to_file(MAIN_MENU_SCENE)
 
 
 ## Back on the stage is the room's Next: this task is set aside kindly, with no

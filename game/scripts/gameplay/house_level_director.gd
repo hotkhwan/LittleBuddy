@@ -460,6 +460,14 @@ func _start_level(mission_id: String) -> bool:
 		ledger.call("begin_session")
 
 	_hide_summary()
+	# QA 2026-09-22 B2: a Snack Time replay in the same house session started
+	# with the fridge already open and the banana gone, so "open the fridge"
+	# refused silently and every beat stuck. A level begins from the authored
+	# kitchen; anything the child is holding goes back too.
+	if _world != null and _world.has_method("get_kitchen_state"):
+		var kitchen: RefCounted = _world.call("get_kitchen_state")
+		if kitchen != null and kitchen.has_method("reset"):
+			kitchen.call("reset")
 	_place_at_level_start(mission_id)
 	# One voice: the level's prompt. See `HouseWorld.set_status_visible()`.
 	if _world.has_method("set_status_visible"):
@@ -753,6 +761,8 @@ func _apply_kitchen_verb(plan: Dictionary) -> bool:
 			return true
 
 	var say: String = String(report.get("say", ""))
+	if say.is_empty() and not bool(report.get("ok", false)):
+		say = "Let's try that again!"  # never a silent refusal (QA B2)
 	if not say.is_empty():
 		_hud.call("show_encouragement", say)
 	return bool(report.get("ok", false))

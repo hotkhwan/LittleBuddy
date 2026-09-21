@@ -80,6 +80,7 @@ func run():
 	for row: Array in LEVELS:
 		failures.append_array(_test_level(tree, row))
 	failures.append_array(_test_the_summary_hands_control_back(tree))
+	failures.append_array(_test_snack_time_replays_in_the_same_house(tree))
 	return failures
 
 
@@ -504,3 +505,44 @@ func _all_objects_enabled(runner: Node) -> bool:
 		if not bool((node as Node).get("drag_enabled")):
 			return false
 	return true
+
+
+## QA 2026-09-22 B2: Snack Time's "Play again" in the SAME house session began
+## with the fridge open and the banana gone, so "open the fridge" refused
+## silently and every beat stuck. A level start resets the kitchen, and a
+## refused kitchen beat always says something.
+func _test_snack_time_replays_in_the_same_house(tree: SceneTree):
+	var failures: Array = []
+	var session: Dictionary = _open_house(tree)
+	if session.has("error"):
+		return [String(session["error"])]
+	var world: Node = session["world"]
+	var director: Node = session["director"]
+	var runner: Node = session["runner"]
+	var character: Node = session["character"]
+	if not bool(director.call("_start_level", "snackTime")):
+		_close_house(tree, session)
+		return ["snackTime did not start"]
+	_play_by_touch(director, runner, character)
+	var kitchen: RefCounted = world.call("get_kitchen_state")
+	if kitchen == null:
+		_close_house(tree, session)
+		return ["no kitchen state on the house"]
+	# Leave the kitchen dirty on purpose: fridge open, banana in hand.
+	kitchen.call("set_open", "fridge", true)
+	kitchen.call("take", "fridge", "banana")
+	if not bool(director.call("_start_level", "snackTime")):
+		failures.append("replay: snackTime did not start a second time")
+	if bool(kitchen.call("is_open", "fridge")):
+		failures.append("replay: the fridge was still open at the start of the replay")
+	if String(kitchen.call("held")) != "":
+		failures.append("replay: Aliz still held '%s' at the start of the replay" % kitchen.call("held"))
+	if not (kitchen.call("inside", "fridge") as Array).has("banana"):
+		failures.append("replay: the banana was not back in the fridge (%s)" % str(kitchen.call("inside", "fridge")))
+	var replay: Dictionary = _play_by_touch(director, runner, character)
+	if not bool(replay.get("finished", true)) and replay.has("failures"):
+		failures.append_array(replay["failures"])
+	if bool(runner.call("is_running")):
+		failures.append("replay: Snack Time could not be played to the end a second time")
+	_close_house(tree, session)
+	return failures

@@ -809,6 +809,12 @@ func _kitchen(world, director, aliz, bunny):
 	var second: String = String(kitchen.call("held"))
 	if second.is_empty() or second == "none":
 		failures.append("kitchen: arriving at the counter with empty hands took nothing from it")
+	# QA 2026-09-22 B1: with the fruit on the counter, the next arrival must
+	# hand over a TOOL from inside (bowl/spoon), never the fruit just placed.
+	if second == held:
+		failures.append("kitchen: the counter handed the %s straight back instead of the bowl or spoon" % held)
+	if second not in ["bowl", "spoon"]:
+		failures.append("kitchen: expected a tool from inside the counter, got '%s'" % second)
 	_arrive(aliz, "kitchen.counter")
 	var made: String = String(kitchen.call("on_station", "counter"))
 	if held in ["banana", "apple"] and second == "bowl" and made != "fruitBowl":

@@ -1025,6 +1025,15 @@ func describe_situation(target_id: String) -> Dictionary:
 		situation["kitchenHeld"] = held
 		if not String(described.get("role", "")).is_empty():
 			described["opens"] = _kitchen_rules().opens(local_id)
+			# QA 2026-09-22 B1: the tool inside that would combine with the
+			# item resting on top (the counter's bowl for a banana), if any.
+			var resting_top: String = String(described.get("on", ""))
+			described["toolFor"] = ""
+			if not resting_top.is_empty() and resting_top != "none":
+				for tool: Variant in described.get("inside", []):
+					if not String(_kitchen_rules().combination(local_id, resting_top, String(tool))).is_empty():
+						described["toolFor"] = String(tool)
+						break
 			situation["station"] = described
 			if not held.is_empty() and held != "none":
 				var resting: String = String(described.get("on", ""))
