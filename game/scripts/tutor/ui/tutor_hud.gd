@@ -44,6 +44,7 @@ extends Control
 
 const Palette := preload("res://scripts/ui/palette.gd")
 const Typography := preload("res://scripts/ui/typography.gd")
+const HelperFont := preload("res://scripts/localization/helper_font.gd")
 const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
 const SafeAreaScript := preload("res://scripts/ui/safe_area.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
@@ -272,6 +273,10 @@ func build() -> void:
 	_banner.gui_input.connect(_on_banner_input)
 	_safe.add_child(_banner)
 	_banner_label = _label("BannerLabel", BANNER_FONT_SIZE, Palette.INK)
+	# The banner can contain a partial transcript in the family's script.  Do
+	# not rely on a platform's implicit fallback: Thai combining marks need the
+	# same tested fallback chain as every other helper label in the game.
+	HelperFont.apply(_banner_label)
 	_banner_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_banner.add_child(_banner_label)
 	_banner.visible = false
@@ -292,6 +297,7 @@ func build() -> void:
 	_subtitle.add_theme_stylebox_override("panel", subtitle_style)
 	_safe.add_child(_subtitle)
 	_subtitle_label = _label("SubtitleLabel", SUBTITLE_FONT_SIZE, Palette.INK)
+	HelperFont.apply(_subtitle_label)
 	_subtitle_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_subtitle.add_child(_subtitle_label)
 	_subtitle.visible = false
