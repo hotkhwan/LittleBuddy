@@ -19,6 +19,12 @@ import { resolveProvider } from '../tutor/provider_registry';
 import type { TurnProvider, TurnUsage } from '../tutor/provider_interface';
 import { fallbackTurn, validateTurn } from '../tutor/turn_validator';
 import type { LessonContext, Outcome, QuotaState, TutorTurn } from '../tutor/types';
+// Free chat (T2): mode "chat" sessions keep a rolling context window here in
+// the DO (never in D1), gate every reply through gateChatTurn and clear the
+// window when the session ends.
+import { chatProviderOf, createMockChatProvider, gateChatTurn, toChatTurn, type ChatMessage, type ChatTurn, type ChatTurnProvider } from '../tutor/chat_provider';
+import { checkChatText, redirectTurn } from '../tutor/chat_safety';
+import { clampResponseWords, type SessionMode } from '../tutor/chat_config';
 import { hmacHex, sha256Hex } from '../util/crypto';
 import { FixedWindowLimiter } from '../util/rate_limit';
 import { ID_RE, MAX_AUDIO_SECONDS, MAX_TRANSCRIPT, isObject, str } from '../util/validate';
@@ -43,6 +49,17 @@ export interface SessionRecord {
   endedAt: number | null;
   endReason: string | null;
   realtime: { mintedAt: number; expiresAt: number; model: string; mints: number } | null;
+  /** "lesson" (default) or "chat" (free conversation, DEV_MODE + FREE_CHAT_ENABLED only). */
+  sessionMode?: SessionMode;
+  /** Chat sessions only: the config snapshot and the rolling window (cleared on end). */
+  chat?: ChatSessionState | null;
+}
+
+export interface ChatSessionState {
+  contextTurns: number;
+  responseMaxWords: number;
+  maxOutputTokens: number;
+  history: ChatMessage[];
 }
 
 export interface StartInput {
@@ -55,6 +72,8 @@ export interface StartInput {
   approvalHash: string;
   devMode: boolean;
   nowMs: number;
+  sessionMode?: SessionMode;
+  chat?: { contextTurns: number; responseMaxWords: number; maxOutputTokens: number };
 }
 
 export interface TurnInputRpc { approvalHash: string; idempotencyKey: string | null; body: unknown; nowMs: number }
@@ -70,12 +89,14 @@ export class TutorSessionDO extends DurableObject<Env> {
   private readonly limiter = new FixedWindowLimiter();
   private readonly config: Config;
   private readonly mock: TurnProvider;
+  private readonly mockChat: ChatTurnProvider;
   private primary: TurnProvider | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.config = loadConfig(env);
     this.mock = createMockTurnProvider({ allowlist: ASSET_ALLOWLIST.ids });
+    this.mockChat = createMockChatProvider({ allowlist: ASSET_ALLOWLIST.ids });
   }
 
   // ---------------------------------------------------------------- plumbing
@@ -125,7 +146,7 @@ export class TutorSessionDO extends DurableObject<Env> {
     if (!this.primary) {
       const rec = this.rec!;
       const cfg = { ...this.config, providerName: rec.providerName };
-      this.primary = resolveProvider(cfg, this.env.OPENAI_API_KEY).turns;
+      this.primary = resolveProvider(cfg, this.env.OPENAI_API_KEY, undefined, { baseUrl: this.env.OPENAI_BASE_URL, maxOutputTokens: rec.chat?.maxOutputTokens }).turns;
     }
     return this.primary;
   }
@@ -173,6 +194,7 @@ export class TutorSessionDO extends DurableObject<Env> {
     rec.endedAt = nowMs;
     rec.lastEventAt = nowMs;
     rec.endReason = reason;
+    if (rec.chat) rec.chat.history = [];  // the child's words never outlive the session
     await this.save();
     await markSessionEnded(this.env.DB, rec.sessionId, nowMs, reason, rec.secondsUsed, rec.turnCount);
     await this.ctx.storage.deleteAlarm();
@@ -207,6 +229,8 @@ export class TutorSessionDO extends DurableObject<Env> {
         endedAt: null,
         endReason: null,
         realtime: null,
+        sessionMode: input.sessionMode === 'chat' ? 'chat' : 'lesson',
+        chat: input.sessionMode === 'chat' && input.chat ? { ...input.chat, history: [] } : null,
       };
       await this.save();
       await insertSession(this.env.DB, { id: input.sessionId, childId: input.childId, deviceId: input.clientId, lessonId: input.lessonId, mode: 'turns', provider: this.provider().name, startedAt: input.nowMs });
@@ -241,7 +265,16 @@ export class TutorSessionDO extends DurableObject<Env> {
       }
 
       const transcript = str(input.body, 'transcript', { max: MAX_TRANSCRIPT });
-      const { lessonContext, source } = this.resolveContext(input.body, rec.lessonId);
+      const isChat = rec.sessionMode === 'chat' && Boolean(rec.chat);
+      let lessonContext: LessonContext | null = null;
+      let source: 'server' | 'client_dev' | 'chat' = 'chat';
+      if (isChat) {
+        if (!transcript.trim()) throw errors.invalidTurn('transcript is required in chat mode');
+      } else {
+        const resolved = this.resolveContext(input.body, rec.lessonId);
+        lessonContext = resolved.lessonContext;
+        source = resolved.source;
+      }
       const audioSeconds = Math.max(0, Math.min(MAX_AUDIO_SECONDS, Number((input.body as Record<string, unknown>)?.audioSeconds) || 0));
 
       if (!(await hasConsent(this.env.DB, rec.parentId, 'ai_tutor', this.config.consentVersion))) {
@@ -262,11 +295,14 @@ export class TutorSessionDO extends DurableObject<Env> {
       }
       const gap = this.gapSeconds(rec.lastEventAt, input.nowMs);
 
-      const produced = await this.produceTurn({ transcript, lessonId: rec.lessonId, lessonContext });
+      const responseMaxWords = isChat ? clampResponseWords((input.body as Record<string, unknown>)?.responseMaxWords, rec.chat!.responseMaxWords) : 0;
+      const produced = isChat
+        ? await this.produceChatTurn({ transcript, responseMaxWords })
+        : await this.produceTurn({ transcript, lessonId: rec.lessonId, lessonContext: lessonContext! });
 
       const charged = await this.quotaStub().charge(key, gap, this.config.turnCapSeconds);
       const q = await this.quotaStub().countTurn(key);
-      const endAtBoundary = q.remainingSeconds <= 0 || q.usedTurns >= key.turnAllowance || lessonContext.lessonAction === 'end_session';
+      const endAtBoundary = q.remainingSeconds <= 0 || q.usedTurns >= key.turnAllowance || lessonContext?.lessonAction === 'end_session';
       rec.turnCount += 1;
       rec.secondsUsed += Math.max(0, Math.min(gap, this.config.turnCapSeconds));
       rec.lastEventAt = input.nowMs;
@@ -288,11 +324,15 @@ export class TutorSessionDO extends DurableObject<Env> {
         contextSource: source,
         usage: { sttSeconds: 0, llmInputTokens: produced.usage.llmInputTokens, llmOutputTokens: produced.usage.llmOutputTokens, ttsChars: produced.turn.speech.length, latencyMs: produced.latencyMs, costUsd: cost.costUsdMicro / 1e6 },
       };
+      if (isChat) {
+        body.mode = 'chat';
+        body.chat = { responseMaxWords, historyTurns: Math.floor(rec.chat!.history.length / 2), redirected: produced.redirected ?? null, capped: Boolean(produced.capped) };
+      }
       if (idemId) {
         const json = JSON.stringify(body);
         await storeIdempotent(this.env.DB, { key: idemId, sessionId: rec.sessionId, requestHash: bodyHash, responseHash: await sha256Hex(json), status: 200, responseJson: json, now: input.nowMs });
       }
-      if (endAtBoundary && lessonContext.lessonAction === 'end_session') await this.endInternal('lesson_end', input.nowMs, key, 0);
+      if (endAtBoundary && lessonContext?.lessonAction === 'end_session') await this.endInternal('lesson_end', input.nowMs, key, 0);
       else await this.scheduleAlarm();
       return { status: 200, body, replayed: false };
     });
@@ -467,7 +507,7 @@ export class TutorSessionDO extends DurableObject<Env> {
   }
 
   /** Provider with timeout; on any failure the deterministic mock answers. Always a VALID turn. */
-  private async produceTurn(input: { transcript: string; lessonId: string; lessonContext: LessonContext }): Promise<{ turn: TutorTurn; usage: TurnUsage; provider: string; fallback: string | null; latencyMs: number }> {
+  private async produceTurn(input: { transcript: string; lessonId: string; lessonContext: LessonContext }): Promise<ProducedTurn> {
     const primary = this.provider();
     const t0 = Date.now();
     const ac = new AbortController();
@@ -494,4 +534,75 @@ export class TutorSessionDO extends DurableObject<Env> {
     const mv = validateTurn(m.turn, { allowlist: ASSET_ALLOWLIST.ids });
     return { turn: mv.ok ? mv.turn : fallbackTurn(), usage: m.usage, provider: 'mock', fallback, latencyMs };
   }
+
+  /**
+   * Free chat. The child's words are checked against the redirect list before
+   * any model sees them; the reply (from the OpenAI provider when a key is
+   * set, else the mock) goes through gateChatTurn; any failure or invalid
+   * reply is answered by the deterministic mock chat, gated the same way. The
+   * rolling window keeps the last K exchanges in DO storage only. Nothing
+   * here logs a transcript or a reply.
+   */
+  private async produceChatTurn(input: { transcript: string; responseMaxWords: number }): Promise<ProducedTurn> {
+    const rec = this.rec!;
+    const chat = rec.chat!;
+    const t0 = Date.now();
+    const allowlist = ASSET_ALLOWLIST.ids;
+    const remember = async (reply: ChatTurn) => {
+      chat.history.push({ role: 'child', text: input.transcript }, { role: 'tutor', text: reply.speech });
+      const keep = Math.max(0, chat.contextTurns) * 2;
+      if (chat.history.length > keep) chat.history = chat.history.slice(chat.history.length - keep);
+    };
+    const childCheck = checkChatText(input.transcript);
+    if (childCheck.flagged) {
+      const turn = toChatTurn(redirectTurn(childCheck.category));
+      await remember(turn);
+      return { turn, usage: { llmInputTokens: 0, llmOutputTokens: 0 }, provider: 'safety', fallback: `redirect:child:${childCheck.category}`, latencyMs: Date.now() - t0, redirected: childCheck.category, capped: false };
+    }
+    const primaryTurns = this.provider();
+    const primary = chatProviderOf(primaryTurns) ?? this.mockChat;
+    const window = chat.history.slice(-Math.max(0, chat.contextTurns) * 2);
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(new Error('provider_timeout')), this.config.providerTimeoutMs);
+    let fallback: string | null = null;
+    let usage: TurnUsage = { llmInputTokens: 0, llmOutputTokens: 0 };
+    let gated: ReturnType<typeof gateChatTurn> | null = null;
+    try {
+      const r = await primary.generateChatTurn({ transcript: input.transcript, history: window, responseMaxWords: input.responseMaxWords, signal: ac.signal });
+      usage = r.usage;
+      const g = gateChatTurn(r.turn, { responseMaxWords: input.responseMaxWords, allowlist });
+      if (g.ok || g.redirected) gated = g;
+      else {
+        fallback = `invalid_turn:${g.reasons.slice(0, 3).join(',')}`;
+        console.log(`[tutor-session] chat provider ${primary.name} produced an invalid turn: ${g.reasons.join(',')}`);
+      }
+    } catch (err) {
+      fallback = ac.signal.aborted ? String((ac.signal.reason as Error | undefined)?.message ?? 'aborted') : `provider_error:${(err as { status?: number })?.status ?? (err instanceof Error ? err.message : 'unknown')}`;
+      console.log(`[tutor-session] chat provider ${primary.name} failed: ${fallback}`);
+    } finally {
+      clearTimeout(timer);
+    }
+    let provider = primary.name;
+    if (!gated) {
+      provider = 'mock';
+      const m = await this.mockChat.generateChatTurn({ transcript: input.transcript, history: window, responseMaxWords: input.responseMaxWords, signal: new AbortController().signal });
+      gated = gateChatTurn(m.turn, { responseMaxWords: input.responseMaxWords, allowlist });
+      if (!gated.ok && !gated.redirected) gated = { ...gated, turn: toChatTurn(redirectTurn(null)) };
+    } else if (gated.redirected) {
+      provider = 'safety';
+      fallback = `redirect:reply:${gated.redirected}`;
+    }
+    await remember(gated.turn);
+    return { turn: gated.turn, usage, provider, fallback, latencyMs: Date.now() - t0, redirected: gated.redirected, capped: gated.capped };
+  }
+}
+
+interface ProducedTurn {
+  turn: TutorTurn | ChatTurn;
+  usage: TurnUsage;
+  provider: string;
+  fallback: string | null;
+  latencyMs: number;
+  redirected?: string | null;
+  capped?: boolean;
 }

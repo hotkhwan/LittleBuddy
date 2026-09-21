@@ -15,6 +15,7 @@ import { budgetExceeded } from '../db/usage';
 import { deleteDeviceHistory } from '../db/retention';
 import { LESSONS } from '../tutor/lessons';
 import { REALTIME_MAX_EXPIRY_SECONDS, REALTIME_MIN_EXPIRY_SECONDS, buildRealtimeInstructions } from '../tutor/realtime_instructions';
+import { CHAT_LESSON_ID, SESSION_MODES, chatAllowed, featureDisabled, loadChatConfig, type SessionMode } from '../tutor/chat_config';
 import type { DoResult } from '../do/types';
 import type { QuotaState } from '../tutor/types';
 import type { TurnOutput } from '../do/tutor_session_do';
@@ -54,10 +55,17 @@ async function createSession(c: AppContext) {
   const config = c.get('config');
   const now = c.get('now');
   const body = c.get('body');
-  const lessonId = str(body, 'lessonId', { required: true, max: 80, re: ID_RE });
+  // T2: `mode` ("lesson" default | "chat"). Chat is a DEV_MODE + FREE_CHAT_ENABLED
+  // feature until the privacy gates pass; anywhere else it is 403 feature_disabled.
+  const modeRaw = str(body, 'mode', { max: 16 }) || 'lesson';
+  if (!SESSION_MODES.includes(modeRaw as SessionMode)) throw errors.badRequest('mode must be lesson or chat');
+  const mode = modeRaw as SessionMode;
+  const chatConfig = loadChatConfig(c.env);
+  if (mode === 'chat' && !chatAllowed(config, chatConfig)) throw featureDisabled('free_chat');
+  const lessonId = mode === 'chat' ? (str(body, 'lessonId', { max: 80, re: ID_RE }) || CHAT_LESSON_ID) : str(body, 'lessonId', { required: true, max: 80, re: ID_RE });
   const clientId = str(body, 'clientId', { required: true, max: 128, re: ID_RE });
   if (!auth.approvalToken || (auth.clientId && auth.clientId !== clientId)) throw errors.notApproved();
-  if (!LESSONS.has(lessonId) && !config.devMode) throw errors.unknownLesson();
+  if (mode === 'lesson' && !LESSONS.has(lessonId) && !config.devMode) throw errors.unknownLesson();
   if (!(await hasConsent(c.env.DB, auth.parentId, 'ai_tutor', config.consentVersion))) throw errors.consentRequired('ai_tutor');
 
   const device = await upsertDevice(c.env.DB, { id: clientId, parentId: auth.parentId, now });
@@ -83,13 +91,17 @@ async function createSession(c: AppContext) {
     approvalHash: await approvalHash(c),
     devMode: config.devMode,
     nowMs: now,
+    sessionMode: mode,
+    chat: mode === 'chat' ? { contextTurns: chatConfig.contextTurns, responseMaxWords: chatConfig.responseMaxWords, maxOutputTokens: chatConfig.maxOutputTokens } : undefined,
   }));
-  return { sessionId, childId: child.id, lessonId, entitlement, quota: q, lessonKnown: LESSONS.has(lessonId) };
+  return { sessionId, childId: child.id, lessonId, entitlement, quota: q, lessonKnown: LESSONS.has(lessonId), mode, chatConfig };
 }
 
 tutorRoutes.post('/tutor/sessions', async (c) => {
   const s = await createSession(c);
-  return c.json({ sessionId: s.sessionId, childId: s.childId, entitlement: s.entitlement, quota: s.quota, lessonId: s.lessonId, lessonKnown: s.lessonKnown }, 201);
+  const out: Record<string, unknown> = { sessionId: s.sessionId, childId: s.childId, entitlement: s.entitlement, quota: s.quota, lessonId: s.lessonId, lessonKnown: s.lessonKnown, mode: s.mode };
+  if (s.mode === 'chat') out.chat = { responseMaxWords: s.chatConfig.responseMaxWords, contextTurns: s.chatConfig.contextTurns };
+  return c.json(out, 201);
 });
 
 tutorRoutes.post('/tutor/sessions/:id/turns', async (c) => {
@@ -150,6 +162,7 @@ tutorRoutes.post('/tutor/realtime/token', async (c) => {
   const provider = c.get('provider');
   const body = c.get('body');
   if (!provider.realtime) throw errors.providerUnavailable('Realtime tutoring is not configured on this server.');
+  if ((str(body, 'mode', { max: 16 }) || 'lesson') !== 'lesson') throw errors.badRequest('realtime sessions are lesson sessions; free chat runs on the turns path');
   if (!(await hasConsent(c.env.DB, auth.parentId, 'voice', config.consentVersion))) throw errors.consentRequired('voice');
 
   let sessionId: string;

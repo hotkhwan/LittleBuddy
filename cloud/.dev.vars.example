@@ -11,6 +11,12 @@ PARENT_TOKEN_SECRET=
 # the turn provider leave the deterministic mock (Agent E's module). Absent on this machine.
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
+# Free chat (T2, cloud/src/tutor/chat_config.ts): plain vars, not secrets. Default OFF in
+# code; honoured in DEV_MODE only. Context window K (exchanges), spoken-word cap, max output tokens.
+FREE_CHAT_ENABLED=
+CHAT_CONTEXT_TURNS=
+CHAT_RESPONSE_MAX_WORDS=
+CHAT_MAX_OUTPUT_TOKENS=
 # App Store Server API (Agent F, cloud/src/billing) - names reserved, not read yet.
 APPLE_ISSUER_ID=
 APPLE_KEY_ID=

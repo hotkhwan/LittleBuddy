@@ -43,8 +43,8 @@ describe('POST /v1/tutor/realtime/token', () => {
     expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM tutor_sessions WHERE device_id = ?').bind(clientId).first<{ n: number }>())?.n).toBe(0);
   });
 
-  it('is still 503 when a key is present but Agent E\'s provider module is not wired', async () => {
-    expect(openAiFactoryWired()).toBe(false);
+  it('is still 503 when a key is present: the wired OpenAI module serves turns only (realtime stays null)', async () => {
+    expect(openAiFactoryWired()).toBe(true);
     const c = makeClient({ env: { OPENAI_API_KEY: 'sk-test-not-real' } });
     const r = await c.api('POST', '/v1/tutor/realtime/token', { lessonId: 'colors_red_blue', clientId: uniqueId('rt') });
     expect(r.status).toBe(503);
