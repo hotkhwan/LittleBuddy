@@ -7,7 +7,8 @@ envelope and each gesture. No font dependency: a coloured bar labels each tile.
     python3 tools/aliz_tutor_sheet.py docs/shots aliz_tutor
 
 Writes docs/shots/<prefix>_expressions_sheet.png, <prefix>_mouth_sheet.png,
-<prefix>_envelope_strip.png and <prefix>_gesture_<name>_strip.png.
+<prefix>_envelope_strip.png, <prefix>_gesture_<name>_strip.png and the ten
+strips stacked as <prefix>_gesture_sheet.png.
 """
 
 import os
@@ -24,6 +25,10 @@ DETAIL = (540, 300, 260, 180)
 GESTURE = (267, 0, 800, 750)
 ## The face at the gesture camera, 1:1, under each state strip.
 STATE_FACE = (555, 225, 230, 180)
+## Strip order on the gesture sheet: the five contract gestures, then the
+## 2026-09-22 set (docs/ALIZ_GESTURES.md).
+GESTURES = ["nod", "tilt", "point", "clap", "wave",
+            "thumbsUp", "celebrate", "listening", "thinking", "encourage"]
 
 LABELS = {"neutral": (120, 200, 120), "listening": (120, 160, 240), "thinking": (170, 120, 220),
           "happy": (240, 190, 60), "encouraging": (240, 140, 90), "smile": (230, 100, 140),
@@ -108,10 +113,20 @@ def main():
     png_save(out, *tile([p("env_" + k) for k in env], DETAIL, 2, env))
     print("wrote", out)
 
-    for name in ["nod", "tilt", "point", "clap", "wave"]:
+    gesture_rows = []
+    for name in GESTURES:
         keys = [str(k) for k in range(5)]
+        paths = [p("gesture_%s_%s" % (name, k)) for k in keys]
+        if not all(os.path.exists(x) for x in paths):
+            continue
+        row = tile(paths, GESTURE, 0.5, keys)
         out = os.path.join(shots, "%s_gesture_%s_strip.png" % (prefix, name))
-        png_save(out, *tile([p("gesture_%s_%s" % (name, k)) for k in keys], GESTURE, 0.5, keys))
+        png_save(out, *row)
+        print("wrote", out)
+        gesture_rows.append(row)
+    if gesture_rows:
+        out = os.path.join(shots, "%s_gesture_sheet.png" % prefix)
+        png_save(out, *stack(gesture_rows))
         print("wrote", out)
 
     for name in ["interrupted", "explaining", "celebrating"]:

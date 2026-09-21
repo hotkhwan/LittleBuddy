@@ -13,7 +13,9 @@ extends SceneTree
 ##   Godot --path game --script ../tools/aliz_tutor_shots.gd -- <prefix> gesture
 ##       docs/shots/<prefix>_gesture_<name>_<n>.png, five frames per gesture at
 ##       10/30/50/70/90 % of its length, the layer's clock stepped by hand so
-##       the frame is the frame; the idle is held at one pose underneath
+##       the frame is the frame; the idle is held at one pose underneath. All
+##       ten gestures (GESTURE_NAMES); `aliz_tutor_sheet.py` also tiles them
+##       into one <prefix>_gesture_sheet.png
 ##   Godot --path game --script ../tools/aliz_tutor_shots.gd -- <prefix> state
 ##       docs/shots/<prefix>_state_<name>_<n>.png, five frames each for the
 ##       composite states interrupted (from mid-sentence explaining, a child
@@ -167,7 +169,10 @@ func _gesture(girl: Node3D, cam: Camera3D) -> void:
 	var layer: SkeletonModifier3D = girl.call("get_gesture_layer")
 	layer.set("manual_clock", true)
 	girl.call("set_expression", "encouraging")
-	for name: String in ["nod", "tilt", "point", "clap", "wave"]:
+	# The whole layer vocabulary (docs/ALIZ_GESTURES.md), from the clips file so
+	# a new gesture is on the sheet the day it exists.
+	var names: Array = load("res://scripts/characters/buddy/buddy_gesture_clips.gd").get("GESTURE_NAMES")
+	for name: String in names:
 		var length: float = float(girl.call("play_gesture", name))
 		var at: float = 0.0
 		for n: int in range(5):
