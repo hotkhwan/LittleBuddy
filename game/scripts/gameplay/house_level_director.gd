@@ -969,9 +969,21 @@ func _on_transition_completed(room_id: String, _spawn_id: String) -> void:
 			pass
 		_pending_complete = true
 		return
-	# The child went somewhere of their own accord mid-task. Work out what the
-	# task needs from here; never leave them in a room where nothing can happen.
-	_arm_task()
+	# The child went somewhere of their own accord mid-task.
+	#
+	# NOT `_arm_task()`. That routed her straight back: the arrival spawn IS
+	# the return door's stand point, so `_begin_route()` -> `move_to(door)`
+	# arrived at once and she was back through the door 0.33 s after coming in
+	# -- the owner's "some rooms enter and immediately bounce back out" (real
+	# device, 2026-09-21). The transition layer was fine; this line was the
+	# bounce. She is allowed to be here. The task is still there, the way home
+	# is still known, and assist walks her there after its usual pause if
+	# nothing happens (`assist_now()` routes across rooms); a tap on the door
+	# behind her works at once.
+	_refresh_beat_marker()
+	if _hud != null:
+		_hud.call("show_encouragement", PHRASE_THIS_WAY)
+	_arm_assist()
 
 
 ## A refused transition is never a failure state for the child: the controller
