@@ -36,6 +36,30 @@ extends Node3D
 ## here ever fakes a transcript; the DEV simulation goes through the voice
 ## session's test hook and is refused unless explicitly enabled.
 ##
+## ## Turn-taking rules (2026-09-21, owner: "yes yes", "cut" replies)
+##
+##   * Aliz never talks over herself: every `_speak_turn()` goes through ONE
+##     synthesis call, and every cut of her voice goes through
+##     `_cancel_speech()`, which swallows the synchronous `finished` a cancel
+##     emits so the cut turn's lesson action is never applied. Before this,
+##     Repeat, End lesson, Home, a break and the background all ran
+##     `_after_turn()` for the line they had just cut (a Repeat during praise
+##     advanced into the celebrate beat, then re-asked the question and the
+##     step never moved).
+##   * One acknowledgement per child answer: a transcript is taken only in
+##     LISTENING (rapid finals, a VAD end plus a recogniser final, a card tap
+##     during thinking are all dropped), and the microphone is HELD while the
+##     answer is judged (`session.hold_capture()`), so no recognition session
+##     is opened just to be cancelled by the reply 450 ms later -- on a device
+##     that was an AVAudioEngine start/stop under the first syllables of every
+##     praise line.
+##   * The mic is released to the session only AFTER `_after_turn()` decided
+##     what comes next, and only when that is listening: a line that leads
+##     straight into another line (praise -> question, closing, celebrate)
+##     keeps the session gated throughout.
+##   * Paused (End lesson confirm) holds capture; break, background, done and
+##     a parent stop close the session; Listening always has it open.
+##
 ## ## Seams
 ##
 ## `advance(delta)` is the frame; `_process()` calls it and tests call it.
@@ -202,6 +226,16 @@ var _pending_lesson_id: String = ""
 ## Diagnostic bookkeeping (counts and flags only; never a transcript).
 var _heard_count: int = 0
 var _last_heard_chars: int = 0
+## Turn-taking counters for the overlay (2026-09-21): how many lines were
+## started, how many were cut before their end and why, answers dropped
+## because one was already being judged, and the longest speak->finished.
+var _speech_cuts: int = 0
+var _lines_started: int = 0
+var _overlaps_refused: int = 0
+var _answers_dropped: int = 0
+var _speech_started_msec: int = 0
+var _last_line_msec: int = 0
+var _longest_line_msec: int = 0
 var _diag_write_left: float = 0.0
 const DIAG_PATH: String = "user://tutor_diag.json"
 const DIAG_WRITE_SECONDS: float = 3.0
@@ -684,7 +718,15 @@ func _speak_turn(turn: Dictionary) -> void:
 	_hud.call("set_tap_to_talk_enabled", false)
 	_face(String(turn.get("emotion", "neutral")))
 	_gesture(String(turn.get("gesture", "none")))
+	if bool(_synth.call("is_speaking")):
+		# A new line supersedes the old one, never plays over it: cut it
+		# without its boundary (the provider's own speak() would cut it too,
+		# but through a `finished` this scene would otherwise act on).
+		_overlaps_refused += 1
+		_cancel_speech()
 	_set_speaking(true)
+	_lines_started += 1
+	_speech_started_msec = Time.get_ticks_msec()
 	var line_id: String = ""
 	if phase == ScriptedProviderScript.PHASE_OPEN:
 		line_id = String(_current_step.get("spokenLineId", ""))
@@ -693,11 +735,46 @@ func _speak_turn(turn: Dictionary) -> void:
 
 
 func _on_speech_finished(_text: String) -> void:
-	_set_speaking(false)
-	if _interrupted or _state != STATE_SPEAKING:
+	_face_speaking(false)
+	if _speech_started_msec > 0:
+		_last_line_msec = Time.get_ticks_msec() - _speech_started_msec
+		_longest_line_msec = maxi(_longest_line_msec, _last_line_msec)
+		_speech_started_msec = 0
+	if _interrupted:
+		return  # a cut: whoever cut the line owns what happens next
+	if _state != STATE_SPEAKING:
+		_release_mic_if_listening()
 		return
 	_hud.call("set_subtitle", "")
 	_after_turn()
+	# Only now: the boundary may have started another line (praise -> next
+	# question, the closing, a celebrate beat) in which case the session stays
+	# gated and no recogniser is opened just to be cancelled again.
+	_release_mic_if_listening()
+
+
+## Aliz's face stops talking now; the session is told separately.
+func _face_speaking(active: bool) -> void:
+	if _aliz != null and _aliz.has_method("set_speaking"):
+		_aliz.call("set_speaking", active)
+
+
+func _release_mic_if_listening() -> void:
+	if _state == STATE_LISTENING or _state == STATE_AWAIT_MIC:
+		if _session != null and _session.has_method("set_aliz_speaking"):
+			_session.call("set_aliz_speaking", false)
+
+
+## Cuts Aliz's current line WITHOUT running its boundary: the synthesis
+## provider's `cancel()` emits `finished` synchronously and the caller (a
+## button, a barge-in, a pause) decides what comes next. Idempotent.
+func _cancel_speech() -> void:
+	if bool(_synth.call("is_speaking")):
+		_speech_cuts += 1
+	_interrupted = true
+	_synth.call("cancel")
+	_interrupted = false
+	_face_speaking(false)
 
 
 ## The boundary: the turn has been heard; apply its lessonAction.
@@ -815,7 +892,7 @@ func _finish_closing() -> void:
 
 func _show_break(time_left: bool) -> void:
 	_stop_session("break")
-	_synth.call("cancel")
+	_cancel_speech()
 	_hud.call("set_subtitle", "")
 	_hud.call("hide_answer_cards")
 	if _quota != null and _quota.has_method("end_session"):
@@ -1050,6 +1127,8 @@ func _on_partial_transcript(text: String) -> void:
 
 func _on_child_speech_ended(transcript: String) -> void:
 	if _state != STATE_LISTENING:
+		if not transcript.strip_edges().is_empty():
+			_answers_dropped += 1  # a second final for an answer already taken
 		return
 	_heard(transcript)
 
@@ -1073,9 +1152,7 @@ func _on_barge_in() -> void:
 	if _outcome_was_correct:
 		_deferred_action = String(_current_turn.get("lessonAction", "next_question"))
 		_outcome_was_correct = false
-	_interrupted = true
-	_synth.call("cancel")
-	_interrupted = false
+	_cancel_speech()
 	_set_speaking(false)
 	_pending_phase = ScriptedProviderScript.PHASE_INTERJECTION
 	_hud.call("set_subtitle", "")
@@ -1185,6 +1262,10 @@ func _think(transcript: String, phase: String) -> void:
 	_child_talking = false
 	_hud.call("hide_answer_cards")
 	_set_state(STATE_THINKING)
+	# The answer is taken: close the mic until Aliz has spoken, so nothing
+	# heard in the beat is a second answer and no session is opened for it.
+	if _session != null and _session.has_method("hold_capture"):
+		_session.call("hold_capture", "thinking")
 	_hud.call("set_banner", HudScript.BANNER_THINKING)
 	_face("thinking")
 	_gesture("nod")
@@ -1338,6 +1419,14 @@ func diagnostics() -> Dictionary:
 	data["step"] = String(_current_step.get("stepId", ""))
 	data["heard"] = "%d times, last %d chars" % [_heard_count, _last_heard_chars] if _heard_count > 0 else "none"
 	data["synthSpeaking"] = _synth != null and bool(_synth.call("is_speaking"))
+	data["linesStarted"] = _lines_started
+	data["speechCuts"] = _speech_cuts
+	data["overlapsRefused"] = _overlaps_refused
+	data["answersDropped"] = _answers_dropped
+	data["lastLineMs"] = _last_line_msec
+	data["longestLineMs"] = _longest_line_msec
+	if _synth != null and _synth.has_method("diagnostics"):
+		data["cloudAudio"] = _synth.call("diagnostics")
 	var voice: Node = _autoload("Voice")
 	var tts: Node = _autoload("TtsService")
 	data["voiceSpeaking"] = voice != null and voice.has_method("is_speaking") and bool(voice.call("is_speaking"))
@@ -1384,9 +1473,12 @@ func repeat_prompt(from_silence: bool = false) -> void:
 	var turn: Dictionary = _last_question if not _last_question.is_empty() else _current_turn
 	if turn.is_empty():
 		return
+	if _state == STATE_SPEAKING and _outcome_was_correct:
+		return  # praise is never cut by Repeat: the question follows it anyway
 	if from_silence:
 		_silent_repeats += 1
-	_synth.call("cancel")
+	if _state == STATE_SPEAKING:
+		_cancel_speech()
 	_pending_phase = PHASE_WELCOME if _choosing else ScriptedProviderScript.PHASE_OPEN
 	_speak_turn(turn)
 
@@ -1411,14 +1503,18 @@ func _on_exit_requested() -> void:
 	if _state == STATE_PAUSED:
 		return
 	_resume_state = _state
-	_synth.call("cancel")
-	_set_speaking(false)
+	_cancel_speech()
 	_hud.call("set_subtitle", "")
 	_hud.call("set_banner", HudScript.BANNER_NONE)
 	_hud.call("hide_answer_cards")
 	if _quota != null and _quota.has_method("pause_for"):
 		_quota.call("pause_for", "confirm")
 	_set_state(STATE_PAUSED)
+	# A grown-up is deciding: nothing said now is an answer, so the mic is held.
+	if _session != null and _session.has_method("hold_capture"):
+		_session.call("hold_capture", "paused")
+	elif _session != null and _session.has_method("set_aliz_speaking"):
+		_session.call("set_aliz_speaking", true)
 
 
 func _on_exit_kept() -> void:
@@ -1465,8 +1561,7 @@ func _depart(path: String, target: String, main_script: Resource = null) -> bool
 	_leaving = true
 	_last_departure = target
 	_stop_session("leave")
-	_synth.call("cancel")
-	_set_speaking(false)
+	_cancel_speech()
 	if _quota != null and _quota.has_method("end_session"):
 		_quota.call("end_session", "leave")
 	var save: Object = _save_service()
@@ -1503,8 +1598,7 @@ func go_background() -> void:
 	_resume_state = _state
 	_resume_needed = true
 	_stop_session("background")
-	_synth.call("cancel")
-	_set_speaking(false)
+	_cancel_speech()
 	_hud.call("set_subtitle", "")
 	_hud.call("set_banner", HudScript.BANNER_NONE)
 	_hud.call("hide_answer_cards")
@@ -1794,6 +1888,13 @@ func is_choosing_subject() -> bool:
 
 func turn_log() -> Array:
 	return _turn_log
+
+
+## Turn-taking counters (tests and the overlay): lines started, cuts,
+## overlaps refused, answers dropped.
+func turn_taking_counters() -> Dictionary:
+	return {"linesStarted": _lines_started, "speechCuts": _speech_cuts,
+		"overlapsRefused": _overlaps_refused, "answersDropped": _answers_dropped}
 
 
 func is_lesson_complete() -> bool:

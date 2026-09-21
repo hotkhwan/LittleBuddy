@@ -165,6 +165,10 @@ var _retry_action: String = ""
 var _turn_request: Dictionary = {}
 var _turn_serial: int = 0
 var _turn_failures: int = 0
+## Idempotency-Keys already answered: a late duplicate reply (the first
+## attempt's response landing after its retry was served) is dropped, so one
+## request is never voiced twice.
+var _served_keys: Array[String] = []
 var _turn_log: Array = []
 var _end_posted: bool = false
 ## Set while THIS object closes the transport, so its synchronous `closed`
@@ -404,6 +408,7 @@ func _reset_for_start() -> void:
 	_transport_mode = ""
 	_end_posted = false
 	_turn_request = {}
+	_served_keys.clear()
 	_retry_action = ""
 	_retry_left = -1.0
 	_reply_open = false
@@ -785,6 +790,12 @@ func _on_turn_completed(result: Dictionary) -> void:
 		var key: String = String(_turn_request.get("key", ""))
 		_turn_request = {}
 		_turn_failures = 0
+		if not key.is_empty() and _served_keys.has(key):
+			return  # already voiced: the retry's twin reply
+		if not key.is_empty():
+			_served_keys.append(key)
+			if _served_keys.size() > 16:
+				_served_keys.pop_front()
 		_on_turn_reply(body, bool(result.get("replayed", false)), key)
 		return
 	match code:

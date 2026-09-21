@@ -168,6 +168,14 @@ var _forced_unavailable: bool = false
 ## `REARM_DELAY_SECONDS`, so a quiet child is listened to for as long as the
 ## scene keeps the mic open.
 const REARM_DELAY_SECONDS: float = 0.25
+## After Aliz's line ends the recogniser is armed this much later, not in the
+## same frame: `TtsService` completes an utterance up to one poll (100 ms)
+## after the platform reports silence and the output buffer still holds the
+## tail, and on iOS arming the recogniser re-activates the shared
+## AVAudioSession (category + VoiceChat mode). Landing that on the last
+## syllable is the "cut" the owner heard. 150 ms is below any child's
+## reaction time and below the 200 ms echo-gate hold, so nothing is missed.
+const POST_SPEECH_ARM_SECONDS: float = 0.15
 var _rearm_left: float = -1.0
 ## Set when the recogniser reported itself unavailable (permission refused,
 ## plugin missing) during a session: hands-free is then honestly OFF until the
@@ -177,7 +185,16 @@ var _unavailable_latched: bool = false
 ## names and counts only, never a transcript.
 var _diag: Dictionary = {"armed": 0, "opened": 0, "partials": 0, "finals": 0, "emptyFinals": 0,
 	"timeouts": 0, "unavailable": 0, "refusedBusy": 0, "refusedPlayback": 0, "vadStarts": 0, "vadEnds": 0,
-	"longPauses": 0, "bargeIns": 0, "lastRecognitionEnd": "", "lastRefusal": ""}
+	"longPauses": 0, "bargeIns": 0, "lastRecognitionEnd": "", "lastRefusal": "",
+	# Turn-taking / audio-cut instrumentation (2026-09-21): why each capture
+	# stopped and how often an OPEN recogniser was cancelled by Aliz's own
+	# voice starting (the AVAudioEngine start/stop that races an utterance).
+	"cancelledOpen": 0, "shortOpens": 0, "holds": 0,
+	"stopEndOfSpeech": 0, "stopCap": 0, "stopCancel": 0, "stopBargeIn": 0, "lastStopReason": ""}
+## A recogniser cancelled this soon after it was armed never heard a word:
+## pure churn. 500 ms is the plugin's own settle time (engine start + tap).
+const SHORT_OPEN_MSEC: int = 500
+var _armed_msec: int = -1
 
 
 # -- Wiring ---------------------------------------------------------------------
@@ -231,8 +248,8 @@ func set_aliz_speaking(active: bool) -> void:
 		return
 	if active:
 		_interrupting = false
-		if _recognition != null:
-			_recognition.cancel("playback_started")
+		_rearm_left = -1.0
+		_cancel_recognition("playback_started")
 		vad().set_gated(true)
 		vad().prime_playback_level(PLAYBACK_ASSUMED_LEVEL)
 		vad().set_last_partial("")
@@ -240,8 +257,43 @@ func set_aliz_speaking(active: bool) -> void:
 		_update_capture()
 	else:
 		vad().set_gated(false)
-		if _state == STATE_ALIZ_SPEAKING or _state == STATE_INTERRUPTED:
-			_listen()
+		if _interrupting and _state == STATE_INTERRUPTED:
+			return  # the barge-in path arms the recogniser itself, once
+		if _state == STATE_ALIZ_SPEAKING or _state == STATE_INTERRUPTED or _state == STATE_THINKING:
+			_listen(POST_SPEECH_ARM_SECONDS)
+
+
+## Capture-only: the scene has what it needs from the microphone -- an answer
+## is being judged, or the lesson is paused for a grown-up -- and Aliz has
+## not started speaking yet. The recogniser closes NOW and is not re-armed
+## until `set_aliz_speaking(false)`. Before this, every child answer opened a
+## fresh recognition session that Aliz's reply cancelled 450 ms later: an
+## AVAudioEngine start/stop landing on the first syllables of every praise
+## line, and an "armed" count that climbed twice per turn.
+func hold_capture(reason: String = "hold") -> void:
+	if not _active or not _capture_only:
+		return
+	_diag["holds"] = int(_diag["holds"]) + 1
+	_rearm_left = -1.0
+	_sim_active = false
+	_sim_frames.clear()
+	_sim_transcript = ""
+	_cancel_recognition(reason)
+	_set_state(STATE_THINKING)
+	_update_capture()
+
+
+## Cancels an open recognition session and records why, for the overlay.
+func _cancel_recognition(reason: String) -> void:
+	if _recognition == null:
+		return
+	if _recognition.has_active_session():
+		_diag["cancelledOpen"] = int(_diag["cancelledOpen"]) + 1
+		_diag["stopCancel"] = int(_diag["stopCancel"]) + 1
+		_diag["lastStopReason"] = "cancel:%s" % reason
+		if _armed_msec >= 0 and Time.get_ticks_msec() - _armed_msec < SHORT_OPEN_MSEC:
+			_diag["shortOpens"] = int(_diag["shortOpens"]) + 1
+	_recognition.cancel(reason)
 
 
 ## Barge-in is real only when the session drives the microphone hands-free.
@@ -325,6 +377,8 @@ func is_muted() -> bool:
 
 
 func is_capturing() -> bool:
+	if _capture_only and not _hands_free:
+		return false  # hands-free off: the scene's push-to-talk owns the microphone
 	return _active and not _muted and CAPTURING_STATES.has(_state)
 
 
@@ -633,12 +687,15 @@ func _on_vad_event(event: String) -> void:
 				_set_state(STATE_CHILD_SPEAKING)
 				child_speech_started.emit()
 				if not _recognition.has_active_session():
-					_recognition.begin_listening(_locale)
+					if _recognition.begin_listening(_locale):
+						_armed_msec = Time.get_ticks_msec()
 			elif _state == STATE_ALIZ_SPEAKING and _hands_free:
 				_do_barge_in()
 		VadScript.EVENT_SPEECH_ENDED:
 			_diag["vadEnds"] = int(_diag["vadEnds"]) + 1
 			if _state == STATE_CHILD_SPEAKING:
+				_diag["stopEndOfSpeech"] = int(_diag["stopEndOfSpeech"]) + 1
+				_diag["lastStopReason"] = "end_of_speech"
 				if _sim_active or not _sim_transcript.is_empty():
 					var text: String = _sim_transcript
 					_sim_transcript = ""
@@ -691,8 +748,10 @@ func _on_final(text: String) -> void:
 	child_speech_ended.emit(text)
 	if _capture_only:
 		_pending_phase = ""
-		# The scene answers by speaking (which gates us) or ignores it; either
-		# way the mic is re-armed so the next word is never missed.
+		# The scene either took the answer (hold_capture -> thinking, or it is
+		# already speaking: both gate us) or ignored it (a blank, a cough): only
+		# then is the mic re-armed, so the next word is never missed and no
+		# session is opened just to be cancelled by Aliz's reply.
 		if _active and _state in [STATE_CHILD_SPEAKING, STATE_INTERRUPTED, STATE_LISTENING]:
 			_listen()
 		return
@@ -731,8 +790,11 @@ func _on_recognition_ended(terminal: String) -> void:
 			if _capture_only:
 				if _state == STATE_CHILD_SPEAKING:
 					_diag["emptyFinals"] = int(_diag["emptyFinals"]) + 1
+					_diag["stopCap"] = int(_diag["stopCap"]) + 1
+					_diag["lastStopReason"] = "cap"
 					child_speech_ended.emit("")
-					_listen()
+					if _state == STATE_CHILD_SPEAKING:
+						_listen()
 				elif _state == STATE_LISTENING:
 					# The 4 s no-speech cap (or a late failure) closed the mic
 					# while the child is still allowed to answer: open it again.
@@ -879,13 +941,19 @@ func _after_turn(turn: Dictionary) -> void:
 			_listen()
 
 
-func _listen() -> void:
+## Listens now; the recogniser opens now, or after `arm_delay` seconds when
+## the caller wants the loudspeaker's tail out of the way first.
+func _listen(arm_delay: float = 0.0) -> void:
 	_set_state(STATE_LISTENING)
 	_face_call("set_expression", "listening")
 	_face_call("set_listening_pose", true)
 	vad().set_gated(false)
 	vad().reset_pause_clock()
 	_update_capture()
+	if arm_delay > 0.0 and _capture_only and not _sim_active \
+			and (_recognition == null or not _recognition.has_active_session()):
+		_rearm_left = arm_delay
+		return
 	_rearm_left = -1.0
 	_arm_recognizer()
 
@@ -899,6 +967,8 @@ func _arm_recognizer() -> void:
 		return
 	if not (_capture_only or is_recognizer_driven()):
 		return
+	if _capture_only and not _hands_free:
+		return  # the parent turned hands-free off: only a tap opens the microphone
 	if _recognition.has_active_session():
 		return
 	if _sim_active:
@@ -907,6 +977,8 @@ func _arm_recognizer() -> void:
 	if not _recognition.begin_listening(_locale):
 		# Playback still live or a session still closing: try again shortly.
 		_rearm_left = REARM_DELAY_SECONDS
+		return
+	_armed_msec = Time.get_ticks_msec()
 
 
 ## A realtime transport streams its reply while it is still being generated:
@@ -939,6 +1011,8 @@ func _on_transport_done(raw_turn: Dictionary) -> void:
 
 func _do_barge_in() -> void:
 	_diag["bargeIns"] = int(_diag["bargeIns"]) + 1
+	_diag["stopBargeIn"] = int(_diag["stopBargeIn"]) + 1
+	_diag["lastStopReason"] = "barge_in"
 	var t0: int = Time.get_ticks_usec()
 	_interrupting = true
 	_barge_count += 1
@@ -964,7 +1038,8 @@ func _do_barge_in() -> void:
 	_pending_phase = ConversationProviderScript.PHASE_INTERJECTION
 	_set_state(STATE_CHILD_SPEAKING)
 	child_speech_started.emit()
-	_recognition.begin_listening(_locale)
+	if not _recognition.has_active_session() and _recognition.begin_listening(_locale):
+		_armed_msec = Time.get_ticks_msec()
 	_update_capture()
 
 
