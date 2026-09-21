@@ -48,6 +48,9 @@ func run():
 	failures.append_array(_test_selector_matches_localization())
 	failures.append_array(_test_session_reminder_row(tree))
 	failures.append_array(_test_character_voice_sliders(tree))
+	failures.append_array(_test_gear_tap_shows_card(tree))
+	failures.append_array(_test_footer_is_pinned(tree))
+	failures.append_array(_test_real_input_through_a_viewport())
 	L10n.set_helper_language(L10n.DEFAULT_HELPER_LANGUAGE)
 	return failures
 
@@ -474,4 +477,158 @@ func _test_character_voice_sliders(tree: SceneTree):
 	tts.free()
 	tree.root.remove_child(save)
 	save.free()
+	return failures
+
+
+## Owner playtest, 2026-09-21: "the Baby Room corner gear: a tap does nothing."
+## A tap now shows the gate card (which explains the 3 s hold and has a Back);
+## Back returns to the gear without telling the host anything closed; a hold on
+## the card opens the settings; Done after that brings the gear back, not the
+## card. Driven through the gate's own methods; the same flow through real
+## pointer events is `tests/input_settings_harness.gd`.
+func _test_gear_tap_shows_card(tree: SceneTree):
+	var failures: Array = []
+	var panel: Control = _instantiate(tree, false)
+	if panel == null:
+		return ["cannot instantiate %s" % PARENT_SCENE]
+	var gear: Control = panel.get_node_or_null("SafeArea/EntryGate") as Control
+	var closed: Array = [0]
+	panel.connect("closed", func() -> void: closed[0] += 1)
+
+	# A short press: begin, release at once.
+	gear.call("begin_hold")
+	var tapped: bool = bool(gear.call("end_hold"))
+	if not tapped:
+		failures.append("gear: an immediate release must count as a tap")
+	if not bool(panel.call("is_gate_card_visible")):
+		failures.append("gear: a tap must show the gate card")
+	if bool(panel.call("is_panel_visible")):
+		failures.append("gear: a tap must NOT open the settings")
+	if gear.visible:
+		failures.append("gear: the gear must step aside while the card is up")
+	if not bool(panel.call("is_card_from_gear")):
+		failures.append("gear: the panel must remember the card came from the gear")
+
+	# Back: gear again, nothing emitted.
+	var back: Button = panel.find_child("GateBackButton", true, false) as Button
+	back.pressed.emit()
+	if bool(panel.call("is_gate_card_visible")) or not gear.visible:
+		failures.append("gear: Back on the tapped card must put the gear back")
+	if closed[0] != 0:
+		failures.append("gear: Back on the tapped card emitted closed() %d time(s); the room never saw anything open" % closed[0])
+	if bool(panel.call("is_card_from_gear")):
+		failures.append("gear: the from-gear flag must clear on Back")
+
+	# Tap, then hold the card's bar: opened. Done: gear back, closed() once.
+	gear.call("begin_hold")
+	gear.call("end_hold")
+	var hold: Control = panel.find_child("GateHold", true, false) as Control
+	hold.call("begin_hold")
+	hold.call("advance", 3.1)
+	if not bool(panel.call("is_panel_visible")):
+		failures.append("gear: a 3 s hold on the tapped card's bar did not open the settings")
+	var done: Button = panel.find_child("DoneButton", true, false) as Button
+	done.pressed.emit()
+	if closed[0] != 1:
+		failures.append("gear: Done emitted closed() %d time(s), expected 1" % closed[0])
+	if bool(panel.call("is_gate_card_visible")) or bool(panel.call("is_panel_visible")) or not gear.visible:
+		failures.append("gear: after Done the gear must be back, not the card")
+
+	# A hold that ran a while and was let go is not a tap.
+	gear.call("begin_hold")
+	gear.call("advance", 1.0)
+	if bool(gear.call("end_hold")):
+		failures.append("gear: releasing after 1 s is an abandoned hold, not a tap")
+	if bool(panel.call("is_gate_card_visible")):
+		failures.append("gear: an abandoned hold must not show the card")
+
+	# The pause card's explicit Grown-ups path is unchanged: Back emits closed().
+	panel.call("show_gate_card")
+	back.pressed.emit()
+	if closed[0] != 2:
+		failures.append("gear: the host-requested card's Back must still emit closed() (got %d)" % closed[0])
+
+	_teardown(panel)
+	return failures
+
+
+## Owner playtest, 2026-09-21: "the last option cannot be reached." The content
+## is ~1290 px tall in a 1024 px design space, and stars / Reset / Done used to be
+## the last rows of the scroll. They are now a footer pinned under the scroll
+## area, and the scroll area STOPS touches so none leak to the room behind it.
+func _test_footer_is_pinned(tree: SceneTree):
+	var failures: Array = []
+	var panel: Control = _instantiate(tree, false)
+	if panel == null:
+		return ["cannot instantiate %s" % PARENT_SCENE]
+	panel.call("open_settings")
+	var scroll: ScrollContainer = panel.find_child("Center", true, false) as ScrollContainer
+	var footer: Control = panel.find_child("Footer", true, false) as Control
+	if scroll == null or footer == null:
+		_teardown(panel)
+		return ["the panel has no Center ScrollContainer / Footer"]
+	if not footer.visible:
+		failures.append("the footer must show with the panel")
+	for node_name: String in ["DoneButton", "ResetButton", "StarsLabel", "ConfirmBox", "ConfirmHold"]:
+		var node: Node = panel.find_child(node_name, true, false)
+		if node == null:
+			failures.append("%s is missing" % node_name)
+		elif scroll.is_ancestor_of(node):
+			failures.append("%s is inside the scroll content; it must live in the pinned footer" % node_name)
+		elif not footer.is_ancestor_of(node):
+			failures.append("%s is not in the footer" % node_name)
+	# The settings rows, on the other hand, still scroll.
+	for node_name: String in ["MusicSlider", "HelperButtons", "SessionButtons", "CloseButton", "StatusLabel"]:
+		var node: Node = panel.find_child(node_name, true, false)
+		if node == null or not scroll.is_ancestor_of(node):
+			failures.append("%s must stay inside the scroll content" % node_name)
+	if scroll.mouse_filter != Control.MOUSE_FILTER_STOP:
+		failures.append("Center must be MOUSE_FILTER_STOP (it inherited PASS and touches on the panel reached the room)")
+	# The scroll area ends where the footer begins; nothing overlaps.
+	if scroll.anchor_bottom != 1.0 or scroll.offset_bottom > -footer.get_combined_minimum_size().y + 0.5:
+		failures.append("Center must be inset from the bottom by the footer's height (offset_bottom %.0f, footer needs %.0f)"
+				% [scroll.offset_bottom, footer.get_combined_minimum_size().y])
+	# A finger-width scrollbar.
+	var bar: VScrollBar = scroll.get_v_scroll_bar()
+	if bar == null:
+		failures.append("no vertical scrollbar")
+	else:
+		if bar.custom_minimum_size.x < 48.0:
+			failures.append("the scrollbar is %.0f px wide; a finger needs 48" % bar.custom_minimum_size.x)
+		for style_name: String in ["grabber", "grabber_highlight", "grabber_pressed", "scroll"]:
+			if not bar.has_theme_stylebox_override(style_name):
+				failures.append("the scrollbar has no %s style; the stock 8 px one is invisible on cream" % style_name)
+	# Locking hides the footer with the panel.
+	panel.call("close_settings")
+	if footer.visible:
+		failures.append("the footer must hide with the panel")
+	_teardown(panel)
+	return failures
+
+
+## The harness that pushes REAL pointer events through a viewport. It cannot run
+## inside this case: the suite runs during `_initialize()`, before the root is
+## in the tree, so nothing here is laid out and `push_input` reaches no control.
+## It runs as a child Godot instead, and its verdict is this case's.
+const INPUT_HARNESS: String = "res://tests/input_settings_harness.gd"
+
+
+func _test_real_input_through_a_viewport():
+	var failures: Array = []
+	if not FileAccess.file_exists(INPUT_HARNESS):
+		return ["%s is missing; the real-input evidence cannot run" % INPUT_HARNESS]
+	var output: Array = []
+	var code: int = OS.execute(OS.get_executable_path(), [
+		"--headless",
+		"--path", ProjectSettings.globalize_path("res://"),
+		"--script", INPUT_HARNESS,
+	], output, true)
+	var text: String = "\n".join(PackedStringArray(output))
+	if code != 0 or text.find("INPUT SETTINGS OK") < 0:
+		failures.append("real input harness exited %d" % code)
+		var tail: PackedStringArray = text.split("\n")
+		var start: int = maxi(0, tail.size() - 25)
+		for i in range(start, tail.size()):
+			if not tail[i].strip_edges().is_empty():
+				failures.append("  harness: %s" % tail[i])
 	return failures

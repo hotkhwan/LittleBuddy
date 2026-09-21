@@ -98,6 +98,7 @@ offset_right = 420.0
 offset_bottom = 250.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 0
 theme_override_styles/panel = ExtResource("6")
 
 [node name="GateMargin" type="MarginContainer" parent="SafeArea/GateScreen/GateCard"]
@@ -172,8 +173,10 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_bottom = -160.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 0
 horizontal_scroll_mode = 0
 scroll_deadzone = 12
 
@@ -933,16 +936,41 @@ theme_override_font_sizes/font_size = 24
 theme_override_colors/font_color = Color(0.13, 0.36, 0.28, 1)
 text = ""
 
-[node name="BottomRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
+[node name="Footer" type="PanelContainer" parent="SafeArea"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -160.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 0
+theme_override_styles/panel = ExtResource("6")
+
+[node name="FooterMargin" type="MarginContainer" parent="SafeArea/Footer"]
+layout_mode = 2
+theme_override_constants/margin_left = 46
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 46
+theme_override_constants/margin_bottom = 14
+
+[node name="FooterColumn" type="VBoxContainer" parent="SafeArea/Footer/FooterMargin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="BottomRow" type="HBoxContainer" parent="SafeArea/Footer/FooterMargin/FooterColumn"]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="StarsBox" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/BottomRow"]
+[node name="StarsBox" type="HBoxContainer" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow"]
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_constants/separation = 10
 
-[node name="StarsIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/Content/BottomRow/StarsBox"]
+[node name="StarsIcon" type="TextureRect" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow/StarsBox"]
 custom_minimum_size = Vector2(46, 46)
 layout_mode = 2
 size_flags_vertical = 4
@@ -951,7 +979,7 @@ script = ExtResource("5")
 glyph = 0
 tint = Color(0.92, 0.7, 0.19, 1)
 
-[node name="StarsLabel" type="Label" parent="SafeArea/Center/Panel/Margin/Content/BottomRow/StarsBox"]
+[node name="StarsLabel" type="Label" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow/StarsBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
@@ -959,17 +987,17 @@ theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(0.36, 0.29, 0.19, 1)
 text = "0 stars earned"
 
-[node name="BottomSpacer" type="Control" parent="SafeArea/Center/Panel/Margin/Content/BottomRow"]
+[node name="BottomSpacer" type="Control" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="ResetRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/BottomRow"]
+[node name="ResetRow" type="HBoxContainer" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
 
-[node name="ResetButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/BottomRow/ResetRow"]
+[node name="ResetButton" type="Button" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow/ResetRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -987,7 +1015,7 @@ theme_override_styles/disabled = ExtResource("7")
 theme_override_styles/focus = ExtResource("7")
 text = "Reset progress"
 
-[node name="DoneButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/BottomRow"]
+[node name="DoneButton" type="Button" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(260, 88)
 size_flags_vertical = 4
@@ -1004,24 +1032,24 @@ theme_override_styles/pressed = ExtResource("11")
 theme_override_styles/focus = ExtResource("10")
 text = "Done"
 
-[node name="ConfirmBox" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
+[node name="ConfirmBox" type="VBoxContainer" parent="SafeArea/Footer/FooterMargin/FooterColumn"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="ConfirmText" type="Label" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox"]
+[node name="ConfirmText" type="Label" parent="SafeArea/Footer/FooterMargin/FooterColumn/ConfirmBox"]
 layout_mode = 2
 autowrap_mode = 2
 theme_override_font_sizes/font_size = 24
 theme_override_colors/font_color = Color(0.4, 0.28, 0.24, 1)
 text = "This erases all stars and stickers, and starts the whole adventure again from the beginning. It cannot be undone."
 
-[node name="ConfirmButtons" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox"]
+[node name="ConfirmButtons" type="HBoxContainer" parent="SafeArea/Footer/FooterMargin/FooterColumn/ConfirmBox"]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="CancelResetButton" type="Button" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmButtons"]
+[node name="CancelResetButton" type="Button" parent="SafeArea/Footer/FooterMargin/FooterColumn/ConfirmBox/ConfirmButtons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(300, 78)
 layout_mode = 2
@@ -1037,7 +1065,7 @@ theme_override_styles/pressed = ExtResource("8")
 theme_override_styles/focus = ExtResource("7")
 text = "Keep my stars"
 
-[node name="ConfirmHold" type="Control" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmButtons"]
+[node name="ConfirmHold" type="Control" parent="SafeArea/Footer/FooterMargin/FooterColumn/ConfirmBox/ConfirmButtons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(380, 78)
 layout_mode = 2
@@ -1045,7 +1073,7 @@ script = ExtResource("3")
 hold_duration = 3.0
 style = 1
 
-[node name="HoldLabel" type="Label" parent="SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmButtons/ConfirmHold"]
+[node name="HoldLabel" type="Label" parent="SafeArea/Footer/FooterMargin/FooterColumn/ConfirmBox/ConfirmButtons/ConfirmHold"]
 layout_mode = 1
 anchor_right = 1.0
 anchor_bottom = 1.0

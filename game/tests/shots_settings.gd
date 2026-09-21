@@ -116,17 +116,35 @@ func _settings_frames(save: Node) -> void:
 		if node == null or not node.is_visible_in_tree():
 			_fail.append("settings: %s is not visible" % node_name)
 	await _shot("settings_%s" % _prefix)
-	# Scrolled to the bottom: Done must be reachable.
+	# 2026-09-21 playtest ("the last option cannot be reached"): Done lives in a
+	# footer pinned under the scroll area, so it is on screen BEFORE any scroll,
+	# and the scrollbar is a finger's width, so the screen says it scrolls.
 	var scroll: ScrollContainer = panel.find_child("Center", true, false) as ScrollContainer
+	var done: Control = panel.find_child("DoneButton", true, false) as Control
+	var visible_h: float = float(_viewport.size_2d_override.y)
+	if scroll != null and done != null:
+		var rect: Rect2 = done.get_global_rect()
+		if scroll.scroll_vertical != 0 or rect.position.y < 0.0 or rect.end.y > visible_h:
+			_fail.append("settings: Done is at %s before scrolling (scroll %d), outside the %d-tall frame" % [str(rect), scroll.scroll_vertical, int(visible_h)])
+		if scroll.is_ancestor_of(done):
+			_fail.append("settings: Done is inside the scroll content; it must be pinned")
+		var bar: VScrollBar = scroll.get_v_scroll_bar()
+		if bar == null or not bar.is_visible_in_tree():
+			_fail.append("settings: no visible scrollbar")
+		elif bar.size.x < 48.0:
+			_fail.append("settings: the scrollbar is %.0f px wide, expected at least 48" % bar.size.x)
+	# Scrolled to the bottom: Done still there, and the last row clear of the footer.
 	if scroll != null:
 		scroll.scroll_vertical = 100000
 		await _settle(0.3)
-		var done: Control = panel.find_child("DoneButton", true, false) as Control
 		if done != null:
 			var rect: Rect2 = done.get_global_rect()
-			var visible_h: float = float(_viewport.size_2d_override.y)
 			if rect.position.y < 0.0 or rect.end.y > visible_h:
 				_fail.append("settings: after scrolling to the bottom Done is at %s, outside the %d-tall frame" % [str(rect), int(visible_h)])
+		var content: Control = panel.find_child("Panel", true, false) as Control
+		if content != null and content.get_global_rect().end.y > scroll.get_global_rect().end.y + 1.0:
+			_fail.append("settings: scrolled to the end, the content (ends %.0f) is cut off by the footer (scroll ends %.0f)"
+					% [content.get_global_rect().end.y, scroll.get_global_rect().end.y])
 		await _shot("settings_bottom_%s" % _prefix)
 
 	_viewport.remove_child(panel)

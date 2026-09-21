@@ -82,8 +82,8 @@ const CHECKS: Dictionary = {
 		"SafeArea/Center/Panel/Margin/Content/VoiceRow/VoiceText/VoiceHelp": CREAM_PANEL,
 		"SafeArea/Center/Panel/Margin/Content/SpeedRow/SpeedText/SpeedTitle": CREAM_PANEL,
 		"SafeArea/Center/Panel/Margin/Content/SpeedRow/SpeedText/SpeedHelp": CREAM_PANEL,
-		"SafeArea/Center/Panel/Margin/Content/BottomRow/StarsBox/StarsLabel": CREAM_PANEL,
-		"SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmText": CREAM_PANEL,
+		"SafeArea/Footer/FooterMargin/FooterColumn/BottomRow/StarsBox/StarsLabel": CREAM_PANEL,
+		"SafeArea/Footer/FooterMargin/FooterColumn/ConfirmBox/ConfirmText": CREAM_PANEL,
 		"SafeArea/Center/Panel/Margin/Content/StatusLabel": CREAM_PANEL,
 	},
 }
@@ -177,7 +177,7 @@ func _test_toggles():
 			button.get_theme_color("font_hover_pressed_color"), BLUE_FACE, size))
 
 	var done: Button = root.get_node_or_null(
-			NodePath("SafeArea/Center/Panel/Margin/Content/BottomRow/DoneButton")) as Button
+			NodePath("SafeArea/Footer/FooterMargin/FooterColumn/BottomRow/DoneButton")) as Button
 	if done != null:
 		var size: int = done.get_theme_font_size("font_size")
 		failures.append_array(_check("DoneButton",
@@ -192,8 +192,8 @@ func _test_toggles():
 	# The two plain (non-toggle) buttons, which share the cream frame and so have
 	# the same near-white-on-cream trap in their held state.
 	for node_path: String in [
-		"SafeArea/Center/Panel/Margin/Content/BottomRow/ResetRow/ResetButton",
-		"SafeArea/Center/Panel/Margin/Content/ConfirmBox/ConfirmButtons/CancelResetButton",
+		"SafeArea/Footer/FooterMargin/FooterColumn/BottomRow/ResetRow/ResetButton",
+		"SafeArea/Footer/FooterMargin/FooterColumn/ConfirmBox/ConfirmButtons/CancelResetButton",
 		"SafeArea/Center/Panel/Margin/Content/Header/CloseButton",
 		"SafeArea/GateScreen/GateCard/GateMargin/GateColumn/GateBackButton",
 	]:

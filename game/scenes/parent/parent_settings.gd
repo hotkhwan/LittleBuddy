@@ -120,6 +120,10 @@ var _going_home: bool = false
 ## card) ask for the full gate card instead of the corner gear, so the grown-up
 ## sees what to hold and has a Back. The Baby Room keeps the gear.
 var _card_requested: bool = false
+## The card was reached by TAPPING the corner gear (the Baby Room). Its Back --
+## and Done after an unlock -- then return to the gear rather than asking the
+## host to take the overlay down, because the room keeps this overlay for good.
+var _card_from_gear: bool = false
 
 @onready var _entry_gate: ParentalGateScript = %EntryGate
 @onready var _gate_screen: Control = %GateScreen
@@ -128,6 +132,7 @@ var _card_requested: bool = false
 @onready var _gate_back_button: Button = %GateBackButton
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _scroll: ScrollContainer = %Center
+@onready var _footer: Control = %Footer
 @onready var _panel: PanelContainer = %Panel
 @onready var _close_button: Button = %CloseButton
 @onready var _music_slider: HSlider = %MusicSlider
@@ -182,7 +187,15 @@ func _ready() -> void:
 	_standalone = _detect_standalone()
 
 	_entry_gate.unlocked.connect(_on_gate_unlocked)
+	_entry_gate.tapped.connect(_on_gear_tapped)
 	_gate_hold.unlocked.connect(_on_gate_unlocked)
+	_footer.resized.connect(_on_footer_resized)
+	_on_footer_resized()
+	_style_scrollbar()
+	# `_input()` is how the panel scrolls under a finger (see the "Scrolling"
+	# section). Enabled explicitly: the engine only switches it on from
+	# NOTIFICATION_READY, which a harness that calls `_ready()` by hand never sends.
+	set_process_input(true)
 	_gate_back_button.pressed.connect(_on_back_pressed)
 	_confirm_hold.unlocked.connect(_on_reset_confirmed)
 	_done_button.pressed.connect(_on_done_pressed)
@@ -210,9 +223,10 @@ func _ready() -> void:
 				button.disabled = true
 				button.tooltip_text = "Not available on this device"
 	HelperFont.apply(_gate_hold_label)
+	var content: Node = _status_label.get_parent()
 	for row_name: String in ROW_HELPER_KEYS.keys():
-		var label: Label = get_node_or_null(
-				NodePath("SafeArea/Center/Panel/Margin/Content/%sRow/%sText/%sHelper" % [row_name, row_name, row_name])) as Label
+		var label: Label = content.get_node_or_null(
+				NodePath("%sRow/%sText/%sHelper" % [row_name, row_name, row_name])) as Label
 		if label != null:
 			HelperFont.apply(label)
 	_voice_on.pressed.connect(_on_voice_chosen.bind(true))
@@ -275,6 +289,211 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _standalone:
 			_on_back_pressed()
 			get_viewport().set_input_as_handled()
+
+
+## ---------------------------------------------------------------------------
+## Scrolling under a finger
+## ---------------------------------------------------------------------------
+##
+## Owner playtest, 2026-09-21, on the iPad: "Settings opens, but the contents
+## cannot scroll; the last option cannot be reached." Two things conspired.
+##
+##   1. The right ~40 % of every row is a control that STOPS pointer events
+##      (four 420 px sliders, every option button, Close). A drag that starts on
+##      one never reaches the ScrollContainer, because `_gui_call_input` stops
+##      walking up at the first MOUSE_FILTER_STOP control. Worse, a vertical
+##      drag that starts on a slider track is a press on the track first: the
+##      slider jumps to the finger and then follows it, so the "scroll" quietly
+##      changed a volume instead.
+##   2. `project.godot` has `emulate_mouse_from_touch=true` and no
+##      `emulate_touch_from_mouse`, so on the Mac a mouse drag never becomes an
+##      `InputEventScreenDrag`, and the touch path was never exercised until the
+##      panel met a real finger.
+##
+## The fix is a small gesture recogniser in `_input()`, which runs BEFORE the
+## GUI sees each event, so it can take a drag away from whatever the finger
+## landed on:
+##
+##   * a press anywhere in the scroll area is let through untouched, so a tap,
+##     a slider drag and the hold-to-erase bar all still work;
+##   * once the pointer has moved more than `SCROLL_DEADZONE` px, mostly
+##     vertically, the gesture is a SCROLL: the panel scrolls by the pointer's
+##     movement, every further event of the gesture is marked handled (the
+##     control under the finger never sees it), the control's own press is
+##     cancelled with a synthetic release far outside it (`_cancel_gui_press`),
+##     and a slider that jumped on the press is put back to its value before
+##     the finger arrived, which also puts the mixer and the profile back;
+##   * mostly horizontal movement is a CONTROL gesture (a slider being dragged)
+##     and is left entirely alone until the finger lifts.
+##
+## A touch arrives twice under `emulate_mouse_from_touch` -- as the emulated
+## mouse event and then as the touch itself, both at the same position -- so the
+## recogniser keys on pointer positions rather than on `relative`, and the
+## second copy contributes a delta of zero instead of doubling the scroll. On
+## the Mac the same code lets a mouse drag scroll the panel, which is how the
+## fix was reproduced without a device.
+
+enum Gesture { NONE, PENDING, SCROLLING, CONTROL }
+
+## Movement, in design pixels, before a press becomes a gesture at all. A
+## fingertip that is merely pressing wobbles by less than this.
+const SCROLL_DEADZONE: float = 12.0
+
+var _gesture: Gesture = Gesture.NONE
+var _gesture_start: Vector2 = Vector2.ZERO
+var _gesture_last: Vector2 = Vector2.ZERO
+## The slider the press landed on (if any) and its value before the press.
+var _gesture_slider: HSlider = null
+var _gesture_slider_value: float = 0.0
+## True while `_cancel_gui_press` is pushing its synthetic events, so this very
+## handler does not try to recognise them.
+var _cancelling: bool = false
+
+
+func _input(event: InputEvent) -> void:
+	if _cancelling or _scroll == null or not _scroll.is_visible_in_tree():
+		return
+	var pressed: bool = false
+	var released: bool = false
+	var moved: bool = false
+	var position: Vector2 = Vector2.ZERO
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.index != 0:
+			return
+		position = touch.position
+		pressed = touch.pressed
+		released = not touch.pressed
+	elif event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if drag.index != 0:
+			return
+		position = drag.position
+		moved = true
+	elif event is InputEventMouseButton:
+		var button := event as InputEventMouseButton
+		if button.button_index != MOUSE_BUTTON_LEFT:
+			return
+		position = button.position
+		pressed = button.pressed
+		released = not button.pressed
+	elif event is InputEventMouseMotion:
+		if _gesture == Gesture.NONE:
+			return
+		position = (event as InputEventMouseMotion).position
+		moved = true
+	else:
+		return
+
+	if pressed:
+		if _gesture == Gesture.NONE and _scroll.get_global_rect().has_point(position):
+			_gesture = Gesture.PENDING
+			_gesture_start = position
+			_gesture_last = position
+			_gesture_slider = _slider_at(position)
+			_gesture_slider_value = _gesture_slider.value if _gesture_slider != null else 0.0
+		return
+
+	if released:
+		var was_scrolling: bool = _gesture == Gesture.SCROLLING
+		_gesture = Gesture.NONE
+		_gesture_slider = null
+		if was_scrolling:
+			# The control already had its release (synthetic); the real one must
+			# not press anything.
+			get_viewport().set_input_as_handled()
+		return
+
+	if not moved or _gesture == Gesture.NONE or _gesture == Gesture.CONTROL:
+		return
+
+	if _gesture == Gesture.PENDING:
+		var travel: Vector2 = (position - _gesture_start).abs()
+		if travel.y > SCROLL_DEADZONE and travel.y > travel.x:
+			_gesture = Gesture.SCROLLING
+			_begin_scroll_gesture()
+		elif travel.x > SCROLL_DEADZONE:
+			_gesture = Gesture.CONTROL
+			return
+		else:
+			return
+
+	# SCROLLING: the finger drags the content with it.
+	_scroll.scroll_vertical -= int(round(position.y - _gesture_last.y))
+	_gesture_last = position
+	get_viewport().set_input_as_handled()
+
+
+## The press has just turned out to be a scroll. Take it back from the control.
+func _begin_scroll_gesture() -> void:
+	# Release first: a grabbed slider follows the synthetic pointer move, so the
+	# value is only safe to put back once the grab has ended.
+	_cancel_gui_press()
+	if _gesture_slider != null and not is_equal_approx(_gesture_slider.value, _gesture_slider_value):
+		# The press on the track already moved the slider (and the mixer, and the
+		# profile). Setting the value back re-applies all three.
+		_gesture_slider.value = _gesture_slider_value
+
+
+## Releases whatever control took the press, without pressing it: a pointer
+## move to far outside every control (a Button's "pressing inside" goes false, a
+## hold bar sees the finger leave) followed by a left release there. Sent
+## through the same viewport, synchronously, and ignored by `_input` itself.
+func _cancel_gui_press() -> void:
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return
+	var far: Vector2 = Vector2(_gesture_start.x, -100000.0)
+	_cancelling = true
+	var motion := InputEventMouseMotion.new()
+	motion.position = far
+	motion.global_position = far
+	motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+	viewport.push_input(motion, true)
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = far
+	release.global_position = far
+	viewport.push_input(release, true)
+	_cancelling = false
+
+
+## The volume slider under a point, or null.
+func _slider_at(point: Vector2) -> HSlider:
+	for slider: HSlider in [_music_slider, _voice_volume_slider, _aliz_voice_slider, _bunny_voice_slider]:
+		if slider != null and slider.is_visible_in_tree() and slider.get_global_rect().has_point(point):
+			return slider
+	return null
+
+
+## The scroll gesture in progress, as a name. Tests.
+func scroll_gesture() -> String:
+	return Gesture.keys()[_gesture]
+
+
+## A scrollbar a finger can find: the stock one is 8 px wide and all but
+## invisible on cream, so nothing on the screen said "this scrolls".
+const SCROLLBAR_WIDTH: float = 48.0
+const SCROLLBAR_GRABBER_INSET: float = 20.0
+
+
+func _style_scrollbar() -> void:
+	var bar: VScrollBar = _scroll.get_v_scroll_bar()
+	if bar == null:
+		return
+	bar.custom_minimum_size = Vector2(SCROLLBAR_WIDTH, 0.0)
+	var track := StyleBoxFlat.new()
+	track.bg_color = Palette.light(Palette.PARENT_CHROME)
+	track.set_corner_radius_all(int(SCROLLBAR_WIDTH * 0.5))
+	track.set_content_margin_all(SCROLLBAR_GRABBER_INSET)
+	bar.add_theme_stylebox_override("scroll", track)
+	for state: String in ["grabber", "grabber_highlight", "grabber_pressed"]:
+		var grabber := StyleBoxFlat.new()
+		grabber.bg_color = Palette.deep(Palette.PARENT_CHROME) if state == "grabber" else Palette.INK_SOFT
+		grabber.set_corner_radius_all(int(SCROLLBAR_WIDTH * 0.5))
+		grabber.set_content_margin_all(SCROLLBAR_GRABBER_INSET)
+		bar.add_theme_stylebox_override(state, grabber)
 
 
 ## The on-device speech check, behind the parental gate.
@@ -631,8 +850,10 @@ func open_settings() -> void:
 	_gate_screen.visible = false
 	_backdrop.visible = true
 	_scroll.visible = true
+	_footer.visible = true
 	_panel.visible = true
 	_scroll.scroll_vertical = 0
+	_gesture = Gesture.NONE
 	_hide_reset_confirmation()
 	_collapse_songs_for_fun()
 	_collapse_learn_with_aliz()
@@ -645,6 +866,10 @@ func open_settings() -> void:
 ## goes home to the title, because a grown-up who pressed Done is finished here
 ## and there is no scene underneath to come back to.
 func close_settings() -> void:
+	if _card_from_gear:
+		# Opened from the corner gear: Done puts the gear back, not the card.
+		_card_from_gear = false
+		_card_requested = false
 	_show_locked()
 	closed.emit()
 	if _standalone:
@@ -662,7 +887,9 @@ func _show_locked() -> void:
 	# on the same cream over the paused room.
 	_backdrop.visible = card
 	_scroll.visible = false
+	_footer.visible = false
 	_panel.visible = false
+	_gesture = Gesture.NONE
 	_hide_reset_confirmation()
 	# The external link never survives a close: locking the panel puts it away.
 	_collapse_songs_for_fun()
@@ -682,9 +909,41 @@ func _on_back_pressed() -> void:
 	back_requested.emit()
 	if _standalone:
 		_go_home()
+	elif _card_from_gear:
+		# Back to the gear; the room was never told anything opened, so nothing
+		# is emitted and nothing has to be undone.
+		_card_from_gear = false
+		_card_requested = false
+		_show_locked()
 	elif _card_requested:
 		# The host removes the overlay on `closed()`, exactly as after Done.
 		closed.emit()
+
+
+## A TAP on the corner gear (2026-09-21 playtest: "a tap does nothing"). It
+## cannot open the settings -- that still takes the 3 s hold -- but it now shows
+## the gate card, which says so in words, has the hold bar, and has a Back.
+func _on_gear_tapped() -> void:
+	if _panel.visible or _gate_screen.visible:
+		return
+	_card_from_gear = true
+	show_gate_card()
+
+
+## True while the gate card is up because the gear was tapped. Tests.
+func is_card_from_gear() -> bool:
+	return _card_from_gear
+
+
+## The pinned footer (stars, Reset, Done) sits under the scroll area, never over
+## it, so the last row of settings is never hidden behind Done. The footer grows
+## when the erase confirmation is showing; the scroll area gives way.
+func _on_footer_resized() -> void:
+	if _scroll == null or _footer == null:
+		return
+	# The minimum is the truth before the first layout pass (a panel that is
+	# not in a tree yet has no size); the laid-out size is the truth after it.
+	_scroll.offset_bottom = -maxf(_footer.size.y, _footer.get_combined_minimum_size().y)
 
 
 ## Replaces this scene with the title. Deferred, so it never happens in the
