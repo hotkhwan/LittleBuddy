@@ -41,3 +41,40 @@ Home, Back, Close, Done, Reset, Music, Voice, Language, Mic/Speak, Next, Stars, 
 ## Validation gates
 
 Every changed screen requires identical-dimension before/after evidence, phone-like layout review, unchanged gameplay/node contracts and passing focused checks. Final status and test results are recorded in `HANDOFF_CODEX_TO_CLAUDE.md`; this table records the honest pre-change audit.
+
+## Final UI gate
+
+PASS: main menu, activity picker, house feeding care, highchair HUD, bath/wash
+and towel UI, bedtime HUD, tidy HUD, Baby Room, Free Play overlays, food chooser,
+Classroom, Dress Up, pause dialog, retained Settings/parent gate. These are
+**rendered desktop/simulated-aspect UI passes, not physical-device passes**.
+Legacy nursery/highchair world art remains less polished than the UI; see the
+handoff's remaining defects. No claim that every room prop is production-final.
+
+The second route-by-route audit found and fixed another shared issue: story
+instructions were outlined text laid directly over room details, and the long
+bedtime chapter title grew under Home. Story instructions now sit on a cream
+card, with a separate wrapping chapter capsule. FEED close-ups retain the left
+instruction rail; narration still stands down when care owns the screen.
+
+| Current picker route | Actual initial task / room | Start gate | Remaining non-UI observation |
+|---|---|---|---|
+| imHungry | bunnyIsHungry / bedroom | PASS | None confirmed |
+| snackTime | openTheFridge / kitchen | PASS | Nearby ENTER affordance can compete with fridge instruction |
+| goodMorningRoutine | wakeUpBuddy / bedroom | PASS | Hungry bubble/CARRY can compete with wake-up instruction |
+| morningRoutine | walkToBedroom / bathroom | PASS | None confirmed |
+| breakfastTime | walkToKitchen / bedroom | PASS | None confirmed |
+| toddlerPlayTime | walkToLivingRoom / kitchen | PASS | None confirmed |
+| tidyAndBedtime | findToyBox / livingRoom | PASS | Long chapter title clipping fixed |
+| sayItChallenge | sayMilk / bedroom | PASS | Legacy milk carton and competing generic child affordance remain |
+| brushMyTeeth | talkToChild / bedroom | PASS | None confirmed |
+
+All nine were instantiated through the actual activity-picker entries and house
+director, with a running mission, nonempty task and playable plan asserted.
+This is an initial-route audit, not a claim of nine full playthroughs. Screenshots
+`mission_*_{before,after}.png` show the shared story-HUD pass.
+
+Further confirmed art defect fixed: staged room apples/bananas differed from
+their accepted chooser pictures. ObjectSpawner now reuses the existing accepted
+GLBs at the old pickup sizes/colliders, without changing frozen content or the
+separate peelable/drainable highchair props. No paid generation was needed.

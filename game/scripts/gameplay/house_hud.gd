@@ -61,7 +61,7 @@ const STAR_GHOST: Color = Color("#E8DCC8")
 
 const PROMPT_FONT_SIZE: int = 42
 const HINT_FONT_SIZE: int = 27
-const CAPTION_FONT_SIZE: int = 24
+const CAPTION_FONT_SIZE: int = 22
 const BUTTON_FONT_SIZE: int = 30
 const STAR_FONT_SIZE: int = 34
 ## The star glyph beside the number: 1.3x the digits' size, with a 3 px ink
@@ -268,17 +268,18 @@ func build() -> void:
 	_caption = _add_label("Caption", CAPTION_FONT_SIZE, LAVENDER)
 	_caption.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	_caption.offset_left = -600.0
-	_caption.offset_top = 30.0
+	_caption.offset_top = 12.0
 	_caption.offset_right = CAPTION_RIGHT
-	_caption.offset_bottom = 120.0
+	_caption.offset_bottom = 76.0
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_caption.add_theme_constant_override("outline_size", 0)
 	_caption.add_theme_color_override("font_color", INK)
 	var caption_style := preload("res://scripts/ui/storybook_chrome.gd").panel(Palette.LAVENDER.lightened(0.70), 20)
-	caption_style.content_margin_top = 6.0
-	caption_style.content_margin_bottom = 6.0
-	caption_style.shadow_size = 4
+	caption_style.content_margin_top = 4.0
+	caption_style.content_margin_bottom = 4.0
+	caption_style.shadow_size = 3
+	caption_style.shadow_offset = Vector2(0, 2)
 	_caption.add_theme_stylebox_override("normal", caption_style)
 	_caption.visible = false
 
