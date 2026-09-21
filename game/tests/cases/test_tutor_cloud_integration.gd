@@ -13,15 +13,16 @@ extends RefCounted
 ## no other address is ever dialled. No provider is involved anywhere: the
 ## mock is a scripted lesson with synthetic tone audio.
 ##
-## Scenarios (keyed on the childId prefix, see the mock's header):
+## Scenarios (keyed on the clientId prefix, see the mock's header):
 ##   default    quota -> session -> token -> ws -> "cat" -> tool card + audio
 ##              + validated turn; barge-in on "dog" (response.cancel +
 ##              truncate); 2.5 s of synthetic mic audio -> server VAD ->
 ##              transcript "cat" -> a server-initiated reply plays; end posts
 ##              usage; GET /quota shows the seconds used.
-##   flaky      first token mint 503 -> reconnect once -> ready.
+##   norealtime token mint 503 (the deployed Worker's shape) -> ready on the
+##              turns path; a REST turn drives the card and the validated turn.
 ##   drop       socket closed after the first reply -> reconnect once.
-##   exhausted  402 -> fell_back quota_exhausted, no token minted.
+##   exhausted  429 quota_exhausted -> fell_back quota_exhausted, no token minted.
 ##   banned     the reply carries a banned word -> cancelled and replaced.
 ##   deny       403 -> fell_back not_approved.
 
@@ -67,7 +68,7 @@ func run():
 	var base: String = "http://127.0.0.1:%d" % port
 	print("    mock tutor server on %s" % base)
 	failures.append_array(_scenario_default(base))
-	failures.append_array(_scenario_flaky(base))
+	failures.append_array(_scenario_norealtime(base))
 	failures.append_array(_scenario_drop(base))
 	failures.append_array(_scenario_exhausted(base))
 	failures.append_array(_scenario_banned(base))
@@ -96,7 +97,7 @@ func _mock_is_up(port: int) -> bool:
 
 func _make(base: String, child_id: String) -> Dictionary:
 	var api: RefCounted = ApiScript.new()
-	api.configure("dev-parent-token", "dev-parent-approval", "test-device", child_id)
+	api.configure(child_id, "dev-parent-approval")
 	api.set_base_url(base)
 	if not api.enable_for_tests():
 		return {}
@@ -248,17 +249,25 @@ func _scenario_default(base: String) -> Array:
 	return failures
 
 
-func _scenario_flaky(base: String) -> Array:
+func _scenario_norealtime(base: String) -> Array:
 	var failures: Array = []
-	var h: Dictionary = _make(base, "flaky-%d" % (Time.get_ticks_usec() % 100000))
+	var h: Dictionary = _make(base, "norealtime-%d" % (Time.get_ticks_usec() % 100000))
 	var session: RefCounted = h["session"]
+	var ev: Dictionary = h["ev"]
 	if not _wait_ready(h):
-		failures.append("flaky: not ready after the reconnect: %s fell_back=%s" % [str(session.state_history()), str(h["ev"]["fell_back"])])
-	elif session.reconnect_count() != 1:
-		failures.append("flaky: expected one reconnect, got %d" % session.reconnect_count())
-	print("      flaky: %s reconnects=%d" % [str(session.state_history()), session.reconnect_count()])
+		failures.append("norealtime: not ready: %s fell_back=%s" % [str(session.state_history()), str(ev["fell_back"])])
+	elif session.transport_mode() != "turns":
+		failures.append("norealtime: expected the turns path, got %s" % session.transport_mode())
+	session.send_transcript("cat", {"phase": "answer", "stepId": "s02_cat", "outcome": "correct", "matched": "cat", "lessonAction": "next_question"})
+	if not _pump(h, func() -> bool: return ev["turns"].size() >= 1):
+		failures.append("norealtime: no REST turn reply")
+	elif String(ev["turns"][0]["speech"]) != "Great! It's a cat!" or ev["tools"] != [["show_card", {"assetId": "cat"}]]:
+		failures.append("norealtime: validated turn + card: %s / %s" % [str(ev["turns"][0]), str(ev["tools"])])
+	print("      norealtime: %s transport=%s turn_log=%s" % [str(session.state_history()), session.transport_mode(), str(session.turn_log())])
 	session.end("scene")
-	_pump(h, func() -> bool: return not h["ev"]["ended"].is_empty(), 3.0)
+	_pump(h, func() -> bool: return not ev["ended"].is_empty(), 3.0)
+	if ev["ended"].is_empty() or not bool(ev["ended"][0][1]["serverAck"]):
+		failures.append("norealtime: end acknowledged: %s" % str(ev["ended"]))
 	_free(h)
 	return failures
 

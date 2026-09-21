@@ -130,8 +130,8 @@ func _sync_cloud_lesson() -> void:
 	if lesson.is_empty():
 		return
 	var step: Dictionary = _engine.call("current_step") if has_engine() else {}
-	if String(step.get("kind", "")) == "choose":
-		return
+	if step.is_empty() or String(step.get("kind", "")) == "choose":
+		return  # nothing scored yet (the chooser, or no lesson loaded): no session
 	if lesson == _cloud_lesson and String(_cloud.call("get_state")) not in ["idle", "ended", "failed"]:
 		return
 	if lesson != _cloud_lesson and bool(_cloud.call("is_active")):

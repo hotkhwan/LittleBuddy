@@ -43,24 +43,39 @@ const FIXTURE: String = "res://tests/fixtures/tutor_realtime_events.json"
 const CLOUD_DIR: String = "res://scripts/tutor/cloud/"
 
 
-## A scripted stand-in for CloudTutorApi: answers each kind from a queue.
+## A scripted stand-in for CloudTutorApi (the reconciled surface): answers
+## each kind from a queue; `replayed` rides in the result like the real one.
 class FakeApi:
 	extends RefCounted
 	signal completed(kind: String, result: Dictionary)
 	var available: bool = true
+	var approval: bool = true
 	var calls: Array = []
 	var replies: Dictionary = {}  # kind -> Array of results (popped in order)
 	var pending: Array = []
+	var cancels: int = 0
 	func is_available() -> bool:
 		return available
+	func has_approval() -> bool:
+		return approval
+	func sign_in_dev(subject: String = "") -> bool:
+		approval = true
+		return _call("signIn", {"subject": subject})
+	func grant_consent(kind: String = "ai_tutor") -> bool:
+		return _call("consent", {"kind": kind})
 	func fetch_quota() -> bool:
 		return _call("quota", {})
-	func create_session(lesson_id: String, mode: String) -> bool:
-		return _call("session", {"lessonId": lesson_id, "mode": mode})
+	func create_session(lesson_id: String) -> bool:
+		return _call("session", {"lessonId": lesson_id})
 	func mint_token(session_id: String) -> bool:
 		return _call("token", {"sessionId": session_id})
-	func end_session(session_id: String, reason: String, seconds_used: float, usage: Dictionary) -> bool:
-		return _call("end", {"sessionId": session_id, "reason": reason, "secondsUsed": seconds_used, "usage": usage})
+	func submit_turn(session_id: String, key: String, transcript: String, context: Dictionary, audio_seconds: float = 0.0) -> bool:
+		return _call("turn", {"sessionId": session_id, "key": key, "transcript": transcript, "lessonContext": context, "audioSeconds": audio_seconds})
+	func end_session(session_id: String, reason: String) -> bool:
+		return _call("end", {"sessionId": session_id, "reason": reason})
+	func cancel() -> void:
+		cancels += 1
+		pending.clear()
 	func advance(_delta: float) -> void:
 		while not pending.is_empty():
 			var item: Array = pending.pop_front()
@@ -71,10 +86,16 @@ class FakeApi:
 		var result: Dictionary = queue.pop_front() if not queue.is_empty() else FakeApi.ok({})
 		pending.append([kind, result])
 		return true
-	static func ok(body: Dictionary) -> Dictionary:
-		return {"ok": true, "status": 200, "body": body, "code": "", "message": "", "retryAfterSeconds": 0.0}
+	func calls_of(kind: String) -> Array:
+		var out: Array = []
+		for call: Dictionary in calls:
+			if String(call["kind"]) == kind:
+				out.append(call)
+		return out
+	static func ok(body: Dictionary, replayed: bool = false) -> Dictionary:
+		return {"ok": true, "status": 200, "body": body, "code": "", "message": "", "retryAfterSeconds": 0.0, "replayed": replayed}
 	static func err(status: int, code: String, body: Dictionary = {}) -> Dictionary:
-		return {"ok": false, "status": status, "body": body, "code": code, "message": "", "retryAfterSeconds": 0.0}
+		return {"ok": false, "status": status, "body": body, "code": code, "message": "", "retryAfterSeconds": 0.0, "replayed": false}
 
 
 class FakeQuota:
@@ -195,6 +216,7 @@ func run():
 	failures.append_array(_test_session_lifecycle())
 	failures.append_array(_test_session_safety_and_quota())
 	failures.append_array(_test_session_failures())
+	failures.append_array(_test_session_turns_path())
 	failures.append_array(_test_provider_one_turn_per_submit())
 	failures.append_array(_test_synthesis_wrapper())
 	failures.append_array(_test_cloud_files_hold_no_secrets())
@@ -205,20 +227,41 @@ func run():
 
 func _test_api_pure_and_gated():
 	var failures: Array = []
-	var headers: PackedStringArray = ApiScript.build_headers("parent-1", "approval-2", "device-3")
-	var expected: Array = ["Content-Type: application/json", "Accept: application/json",
-		"Authorization: Bearer parent-1", "X-Parent-Approval: approval-2", "X-Device-Id: device-3"]
+	# Tutor routes: the approval token ONLY (never the sign-in header), plus the
+	# per-call extras; account routes: the sign-in header only.
+	var headers: PackedStringArray = ApiScript.build_headers("approval-2", {"Idempotency-Key": "k1"})
+	var expected: Array = ["Content-Type: application/json", "Accept: application/json", "X-Parent-Approval: approval-2", "Idempotency-Key: k1"]
 	if Array(headers) != expected:
-		failures.append("contract headers: %s" % str(headers))
+		failures.append("tutor route headers: %s" % str(headers))
+	var account: PackedStringArray = ApiScript.build_account_headers("parent-1")
+	if Array(account) != ["Content-Type: application/json", "Accept: application/json", "Authorization: Bearer parent-1"]:
+		failures.append("account route headers: %s" % str(account))
+	for header: String in headers:
+		if header.begins_with(ApiScript.PARENT_AUTH_HEADER):
+			failures.append("a tutor route must not carry the parent sign-in header (the Worker would refuse it)")
 	var codes: Array = [
-		[402, {"error": "quota_exhausted"}, "quota_exhausted"], [403, {}, "not_approved"], [429, {}, "rate_limited"],
-		[410, {}, "session_ended"], [503, {"error": {"code": "provider_unavailable"}}, "provider_unavailable"],
+		[429, {"error": {"code": "quota_exhausted", "reason": "daily_quota", "quota": {}}}, "quota_exhausted"],
+		[402, {"error": "quota_exhausted"}, "quota_exhausted"], [403, {}, "not_approved"],
+		[403, {"error": {"code": "consent_required", "kind": "ai_tutor"}}, "consent_required"],
+		[429, {}, "rate_limited"], [409, {"error": {"code": "session_ended"}}, "session_ended"], [410, {}, "session_ended"],
+		[404, {}, "not_found"], [422, {}, "idempotency_mismatch"], [400, {"error": {"code": "invalid_turn"}}, "invalid_turn"],
+		[503, {"error": {"code": "provider_unavailable"}}, "provider_unavailable"],
 		[500, {}, "provider_unavailable"], [0, {}, "provider_unavailable"], [418, {}, "http_418"],
 	]
 	for row: Array in codes:
 		var got: String = ApiScript.error_code_for(row[0], row[1])
 		if got != row[2]:
 			failures.append("error_code_for(%d, %s) = %s, expected %s" % [row[0], str(row[1]), got, row[2]])
+	# The quota block sits at the top level, or inside `error` on a 429.
+	if ApiScript.quota_of({"quota": {"usedSeconds": 1}}) != {"usedSeconds": 1} \
+			or ApiScript.quota_of({"error": {"code": "quota_exhausted", "quota": {"usedSeconds": 300}}}) != {"usedSeconds": 300} \
+			or not ApiScript.quota_of({"error": {"code": "x"}}).is_empty():
+		failures.append("quota_of reads both places")
+	# lessonContext: only the Worker's keys leave; outcome is forced into its enum.
+	var context: Dictionary = ApiScript.sanitize_lesson_context({"stepId": "s02_cat", "outcome": "retry", "phase": "answer",
+		"progress": {"x": 1}, "expectedAnswers": ["cat", 3, "kitty"], "matched": "cat", "lessonAction": "next_question"})
+	if context != {"stepId": "s02_cat", "outcome": "unclear", "expectedAnswers": ["cat", "kitty"], "matched": "cat", "lessonAction": "next_question"}:
+		failures.append("sanitize_lesson_context: %s" % str(context))
 	if ApiScript.parse_url("http://127.0.0.1:8787") != {"host": "127.0.0.1", "port": 8787, "tls": false, "prefix": ""}:
 		failures.append("parse_url loopback")
 	if ApiScript.parse_url("https://tutor.example/api/") != {"host": "tutor.example", "port": 443, "tls": true, "prefix": "/api"}:
@@ -227,7 +270,7 @@ func _test_api_pure_and_gated():
 		failures.append("parse_url rejects ftp")
 	# Flag off: refused before any client is built.
 	var api: RefCounted = ApiScript.new()
-	api.configure("p", "a", "d", "c")
+	api.configure("client-1", "approval-2")
 	var results: Array = []
 	api.completed.connect(func(kind: String, result: Dictionary) -> void: results.append([kind, String(result["code"])]))
 	if api.is_available():
@@ -242,6 +285,12 @@ func _test_api_pure_and_gated():
 	for entry: Dictionary in api.request_log():
 		if entry.has("path"):
 			failures.append("a request was built with the flag off: %s" % str(entry))
+	# The development-Worker hatch needs the environment variable and https; a
+	# suite run without LD_TUTOR_DEV_URL cannot arm it for any address.
+	if OS.get_environment(ApiScript.DEV_URL_ENV).is_empty() and api.enable_dev_api_for_tests("https://tutor.example"):
+		failures.append("enable_dev_api_for_tests must refuse without LD_TUTOR_DEV_URL")
+	if api.enable_dev_api_for_tests("http://127.0.0.1:1"):
+		failures.append("enable_dev_api_for_tests must refuse a plain http address")
 	return failures
 
 
@@ -557,8 +606,9 @@ func _test_session_lifecycle():
 		kinds.append(call["kind"])
 	if kinds != ["quota", "session", "token"]:
 		failures.append("REST order quota -> session -> token: %s" % str(kinds))
-	if String(api.calls[1]["body"]["mode"]) != "realtime" or String(api.calls[2]["body"]["sessionId"]) != "s-1":
-		failures.append("session body / token body: %s" % str(api.calls))
+	if String(api.calls[1]["body"]["lessonId"]) != "animals_cat_dog" or api.calls[1]["body"].has("mode") \
+			or String(api.calls[2]["body"]["sessionId"]) != "s-1":
+		failures.append("session body {lessonId} / token body {sessionId}: %s" % str(api.calls))
 	if events["ready"].size() != 1 or String(events["ready"][0]["sessionId"]) != "s-1" or String(events["ready"][0]["entitlement"]) != "free":
 		failures.append("ready carries the session and entitlement: %s" % str(events["ready"]))
 	if events["quota"].size() < 2 or float(events["quota"][0]["remainingSeconds"]) != 288.0:
@@ -620,11 +670,13 @@ func _test_session_lifecycle():
 	if events["ended"].size() != 1 or String(events["ended"][0][0]) != "parent_stop":
 		failures.append("ended once with the reason: %s" % str(events["ended"]))
 	var end_call: Dictionary = api.calls[-1]
-	if String(end_call["kind"]) != "end" or String(end_call["body"]["reason"]) != "parent_stop" or float(end_call["body"]["secondsUsed"]) < 1.0:
-		failures.append("POST end carries reason + secondsUsed: %s" % str(end_call))
-	var usage: Dictionary = end_call["body"]["usage"]
+	if String(end_call["kind"]) != "end" or String(end_call["body"]["reason"]) != "parent_stop" or end_call["body"].has("secondsUsed"):
+		failures.append("POST end carries {reason} only (the server clock is the authority): %s" % str(end_call))
+	if api.calls_of("end").size() != 1:
+		failures.append("/end is posted exactly once")
+	var usage: Dictionary = session.usage()
 	if int(usage["tokensIn"]) != 105 or int(usage["tokensOut"]) != 44 or float(usage["audioSeconds"]) < 0.04:
-		failures.append("POST end carries the metered usage: %s" % str(usage))
+		failures.append("usage metered client-side: %s" % str(usage))
 	if float(session.last_summary()["quota"]["usedSeconds"]) != 40.0:
 		failures.append("the end reply's quota is kept for the break card: %s" % str(session.last_summary()))
 	if not transport_closed(h["transport"]):
@@ -677,7 +729,7 @@ func _test_session_safety_and_quota():
 	_free_session(h)
 	# Server 402 on the session call: fall back and mark the mirror exhausted.
 	api = FakeApi.new()
-	api.replies = {"session": [FakeApi.err(402, "quota_exhausted", {"error": "quota_exhausted", "quota": {"allowanceSeconds": 300, "usedSeconds": 300}})]}
+	api.replies = {"session": [FakeApi.err(429, "quota_exhausted", {"error": {"code": "quota_exhausted", "reason": "daily_quota", "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0}}})]}
 	h = _session_harness(api)
 	session = h["session"]
 	events = h["events"]
@@ -685,12 +737,12 @@ func _test_session_safety_and_quota():
 	for _i: int in range(4):
 		session.advance(0.05)
 	if events["fell_back"] != ["quota_exhausted"] or session.get_state() != SessionScript.STATE_ENDED:
-		failures.append("402 -> fell_back quota_exhausted + ended: %s / %s" % [str(events["fell_back"]), session.get_state()])
+		failures.append("429 quota_exhausted -> fell_back quota_exhausted + ended: %s / %s" % [str(events["fell_back"]), session.get_state()])
 	if not (h["quota"] as FakeQuota).exhausted:
-		failures.append("the mirror learns the server's 402")
+		failures.append("the mirror learns the server's 429")
 	for call: Dictionary in api.calls:
 		if String(call["kind"]) == "token":
-			failures.append("no token is minted after a 402")
+			failures.append("no token is minted after a 429")
 	_free_session(h)
 	# Zero remaining on GET /quota: no session is even created.
 	api = FakeApi.new()
@@ -708,32 +760,34 @@ func _test_session_safety_and_quota():
 
 func _test_session_failures():
 	var failures: Array = []
-	# 503 on the first token mint: reconnect once with a fresh token.
+	# A transport error while a reply is open: one reconnect with a fresh
+	# token (the lost turn reported), then a second failure falls back.
 	var api := FakeApi.new()
 	api.replies = {
 		"session": [FakeApi.ok({"sessionId": "s-3", "quota": {"allowanceSeconds": 300, "usedSeconds": 0}})],
-		"token": [FakeApi.err(503, "provider_unavailable"), FakeApi.ok(_fixture()["token"])],
+		"token": [FakeApi.ok(_fixture()["token"]), FakeApi.ok(_fixture()["token"])],
 	}
 	var h: Dictionary = _session_harness(api)
 	var session: RefCounted = h["session"]
 	var events: Dictionary = h["events"]
-	session.start()
-	for _i: int in range(4):
-		session.advance(0.05)
-	if session.get_state() != SessionScript.STATE_MINTING or session.reconnect_count() != 1:
-		failures.append("a 503 on the token schedules one reconnect: state=%s reconnects=%d" % [session.get_state(), session.reconnect_count()])
+	if not _bring_up(h):
+		_free_session(h)
+		return ["failures: session did not come up"]
+	session.send_transcript("cat", {"lessonAction": "next_question"})
+	(h["transport"] as RefCounted).handle_event({"type": "error", "error": {"code": "server_error", "message": "outage"}})
+	if events["failed"] != ["server_error"] or session.get_state() != SessionScript.STATE_MINTING or session.reconnect_count() != 1:
+		failures.append("first failure: turn_failed + one reconnect: %s state=%s" % [str(events["failed"]), session.get_state()])
 	for _i: int in range(14):
-		session.advance(0.05)  # past RETRY_DELAY_SECONDS
+		session.advance(0.05)  # past RETRY_DELAY_SECONDS, the fresh token, dialling
 	if session.get_state() != SessionScript.STATE_CONNECTING:
 		failures.append("the fresh token is minted and dialled: %s" % str(session.state_history()))
 	(h["transport"] as RefCounted).handle_event({"type": "session.created", "session": {"id": "rt"}})
-	if not session.is_ready() or events["ready"].size() != 1 or int(events["ready"][0]["reconnects"]) != 1:
+	if not session.is_ready() or events["ready"].size() != 2 or int(events["ready"][1]["reconnects"]) != 1:
 		failures.append("ready after the reconnect: %s" % str(events["ready"]))
-	# A second failure while a reply is open: the turn is reported lost, the session falls back.
 	session.send_transcript("cat", {"lessonAction": "next_question"})
 	(h["transport"] as RefCounted).handle_event({"type": "error", "error": {"code": "server_error", "message": "outage"}})
 	session.advance(0.05)
-	if events["failed"] != ["server_error"] or events["fell_back"] != ["server_error"]:
+	if events["failed"] != ["server_error", "server_error"] or events["fell_back"] != ["server_error"]:
 		failures.append("second failure: turn_failed + fell_back: %s / %s" % [str(events["failed"]), str(events["fell_back"])])
 	if events["ended"].size() != 1 or not String(events["ended"][0][0]).begins_with("provider_failed"):
 		failures.append("the server is told the session failed: %s" % str(events["ended"]))
@@ -792,6 +846,107 @@ func _test_session_failures():
 		session.advance(0.05)
 	if session.get_state() != SessionScript.STATE_CONNECTING:
 		failures.append("429 on /sessions is retried once: %s" % str(session.state_history()))
+	_free_session(h)
+	return failures
+
+
+## The deployed Worker has no realtime provider: the token endpoint answers
+## 503 and the session runs on REST turns. The server's validated TutorTurn
+## drives the classroom; a transient failure is retried once with the SAME
+## Idempotency-Key; `endAtBoundary` ends the session after the reply and
+## nothing further is sent; `/end` leaves once; a lesson switch restarts.
+func _test_session_turns_path():
+	var failures: Array = []
+	var turn: Dictionary = {"speech": "Yes! Red!", "subtitle": "Yes! Red!", "emotion": "happy", "gesture": "clap",
+		"visual": {"type": "flashcard", "assetId": "color_red"}, "lessonAction": "next_question"}
+	var quota_block: Dictionary = {"entitlement": "free", "dailyAllowanceSeconds": 300, "usedSeconds": 45, "remainingSeconds": 255, "dailyTurnAllowance": 60, "usedTurns": 1}
+	var api := FakeApi.new()
+	api.approval = false  # no token held: the DEV sign-in mints one first
+	api.replies = {
+		"session": [FakeApi.ok({"sessionId": "s-t", "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 0, "remainingSeconds": 300}, "entitlement": "free"})],
+		"token": [FakeApi.err(503, "provider_unavailable", {"error": {"code": "provider_unavailable", "message": "Realtime tutoring is not configured on this server."}})],
+		"turn": [
+			FakeApi.ok({"turn": turn, "quota": quota_block, "endAtBoundary": false, "turnIndex": 1, "chargedSeconds": 2.5, "provider": "mock", "fallback": null}),
+			FakeApi.err(503, "provider_unavailable"),
+			FakeApi.ok({"turn": turn, "quota": quota_block, "endAtBoundary": false, "turnIndex": 2, "chargedSeconds": 1.0}, true),
+			FakeApi.ok({"turn": turn, "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0, "usedTurns": 3}, "endAtBoundary": true, "turnIndex": 3}),
+		],
+		"end": [FakeApi.ok({"sessionId": "s-t", "endedAt": "2026-09-21T10:00:00.000Z", "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0}, "usage": {"turns": 3}})],
+	}
+	var h: Dictionary = _session_harness(api)
+	var session: RefCounted = h["session"]
+	var events: Dictionary = h["events"]
+	session.start()
+	for _i: int in range(8):
+		session.advance(0.05)
+	if not session.is_ready() or session.transport_mode() != "turns" or not session.is_turns_mode():
+		_free_session(h)
+		return ["turns: not ready on the turns path after a 503 token: %s" % str(session.state_history())]
+	if session.state_history() != ["signing_in", "consenting", "quota", "creating", "minting", "ready"]:
+		failures.append("turns: DEV sign-in, consent, quota, session, token 503 -> ready: %s" % str(session.state_history()))
+	if events["ready"].size() != 1 or String(events["ready"][0]["transport"]) != "turns" or String(events["ready"][0]["realtimeFallback"]) != "provider_unavailable":
+		failures.append("turns: ready names the transport and why: %s" % str(events["ready"]))
+	if session.is_streaming_allowed() or session.push_audio(PackedByteArray([1, 2])):
+		failures.append("turns: no microphone frames ever stream on the turns path")
+	# Turn 1: the server's validated turn drives the classroom.
+	if not session.send_transcript("red", {"stepId": "s02_red", "outcome": "correct", "phase": "answer"}):
+		failures.append("turns: send_transcript while ready")
+	var sent: Dictionary = api.calls_of("turn")[0]["body"]
+	if String(sent["key"]) != "s-t:t1" or sent["lessonContext"].has("phase") or String(sent["lessonContext"]["outcome"]) != "correct":
+		failures.append("turns: Idempotency-Key per turn, sanitized lessonContext: %s" % str(sent))
+	session.advance(0.05)
+	if events["turns"].size() != 1 or events["turns"][0] != TurnValidator.coerce(turn) or events["tools"] != [["show_card", {"assetId": "color_red"}]]:
+		failures.append("turns: the server turn + its card reach the classroom: %s / %s" % [str(events["turns"]), str(events["tools"])])
+	if events["subtitles"].is_empty() or String(events["subtitles"][-1]) != "Yes! Red!" or session.is_reply_open():
+		failures.append("turns: subtitle set, reply closed at once: %s" % str(events["subtitles"]))
+	if float(session.server_quota()["usedSeconds"]) != 45.0 or int(session.turn_log()[0]["turnIndex"]) != 1:
+		failures.append("turns: the reply's quota block is mirrored: %s" % str(session.server_quota()))
+	# Turn 2: a 503 is retried once with the same key; the replay is not a new charge.
+	session.send_transcript("red", {"stepId": "s02_red", "outcome": "correct"})
+	for _i: int in range(14):
+		session.advance(0.05)
+	var turn_calls: Array = api.calls_of("turn")
+	if turn_calls.size() != 3 or String(turn_calls[1]["body"]["key"]) != "s-t:t2" or String(turn_calls[2]["body"]["key"]) != "s-t:t2":
+		failures.append("turns: one retry with the SAME Idempotency-Key: %s" % str(turn_calls))
+	if events["turns"].size() != 2 or not events["failed"].is_empty() or not bool(session.turn_log()[1]["replayed"]):
+		failures.append("turns: the replayed reply counts once, no turn lost: turns=%d failed=%s log=%s" % [events["turns"].size(), str(events["failed"]), str(session.turn_log())])
+	# Barge-in mid-request: the request is dropped, nothing is charged twice.
+	session.send_transcript("red", {"stepId": "s02_red", "outcome": "correct"})
+	session.barge_in()
+	if session.has_turn_in_flight() or events["cancelled"] != 1 or api.cancels != 1:
+		failures.append("turns: barge-in drops the in-flight request: cancelled=%d cancels=%d" % [events["cancelled"], api.cancels])
+	api.pending.clear()
+	# Turn 3 lands on the boundary: the reply plays, then the session ends, nothing more is sent.
+	session.send_transcript("red", {"stepId": "s02_red", "outcome": "correct"})
+	session.advance(0.05)
+	session.advance(0.05)
+	if events["turns"].size() != 3 or not (h["quota"] as FakeQuota).exhausted:
+		failures.append("turns: endAtBoundary hands the turn over and tells the mirror: turns=%d exhausted=%s" % [events["turns"].size(), str((h["quota"] as FakeQuota).exhausted)])
+	if events["ended"].size() != 1 or String(events["ended"][0][0]) != "quota_expired" or session.get_state() != SessionScript.STATE_ENDED:
+		failures.append("turns: ended at the boundary for quota: %s state=%s" % [str(events["ended"]), session.get_state()])
+	if session.send_transcript("red", {"stepId": "s02_red", "outcome": "correct"}) or api.calls_of("turn").size() != 5:
+		failures.append("turns: no further turn after the boundary: %d turn calls" % api.calls_of("turn").size())
+	if api.calls_of("end").size() != 1 or String(api.calls_of("end")[0]["body"]["reason"]) != "quota_expired":
+		failures.append("turns: /end posted once with the reason: %s" % str(api.calls_of("end")))
+	session.end("scene")
+	session.advance(0.05)
+	if api.calls_of("end").size() != 1:
+		failures.append("turns: a second end() posts nothing")
+	if float(session.last_summary()["quota"]["usedSeconds"]) != 300.0 or int(session.last_summary()["serverUsage"]["turns"]) != 3:
+		failures.append("turns: the end reply's quota + usage kept for the break card: %s" % str(session.last_summary()))
+	# A lesson switch: start() again after end; the old session's late ack is ignored.
+	api.replies["session"] = [FakeApi.ok({"sessionId": "s-u", "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 0, "remainingSeconds": 0}})]
+	api.replies["token"] = [FakeApi.err(503, "provider_unavailable")]
+	(h["quota"] as FakeQuota).exhausted = false
+	session.configure("colors_red_blue")
+	if not session.start():
+		failures.append("turns: start() again after end (lesson switch)")
+	for _i: int in range(8):
+		session.advance(0.05)
+	if session.session_id() != "s-u" or not session.is_ready() or String(api.calls_of("session")[-1]["body"]["lessonId"]) != "colors_red_blue":
+		failures.append("turns: the new session is for the new lesson: %s %s" % [session.session_id(), session.get_state()])
+	if api.calls_of("signIn").size() != 1:
+		failures.append("turns: the approval token is reused, no second sign-in")
 	_free_session(h)
 	return failures
 
