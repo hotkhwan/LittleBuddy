@@ -668,10 +668,13 @@ func _test_cloud_transport_gated():
 		failures.append("the refusal reason is cloud_disabled: %s" % str(errors))
 	if transport.send_text("hello") or transport.is_connected_session():
 		failures.append("nothing is sent while closed")
-	if transport.request_token("dev-parent-approval", "animals_cat_dog", "test"):
-		failures.append("request_token must refuse with the flag off")
+	# The contract's token shape is refused the same way (the flag is read first).
+	if transport.connect_session({"token": "mock-rt-x", "url": "wss://example.invalid/v1/realtime", "expiresAt": "2026-09-21T00:00:00Z"}):
+		failures.append("connect_session (contract token) must refuse with the flag off")
 	if errors != ["cloud_disabled", "cloud_disabled"]:
 		failures.append("both refusals are cloud_disabled: %s" % str(errors))
+	if transport.send_audio(PackedByteArray([0, 0])) or not transport.sent_events().is_empty():
+		failures.append("no event may leave a transport that never opened")
 	transport.advance(1.0)
 	# build_turn keeps the engine's action and validates the words.
 	var turn: Dictionary = CloudTransportScript.build_turn("Great! It's a cat!", {"outcome": "correct", "lessonAction": "next_question", "visualAssetId": "cat"})

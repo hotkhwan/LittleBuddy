@@ -59,6 +59,8 @@ const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
 const LESSON_ENGINE_PATH: String = "res://scripts/tutor/lesson/lesson_engine.gd"
 const TUTOR_QUOTA_PATH: String = "res://scripts/tutor/quota/tutor_quota.gd"
 const VOICE_SESSION_PATH: String = "res://scripts/tutor/voice/tutor_voice_session.gd"
+## Agent E's cloud tutor bridge; loaded ONLY while `TutorFlags.cloud_enabled()`.
+const CLOUD_BRIDGE_PATH: String = "res://scripts/tutor/cloud/cloud_tutor_bridge.gd"
 const SUBJECTS_PATH: String = "res://content/tutor/subjects.json"
 const ALIZ_SCENE_PATH: String = "res://scenes/characters/buddy/PinkGirlBuddy.tscn"
 const MAIN_SCRIPT_PATH: String = "res://scenes/main/main.gd"
@@ -219,6 +221,8 @@ var _last_failure_reason: String = ""
 var _subjects: Array = []
 var _lip_sync: Node = null
 var _no_recogniser_forced: bool = false
+## Agent E's cloud tutor bridge (null while the cloud flag is off).
+var _cloud_bridge: RefCounted = null
 
 
 func _ready() -> void:
@@ -286,11 +290,12 @@ func build() -> void:
 	_synth = SynthesisScript.new()
 	_synth.name = "Synthesis"
 	add_child(_synth)
-	_synth.finished.connect(_on_speech_finished)
 
 	_engine = _make_engine()
 	_provider = ScriptedProviderScript.new()
 	_provider.call("set_engine", _engine)
+	_select_cloud_tutor()  # Agent E: flag-gated; may wrap _provider and _synth
+	_synth.finished.connect(_on_speech_finished)
 	_provider.turn_ready.connect(_on_turn_ready)
 	_provider.provider_failed.connect(_on_provider_failed)
 
@@ -372,6 +377,27 @@ func _bind_lip_sync() -> void:
 	var tts: Node = _autoload(TTS_PATH)
 	if tts != null and _lip_sync.has_method("attach_tts"):
 		_lip_sync.call("attach_tts", tts)
+
+
+## Cloud tutor (Agent E, `scripts/tutor/cloud/`): selected only while
+## `TutorFlags.cloud_enabled()` is true. With the flag off nothing under
+## cloud/ is loaded, so a public build never touches a network class here.
+## The bridge may wrap the scripted provider and the local synthesis in the
+## cloud pair; both keep the same surface, so the lesson loop is unchanged.
+func _select_cloud_tutor() -> void:
+	if not TutorFlags.cloud_enabled() or not ResourceLoader.exists(CLOUD_BRIDGE_PATH):
+		return
+	var script: Resource = load(CLOUD_BRIDGE_PATH)
+	if not (script is GDScript) or not (script as GDScript).can_instantiate():
+		return
+	_cloud_bridge = (script as GDScript).new()
+	var picked: Dictionary = _cloud_bridge.call("attach", self, _engine, _provider, _synth)
+	if picked.get("provider", null) != null:
+		_provider = picked["provider"]
+	if picked.get("synth", null) is Node:
+		_synth = picked["synth"]
+		_synth.name = "CloudSynthesis"
+		add_child(_synth)
 
 
 func _make_engine() -> Object:

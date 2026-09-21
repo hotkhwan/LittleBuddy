@@ -1,0 +1,91 @@
+{
+  "source": "Recorded from tools/tutor_mock_server/server.mjs (2026-09-21), event names per docs/ALIZ_TUTOR_REALTIME.md. Synthetic transcripts only; audio deltas are 240 frames of a tone, base64.",
+  "token": {
+    "token": "mock-rt-fixture", "expiresAt": "2026-09-21T23:59:00.000Z", "model": "mock-realtime",
+    "url": "ws://127.0.0.1:8787/v1/realtime?model=mock-realtime",
+    "subprotocols": ["realtime", "mock-token.mock-rt-fixture"]
+  },
+  "scenarios": {
+    "happy_tools_then_speech": {
+      "lessonContext": {"phase": "answer", "stepId": "s02_cat", "outcome": "correct", "lessonAction": "next_question", "visualAssetId": "cat"},
+      "events": [
+        {"type": "session.created", "session": {"id": "rt-fixture", "type": "realtime"}},
+        {"type": "response.created", "response": {"id": "resp_1", "status": "in_progress"}},
+        {"type": "response.output_item.added", "response_id": "resp_1", "output_index": 0, "item": {"id": "item_fc_1", "type": "function_call", "name": "show_card", "call_id": "call_1"}},
+        {"type": "response.function_call_arguments.delta", "response_id": "resp_1", "item_id": "item_fc_1", "call_id": "call_1", "delta": "{\"assetId\":\"cat\"}"},
+        {"type": "response.function_call_arguments.done", "response_id": "resp_1", "item_id": "item_fc_1", "call_id": "call_1", "name": "show_card", "arguments": "{\"assetId\":\"cat\"}"},
+        {"type": "response.output_item.added", "response_id": "resp_1", "output_index": 1, "item": {"id": "item_fc_2", "type": "function_call", "name": "gesture", "call_id": "call_2"}},
+        {"type": "response.function_call_arguments.done", "response_id": "resp_1", "item_id": "item_fc_2", "call_id": "call_2", "name": "gesture", "arguments": "{\"name\":\"clap\"}"},
+        {"type": "response.done", "response": {"id": "resp_1", "status": "completed", "output": [{"id": "item_fc_1", "type": "function_call"}, {"id": "item_fc_2", "type": "function_call"}], "usage": {"input_tokens": 45, "output_tokens": 12}}},
+        {"type": "response.created", "response": {"id": "resp_2", "status": "in_progress"}},
+        {"type": "response.output_item.added", "response_id": "resp_2", "output_index": 0, "item": {"id": "item_m_3", "type": "message", "role": "assistant"}},
+        {"type": "response.output_audio_transcript.delta", "response_id": "resp_2", "item_id": "item_m_3", "delta": "Great!"},
+        {"type": "response.output_audio.delta", "response_id": "resp_2", "item_id": "item_m_3", "delta": "AAAAAAEAAwAGAAwAFAAgADAAQwBbAHgAmQDAAOwAHAFSAY0BzQERAloCpgL1AkYDmgPvA0QEmQTtBD8FjgXZBR4GXgaXBsgG7wYNByAHKAciBxAH7wa/BoAGMQbSBWMF4gRRBK8D/AI5AmUBggCQ/5D+gv1n/EH7EfrY+Jf3UPYE9bXzZPIU8cbvfO447fvryOqg6YXoeed+5pblwuQD5FzjzeJY4v/hweGh4Z/hu+H34VLizOJm4yDk+eTw5QbnOeiJ6fTqeewW7svvlfFy82L1Yfdt+YX7pv3O//oBKARVBoAIpgrDDNcO3hDWEr4UkhZRGPkZiBv9HFUekB+sIKghgyI9I9QjSCSaJMgk0yS7JIEkJSSoIwsjTyJ1IX8gbR9CHgAdpxs6GrwYLReQFegTNhJ8EL0O+ww4C3YJtwf9BUoEoQICAW//6/12/BL7wPmB+Ff3QfZB9Vj0hfPJ8iXyl/Eh8cHwePBE8CbwHPAn8ETwcvCy8AHxX/HK8UHywvJN8+DzevQZ9bv1YfYI97D3Vvj7+J35O/rU+mj79ft8/Pv8cv3h/Uj+pv77/kf/iv/F//j/IgBFAGAAdQCDAIwAjwCOAIkAgQB2AGkAWwBNAD4AMAAjABcADQAGAAIA"},
+        {"type": "response.output_audio_transcript.delta", "response_id": "resp_2", "item_id": "item_m_3", "delta": " It's"},
+        {"type": "response.output_audio.delta", "response_id": "resp_2", "item_id": "item_m_3", "delta": "AAAAAAEAAwAGAAwAFAAgADAAQwBbAHgAmQDAAOwAHAFSAY0BzQERAloCpgL1AkYDmgPvA0QEmQTtBD8FjgXZBR4GXgaXBsgG7wYNByAHKAciBxAH7wa/BoAGMQbSBWMF4gRRBK8D/AI5AmUBggCQ/5D+gv1n/EH7EfrY+Jf3UPYE9bXzZPIU8cbvfO447fvryOqg6YXoeed+5pblwuQD5FzjzeJY4v/hweGh4Z/hu+H34VLizOJm4yDk+eTw5QbnOeiJ6fTqeewW7svvlfFy82L1Yfdt+YX7pv3O//oBKARVBoAIpgrDDNcO3hDWEr4UkhZRGPkZiBv9HFUekB+sIKghgyI9I9QjSCSaJMgk0yS7JIEkJSSoIwsjTyJ1IX8gbR9CHgAdpxs6GrwYLReQFegTNhJ8EL0O+ww4C3YJtwf9BUoEoQICAW//6/12/BL7wPmB+Ff3QfZB9Vj0hfPJ8iXyl/Eh8cHwePBE8CbwHPAn8ETwcvCy8AHxX/HK8UHywvJN8+DzevQZ9bv1YfYI97D3Vvj7+J35O/rU+mj79ft8/Pv8cv3h/Uj+pv77/kf/iv/F//j/IgBFAGAAdQCDAIwAjwCOAIkAgQB2AGkAWwBNAD4AMAAjABcADQAGAAIA"},
+        {"type": "response.output_audio_transcript.delta", "response_id": "resp_2", "item_id": "item_m_3", "delta": " a cat!"},
+        {"type": "response.output_audio.delta", "response_id": "resp_2", "item_id": "item_m_3", "delta": "AAAAAAEAAwAGAAwAFAAgADAAQwBbAHgAmQDAAOwAHAFSAY0BzQERAloCpgL1AkYDmgPvA0QEmQTtBD8FjgXZBR4GXgaXBsgG7wYNByAHKAciBxAH7wa/BoAGMQbSBWMF4gRRBK8D/AI5AmUBggCQ/5D+gv1n/EH7EfrY+Jf3UPYE9bXzZPIU8cbvfO447fvryOqg6YXoeed+5pblwuQD5FzjzeJY4v/hweGh4Z/hu+H34VLizOJm4yDk+eTw5QbnOeiJ6fTqeewW7svvlfFy82L1Yfdt+YX7pv3O//oBKARVBoAIpgrDDNcO3hDWEr4UkhZRGPkZiBv9HFUekB+sIKghgyI9I9QjSCSaJMgk0yS7JIEkJSSoIwsjTyJ1IX8gbR9CHgAdpxs6GrwYLReQFegTNhJ8EL0O+ww4C3YJtwf9BUoEoQICAW//6/12/BL7wPmB+Ff3QfZB9Vj0hfPJ8iXyl/Eh8cHwePBE8CbwHPAn8ETwcvCy8AHxX/HK8UHywvJN8+DzevQZ9bv1YfYI97D3Vvj7+J35O/rU+mj79ft8/Pv8cv3h/Uj+pv77/kf/iv/F//j/IgBFAGAAdQCDAIwAjwCOAIkAgQB2AGkAWwBNAD4AMAAjABcADQAGAAIA"},
+        {"type": "response.output_audio.done", "response_id": "resp_2", "item_id": "item_m_3"},
+        {"type": "response.output_audio_transcript.done", "response_id": "resp_2", "item_id": "item_m_3", "transcript": "Great! It's a cat!"},
+        {"type": "response.output_item.done", "response_id": "resp_2", "item": {"id": "item_m_3", "type": "message", "role": "assistant"}},
+        {"type": "response.done", "response": {"id": "resp_2", "status": "completed", "output": [{"id": "item_m_3", "type": "message"}], "usage": {"input_tokens": 60, "output_tokens": 32, "output_token_details": {"text_tokens": 4, "audio_tokens": 28}}}}
+      ],
+      "expect": {
+        "turn": {"speech": "Great! It's a cat!", "subtitle": "Great! It's a cat!", "emotion": "happy", "gesture": "clap", "visual": {"type": "flashcard", "assetId": "cat"}, "lessonAction": "next_question"},
+        "sentTypesAfterFirstDone": ["conversation.item.create", "conversation.item.create", "response.create"],
+        "tokensIn": 105, "tokensOut": 44, "audioChunks": 3
+      }
+    },
+    "cancel_mid_stream": {
+      "lessonContext": {"phase": "answer", "stepId": "s04_dog", "outcome": "correct", "lessonAction": "next_question", "visualAssetId": "dog"},
+      "events": [
+        {"type": "response.created", "response": {"id": "resp_9", "status": "in_progress"}},
+        {"type": "response.output_item.added", "response_id": "resp_9", "output_index": 0, "item": {"id": "item_m_9", "type": "message", "role": "assistant"}},
+        {"type": "response.output_audio_transcript.delta", "response_id": "resp_9", "item_id": "item_m_9", "delta": "Great!"},
+        {"type": "response.output_audio.delta", "response_id": "resp_9", "item_id": "item_m_9", "delta": "AAAAAAEAAwAGAAwAFAAgADAAQwBbAHgAmQDAAOwAHAFSAY0BzQERAloCpgL1AkYDmgPvA0QEmQTtBD8FjgXZBR4GXgaXBsgG7wYNByAHKAciBxAH7wa/BoAGMQbSBWMF4gRRBK8D/AI5AmUBggCQ/5D+gv1n/EH7EfrY+Jf3UPYE9bXzZPIU8cbvfO447fvryOqg6YXoeed+5pblwuQD5FzjzeJY4v/hweGh4Z/hu+H34VLizOJm4yDk+eTw5QbnOeiJ6fTqeewW7svvlfFy82L1Yfdt+YX7pv3O//oBKARVBoAIpgrDDNcO3hDWEr4UkhZRGPkZiBv9HFUekB+sIKghgyI9I9QjSCSaJMgk0yS7JIEkJSSoIwsjTyJ1IX8gbR9CHgAdpxs6GrwYLReQFegTNhJ8EL0O+ww4C3YJtwf9BUoEoQICAW//6/12/BL7wPmB+Ff3QfZB9Vj0hfPJ8iXyl/Eh8cHwePBE8CbwHPAn8ETwcvCy8AHxX/HK8UHywvJN8+DzevQZ9bv1YfYI97D3Vvj7+J35O/rU+mj79ft8/Pv8cv3h/Uj+pv77/kf/iv/F//j/IgBFAGAAdQCDAIwAjwCOAIkAgQB2AGkAWwBNAD4AMAAjABcADQAGAAIA"}
+      ],
+      "afterCancel": [
+        {"type": "response.output_audio_transcript.delta", "response_id": "resp_9", "item_id": "item_m_9", "delta": " It's a dog!"},
+        {"type": "response.done", "response": {"id": "resp_9", "status": "cancelled", "output": [], "usage": {"input_tokens": 10, "output_tokens": 2}}}
+      ]
+    },
+    "off_allowlist_tool_is_dropped": {
+      "lessonContext": {"phase": "answer", "stepId": "s02_cat", "outcome": "retry", "lessonAction": "retry"},
+      "events": [
+        {"type": "response.created", "response": {"id": "resp_5", "status": "in_progress"}},
+        {"type": "response.output_item.added", "response_id": "resp_5", "output_index": 0, "item": {"id": "item_fc_5", "type": "function_call", "name": "show_card", "call_id": "call_5"}},
+        {"type": "response.function_call_arguments.done", "response_id": "resp_5", "item_id": "item_fc_5", "call_id": "call_5", "name": "show_card", "arguments": "{\"assetId\":\"scary_monster\"}"},
+        {"type": "response.output_item.added", "response_id": "resp_5", "output_index": 1, "item": {"id": "item_fc_6", "type": "function_call", "name": "gesture", "call_id": "call_6"}},
+        {"type": "response.function_call_arguments.done", "response_id": "resp_5", "item_id": "item_fc_6", "call_id": "call_6", "name": "gesture", "arguments": "{\"name\":\"backflip\"}"},
+        {"type": "response.output_item.added", "response_id": "resp_5", "output_index": 2, "item": {"id": "item_m_7", "type": "message", "role": "assistant"}},
+        {"type": "response.output_audio_transcript.delta", "response_id": "resp_5", "item_id": "item_m_7", "delta": "Good try! Listen. It says meow."},
+        {"type": "response.done", "response": {"id": "resp_5", "status": "completed", "output": [], "usage": {"input_tokens": 5, "output_tokens": 9}}}
+      ],
+      "expect": {"turn": {"speech": "Good try! Listen. It says meow.", "subtitle": "Good try! Listen. It says meow.", "emotion": "encouraging", "gesture": "tilt", "visual": {"type": "none"}, "lessonAction": "retry"}, "toolCalls": 0}
+    },
+    "banned_word_is_replaced": {
+      "lessonContext": {"phase": "answer", "stepId": "s02_cat", "outcome": "retry", "lessonAction": "retry"},
+      "events": [
+        {"type": "response.created", "response": {"id": "resp_7", "status": "in_progress"}},
+        {"type": "response.output_item.added", "response_id": "resp_7", "output_index": 0, "item": {"id": "item_m_8", "type": "message", "role": "assistant"}},
+        {"type": "response.output_audio_transcript.delta", "response_id": "resp_7", "item_id": "item_m_8", "delta": "That was a"},
+        {"type": "response.output_audio.delta", "response_id": "resp_7", "item_id": "item_m_8", "delta": "AAAAAAEAAwAGAAwAFAAgADAAQwBbAHgAmQDAAOwAHAFSAY0BzQERAloCpgL1AkYDmgPvA0QEmQTtBD8FjgXZBR4GXgaXBsgG7wYNByAHKAciBxAH7wa/BoAGMQbSBWMF4gRRBK8D/AI5AmUBggCQ/5D+gv1n/EH7EfrY+Jf3UPYE9bXzZPIU8cbvfO447fvryOqg6YXoeed+5pblwuQD5FzjzeJY4v/hweGh4Z/hu+H34VLizOJm4yDk+eTw5QbnOeiJ6fTqeewW7svvlfFy82L1Yfdt+YX7pv3O//oBKARVBoAIpgrDDNcO3hDWEr4UkhZRGPkZiBv9HFUekB+sIKghgyI9I9QjSCSaJMgk0yS7JIEkJSSoIwsjTyJ1IX8gbR9CHgAdpxs6GrwYLReQFegTNhJ8EL0O+ww4C3YJtwf9BUoEoQICAW//6/12/BL7wPmB+Ff3QfZB9Vj0hfPJ8iXyl/Eh8cHwePBE8CbwHPAn8ETwcvCy8AHxX/HK8UHywvJN8+DzevQZ9bv1YfYI97D3Vvj7+J35O/rU+mj79ft8/Pv8cv3h/Uj+pv77/kf/iv/F//j/IgBFAGAAdQCDAIwAjwCOAIkAgQB2AGkAWwBNAD4AMAAjABcADQAGAAIA"},
+        {"type": "response.output_audio_transcript.delta", "response_id": "resp_7", "item_id": "item_m_8", "delta": " stupid answer."}
+      ]
+    },
+    "server_error_event": {
+      "lessonContext": {"phase": "answer", "stepId": "s02_cat", "outcome": "correct", "lessonAction": "next_question"},
+      "events": [
+        {"type": "error", "error": {"type": "server_error", "code": "server_error", "message": "mock outage"}}
+      ]
+    },
+    "audio_input_round_trip": {
+      "events": [
+        {"type": "input_audio_buffer.speech_started", "audio_start_ms": 0, "item_id": "item_a_1"},
+        {"type": "input_audio_buffer.speech_stopped", "audio_end_ms": 2000, "item_id": "item_a_1"},
+        {"type": "input_audio_buffer.committed", "item_id": "item_a_1"},
+        {"type": "conversation.item.input_audio_transcription.completed", "item_id": "item_a_1", "content_index": 0, "transcript": "cat"}
+      ]
+    }
+  }
+}

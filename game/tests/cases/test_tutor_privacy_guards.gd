@@ -65,6 +65,10 @@ const NETWORK_ALLOWLIST: Array[String] = [
 	# Agent E -- realtime voice transport (WebSocket to the URL the backend's
 	# token endpoint hands out; ephemeral secret; flag-gated):
 	"res://scripts/tutor/voice/transports/cloud_realtime_transport.gd",
+	# Agent E -- cloud tutor REST client (sessions, realtime token, turns, end,
+	# quota against the Worker contract; parent token + approval headers;
+	# flag-gated; loopback-only test override):
+	"res://scripts/tutor/cloud/cloud_tutor_api.gd",
 ]
 
 ## Files that may construct `AudioStreamMicrophone`. EMPTY BY DESIGN: the game
