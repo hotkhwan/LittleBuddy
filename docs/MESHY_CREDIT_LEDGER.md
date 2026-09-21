@@ -1,5 +1,25 @@
 # Meshy Credit Ledger
 
+## Visual Production V3 — 2026-09-21
+
+- Authentication verified with the existing Keychain-backed balance tool, HTTP 200.
+- Balance before: **3144** credits, reverified at 16:05:45 UTC.
+- Owner subsequently explicitly authorised justified V3 Meshy replacements,
+  without a fixed cap. This authorisation supersedes the historical per-operation
+  approval rule below for this sprint. Existing accepted characters and props
+  remain excluded from regeneration.
+- Proposed batch: **one baby bottle, 15 credits estimated** (Smart Topology
+  preview 5, refine 10 only after preview review). No other generation proposed.
+- Existing accepted fruit, teddy, toy box, table/chairs and number-block GLBs
+  are retained. Their import/triangle checks remain part of the suite.
+- Bottle: the current plain stacked primitives remain weak beside accepted
+  textured fruit and toy props. Generate one rounded toy bottle with a readable
+  collar/teat; both empty-bottle and milk routes reuse it with a preserved fill
+  distinction. Selection cards render the actual integrated object.
+- Refrigerator and wardrobe: no confirmed model defect requiring replacement;
+  composition and UI receive the work.
+- Final balance is recorded in `docs/VISUAL_PRODUCTION_V3.md` after validation.
+
 Every credit-consuming Meshy operation is recorded here **before** it is run, and updated after.
 No generation task may be created that does not appear in this table.
 
@@ -361,3 +381,49 @@ batch tool):
 Runtime derivatives: `game/assets/models/meshy-props/{teddy,toyBoxBody,toyBoxLid}.glb`; raw
 masters: `game/assets_source/meshy/props/` (gitignored). Results and the next-batch proposal:
 `docs/MESHY_PRODUCTION_PLAN.md` §8–§9. Not authorised and not run: bottle, cup, blocks.
+
+## V3 bottle production — 2026-09-21
+
+Official pricing verified before generation at https://docs.meshy.ai/en/api/pricing:
+Smart Topology preview **5**, 2k refine **10**. API parameters verified at
+https://docs.meshy.ai/en/api/text-to-3d. Account authenticated by HTTP 200 balance.
+
+Pre-call plan recorded 16:06 UTC: `babyBottle` preview, `meshy-t2`, triangle
+topology, target 2400, base pivot, GLB. Estimated 5 credits; **authorised** by
+the owner's explicit V3 continuation. Refine estimate 10 credits, conditional
+on reviewed recognizable geometry. Local texture optimization to 512 and
+triangle gate <=3000 are free. No automatic retry.
+
+| # | Time (UTC) | Asset | Operation | Est. | Actual | Balance before → after | Task id | Outcome |
+|---|---|---|---|---|---|---|---|---|
+| B | 2026-09-21T16:06:09Z | babyBottle | text-to-3D preview, smart-topology meshy-t2, 2400 tris | 5 | 5 | 3144 → 3139 | `01a0c4b7-a4d7-7122-ae7d-df89a4193e09` | SUCCEEDED, consumed_credits 5; inspected docs/shots/v3_bottle_preview.png: symmetric bottle, rounded base, distinct collar and teat; accepted for refine |
+
+Refine pre-call record (16:07 UTC): accepted preview above; one 2k non-PBR
+texture request, estimated **10 credits**, authorised. Palette: pale powder-blue
+body, lavender collar, warm ivory teat, tiny pastel star decoration; no labels
+or faces. Preserve empty/milk variant in runtime. No geometry retry needed.
+
+| # | Time (UTC) | Asset | Operation | Est. | Actual | Balance before → after | Task id | Outcome |
+|---|---|---|---|---|---|---|---|---|
+| B | 2026-09-21T16:07:03Z | babyBottle | text-to-3D refine, 2k texture, no PBR | 10 | 10 | 3139 → 3129 | `01a0c4b8-729d-70c9-84b2-808fb844173c` | SUCCEEDED, consumed_credits 10; inspected docs/shots/v3_bottle_refined.png; accepted soft blue body, lavender collar, ivory teat; installed and imported |
+
+**V3 final paid accounting (16:09:13 UTC):** balance **3144 → 3129**, actual
+spend **15 credits**, exactly two paid calls, zero retries, zero paid remeshes.
+Final balance independently reverified through authenticated balance endpoint.
+
+Accepted GLB: `game/assets/models/meshy-props/babyBottle.glb` (139444 bytes),
+2552 triangles, one surface/material, 512x512 JPEG. Height 0.25m, footprint
+0.0872m square, base Y=0 and footprint centered on X/Z. Material roughness0.9,
+metallic0, no emission/PBR maps. Raw masters remain gitignored under
+`game/assets_source/meshy/props/babyBottle{Preview,}_v01.glb`.
+
+Validation: Godot import completed; `test_assets_models` PASS, including actual
+triangle count, texture dimensions, single surface, bounds and provenance.
+Integration: shared `babyBottle` prop is bound to the existing `bottle` and
+`bottleOfMilk` routes; root owns fill/collision/socket gameplay verification.
+Exact 1334x750 Godot renders compare original 0.1.1 procedural geometry with
+the live kitchen factory: `docs/shots/v3_before_bottle.png` and
+`docs/shots/v3_after_bottle.png`, reproduced by `tests/shots_bottle_v3.gd`.
+Final gameplay render and parity result belong in `docs/VISUAL_PRODUCTION_V3.md`.
+Asset review screenshots: `docs/shots/v3_bottle_preview.png` and
+`docs/shots/v3_bottle_refined.png`.
