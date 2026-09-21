@@ -30,7 +30,10 @@ DerivedData/
 .DS_Store
 
 # Generated iOS speech plugin binaries
+# Both forms: `bin/` matches only a directory; a stray symlink named `bin` slipped
+# into commit 1af02bb and broke the iOS export (dyld: Symbol not found at launch).
 game/ios/speech_plugin/bin/
+game/ios/speech_plugin/bin
 
 # --- Meshy raw character exports -------------------------------------------
 # Kept on disk at their authored paths, deliberately OUT of git history.
