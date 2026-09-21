@@ -538,6 +538,11 @@ func _toggle_storage_if_container(target_id: String) -> bool:
 	if _hud != null:
 		_hud.call("show_encouragement", "Open!" if now_open else "Closed!")
 	_speak("open" if now_open else "close", false)
+	if local_id == WARDROBE_ID:
+		if now_open:
+			_lay_out_clothes(room)
+		else:
+			_clear_clothes()
 	return true
 
 
@@ -578,6 +583,7 @@ func stage_draggables(room_id: String) -> Array:
 		return []
 	_despawn_draggables()
 	_clear_tidy()
+	_clear_clothes()
 	_staged_room = room_id
 	if not Words.DRAGGABLES.has(room_id):
 		return []
@@ -1002,7 +1008,12 @@ func describe_situation(target_id: String) -> Dictionary:
 		"childAt": child_surface_now(),
 		"hasStorage": room != null and room.has_method("get_storage") and room.call("get_storage", local_id) != null,
 		"takesDrops": false,
+		"carriedCategory": "",
 	}
+	if String(situation["carrying"]) == "item":
+		var carried: Node = _character.call("get_carried_node")
+		var category: Variant = carried.get("category") if carried != null else null
+		situation["carriedCategory"] = String(category) if category != null else ""
 	if not bool(situation["openable"]) and Words.drag_focus_for(_current_room_id()) == local_id:
 		situation["takesDrops"] = true
 	if bool(situation["openable"]) and String(situation["carrying"]) == "item" and room.has_method("can_store_node"):
@@ -1048,6 +1059,8 @@ func _act_at(target_id: String) -> Dictionary:
 			return _tidy_at(local_id)
 		HouseActs.ACT_DROP_IN:
 			return {"handled": _drop_carried_into(target_id), "say": ""}
+		HouseActs.ACT_DRESS_CHILD:
+			return {"handled": _dress_child(target_id), "say": ""}
 		HouseActs.ACT_PLACE_ON_TABLE:
 			return {"handled": _place_carried_on_table(target_id), "say": "On the table!"}
 		HouseActs.ACT_PLACE_CHILD:
@@ -1424,6 +1437,16 @@ func _on_landed(node: Node) -> void:
 		_child_at_node = node
 		if String(landing.get("activity", "")) == "bedtime":
 			_start_bedtime(node)
+	elif String(landing.get("kind", "")) == "dress":
+		# On he puts it: the garment's colour on his front -- and the garment
+		# is back in front of the wardrobe, ready to be chosen again (the carry
+		# controller made his feet its home on landing; the wardrobe is).
+		var wearer: Variant = landing.get("child", null)
+		if wearer is Node and is_instance_valid(wearer):
+			_apply_outfit(wearer as Node, node)
+		var home: Variant = landing.get("home", null)
+		if home is Vector3 and node.has_method("set_home_position"):
+			node.call("set_home_position", home as Vector3)
 	elif String(landing.get("kind", "")) == "dropIn":
 		# Landed in the pad's prop: the same reward a drag there earns, and the
 		# same slide home afterwards. Its home stays on the floor.
@@ -2017,6 +2040,168 @@ func get_tidy_nodes() -> Array:
 
 func get_tidy_count() -> int:
 	return _tidies_started
+
+
+## -- The wardrobe: clothes for Bunny ------------------------------------------------------
+##
+## The wardrobe's doors swung and nothing was inside. Opening it now lays two
+## garments in front of it -- real `objects.json` pickups (pajamas, a shirt),
+## the same kind the rest of Free Play uses -- and a garment brought to Bunny
+## goes ON him: a tinted torso piece at his chest socket in that garment's
+## colour, for the rest of the session or until the next one. The garment
+## slides back to the wardrobe so it can be chosen again; shutting the doors
+## puts the clothes away. Tapping a garment (every pickup's tap fallback) puts
+## it in Aliz's hand; so does the TAKE badge beside it. Nothing here touches
+## the title screen's Dress Up.
+const WARDROBE_ID: String = "wardrobe"
+const WARDROBE_CLOTHES: Array[String] = ["pajamas", "redShirt"]
+## Room-local (x, z) in front of the wardrobe (at 1.35, -1.6; she stands at -0.95).
+const WARDROBE_SPOTS: Array = [Vector2(0.95, -1.15), Vector2(1.75, -1.15)]
+const OUTFIT_NODE_NAME: String = "FreePlayOutfit"
+const OUTFIT_SIZE := Vector3(0.24, 0.20, 0.14)
+const OUTFIT_SOCKET: String = "hugTarget"
+const OUTFIT_FALLBACK_OFFSET := Vector3(0.0, 0.42, 0.06)
+
+var _clothes: Array = []
+
+
+func _lay_out_clothes(room: Node) -> void:
+	_clear_clothes()
+	var library: Object = _content_library()
+	var spawner: GDScript = load(OBJECT_SPAWNER_SCRIPT_PATH) as GDScript
+	if library == null or spawner == null or not library.has_method("get_object"):
+		return
+	var scale: float = float(_stage.call("get_object_scale")) if _stage != null and _stage.has_method("get_object_scale") else 1.0
+	for index: int in range(WARDROBE_CLOTHES.size()):
+		var record: Dictionary = library.call("get_object", WARDROBE_CLOTHES[index])
+		if record.is_empty():
+			continue
+		var node: Area3D = spawner.call("spawn", record, "dragToDress")
+		if node == null:
+			continue
+		var spot: Vector2 = WARDROBE_SPOTS[index % WARDROBE_SPOTS.size()]
+		node.scale = Vector3.ONE * scale
+		room.add_child(node)
+		node.call("set_home_position", Vector3(spot.x, HouseLayout.FLOOR_Y, spot.y))
+		node.set_meta("tint", _record_color(record))
+		node.connect("chosen", _on_clothing_chosen)
+		_clothes.append(node)
+
+
+## A tap on a garment (the pickup's tap fallback): into her hand it goes, as
+## the TAKE badge would put it. Empty hands only.
+func _on_clothing_chosen(object_id: String) -> void:
+	_quieten_nudge()
+	var node: Node = null
+	for candidate: Variant in _clothes:
+		if candidate is Node and is_instance_valid(candidate as Node) \
+				and String((candidate as Node).get("object_id")) == object_id:
+			node = candidate
+	if node == null or _character == null or not _character.has_method("carry_node"):
+		return
+	if bool(_character.call("is_carrying_node")):
+		return
+	var word: String = String(node.get("word"))
+	if _hud != null and not word.strip_edges().is_empty():
+		_hud.call("show_word", word, "")
+	_speak(word, true)
+	_character.call("carry_node", node, "itemHoldRight")
+
+
+## Puts the carried garment on Bunny: it lands at his feet, and on landing his
+## outfit takes its colour while it slides home.
+func _dress_child(target_id: String) -> bool:
+	var target: Node = _world.call("get_target_by_semantic_id", target_id)
+	var child: Node = target.get_parent() if target != null else null
+	var item: Node = _character.call("get_carried_node")
+	if child == null or item == null or not child.has_method("satisfy") or not (child is Node3D):
+		return false
+	var spot: Vector3 = SpatialUtil.world_position(child as Node3D) + Vector3(0.0, 0.0, 0.25)
+	if not bool(_character.call("put_down_carried", spot)):
+		_refuse_landing()
+		return false
+	var home: Variant = item.call("get_home_position") if item.has_method("get_home_position") else null
+	_pending_landing = {"node": item, "kind": "dress", "child": child, "home": home}
+	_watch_landing()
+	_play_sfx(SFX_PLACE_SOFT)
+	var word: String = String(item.get("word"))
+	if _hud != null:
+		_hud.call("show_word", word, "")
+	_speak(word, true)
+	var line: String = "%s on! Lovely!" % word.capitalize() if not word.is_empty() else "All dressed!"
+	if _hud != null:
+		_hud.call("show_encouragement", line)
+	_speak(line, false)
+	if child.has_method("satisfy"):
+		child.call("satisfy", "needsChanging", 40.0)
+	return true
+
+
+func _apply_outfit(child: Node, garment: Node) -> void:
+	var tint: Variant = garment.get_meta("tint", null)
+	var color: Color = tint if tint is Color else Palette_soft_pink()
+	var previous: Node = _find_outfit(child)
+	if previous != null:
+		previous.get_parent().remove_child(previous)
+		previous.free()
+	var socket: Node3D = child.call("get_socket", OUTFIT_SOCKET) if child.has_method("get_socket") else null
+	var mount: Node3D = socket if socket != null else (child as Node3D)
+	var piece := MeshInstance3D.new()
+	piece.name = OUTFIT_NODE_NAME
+	var mesh := BoxMesh.new()
+	mesh.size = OUTFIT_SIZE
+	piece.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.9
+	material.metallic = 0.0
+	piece.material_override = material
+	piece.set_meta("garment", String(garment.get("object_id")))
+	mount.add_child(piece)
+	if mount == child:
+		piece.position = OUTFIT_FALLBACK_OFFSET
+
+
+func _find_outfit(child: Node) -> Node:
+	var found: Array = child.find_children(OUTFIT_NODE_NAME, "MeshInstance3D", true, false)
+	return found[0] if not found.is_empty() else null
+
+
+## The garment Bunny is wearing (its object id), or "" in his own clothes.
+func get_outfit_of(child: Node) -> String:
+	var piece: Node = _find_outfit(child) if child != null else null
+	return String(piece.get_meta("garment", "")) if piece != null else ""
+
+
+func get_clothes() -> Array:
+	return _clothes.duplicate()
+
+
+func _clear_clothes() -> void:
+	var in_hand: Node = _character.call("get_carried_node") \
+			if _character != null and _character.has_method("get_carried_node") else null
+	for node: Variant in _clothes:
+		if not (node is Node) or not is_instance_valid(node as Node):
+			continue
+		if node == in_hand:
+			_draggables.append(node)
+			continue
+		if (node as Node).is_inside_tree():
+			(node as Node).queue_free()
+		else:
+			(node as Node).free()
+	_clothes = []
+
+
+static func _record_color(record: Dictionary) -> Color:
+	var hex: String = String(record.get("color", "")).strip_edges()
+	if hex.is_empty() or not Color.html_is_valid(hex):
+		return Palette_soft_pink()
+	return Color.html(hex)
+
+
+static func Palette_soft_pink() -> Color:
+	return Color(1.0, 0.757, 0.800)
 
 
 ## -- Bedtime (Bunny on the bed) ------------------------------------------------------

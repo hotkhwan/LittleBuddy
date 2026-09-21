@@ -186,6 +186,10 @@ func _test_decisions():
 		failures.append("acts: a spoon in hand at Bunny should not also offer to carry him")
 	if f.call("littleBuddy", {"isCharacter": true, "carrying": "item"}) != Acts.ACT_NONE:
 		failures.append("acts: a prop already in her arms should not also offer to carry Bunny")
+	if f.call("littleBuddy", {"isCharacter": true, "carrying": "item", "carriedCategory": "dressing"}) != Acts.ACT_DRESS_CHILD:
+		failures.append("acts: pajamas brought to Bunny should dress him")
+	if f.call("littleBuddy", {"isCharacter": true, "carrying": "item", "carriedCategory": "play"}) != Acts.ACT_NONE:
+		failures.append("acts: a toy in her hand at Bunny is not an outfit")
 
 	# Every id that has no pantomime action decides a real act somewhere.
 	for local_id: String in Words.HANDLED_BY_ACTS:
@@ -235,6 +239,7 @@ func _test_acts_on_the_real_house():
 	var bunny: Node = world.get_node_or_null("Rooms/Bedroom/LittleBuddyChild")
 
 	failures.append_array(_wardrobe(world, director, aliz))
+	failures.append_array(_dressing(world, director, aliz, bunny))
 	failures.append_array(_toy_box(world, director, aliz))
 	failures.append_array(_tidy_loop(world, director, aliz))
 	failures.append_array(_bed_and_bunny(world, director, aliz, bunny))
@@ -268,11 +273,72 @@ func _wardrobe(world, director, aliz):
 		failures.append("wardrobe: no hinged door node was built")
 	elif absf(hinge.rotation_degrees.y) < 60.0:
 		failures.append("wardrobe: the left door only swung %.0f degrees" % hinge.rotation_degrees.y)
+	# Something is INSIDE now: two garments laid out in front of it.
+	var clothes: Array = director.call("get_clothes")
+	if clothes.size() < 2:
+		failures.append("wardrobe: opening it laid out %d garments; a child needs a choice" % clothes.size())
+	for garment: Variant in clothes:
+		if String((garment as Node).get("category")) != "dressing":
+			failures.append("wardrobe: %s is not clothing" % (garment as Node).get("object_id"))
+		if (garment as Node).get_parent() != room:
+			failures.append("wardrobe: the %s is not in the bedroom" % (garment as Node).get("object_id"))
 	_arrive(aliz, "bedroom.wardrobe")
 	if bool(room.call("is_open", "wardrobe")):
 		failures.append("wardrobe: a second arrival did not shut the doors")
 	if hinge != null and absf(hinge.rotation_degrees.y) > 1.0:
 		failures.append("wardrobe: the door did not swing back")
+	if not (director.call("get_clothes") as Array).is_empty():
+		failures.append("wardrobe: shutting the doors did not put the clothes away")
+	return failures
+
+
+## Clothing: a garment from the open wardrobe, brought to Bunny, goes ON him
+## (his outfit takes its colour) and slides back to be chosen again; a second
+## garment changes the outfit.
+func _dressing(world, director, aliz, bunny):
+	var failures: Array = []
+	if bunny == null:
+		return ["dressing: no Bunny"]
+	world.call("place_in_room", "bedroom", "")
+	var room: Node = world.call("get_current_room")
+	room.call("set_open", "wardrobe", false)
+	_arrive(aliz, "bedroom.wardrobe")
+	var clothes: Array = director.call("get_clothes")
+	if clothes.size() < 2:
+		return ["dressing: the wardrobe laid out %d garments" % clothes.size()]
+	if not String(director.call("get_outfit_of", bunny)).is_empty():
+		failures.append("dressing: Bunny starts out already dressed by Free Play")
+	var worn: Array = []
+	for garment: Variant in clothes:
+		var id: String = String((garment as Node).get("object_id"))
+		# The tap fallback puts it in her hand.
+		(garment as Node).emit_signal("chosen", id)
+		if aliz.call("get_carried_node") != garment:
+			failures.append("dressing: tapping the %s did not put it in her hand" % id)
+			continue
+		_step(aliz, 40)
+		var home: Vector3 = (garment as Node).call("get_home_position")
+		bunny.call("room_changed", room, aliz)
+		_arrive(aliz, "bedroom.littleBuddy")
+		_step(aliz, 40)
+		if bool(aliz.call("is_carrying_node")):
+			failures.append("dressing: the %s is still in her hand at Bunny" % id)
+		var outfit: String = String(director.call("get_outfit_of", bunny))
+		if outfit != id:
+			failures.append("dressing: after bringing the %s Bunny wears '%s'" % [id, outfit])
+		worn.append(outfit)
+		# It is back in front of the wardrobe, ready to be chosen again.
+		if ((garment as Node).call("get_home_position") as Vector3).distance_to(home) > 0.01:
+			failures.append("dressing: the %s's home moved off the wardrobe" % id)
+		if (garment as Node3D).position.distance_to(home) > 0.05:
+			failures.append("dressing: the %s did not go back to the wardrobe (%.2f m away)" % [id, (garment as Node3D).position.distance_to(home)])
+	if worn.size() == 2 and worn[0] == worn[1]:
+		failures.append("dressing: the second garment did not change his outfit")
+	var pieces: Array = bunny.find_children("FreePlayOutfit", "MeshInstance3D", true, false)
+	if pieces.size() != 1:
+		failures.append("dressing: Bunny has %d outfit pieces; exactly one garment at a time" % pieces.size())
+	# Put away.
+	_arrive(aliz, "bedroom.wardrobe")
 	return failures
 
 
@@ -583,6 +649,7 @@ func _bedtime(world, director, aliz, bunny, tts):
 	if teddy == null:
 		failures.append("bedtime: no teddy staged in the bedroom to bring him")
 	else:
+		stats.call("adjust", "happiness", -40.0)
 		var comfort_before: float = float((stats.call("describe") as Dictionary).get("happiness", 0.0))
 		tts.lines.clear()
 		teddy.emit_signal("chosen", "teddy")

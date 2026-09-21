@@ -18,6 +18,8 @@ extends RefCounted
 ##   `localId`      "bed", "toyBox", "fridge" ... (the local half of the id)
 ##   `actions`      the target's supported actions (`sit`, `wash`, `open` ...)
 ##   `carrying`     "child" | "item" | ""
+##   `carriedCategory` the content category of the prop in her hand
+##                  ("dressing" for pajamas or a shirt), "" otherwise
 ##   `isCharacter`  the target is Bunny himself
 ##   `openable`     it opens (a storage lid, the wardrobe doors)
 ##   `isOpen`       ... and is open now
@@ -64,6 +66,8 @@ const ACT_TIDY: String = "tidy"
 ## A carried prop at the room's landing-pad prop (the living room's toy box,
 ## the bath): it goes in, the same way a drag onto the pad would take it.
 const ACT_DROP_IN: String = "dropIn"
+## A garment from the wardrobe brought to Bunny: it goes on him.
+const ACT_DRESS_CHILD: String = "dressChild"
 
 ## What Bunny does once he is set down on each surface. The sofa uses the
 ## seated posture his `carried` clip already has (knees up, hands resting):
@@ -107,6 +111,8 @@ static func decide(situation: Dictionary) -> Dictionary:
 	if bool(situation.get("isCharacter", false)):
 		if not held.is_empty() and bool(situation.get("canFeed", false)):
 			return {"act": ACT_FEED_CHILD, "item": held}
+		if carrying == "item" and String(situation.get("carriedCategory", "")) == "dressing":
+			return {"act": ACT_DRESS_CHILD}
 		# Truly empty hands only: something in the kitchen hand that is not a
 		# meal (a spoon) still means "not now" rather than "pick him up", and a
 		# prop already in her `carry_controller` arm is a hand that is full too.
