@@ -20,7 +20,8 @@
 # compatibility_date is pinned to what the test pool's workerd supports; bump
 # it together with @cloudflare/vitest-pool-workers.
 
-name = "little-days-cloud"
+name = "little-days-api"
+account_id = "8d67bfb5b60f8e54544e4aac74a98cc9"   # Hotkhwan@hotmail.com's Account, owner of joinanny.com; never another account
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
 workers_dev = false
@@ -75,7 +76,7 @@ migrations_dir = "migrations"
 
 # ---------------------------------------------------------------- dev
 [env.dev]
-name = "little-days-cloud-dev"
+name = "little-days-api-dev"
 workers_dev = true
 
 [env.dev.vars]
@@ -123,12 +124,12 @@ new_sqlite_classes = ["TutorSessionDO", "QuotaDO"]
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "little-days-dev"
-database_id = "REPLACE_WITH_DEV_DATABASE_ID"          # `wrangler d1 create little-days-dev`
+database_id = "5c1b5784-be19-4125-9375-82e05b507a34"   # created by the owner 2026-09-21
 migrations_dir = "migrations"
 
 # ------------------------------------------------------------ staging
 [env.staging]
-name = "little-days-cloud-staging"
+name = "little-days-api-staging"
 workers_dev = true
 
 [env.staging.vars]
@@ -184,8 +185,13 @@ migrations_dir = "migrations"
 #   routes = [{ pattern = "api.<owner-domain>/*", zone_name = "<owner-domain>" }]
 # and deploys BY HAND after staging sign-off. Never deployed by automation.
 [env.production]
-name = "little-days-cloud"
+name = "little-days-api"
 workers_dev = false
+# api.littledays.joinanny.com: today an INACTIVE Workers Route with no script
+# ("Workers are disabled on this route"). Deploying production by hand attaches
+# this Worker to it. littledays.joinanny.com (the website, Worker littledays-web)
+# is untouched.
+routes = [{ pattern = "api.littledays.joinanny.com/*", zone_name = "joinanny.com" }]
 
 [env.production.vars]
 DEV_MODE = "0"

@@ -162,6 +162,12 @@ Rules first:
    laptop; the `.example` file carries names only.
 5. Review `wrangler deploy --dry-run --env <env>` output before a real deploy.
 
+### Development deployment (live since 2026-09-21)
+
+`https://little-days-api-dev.hotkhwan.workers.dev` — Worker `little-days-api-dev`,
+D1 `little-days-dev`, deployed with the owner's `wrangler login`. Details and
+live check transcript: `docs/CLOUD_DEPLOYMENT_DEV_2026-09-21.md`.
+
 ### Credentials on the MacBook (no `wrangler login` needed)
 
 Store a **scoped API token** and the account id in the macOS keychain once
