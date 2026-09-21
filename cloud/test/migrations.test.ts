@@ -9,9 +9,9 @@ describe('D1 migrations', () => {
     for (const t of TABLES) expect(rows, t).toContain(t);
   });
 
-  it('record themselves in d1_migrations (four files)', async () => {
+  it('record themselves in d1_migrations (five files)', async () => {
     const rows = (await env.DB.prepare('SELECT name FROM d1_migrations ORDER BY id').all<{ name: string }>()).results.map((r) => r.name);
-    expect(rows).toEqual(['0001_accounts.sql', '0002_entitlements_billing.sql', '0003_tutor.sql', '0004_progress.sql']);
+    expect(rows).toEqual(['0001_accounts.sql', '0002_entitlements_billing.sql', '0003_tutor.sql', '0004_progress.sql', '0005_account_privacy.sql']);
   });
 
   it('create the indexes retention and lookups rely on', async () => {
