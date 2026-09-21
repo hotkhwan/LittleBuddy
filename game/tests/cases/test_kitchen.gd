@@ -35,6 +35,7 @@ func run():
 	failures.append_array(_test_putting_things_away())
 	failures.append_array(_test_nothing_is_ever_refused_rudely())
 	failures.append_array(_test_every_item_is_the_shape_of_a_word())
+	failures.append_array(_test_the_pantry_refills())
 	return failures
 
 
@@ -231,4 +232,39 @@ func _test_every_item_is_the_shape_of_a_word():
 	for item_id: Variant in Rules.FEEDABLE:
 		if not Items.exists(String(item_id)):
 			failures.append("Bunny can be fed '%s', which is not an item" % String(item_id))
+	return failures
+
+
+## Free Play's replay rule: after Bunny has eaten, every raw ingredient the meal
+## used up is back where it started the day -- and nothing that is still in the
+## kitchen is duplicated.
+func _test_the_pantry_refills():
+	var failures: Array = []
+	var kitchen: RefCounted = State.new()
+	kitchen.set_open("fridge", true)
+	kitchen.take("fridge", "bottle")
+	kitchen.place("counter")
+	kitchen.take("counter", "bowl")
+	kitchen.place("counter")
+	kitchen.take("counter", "bottleOfMilk")
+	if not bool(kitchen.give_to_bunny().get("ok", false)):
+		return ["restock: precondition -- could not feed the milk"]
+	var back: Array = kitchen.restock()
+	var ids: Array = []
+	for row: Dictionary in back:
+		ids.append("%s/%s" % [row["station"], row["item"]])
+	ids.sort()
+	if ids != ["counter/bowl", "fridge/bottle"]:
+		failures.append("restock: expected the bottle and the bowl back, got %s" % str(ids))
+	if not (kitchen.inside("fridge") as Array).has("bottle") or not (kitchen.inside("counter") as Array).has("bowl"):
+		failures.append("restock: the returned items are not inside their stations")
+	if (kitchen.inside("fridge") as Array).count("banana") != 1 or (kitchen.inside("counter") as Array).count("spoon") != 1:
+		failures.append("restock: items that never left were duplicated (%s / %s)" % [kitchen.inside("fridge"), kitchen.inside("counter")])
+	# A second restock with nothing missing returns nothing.
+	if not kitchen.restock().is_empty():
+		failures.append("restock: a full kitchen restocked something")
+	# An ingredient that is merely in her hand or on the counter is not missing.
+	kitchen.take("fridge", "apple")
+	if not kitchen.restock().is_empty():
+		failures.append("restock: the apple in her hand was treated as gone")
 	return failures

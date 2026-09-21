@@ -27,6 +27,8 @@ extends RefCounted
 ##   `canFeed`      the kitchen item in hand is something Bunny eats
 ##   `canPlaceHere` the kitchen says the held item may be put down here
 ##   `combines`     ... and it combines with what is on the station
+##   `childAt`      the surface Bunny was last set down on ("table" when he is
+##                  sitting at his highchair spot), "" when he is elsewhere
 ##
 ## ## The answer
 ##
@@ -113,6 +115,12 @@ static func decide(situation: Dictionary) -> Dictionary:
 
 	# Empty arms. The kitchen first: its stations have their own state.
 	if in_kitchen:
+		# Bunny is sitting at the table and she has brought his food: that is a
+		# meal, not a plate set down beside him (owner playtest 2026-09-21: the
+		# dining area with Bunny is the feeding mini-game).
+		if local_id == "table" and String(situation.get("childAt", "")) == "table" \
+				and not held.is_empty() and bool(situation.get("canFeed", false)):
+			return {"act": ACT_FEED_CHILD, "item": held, "atTable": true}
 		var opens: bool = bool(station.get("opens", false))
 		var is_open: bool = bool(station.get("open", false))
 		var on_top: String = String(station.get("on", ""))

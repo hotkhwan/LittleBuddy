@@ -178,6 +178,17 @@ var _care: Control = null
 var _care_child: Node = null
 var _care_kind: String = ""
 var _care_elapsed: float = 0.0
+## The feeding portrait -- the camera on Bunny's real face -- is on; undone the
+## moment the close-up closes, so nothing can leave the shot parked on his nose.
+var _portrait_on: bool = false
+## What Bunny was doing before a close-up took him (sitting at the table,
+## standing about), handed back to him afterwards.
+var _care_prev_activity: String = ""
+## The surface Bunny was last set down on ("table", "bed", "sofa", "bath") and
+## the node that is him. Cleared the moment he is picked up again. This is how
+## the table knows he is sitting at it when his food arrives.
+var _child_at: String = ""
+var _child_at_node: Node = null
 ## Aliz's held pose (sit, hands up), a modifier on her skeleton. Null without a rig.
 var _pose: SkeletonModifier3D = null
 ## While she sits: where to stand her back up, and her saved collision mask.
@@ -971,6 +982,7 @@ func describe_situation(target_id: String) -> Dictionary:
 		"canFeed": false,
 		"canPlaceHere": false,
 		"combines": false,
+		"childAt": child_surface_now(),
 	}
 	if bool(situation["openable"]) and String(situation["carrying"]) == "item" and room.has_method("can_store_node"):
 		situation["canStore"] = bool(room.call("can_store_node", local_id, _character.call("get_carried_node")))
@@ -1028,7 +1040,7 @@ func _act_at(target_id: String) -> Dictionary:
 				HouseActs.ACT_KITCHEN_PLACE:
 			return _kitchen_act(act, local_id, decision)
 		HouseActs.ACT_FEED_CHILD:
-			return _feed_child(target_id)
+			return _feed_child(target_id, decision)
 		HouseActs.ACT_CARRY_CHILD:
 			return {"handled": _carry_child_at(target_id), "say": "Up you come!"}
 		_:
@@ -1338,7 +1350,7 @@ func _place_child_on(local_id: String, activity: String) -> bool:
 	if not bool(_character.call("put_down_carried", world_point, float(surface.get("yaw", 0.0)))):
 		_refuse_landing()
 		return false
-	_pending_landing = {"node": child, "kind": "child",
+	_pending_landing = {"node": child, "kind": "child", "surface": local_id,
 			"activity": activity if not activity.is_empty() else String(surface.get("activity", "idle"))}
 	_watch_landing()
 	_play_sfx(SFX_PLACE_SOFT)
@@ -1358,6 +1370,8 @@ func _on_landed(node: Node) -> void:
 	_pending_landing = {}
 	if String(landing.get("kind", "")) == "child" and node.has_method("set_activity"):
 		node.call("set_activity", String(landing.get("activity", "idle")))
+		_child_at = String(landing.get("surface", ""))
+		_child_at_node = node
 	elif node.has_method("set_home_position") and node is Node3D:
 		# It lives here now: a later slide-home returns it to the shelf, not to
 		# the floor it was picked up from.
@@ -1374,10 +1388,24 @@ func _refuse_landing() -> void:
 		_hud.call("show_encouragement", "Not there -- try again!")
 
 
-## Picking a stored prop back up takes it out of the model.
+## The surface Bunny is sitting or lying on right now, or "" when he is in
+## someone's arms, elsewhere, or gone.
+func child_surface_now() -> String:
+	if _child_at.is_empty() or _child_at_node == null or not is_instance_valid(_child_at_node):
+		return ""
+	if _child_at_node.has_method("is_carried") and bool(_child_at_node.call("is_carried")):
+		return ""
+	return _child_at
+
+
+## Picking a stored prop back up takes it out of the model; picking Bunny up
+## takes him off whatever he was set down on.
 func _on_object_taken(node: Node) -> void:
 	if node == null:
 		return
+	if node == _child_at_node:
+		_child_at = ""
+		_child_at_node = null
 	var id: int = node.get_instance_id()
 	if not _stored.has(id):
 		return
@@ -1541,6 +1569,7 @@ func _care_for_child(surface: String, care_kind: String) -> bool:
 	_care_child = child
 	_care_kind = care_kind
 	_care_elapsed = 0.0
+	_care_prev_activity = String(child.call("get_activity")) if child.has_method("get_activity") else ""
 	if child.has_method("set_bubble_suppressed"):
 		child.call("set_bubble_suppressed", true)
 	if surface != "bath" and child.has_method("set_activity"):
@@ -1590,26 +1619,114 @@ func _ensure_care_overlay() -> Control:
 func _on_care_completed(care_kind: String) -> void:
 	if _care != null:
 		_care.visible = false
+	_end_portrait()
 	var child: Node = _care_child
+	var previous: String = _care_prev_activity
 	_care_child = null
 	_care_kind = ""
+	_care_prev_activity = ""
 	if _hud != null and _hud.has_method("set_narration_covered"):
 		_hud.call("set_narration_covered", false)
 	_set_room_input(true)
 	if child != null and is_instance_valid(child):
 		if child.has_method("set_bubble_suppressed"):
 			child.call("set_bubble_suppressed", false)
+		# His REAL stats move, so the need goes away rather than a line
+		# claiming it did. Free Play awards nothing for it.
 		if child.has_method("satisfy"):
-			child.call("satisfy", "dirty", 40.0)
-		# Back in her arms he stays carried; in the tub he stays in the bath.
-		if child.has_method("set_activity") and child.has_method("is_carried") \
-				and bool(child.call("is_carried")):
-			child.call("set_activity", "carried")
-	var line: String = "So fresh!" if care_kind != "brushTeeth" else "All clean!"
+			match care_kind:
+				"giveBottle", "giveFood":
+					child.call("satisfy", "hungry", 70.0)
+				"brushTeeth", "washFace", "dryFace":
+					child.call("satisfy", "dirty", 40.0)
+		if child.has_method("set_activity"):
+			var carried: bool = child.has_method("is_carried") and bool(child.call("is_carried"))
+			if carried:
+				# Back in her arms he stays carried.
+				child.call("set_activity", "carried")
+			elif care_kind == "giveBottle" or care_kind == "giveFood":
+				# Fed where he sat: back to sitting at the table, or standing
+				# about, whichever he was doing when the food arrived.
+				child.call("set_activity", previous if not previous.is_empty() else "idle")
+			# In the tub he stays in the bath.
+	if care_kind == "giveBottle" or care_kind == "giveFood":
+		# The pantry refills: what the meal was made from is back in the fridge
+		# and on the counter, so the child can do the whole thing again.
+		var kitchen: RefCounted = _kitchen()
+		if kitchen != null and kitchen.has_method("restock"):
+			kitchen.call("restock")
+	var line: String = "So fresh!"
+	match care_kind:
+		"brushTeeth":
+			line = "All clean!"
+		"dryFace":
+			line = "Nice and dry!"
+		"giveBottle", "giveFood":
+			line = "Yum! Thank you!"
 	if _hud != null:
 		_hud.call("show_encouragement", line)
 	_speak(line, false)
 	_play_sfx(SFX_PLACE_SOFT)
+
+
+## -- The feeding portrait ---------------------------------------------------------
+##
+## The bottle and the spoon are the acts performed on Bunny's REAL face, so they
+## are the ones that put the camera on him: `focus_portrait()` fits his head and
+## the overlay is handed `_mouth_world_point` so its hold target is his actual
+## mouth, projected, every frame -- the same arrangement `house_level_director.gd`
+## uses for Mission 01. Both are undone when the close-up closes. Nothing here is
+## required for the act to be playable: with no rig, no socket or no camera the
+## overlay falls back to its drawn mouth and the camera stays where it was.
+const PORTRAIT_RADIUS: float = 0.42
+const PORTRAIT_HEAD_CLEARANCE: float = 0.30
+
+
+func _begin_portrait(care: Control) -> void:
+	_portrait_on = false
+	if care != null and care.has_method("set_mouth_provider"):
+		care.call("set_mouth_provider", Callable(self, "_mouth_world_point"))
+	var mouth: Variant = _mouth_world_point()
+	var camera: Object = _world.call("get_camera") if _world != null and _world.has_method("get_camera") else null
+	if camera == null or not camera.has_method("focus_portrait") or not (mouth is Vector3):
+		return
+	var floor_y: float = 0.0
+	if camera.has_method("get_room_framing"):
+		floor_y = float((camera.call("get_room_framing") as Dictionary).get("floorY", 0.0))
+	var subject_height: float = maxf(float((mouth as Vector3).y) - floor_y + PORTRAIT_HEAD_CLEARANCE, 0.45)
+	camera.call("focus_portrait", mouth, PORTRAIT_RADIUS, subject_height)
+	_portrait_on = true
+
+
+func _end_portrait() -> void:
+	if _care != null and is_instance_valid(_care) and _care.has_method("clear_mouth_provider"):
+		_care.call("clear_mouth_provider")
+	if not _portrait_on:
+		return
+	_portrait_on = false
+	if _world != null and _world.has_method("restore_room_frame"):
+		_world.call("restore_room_frame")
+
+
+func is_portrait_on() -> bool:
+	return _portrait_on
+
+
+## Bunny's mouth in world space, or null when the character cannot answer (no
+## rig, no socket). Bound into the overlay as a `Callable`, re-asked every frame.
+func _mouth_world_point() -> Variant:
+	var child: Node = _care_child
+	if child == null or not is_instance_valid(child):
+		return null
+	var model: Node = child.get_node_or_null("Model")
+	if model == null or not model.has_method("get_mouth_position"):
+		return null
+	if model.has_method("has_socket") and not bool(model.call("has_socket", "mouth")):
+		return null
+	var at: Vector3 = model.call("get_mouth_position")
+	if not (is_finite(at.x) and is_finite(at.y) and is_finite(at.z)):
+		return null
+	return at
 
 
 func _set_room_input(enabled: bool) -> void:
@@ -1680,22 +1797,60 @@ func _open_mix(gesture: String, result: String) -> void:
 			_hud.call("show_word", word, "")
 
 
-func _feed_child(target_id: String) -> Dictionary:
+## Bunny's meal, from Free Play: the REAL feeding close-up (`giveBottle` for
+## the milk, `giveFood` for a spoon-fed dish), on his real face, exactly the one
+## Mission 01 ends with. Reached two ways: Aliz arrives at Bunny with a meal in
+## her hand, or she brings the meal to the table he is sitting at. The kitchen
+## hands the food over first, so the close-up can never open for a meal that
+## was not made; his hunger moves when the close-up completes, in
+## `_on_care_completed()`, and the pantry refills so it can happen again.
+func _feed_child(target_id: String, decision: Dictionary = {}) -> Dictionary:
 	var kitchen: RefCounted = _kitchen()
 	if kitchen == null:
 		return {"handled": false, "say": ""}
+	var child: Node = null
+	if bool(decision.get("atTable", false)):
+		child = _child_at_node if child_surface_now() == "table" else null
+	else:
+		var target: Node = _world.call("get_target_by_semantic_id", target_id)
+		child = target.get_parent() if target != null else null
+	if child == null or not child.has_method("satisfy"):
+		return {"handled": false, "say": ""}
+	var care: Control = _ensure_care_overlay()
+	if care == null:
+		# No close-up to open: the meal is still given, and still counts.
+		var plain: Dictionary = kitchen.call("give_to_bunny")
+		if bool(plain.get("ok", false)):
+			child.call("satisfy", "hungry", 70.0)
+			if kitchen.has_method("restock"):
+				kitchen.call("restock")
+		return {"handled": true, "say": String(plain.get("say", ""))}
 	var report: Dictionary = kitchen.call("give_to_bunny")
 	if not bool(report.get("ok", false)):
 		return {"handled": true, "say": String(report.get("say", ""))}
-	var target: Node = _world.call("get_target_by_semantic_id", target_id)
-	var child: Node = target.get_parent() if target != null else null
-	if child != null and child.has_method("satisfy"):
-		child.call("satisfy", "hungry", 70.0)
-		if child.has_method("set_activity"):
-			child.call("set_activity", "feeding", "giveSnack")
+	var item: String = String(report.get("item", ""))
+	var kind: String = "giveBottle"
+	var known: Variant = care.get("COPY")
+	if item != "bottleOfMilk" and known is Dictionary and (known as Dictionary).has("giveFood"):
+		kind = "giveFood"
+	_care_child = child
+	_care_kind = kind
+	_care_elapsed = 0.0
+	_care_prev_activity = String(child.call("get_activity")) if child.has_method("get_activity") else ""
+	if child.has_method("set_bubble_suppressed"):
+		child.call("set_bubble_suppressed", true)
+	if child.has_method("set_activity"):
+		child.call("set_activity", "feeding", kind)
+	if _hud != null and _hud.has_method("set_narration_covered"):
+		_hud.call("set_narration_covered", true)
+	_set_room_input(false)
+	_begin_portrait(care)
+	care.visible = true
+	care.call("begin", kind)
 	_character.call("play_action", "give")
 	_play_sfx(SFX_PLACE_SOFT)
-	return {"handled": true, "say": String(report.get("say", "Yum! Thank you!"))}
+	_speak(String(care.call("word_for", kind)) if care.has_method("word_for") else "eat", true)
+	return {"handled": true, "say": ""}
 
 
 static func _local_of(target_id: String) -> String:

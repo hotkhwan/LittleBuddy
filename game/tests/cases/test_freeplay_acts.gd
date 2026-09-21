@@ -145,6 +145,17 @@ func _test_decisions():
 		failures.append("acts: a bottle of milk at Bunny feeds him")
 	if f.call("littleBuddy", {"isCharacter": true, "kitchenHeld": "spoon", "canFeed": false}) != Acts.ACT_NONE:
 		failures.append("acts: a spoon at Bunny is not a meal")
+	# The dining area with Bunny is the feeding mini-game: his food brought to
+	# the table he is sitting at feeds him, rather than being set down beside him.
+	var serve: Dictionary = {"role": "serve", "opens": false, "open": false, "on": "", "inside": []}
+	var at_table: Dictionary = Acts.decide({"localId": "table", "actions": _actions_of("table"), "station": serve,
+			"kitchenHeld": "mashedBanana", "canFeed": true, "canPlaceHere": true, "childAt": "table"})
+	if String(at_table.get("act", "")) != Acts.ACT_FEED_CHILD or not bool(at_table.get("atTable", false)):
+		failures.append("acts: a meal brought to the table Bunny sits at should feed him (got %s)" % str(at_table))
+	if f.call("table", {"station": serve, "kitchenHeld": "mashedBanana", "canFeed": true, "canPlaceHere": true}) != Acts.ACT_KITCHEN_PLACE:
+		failures.append("acts: with nobody at the table the meal is set down on it")
+	if f.call("table", {"station": serve, "kitchenHeld": "banana", "canFeed": false, "canPlaceHere": false, "childAt": "table"}) == Acts.ACT_FEED_CHILD:
+		failures.append("acts: a raw banana at the table is not a meal for Bunny")
 	# Owner bug: arriving at Bunny with truly empty hands used to be a dead end.
 	if f.call("littleBuddy", {"isCharacter": true}) != Acts.ACT_CARRY_CHILD:
 		failures.append("acts: empty hands at Bunny should offer to carry him")
@@ -473,22 +484,123 @@ func _kitchen(world, director, aliz, bunny):
 			failures.append("kitchen: the close-up stayed open after completing")
 		if String(aliz.call("get_state_name")) == "disabled":
 			failures.append("kitchen: input was not given back after the close-up")
-	# Take the milk to Bunny: FEED.
+	# Take the milk to Bunny: FEED opens the REAL bottle close-up.
 	_arrive(aliz, "kitchen.counter")
 	if String(kitchen.call("held")) != "bottleOfMilk":
 		failures.append("kitchen: could not take the bottle of milk off the counter (held %s)" % kitchen.call("held"))
 	if bunny != null:
 		var stats: RefCounted = bunny.call("get_stats")
 		stats.call("adjust", "hunger", 80.0)
-		var before: float = float((stats.call("describe") as Dictionary).get("hunger", 0.0))
 		bunny.call("room_changed", world.call("get_current_room"), aliz)
-		_arrive(aliz, "kitchen.littleBuddy")
-		var after: float = float((stats.call("describe") as Dictionary).get("hunger", 0.0))
-		if after >= before:
-			failures.append("kitchen: FEED at Bunny did not lower his hunger (%.0f -> %.0f)" % [before, after])
-		if String(kitchen.call("held")) not in ["", "none"]:
-			failures.append("kitchen: the bottle is still in her hand after feeding")
+		failures.append_array(_feed_through_close_up(director, aliz, bunny, kitchen, "kitchen.littleBuddy", "giveBottle", "first"))
+		# AGAIN, in the same session: the pantry refilled, so the milk can be made
+		# and given a second time (owner: "replay feeding from Free Play").
+		if not (kitchen.call("inside", "fridge") as Array).has("bottle"):
+			failures.append("kitchen: the bottle did not come back to the fridge after the feed (%s)" % str(kitchen.call("inside", "fridge")))
+		if not (kitchen.call("inside", "counter") as Array).has("bowl"):
+			failures.append("kitchen: the bowl did not come back to the counter after the feed (%s)" % str(kitchen.call("inside", "counter")))
+		kitchen.call("set_open", "fridge", true)
+		kitchen.call("take", "fridge", "bottle")
+		kitchen.call("place", "counter")
+		kitchen.call("take", "counter", "bowl")
+		_arrive(aliz, "kitchen.counter")
+		if bool(director.call("is_care_open")):
+			director.call("get_care_overlay").call("complete_by_touch")
+		_arrive(aliz, "kitchen.counter")
+		if String(kitchen.call("held")) != "bottleOfMilk":
+			failures.append("kitchen: the second bottle of milk could not be made (held %s)" % kitchen.call("held"))
+		stats.call("adjust", "hunger", 80.0)
+		failures.append_array(_feed_through_close_up(director, aliz, bunny, kitchen, "kitchen.littleBuddy", "giveBottle", "second"))
+
+		# The dining area: Bunny sitting at the table, his mashed banana brought
+		# to him -- the spoon close-up, and afterwards he is still sitting there.
+		SpatialUtil.set_world_position(aliz, SpatialUtil.world_position(bunny) + Vector3(0.0, 0.0, 0.62))
+		if not bool(bunny.call("perform_affordance", aliz)):
+			failures.append("table: could not pick Bunny up")
+		_step(aliz, 40)
+		_arrive(aliz, "kitchen.table")
+		_step(aliz, 40)
+		if String(director.call("child_surface_now")) != "table":
+			failures.append("table: Bunny is not recorded as sitting at the table (at '%s')" % director.call("child_surface_now"))
+		kitchen.call("reset")
+		kitchen.call("set_open", "fridge", true)
+		kitchen.call("take", "fridge", "banana")
+		kitchen.call("place", "counter")
+		kitchen.call("take", "counter", "spoon")
+		_arrive(aliz, "kitchen.counter")
+		if bool(director.call("is_care_open")):
+			director.call("get_care_overlay").call("complete_by_touch")
+		_arrive(aliz, "kitchen.counter")
+		if String(kitchen.call("held")) != "mashedBanana":
+			failures.append("table: no mashed banana in hand (held %s)" % kitchen.call("held"))
+		stats.call("adjust", "hunger", 80.0)
+		failures.append_array(_feed_through_close_up(director, aliz, bunny, kitchen, "kitchen.table", "giveFood", "table"))
+		if String(bunny.call("get_activity")) != "carried":
+			failures.append("table: after the meal Bunny should still be sitting at the table (activity '%s')" % bunny.call("get_activity"))
+		if String(director.call("child_surface_now")) != "table":
+			failures.append("table: after the meal Bunny is no longer recorded at the table")
+		# And again, straight away: a second helping at the table.
+		if bool(kitchen.call("is_open", "fridge")) or true:
+			kitchen.call("set_open", "fridge", true)
+		kitchen.call("take", "fridge", "banana")
+		kitchen.call("place", "counter")
+		kitchen.call("take", "counter", "spoon")
+		_arrive(aliz, "kitchen.counter")
+		if bool(director.call("is_care_open")):
+			director.call("get_care_overlay").call("complete_by_touch")
+		_arrive(aliz, "kitchen.counter")
+		stats.call("adjust", "hunger", 80.0)
+		failures.append_array(_feed_through_close_up(director, aliz, bunny, kitchen, "kitchen.table", "giveFood", "table again"))
+		# Put him back on the floor for the rooms that follow.
+		SpatialUtil.set_world_position(aliz, SpatialUtil.world_position(bunny) + Vector3(0.0, 0.0, 0.62))
+		bunny.call("perform_affordance", aliz)
+		_step(aliz, 40)
+		aliz.call("put_down_carried")
+		_step(aliz, 40)
 		bunny.call("room_changed", world.call("get_room", "bedroom"), aliz)
+	return failures
+
+
+## Arrives at `target_id` with a meal in hand and plays the feeding close-up to
+## the end: it must open on the real overlay as `kind`, hold the room's input,
+## move his hunger only when it completes, and give the room back.
+func _feed_through_close_up(director, aliz, bunny, kitchen, target_id: String, kind: String, label: String):
+	var failures: Array = []
+	var stats: RefCounted = bunny.call("get_stats")
+	var before: float = float((stats.call("describe") as Dictionary).get("hunger", 0.0))
+	_arrive(aliz, target_id)
+	if not bool(director.call("is_care_open")):
+		return ["feed (%s): arriving at %s with the meal did not open the feeding close-up" % [label, target_id]]
+	var care: Control = director.call("get_care_overlay")
+	if String(care.call("get_care_kind")) != kind:
+		failures.append("feed (%s): the close-up opened as '%s', not %s" % [label, care.call("get_care_kind"), kind])
+	if String(aliz.call("get_state_name")) != "disabled":
+		failures.append("feed (%s): the room's input is not held while the close-up is up" % label)
+	if String(kitchen.call("held")) not in ["", "none"]:
+		failures.append("feed (%s): the meal is still in her hand while Bunny eats it" % label)
+	if String(bunny.call("get_activity")) != "feeding":
+		failures.append("feed (%s): Bunny is '%s', not feeding, under the close-up" % [label, bunny.call("get_activity")])
+	var during: float = float((stats.call("describe") as Dictionary).get("hunger", 0.0))
+	if during < before:
+		failures.append("feed (%s): his hunger moved before the close-up completed" % label)
+	# The real gesture: hold the bottle at his mouth for FEED_SECONDS.
+	var at: Vector2 = care.call("get_mouth_target")
+	for _i: int in range(int(2.4 / DT) + 2):
+		care.call("apply_hold", DT, at)
+		if bool(care.call("is_finished")):
+			break
+	if not bool(care.call("is_finished")):
+		failures.append("feed (%s): holding at the mouth for 2.4 s did not finish the feed (progress %.2f)" % [label, care.call("get_progress")])
+		care.call("complete_by_touch")
+	var after: float = float((stats.call("describe") as Dictionary).get("hunger", 0.0))
+	if after >= before:
+		failures.append("feed (%s): the meal did not lower his hunger (%.0f -> %.0f)" % [label, before, after])
+	if bool(director.call("is_care_open")):
+		failures.append("feed (%s): the close-up stayed open after the feed" % label)
+	if String(aliz.call("get_state_name")) == "disabled":
+		failures.append("feed (%s): input was not given back after the feed" % label)
+	if bool(director.call("is_portrait_on")):
+		failures.append("feed (%s): the camera is still parked on his face" % label)
 	return failures
 
 

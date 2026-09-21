@@ -74,6 +74,10 @@ const FEED: String = "giveBottle"
 ## The gesture is `WASH`'s -- rub anywhere over the bowl until enough ground is
 ## covered -- because mashing rewards working the whole bowl, not one spot.
 const MASH: String = "mashFood"
+## Free Play's spoon-fed meal (a mashed banana, a fruit bowl): the same hold at
+## Bunny's real mouth as `FEED`, with food words instead of milk words, so a
+## fruit bowl is never introduced as a drink.
+const GIVE_FOOD: String = "giveFood"
 
 ## Copy per act: the instruction, the word being taught, and the child's line.
 const COPY: Dictionary = {
@@ -106,6 +110,10 @@ const COPY: Dictionary = {
 		"title": "Mash the food!", "word": "mash", "thai": "บดอาหาร",
 		"hint": "Rub the spoon all around the bowl.",
 		"childLine": "Yum, food!", "doneLine": "All mashed!",
+	GIVE_FOOD: {
+		"title": "Time to eat!", "word": "eat", "thai": "กินข้าว",
+		"hint": "Hold the spoon at Bunny's mouth.",
+		"childLine": "Yummy, please, Aliz!", "doneLine": "Thank you, Aliz!",
 	},
 }
 
@@ -127,7 +135,7 @@ const FEED_SECONDS: float = 2.2
 const FEED_DECAY: float = 0.7
 
 ## Acts whose progress advances with TIME rather than with movement.
-const HOLD_KINDS: Array[String] = [MIX, FEED]
+const HOLD_KINDS: Array[String] = [MIX, FEED, GIVE_FOOD]
 
 const FACE_RADIUS: float = 190.0
 const MOUTH_OFFSET := Vector2(0.0, 92.0)
@@ -327,7 +335,7 @@ func begin(care_kind: String) -> void:
 	_child_line.text = String(copy["childLine"])
 	_bar.value = 0.0
 	_mouth_screen = Vector2.ZERO
-	var portrait: bool = _kind == FEED
+	var portrait: bool = _is_feed()
 	if _scrim != null:
 		_scrim.visible = not portrait
 	if _band_top != null:
@@ -358,7 +366,7 @@ func clear_mouth_provider() -> void:
 ## smoke test aims at the same point the child does.
 func get_mouth_target() -> Vector2:
 	var centre: Vector2 = size * 0.5
-	if _kind != FEED:
+	if not _is_feed():
 		return centre + MOUTH_OFFSET
 	var projected: Variant = _project_mouth()
 	if projected is Vector2:
@@ -390,6 +398,12 @@ func _project_mouth() -> Variant:
 
 func get_care_kind() -> String:
 	return _kind
+
+
+## `FEED` and `GIVE_FOOD` are one gesture on Bunny's real face (portrait bands,
+## the hold at his projected mouth); only the words and the tool differ.
+func _is_feed() -> bool:
+	return _kind == FEED or _kind == GIVE_FOOD
 
 
 func get_progress() -> float:
@@ -517,7 +531,7 @@ func apply_stroke(to: Vector2) -> void:
 					_shakes += 1
 				_last_dir = shake_dir
 			_progress = _mix_progress()
-		FEED:
+		FEED, GIVE_FOOD:
 			# Movement does not feed Bunny; `_process` does. Moving is only how the
 			# bottle gets to the mouth in the first place.
 			_progress = clampf(_fed / FEED_SECONDS, 0.0, 1.0)
@@ -550,7 +564,7 @@ func apply_hold(delta: float, at: Vector2) -> void:
 			_progress = _mix_progress()
 			if _foam.size() < 20:
 				_add_foam(centre + BOTTLE_NECK + Vector2(randf_range(-22.0, 22.0), 0.0))
-		FEED:
+		FEED, GIVE_FOOD:
 			if at.distance_to(get_mouth_target()) <= MOUTH_RADIUS:
 				_fed = minf(_fed + delta, FEED_SECONDS)
 			else:
@@ -568,7 +582,7 @@ func apply_hold(delta: float, at: Vector2) -> void:
 
 
 func _process(delta: float) -> void:
-	if _kind == FEED and not _finished:
+	if _is_feed() and not _finished:
 		# The ring sits on a head that is animating and a camera that is easing;
 		# it has to be re-placed whether or not a finger is down.
 		_redraw()
@@ -636,7 +650,7 @@ func _draw_face(_unused: Variant = null) -> void:
 	if _kind == MIX:
 		_draw_bottle(c, o)
 		return
-	if _kind == FEED:
+	if _is_feed():
 		_draw_feed_target(c)
 		return
 	if _kind == MASH:
@@ -815,3 +829,9 @@ func _draw_tool(_unused: Variant = null) -> void:
 			c.draw_rect(Rect2(o + Vector2(-26.0, -46.0), Vector2(52.0, 74.0)),
 					Palette.DUSTY_BLUE, false, 4.0)
 			c.draw_circle(o + Vector2(0.0, 40.0), 18.0, Palette.SOFT_PINK)
+		GIVE_FOOD:
+			# A spoon, bowl-end down, with a little heap of food on it.
+			c.draw_rect(Rect2(o + Vector2(-8.0, -52.0), Vector2(16.0, 62.0)),
+					Palette.DUSTY_BLUE, true)
+			c.draw_circle(o + Vector2(0.0, 26.0), 22.0, Palette.DUSTY_BLUE)
+			c.draw_circle(o + Vector2(0.0, 22.0), 14.0, Color(0.99, 0.90, 0.60))

@@ -207,6 +207,35 @@ func give_to_bunny() -> Dictionary:
 	return _yes("feed", "", fed, "", "Yum! Thank you!")
 
 
+## Free Play's pantry refills. Every raw ingredient a station started the day
+## with that is no longer anywhere in the kitchen -- not in the hand, not on a
+## station, not inside one -- goes back where it lives. Called after Bunny has
+## been fed, so the milk, the banana and the bowl they were made from are there
+## to be made again: Free Play has no objective and nothing in it is ever used
+## up. Returns `[{"station": id, "item": id}]` for what came back.
+func restock() -> Array:
+	var present: Array = [_hand]
+	for station_id: Variant in Rules.STATIONS.keys():
+		var id: String = String(station_id)
+		present.append(on_station(id))
+		present.append_array(inside(id))
+	var returned: Array = []
+	for station_id: Variant in Rules.STATIONS.keys():
+		var id: String = String(station_id)
+		var contents: Array = inside(id)
+		for item: Variant in Rules.initial_contents(id):
+			var item_id: String = String(item)
+			if present.has(item_id):
+				continue
+			contents.append(item_id)
+			present.append(item_id)
+			returned.append({"station": id, "item": item_id})
+		_inside[id] = contents
+	if not returned.is_empty():
+		changed.emit()
+	return returned
+
+
 # ---------------------------------------------------------------------------
 
 func _yes(verb: String, station_id: String, item: String, result: String,
