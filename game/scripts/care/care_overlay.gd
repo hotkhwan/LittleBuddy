@@ -56,6 +56,9 @@ extends Control
 const Palette := preload("res://scripts/ui/palette.gd")
 const Localization := preload("res://scripts/localization/localization.gd")
 const HelperFont := preload("res://scripts/localization/helper_font.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
+const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
+const ActivityArt := preload("res://scripts/ui/activity_art.gd")
 
 signal care_completed(care_kind: String)
 signal care_progress(value: float)
@@ -186,6 +189,8 @@ var _title: Label = null
 var _helper: Label = null
 var _hint: Label = null
 var _child_line: Label = null
+var _bottle_art: Texture2D = null
+var _activity_art: TextureRect = null
 
 
 func _ready() -> void:
@@ -196,6 +201,8 @@ func build() -> void:
 	if _built:
 		return
 	_built = true
+	# Retain the texture while CanvasItem holds its RID between redraws.
+	_bottle_art = ActivityArt.texture_for("bottle")
 	name = "CareOverlay"
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -211,7 +218,7 @@ func build() -> void:
 	# copy get their own darkening so cream text is never laid on a cream wall.
 	_band_top = ColorRect.new()
 	_band_top.name = "BandTop"
-	_band_top.color = _scrim.color
+	_band_top.color = Color(Palette.CREAM, 0.0)
 	_band_top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_band_top.offset_bottom = BAND_TOP_HEIGHT
 	_band_top.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -219,12 +226,43 @@ func build() -> void:
 	add_child(_band_top)
 	_band_bottom = ColorRect.new()
 	_band_bottom.name = "BandBottom"
-	_band_bottom.color = _scrim.color
+	_band_bottom.color = Color(Palette.CREAM, 0.0)
 	_band_bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	_band_bottom.offset_top = -BAND_BOTTOM_HEIGHT
 	_band_bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_band_bottom.visible = false
 	add_child(_band_bottom)
+
+	# The learning instructions and feedback are cards, not dark cinema bars.
+	# Neither intercepts a gesture; the face/mouth interaction geometry stays put.
+	var header := Panel.new()
+	header.name = "InstructionCard"
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_theme_stylebox_override("panel", Chrome.panel())
+	header.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	header.offset_left = -460.0
+	header.offset_right = 460.0
+	header.offset_top = 24.0
+	header.offset_bottom = 212.0
+	add_child(header)
+	_activity_art = TextureRect.new()
+	_activity_art.name = "CareActivityIcon"
+	_activity_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_activity_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_activity_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_activity_art.position = Vector2(28, 22)
+	_activity_art.size = Vector2(64, 64)
+	header.add_child(_activity_art)
+	var footer := Panel.new()
+	footer.name = "CareFeedbackCard"
+	footer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	footer.add_theme_stylebox_override("panel", Chrome.panel(Palette.MINT.lightened(0.65)))
+	footer.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	footer.offset_left = -370.0
+	footer.offset_right = 370.0
+	footer.offset_top = -184.0
+	footer.offset_bottom = -36.0
+	add_child(footer)
 
 	_face = Control.new()
 	_face.name = "Face"
@@ -242,8 +280,8 @@ func build() -> void:
 	_title = Label.new()
 	_title.name = "Title"
 	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_title.add_theme_font_size_override("font_size", 56)
-	_title.add_theme_color_override("font_color", Palette.CREAM)
+	Typography.apply(_title, Typography.DISPLAY)
+	_title.add_theme_color_override("font_color", Palette.INK)
 	_title.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	_title.offset_left = -440.0
 	_title.offset_right = 440.0
@@ -254,8 +292,8 @@ func build() -> void:
 	_helper = Label.new()
 	_helper.name = "Helper"
 	_helper.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_helper.add_theme_font_size_override("font_size", 28)
-	_helper.add_theme_color_override("font_color", Palette.SOFT_PINK)
+	Typography.apply(_helper, Typography.BODY)
+	_helper.add_theme_color_override("font_color", Palette.INK.lightened(0.15))
 	_helper.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	_helper.offset_left = -440.0
 	_helper.offset_right = 440.0
@@ -268,11 +306,11 @@ func build() -> void:
 	_hint = Label.new()
 	_hint.name = "Hint"
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hint.add_theme_font_size_override("font_size", 30)
-	_hint.add_theme_color_override("font_color", Palette.CREAM)
+	Typography.apply(_hint, Typography.BODY)
+	_hint.add_theme_color_override("font_color", Palette.INK)
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_hint.offset_left = -360.0
-	_hint.offset_right = 360.0
+	_hint.offset_left = -432.0
+	_hint.offset_right = 432.0
 	_hint.offset_top = 152.0
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_hint)
@@ -280,12 +318,12 @@ func build() -> void:
 	_child_line = Label.new()
 	_child_line.name = "ChildLine"
 	_child_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_child_line.add_theme_font_size_override("font_size", 36)
-	_child_line.add_theme_color_override("font_color", Palette.CREAM)
+	Typography.apply(_child_line, Typography.SECTION)
+	_child_line.add_theme_color_override("font_color", Palette.INK)
 	_child_line.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_child_line.offset_left = -400.0
-	_child_line.offset_right = 400.0
-	_child_line.offset_top = -168.0
+	_child_line.offset_left = -342.0
+	_child_line.offset_right = 342.0
+	_child_line.offset_top = -164.0
 	_child_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_child_line)
 
@@ -316,6 +354,14 @@ func build() -> void:
 func begin(care_kind: String) -> void:
 	build()
 	_kind = care_kind if COPY.has(care_kind) else BRUSH
+	var artwork: String = "bottle"
+	if _kind in [WASH, DRY]:
+		artwork = "bath"
+	elif _kind == BRUSH:
+		artwork = "brush"
+	elif _kind in [GIVE_FOOD, MASH]:
+		artwork = "bowl"
+	_activity_art.texture = ActivityArt.texture_for(artwork)
 	_progress = 0.0
 	_finished = false
 	_dragging = false
@@ -657,7 +703,18 @@ func _draw_face(_unused: Variant = null) -> void:
 		# The MIX gesture (hold, then stir) over a bowl of food, not a bottle.
 		_draw_bowl(c, o)
 		return
+	c.draw_style_box(Chrome.panel(Palette.LAVENDER.lightened(0.65), 48), Rect2(-276, -246, 552, 492))
+	# Human baby portrait: ears, a soft hair tuft and luminous cheek highlights.
+	# The original face radius and all gesture targets remain unchanged.
+	for side: int in [-1, 1]:
+		c.draw_circle(Vector2(side * 184.0, 4), 34, Palette.PEACH)
 	c.draw_circle(o, FACE_RADIUS, Color(1.0, 0.886, 0.839))
+	c.draw_arc(Vector2(0, -2), FACE_RADIUS - 7, PI * 1.10, PI * 1.83, 36, Palette.CREAM, 7.0, true)
+	c.draw_colored_polygon(PackedVector2Array([
+		Vector2(-68, -150), Vector2(-56, -170), Vector2(-22, -183),
+		Vector2(16, -178), Vector2(48, -161), Vector2(36, -136),
+		Vector2(10, -142), Vector2(-4, -164), Vector2(-20, -158), Vector2(-29, -137),
+	]), Palette.INK.lightened(0.26))
 	# cheeks
 	c.draw_circle(o + Vector2(-112.0, 40.0), 34.0, Color(1.0, 0.776, 0.776, 0.75))
 	c.draw_circle(o + Vector2(112.0, 40.0), 34.0, Color(1.0, 0.776, 0.776, 0.75))
@@ -683,7 +740,7 @@ func _draw_face(_unused: Variant = null) -> void:
 
 	# WASH: a wet sheen that clears as progress rises
 	if _kind == WASH:
-		c.draw_circle(o, FACE_RADIUS, Color(0.604, 0.753, 0.851, 0.30 * (1.0 - _progress)))
+		c.draw_circle(o, FACE_RADIUS, Color(0.604, 0.753, 0.851, 0.12 * (1.0 - _progress)))
 	# DRY: the 3x3 patches, each fading as it is reached
 	if _kind == DRY:
 		var step: float = FACE_RADIUS * 2.0 / 3.0
@@ -804,8 +861,7 @@ func _draw_tool(_unused: Variant = null) -> void:
 			c.draw_circle(o, 34.0, Palette.MINT)
 			c.draw_circle(o, 22.0, Color(1.0, 1.0, 1.0, 0.7))
 		DRY:
-			c.draw_rect(Rect2(o + Vector2(-38.0, -30.0), Vector2(76.0, 60.0)),
-					Palette.SOFT_PINK, true)
+			c.draw_style_box(Chrome.panel(Palette.SOFT_PINK, 14), Rect2(-38, -30, 76, 60))
 			c.draw_rect(Rect2(o + Vector2(-38.0, -8.0), Vector2(76.0, 8.0)),
 					Palette.CREAM, true)
 		MIX:
@@ -824,6 +880,11 @@ func _draw_tool(_unused: Variant = null) -> void:
 			c.draw_circle(o + Vector2(0.0, TOOL_SIZE * 0.26), 22.0, Palette.DUSTY_BLUE)
 			c.draw_circle(o + Vector2(0.0, TOOL_SIZE * 0.26), 14.0, Palette.CREAM)
 		FEED:
+			if _bottle_art != null:
+				c.draw_set_transform(Vector2.ZERO, PI)
+				c.draw_texture_rect(_bottle_art, Rect2(-64, -64, 128, 128), false)
+				c.draw_set_transform(Vector2.ZERO)
+				return
 			# The bottle itself, held teat-down, so it is obvious which end goes in.
 			c.draw_rect(Rect2(o + Vector2(-26.0, -46.0), Vector2(52.0, 74.0)),
 					Color(1.0, 0.988, 0.949), true)

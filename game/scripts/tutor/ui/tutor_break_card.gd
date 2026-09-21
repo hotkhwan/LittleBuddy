@@ -16,6 +16,7 @@ extends Control
 
 const Palette := preload("res://scripts/ui/palette.gd")
 const Typography := preload("res://scripts/ui/typography.gd")
+const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
 
 signal continue_playing_pressed()
@@ -228,4 +229,6 @@ func _button(node_name: String, text: String, tint: Color, height: float, font_s
 		style.set_border_width_all(3)
 		style.border_color = Palette.CREAM
 		button.add_theme_stylebox_override(state, style)
+	Chrome.button(button, tint)
+	button.add_theme_font_size_override("font_size", Typography.BUTTON)
 	return button

@@ -200,6 +200,10 @@ var _speak_button: Button = null
 var _speech_feedback: Control = null
 var _word: Label = null
 var _word_thai: Label = null
+var _activity_tag: Panel = null
+var _activity_tag_text: Label = null
+var _activity_tag_icon: TextureRect = null
+var _activity_tag_kind: String = ""
 
 var _total: int = 0
 var _current: int = 0
@@ -518,6 +522,57 @@ func get_seen_focus_radius() -> float:
 
 func _process(_delta: float) -> void:
 	refresh_presentation()
+	_refresh_activity_tag()
+
+
+## Read-only presentation of existing Free Play state. No activity transitions,
+## timers, reward changes or input handling belong here.
+func _refresh_activity_tag() -> void:
+	var kind: String = ""
+	if _free_play and _chrome_on and not _narration_covered and not _paused_world:
+		var world: Node = get_world()
+		var director: Node = world.call("get_free_play_director") if world != null and world.has_method("get_free_play_director") else null
+		if director != null and not bool(director.call("is_care_open")) and not bool(director.call("is_chooser_open")):
+			if bool(director.call("is_bedtime_active")):
+				kind = "moon"
+			elif bool(director.call("is_tidy_active")):
+				kind = "tidy"
+	if kind == _activity_tag_kind:
+		return
+	_activity_tag_kind = kind
+	if _activity_tag == null and not kind.is_empty():
+		_activity_tag = Panel.new()
+		_activity_tag.name = "ActivityTag"
+		_activity_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_activity_tag.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_activity_tag.offset_left = -186.0
+		_activity_tag.offset_right = 186.0
+		_activity_tag.offset_top = 24.0
+		_activity_tag.offset_bottom = 120.0
+		_activity_tag.add_theme_stylebox_override("panel", preload("res://scripts/ui/storybook_chrome.gd").panel(Palette.CREAM))
+		add_child(_activity_tag)
+		_activity_tag_icon = TextureRect.new()
+		_activity_tag_icon.name = "ActivityIcon"
+		_activity_tag_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_activity_tag_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_activity_tag_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_activity_tag_icon.position = Vector2(20, 12)
+		_activity_tag_icon.size = Vector2(72, 72)
+		_activity_tag.add_child(_activity_tag_icon)
+		_activity_tag_text = Label.new()
+		_activity_tag_text.name = "ActivityLabel"
+		preload("res://scripts/ui/typography.gd").apply(_activity_tag_text, 32)
+		_activity_tag_text.add_theme_color_override("font_color", Palette.INK)
+		_activity_tag_text.position = Vector2(104, 16)
+		_activity_tag_text.size = Vector2(248, 64)
+		_activity_tag_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_activity_tag.add_child(_activity_tag_text)
+	if _activity_tag != null:
+		_activity_tag.visible = not kind.is_empty()
+		if not kind.is_empty():
+			_activity_tag_icon.texture = preload("res://scripts/ui/activity_art.gd").texture_for(kind)
+			_activity_tag_text.text = "Sleep tight" if kind == "moon" else "Tidy together"
+	_push_keep_outs()
 
 
 ## The live close-up's half-width, straight from whichever camera is rendering.
@@ -1351,6 +1406,8 @@ func _push_keep_outs() -> void:
 			if _stars.visible else Rect2())
 	_affordance.call("set_keep_out", "version", Rect2())
 	_affordance.call("set_keep_out", "subtitle", subtitle_rect(view) if _subtitle_showing() else Rect2())
+	_affordance.call("set_keep_out", "activity_tag", _activity_tag.get_global_rect()
+			if _activity_tag != null and _activity_tag.visible and _activity_tag.is_inside_tree() else Rect2())
 
 
 ## -- Construction helpers ------------------------------------------------------

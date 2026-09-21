@@ -44,6 +44,7 @@ extends Control
 
 const Palette := preload("res://scripts/ui/palette.gd")
 const Typography := preload("res://scripts/ui/typography.gd")
+const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
 const SafeAreaScript := preload("res://scripts/ui/safe_area.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
 const IconGlyphScript := preload("res://scripts/progression/icon_glyph.gd")
@@ -173,8 +174,10 @@ var _repeat: Button = null
 var _card_button: Button = null
 var _card_thumb: Control = null
 var _answer_row: HBoxContainer = null
+var _answer_hint: Label = null
 var _banner: PanelContainer = null
 var _banner_label: Label = null
+var _banner_glyph: Control = null
 var _banner_kind: String = BANNER_NONE
 var _partial: String = ""
 var _subtitle: PanelContainer = null
@@ -197,7 +200,8 @@ var _answer_ids: Array = []
 static func layout_rects(viewport_size: Vector2) -> Dictionary:
 	var w: float = viewport_size.x
 	var h: float = viewport_size.y
-	var answers_width: float = ANSWER_CARD_SIZE.x * MAX_ANSWER_CARDS + ANSWER_CARD_GAP * (MAX_ANSWER_CARDS - 1)
+	var answer_size := ANSWER_CARD_SIZE * clampf(w / 1334.0, 1.0, 1.35)
+	var answers_width: float = answer_size.x * MAX_ANSWER_CARDS + ANSWER_CARD_GAP * (MAX_ANSWER_CARDS - 1)
 	return {
 		"heading": Rect2(w * 0.5 - 220.0, 6.0, 440.0, 30.0),
 		"learningShelf": Rect2(w * 0.5 - 350.0, h - 180.0, 700.0, 156.0),
@@ -210,7 +214,7 @@ static func layout_rects(viewport_size: Vector2) -> Dictionary:
 		"repeat": Rect2(w * 0.5 - SIDE_OFFSET - SIDE_SIZE * 0.5, h + SIDE_BOTTOM - SIDE_SIZE, SIDE_SIZE, SIDE_SIZE).grow((SIDE_TOUCH_SIZE - SIDE_SIZE) * 0.5),
 		"card": Rect2(w * 0.5 + SIDE_OFFSET - SIDE_SIZE * 0.5, h + SIDE_BOTTOM - SIDE_SIZE, SIDE_SIZE, SIDE_SIZE).grow((SIDE_TOUCH_SIZE - SIDE_SIZE) * 0.5),
 		"mute": Rect2(MUTE_LEFT, h + MUTE_BOTTOM - MUTE_SIZE, MUTE_SIZE, MUTE_SIZE).grow((MUTE_TOUCH_SIZE - MUTE_SIZE) * 0.5),
-		"answerCards": Rect2(w + ANSWER_CARDS_RIGHT - answers_width, h + ANSWER_CARDS_BOTTOM - ANSWER_CARD_SIZE.y, answers_width, ANSWER_CARD_SIZE.y),
+		"answerCards": Rect2(w + ANSWER_CARDS_RIGHT - answers_width, h + ANSWER_CARDS_BOTTOM - answer_size.y - 42, answers_width, answer_size.y + 42),
 		"flashcard": Rect2(w + CARD_RIGHT - CARD_WIDTH, CARD_TOP, CARD_WIDTH, CARD_HEIGHT),
 	}
 
@@ -243,7 +247,7 @@ func build() -> void:
 	_safe.name = "SafeArea"
 	add_child(_safe)
 	# A stable lesson heading gives the changing question a clear parent.
-	var heading := _label("LessonHeading", 22, Palette.INK_SOFT)
+	var heading := _label("LessonHeading", Typography.HELPER, Palette.INK)
 	heading.text = "Learn with Aliz"
 	_place(heading, Control.PRESET_CENTER_TOP, -220.0, 6.0, 220.0, 36.0)
 	_safe.add_child(heading)
@@ -271,6 +275,12 @@ func build() -> void:
 	_banner_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_banner.add_child(_banner_label)
 	_banner.visible = false
+	_banner_glyph = IconGlyphScript.new()
+	_banner_glyph.name = "StateEmblem"
+	_banner_glyph.set("glyph", 0)
+	_banner_glyph.set("tint", Palette.STAR_EARNED)
+	_place(_banner_glyph, Control.PRESET_CENTER_TOP, -BANNER_HALF_WIDTH + 18, BANNER_TOP + 14, -BANNER_HALF_WIDTH + 58, BANNER_TOP + BANNER_HEIGHT - 14)
+	_safe.add_child(_banner_glyph)
 
 	_subtitle = PanelContainer.new()
 	_subtitle.name = "Subtitle"
@@ -422,6 +432,12 @@ func build() -> void:
 	_answer_row.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_answer_row.visible = false
 	_safe.add_child(_answer_row)
+	_answer_hint = _label("AnswerHint", Typography.HELPER, Palette.INK)
+	_answer_hint.text = "Tap a picture"
+	_answer_hint.add_theme_stylebox_override("normal", _pill(Palette.light(Palette.LAVENDER), 16, Palette.CREAM))
+	_answer_hint.visible = false
+	_safe.add_child(_answer_hint)
+	_safe.resized.connect(_layout_answers)
 
 	# -- Dev panel (hidden) ---------------------------------------------------
 	_dev_panel = PanelContainer.new()
@@ -522,6 +538,7 @@ func _refresh_top_slot() -> void:
 	var has_subtitle: bool = not _subtitle_label.text.strip_edges().is_empty()
 	_subtitle.visible = has_subtitle
 	_banner.visible = _banner_kind != BANNER_NONE and not has_subtitle
+	_banner_glyph.visible = _banner.visible
 
 
 ## The indicator's state and level (0..1), every frame from the session.
@@ -668,11 +685,28 @@ func show_answer_cards(asset_ids: Array) -> void:
 		button.pressed.connect(func() -> void: answer_card_tapped.emit(id))
 		_answer_row.add_child(button)
 	_answer_row.visible = not asset_ids.is_empty()
+	_answer_hint.visible = _answer_row.visible
+	_layout_answers()
+
+
+## Expanded design canvases on phones should not make the answer cards feel
+## miniature. Grow the art and hit area together, only into the board's lane.
+func _layout_answers() -> void:
+	if _answer_row == null or _answer_hint == null:
+		return
+	var card_size := ANSWER_CARD_SIZE * clampf(_safe.size.x / 1334.0, 1.0, 1.35)
+	var count: int = maxi(1, _answer_row.get_child_count())
+	var width: float = card_size.x * count + ANSWER_CARD_GAP * (count - 1)
+	_place(_answer_row, Control.PRESET_BOTTOM_RIGHT, ANSWER_CARDS_RIGHT - width, ANSWER_CARDS_BOTTOM - card_size.y, ANSWER_CARDS_RIGHT, ANSWER_CARDS_BOTTOM)
+	for button: Button in _answer_row.get_children():
+		button.custom_minimum_size = card_size
+	_place(_answer_hint, Control.PRESET_BOTTOM_RIGHT, ANSWER_CARDS_RIGHT - width, ANSWER_CARDS_BOTTOM - card_size.y - 42, ANSWER_CARDS_RIGHT, ANSWER_CARDS_BOTTOM - card_size.y - 10)
 
 
 func hide_answer_cards() -> void:
 	build()
 	_answer_row.visible = false
+	_answer_hint.visible = false
 
 
 func answer_cards_shown() -> Array:
@@ -811,7 +845,7 @@ func _build_resume_card() -> Control:
 	overlay.add_child(scrim)
 	var card: PanelContainer = PanelContainer.new()
 	card.name = "Card"
-	var style: StyleBoxFlat = StyleBoxFlat.new()
+	var style: StyleBoxFlat = Chrome.panel()
 	style.bg_color = Palette.CREAM
 	style.border_color = Palette.deep(Palette.MINT)
 	style.set_border_width_all(4)
@@ -826,10 +860,10 @@ func _build_resume_card() -> Control:
 	var column: VBoxContainer = VBoxContainer.new()
 	column.add_theme_constant_override("separation", 16)
 	card.add_child(column)
-	var title: Label = _label("Title", 38, Palette.INK)
+	var title: Label = _label("Title", Typography.SECTION, Palette.INK)
 	title.text = "Welcome back!"
 	column.add_child(title)
-	var line: Label = _label("Line", 24, Palette.INK_SOFT)
+	var line: Label = _label("Line", Typography.BODY, Palette.INK_SOFT)
 	line.text = "The microphone is off. Tap to keep learning."
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(line)
@@ -845,13 +879,23 @@ func _build_resume_card() -> Control:
 	for state: String in ["normal", "hover", "pressed", "focus"]:
 		button.add_theme_stylebox_override(state, _pill(Palette.MINT.darkened(0.08) if state == "pressed" else Palette.MINT, 44, Palette.CREAM))
 	button.pressed.connect(press_resume)
+	Chrome.button(button, Palette.MINT)
+	button.add_theme_font_size_override("font_size", Typography.BUTTON)
 	column.add_child(button)
 	return overlay
 
 
 func _apply_banner() -> void:
 	var colour: Color = BANNER_COLOURS.get(_banner_kind, Palette.CREAM)
-	_banner.add_theme_stylebox_override("panel", _pill(colour, int(BANNER_HEIGHT * 0.5), Palette.CREAM))
+	var style := Chrome.panel(colour, int(BANNER_HEIGHT * 0.5))
+	style.content_margin_left = 66
+	style.content_margin_right = 66
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
+	_banner.add_theme_stylebox_override("panel", style)
+	if _banner_glyph != null:
+		_banner_glyph.set("glyph", 0 if _banner_kind == BANNER_SUCCESS else (4 if _banner_kind in [BANNER_LISTENING, BANNER_HEARING, BANNER_INTERRUPTED] else 19))
+		_banner_glyph.visible = _banner_kind != BANNER_NONE
 
 
 func _on_banner_input(event: InputEvent) -> void:

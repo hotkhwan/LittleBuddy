@@ -7,6 +7,8 @@ extends Control
 ## minutes, and the lesson picks up at its next step tomorrow.
 
 const Palette := preload("res://scripts/ui/palette.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
+const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
 
 signal keep_going()
 signal stop_confirmed()
@@ -49,7 +51,7 @@ func build() -> void:
 
 	var card: PanelContainer = PanelContainer.new()
 	card.name = "Card"
-	var style: StyleBoxFlat = StyleBoxFlat.new()
+	var style: StyleBoxFlat = Chrome.panel()
 	style.bg_color = Palette.CREAM
 	style.border_color = Palette.deep(Palette.PEACH)
 	style.set_border_width_all(4)
@@ -75,7 +77,7 @@ func build() -> void:
 	title.name = "Title"
 	title.text = TITLE_TEXT
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 38)
+	Typography.apply(title, Typography.SECTION)
 	title.add_theme_color_override("font_color", Palette.INK)
 	column.add_child(title)
 
@@ -140,4 +142,6 @@ func _button(node_name: String, text: String, tint: Color, height: float, font_s
 		style.set_border_width_all(3)
 		style.border_color = Palette.CREAM
 		button.add_theme_stylebox_override(state, style)
+	Chrome.button(button, tint)
+	button.add_theme_font_size_override("font_size", Typography.BUTTON)
 	return button

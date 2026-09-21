@@ -47,6 +47,8 @@ const IconGlyph := preload("res://scripts/progression/icon_glyph.gd")
 const RatingStar := preload("res://scripts/ui/rating_star.gd")
 const MissionRunnerScript := preload("res://scripts/gameplay/mission_runner.gd")
 const TaskPlan := preload("res://scripts/gameplay/house_task_plan.gd")
+const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
 
 ## The Bunny-care chapter. The same id `HouseLevelDirector.HOUSE_CHAPTER_ID`
 ## names; the house is Chapter 3 and this menu lists the house.
@@ -62,10 +64,10 @@ const BACK_LABEL: String = "Back"
 ## three stars under it. `test_ui_chrome.gd` pins the card side and caption
 ## size to the title screen's Play card so the two cannot drift apart again.
 const CARD_SIDE: float = 240.0
-const CARD_GAP: float = 40.0
-const COLUMNS: int = 4
+const CARD_GAP: float = 32.0
+const COLUMNS: int = 3
 const CAPTION_FONT_SIZE: int = 30
-const TITLE_FONT_SIZE: int = 52
+const TITLE_FONT_SIZE: int = Typography.DISPLAY
 const BACK_FONT_SIZE: int = 34
 const BACK_SIZE: Vector2 = Vector2(260.0, 120.0)
 const MARGIN: float = 24.0
@@ -233,8 +235,7 @@ func _build_chrome() -> void:
 	var backdrop := Panel.new()
 	backdrop.name = "Backdrop"
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(Palette.CREAM, BACKDROP_ALPHA)
+	var style := Chrome.panel(Color(Palette.CREAM, BACKDROP_ALPHA), 36)
 	backdrop.add_theme_stylebox_override("panel", style)
 	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
@@ -251,6 +252,16 @@ func _build_chrome() -> void:
 	_title_label.offset_top = MARGIN
 	_title_label.offset_bottom = MARGIN + BACK_SIZE.y
 	add_child(_title_label)
+	var invitation := Label.new()
+	invitation.name = "ActivityInvitation"
+	invitation.text = "Choose a little adventure"
+	Typography.apply(invitation, Typography.BODY)
+	invitation.add_theme_color_override("font_color", Palette.INK.lightened(0.16))
+	invitation.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	invitation.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	invitation.offset_top = 120.0
+	invitation.offset_bottom = 158.0
+	add_child(invitation)
 
 	_back_button = Button.new()
 	_back_button.name = "BackButton"
@@ -486,9 +497,12 @@ func _autoload(autoload_name: String) -> Node:
 ## Purely decorative -- it never eats the touch meant for the card.
 class ActivityPicture extends Control:
 	const _Palette := preload("res://scripts/ui/palette.gd")
+	const _Art := preload("res://scripts/ui/activity_art.gd")
+	var _texture: Texture2D = null
 	var kind: String = "star":
 		set(value):
 			kind = value
+			_texture = _Art.texture_for(kind)
 			queue_redraw()
 
 	func _init() -> void:
@@ -499,6 +513,9 @@ class ActivityPicture extends Control:
 			queue_redraw()
 
 	func _draw() -> void:
+		if _texture != null:
+			draw_texture_rect(_texture, Rect2(Vector2.ZERO, size), false)
+			return
 		var s: float = minf(size.x, size.y)
 		var c: Vector2 = size * 0.5
 		var r: float = s * 0.5

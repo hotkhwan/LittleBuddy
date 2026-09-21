@@ -12,6 +12,7 @@ extends Control
 ## once below, and none of them is black.
 
 const Palette := preload("res://scripts/ui/palette.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
 
 ## Picture colours (content, see the class doc).
 const APPLE_RED: Color = Color(0.937, 0.451, 0.416)
@@ -72,14 +73,14 @@ func _draw() -> void:
 	# The card.
 	var radius: float = minf(w, h) * CARD_RADIUS_FRACTION
 	var rim: StyleBoxFlat = StyleBoxFlat.new()
-	rim.bg_color = Palette.PEACH
+	rim.bg_color = Palette.LAVENDER
 	rim.set_corner_radius_all(int(radius))
 	rim.shadow_color = Color(0.35, 0.26, 0.36, 0.12)
 	rim.shadow_size = 5
 	rim.shadow_offset = Vector2(0, 3)
 	draw_style_box(rim, Rect2(Vector2.ZERO, size))
 	var face: StyleBoxFlat = StyleBoxFlat.new()
-	face.bg_color = Palette.CREAM
+	face.bg_color = Palette.CREAM.lightened(0.45)
 	face.set_corner_radius_all(int(maxf(radius - RIM_PX, 2.0)))
 	draw_style_box(face, Rect2(Vector2(RIM_PX, RIM_PX), size - Vector2(RIM_PX, RIM_PX) * 2.0))
 
@@ -89,11 +90,18 @@ func _draw() -> void:
 	var side: float = minf(area.size.x, area.size.y)
 	var centre: Vector2 = area.get_center()
 	draw_circle(centre, side * 0.48, Palette.light(Palette.PEACH))
+	draw_arc(centre, side * 0.44, PI * 1.08, PI * 1.77, 32, Color(Palette.CREAM, 0.85), maxf(2, side * 0.025), true)
 	_draw_picture(asset_id, centre, side)
 
 	if show_word:
 		var font: Font = ThemeDB.fallback_font
-		var font_size: int = word_font_size if word_font_size > 0 else maxi(22, int(h * 0.12))
+		var label_band := StyleBoxFlat.new()
+		label_band.bg_color = Palette.light(Palette.LAVENDER)
+		label_band.set_corner_radius_all(int(radius * 0.5))
+		draw_style_box(label_band, Rect2(Vector2(RIM_PX * 2, h - strip - 2), Vector2(w - RIM_PX * 4, strip - 4)))
+		# Board textures are rendered much larger than their on-screen size;
+		# keep type proportional there instead of capping it to a HUD font.
+		var font_size: int = word_font_size if word_font_size > 0 else maxi(Typography.HELPER, int(h * 0.12))
 		var text: String = word_for(asset_id)
 		var text_size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size)
 		var baseline: Vector2 = Vector2((w - text_size.x) * 0.5, h - strip * 0.5 + text_size.y * 0.32)
@@ -104,6 +112,7 @@ func _draw_picture(id: String, c: Vector2, s: float) -> void:
 	var r: float = s * 0.5
 	match id:
 		"apple_red":
+			draw_circle(c + Vector2(0, r * 0.29), r * 0.70, APPLE_RED.darkened(0.12))
 			draw_circle(c + Vector2(-r * 0.28, r * 0.08), r * 0.62, APPLE_RED)
 			draw_circle(c + Vector2(r * 0.28, r * 0.08), r * 0.62, APPLE_RED)
 			draw_circle(c + Vector2(0.0, r * 0.22), r * 0.66, APPLE_RED)
@@ -111,8 +120,13 @@ func _draw_picture(id: String, c: Vector2, s: float) -> void:
 			_leaf(c + Vector2(r * 0.3, -r * 0.72), r * 0.3, 0.6)
 			draw_circle(c + Vector2(-r * 0.32, -r * 0.18), r * 0.14, Color(1, 1, 1, 0.55))
 		"banana_yellow":
-			_banana(c, r, BANANA_YELLOW)
+			draw_set_transform(c, -0.42)
+			_banana(Vector2(0, r * 0.07), r, BANANA_YELLOW.darkened(0.15))
+			_banana(Vector2.ZERO, r, BANANA_YELLOW)
+			draw_arc(Vector2(0, -r * 0.25), r * 0.75, 0.36, PI - 0.36, 32, BANANA_YELLOW.lightened(0.55), maxf(2, r * 0.08), true)
+			draw_set_transform(Vector2.ZERO)
 		"orange_orange":
+			draw_circle(c + Vector2(0.0, r * 0.14), r * 0.82, ORANGE_ORANGE.darkened(0.10))
 			draw_circle(c + Vector2(0.0, r * 0.1), r * 0.78, ORANGE_ORANGE)
 			_leaf(c + Vector2(r * 0.18, -r * 0.72), r * 0.34, 0.2)
 			draw_circle(c + Vector2(-r * 0.3, -r * 0.18), r * 0.14, Color(1, 1, 1, 0.5))
@@ -121,7 +135,10 @@ func _draw_picture(id: String, c: Vector2, s: float) -> void:
 			var rows: Array = [[-1.5, -0.5, 0.5, 1.5], [-1.0, 0.0, 1.0], [-0.5, 0.5], [0.0]]
 			for row: int in range(rows.size()):
 				for col in rows[row]:
-					draw_circle(c + Vector2(float(col) * rr * 1.9, (-0.85 + float(row) * 0.95) * rr * 1.7), rr, GRAPE_PURPLE)
+					var at := c + Vector2(float(col) * rr * 1.9, (-0.85 + float(row) * 0.95) * rr * 1.7)
+					draw_circle(at + Vector2(0, rr * 0.12), rr, GRAPE_PURPLE.darkened(0.13))
+					draw_circle(at, rr * 0.93, GRAPE_PURPLE)
+					draw_circle(at + Vector2(-rr * 0.25, -rr * 0.25), rr * 0.22, GRAPE_PURPLE.lightened(0.4))
 			draw_rect(Rect2(c + Vector2(-r * 0.04, -r * 0.98), Vector2(r * 0.08, r * 0.28)), STEM_BROWN)
 			_leaf(c + Vector2(r * 0.3, -r * 0.8), r * 0.3, 0.5)
 		"cat":
