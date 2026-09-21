@@ -109,4 +109,29 @@ Blocker for live mode: the Worker emits no CORS headers (documented in
 | Live health | `/healthz?db=1` 200, migrations 5 |
 
 ## 9. Builds and final status
-(filled in below)
+
+**Final code commit `f510be8`**; the two commits after it are this report only.
+Builds were made from `f510be8`.
+
+| Build | Path | Size | Note |
+|---|---|---|---|
+| Android debug APK | `build/android/LittleDays-debug.apk` | 46,987,320 B | SHA-256 `33a446a15ca978a8f2bd22e78d2a633c3fbe69c3d8a4dde2f0aaa833a983bc35`, signed, **zero permissions**; contains the 3 new Meshy GLBs (+ textures), contains no `generated_v1` concept art |
+| iOS export | `build/ios/LittleBuddy.xcodeproj`, `build/ios/LittleBuddy.pck` | pck 18,066,704 B | owner signs in Xcode |
+| iOS arm64 compile | unsigned | `** BUILD SUCCEEDED **` |
+
+| Status | Value |
+|---|---|
+| Cloudflare | dev API live and healthy (`/healthz?db=1` 200, 5 migrations); production NOT deployed; API hostname not attached to dev |
+| OpenAI | no key on the Worker or the Mac; realtime token 503; cloud flag false; no call made |
+| Billing | disabled on client (`purchases_enabled=false`) and server (`BILLING_ENABLED=false`, verify → 503); no store plugin, no charge path |
+| Meshy | 3174 → 3144 (30 spent), 10 of 40 authorised unspent, 90 of 100 sprint total |
+| Website | built and tested, NOT deployed (would overwrite the owner's `littledays-web`) |
+| Physical device | NOT run; the owner's tonight build stays `bb2c3e7` |
+
+## 10. Remaining blockers for production
+1. Production deploy is manual: create `little-days-production` D1, apply 0001–0005, a new `PARENT_TOKEN_SECRET`, `deploy --dry-run --env production`, then deploy by hand (the route to `api.littledays.joinanny.com` is already in the config). Staging first is recommended.
+2. Real parent sign-in: `APPLE_BUNDLE_ID`, `APPLE_SERVICE_ID`, `GOOGLE_CLIENT_IDS` per environment; the game and the portal must send identity tokens (they send nothing yet); the Worker needs a CORS allow-list for `https://littledays.joinanny.com` before the portal can talk to it.
+3. Cloud tutor: privacy gates G1–G17, `OPENAI_API_KEY` as a Worker secret, the realtime path untested against any provider; the turns path is what runs today.
+4. Billing: App Store Connect / Play Console products, secrets, reconciliation of `cloud/src/billing/schema.sql` with migration 0002 (`subject_id` vs `parent_id`), owner approval, device QA; the zero-turn session end charge (45 s) should be dropped server-side.
+5. Meshy next batch needs fresh authorisation (bottle, blocks, fridge = 45 credits recommended first).
+6. Android back key (`quit_on_go_back`) decision; support contact and developer legal name for the website.
