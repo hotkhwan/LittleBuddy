@@ -16,10 +16,18 @@ extends RefCounted
 ##   3. default false.
 ## Nothing in the game may bypass `cloud_enabled()`; tests assert the export
 ## presets and project.godot keep it false.
+##
+## Backend address (`backend_url()`), highest first:
+##   1. user arg `-- --ai-tutor-cloud --tutor-backend-url=<http(s) url>` --
+##      honoured ONLY together with `--ai-tutor-cloud` (a developer run
+##      against the deployed development Worker; never in project.godot);
+##   2. project setting `little_days/ai_tutor/backend_url`;
+##   3. the loopback development default.
 
 const SETTING_CLOUD: String = "little_days/ai_tutor/cloud_enabled"
 const SETTING_BACKEND_URL: String = "little_days/ai_tutor/backend_url"
 const USER_ARG_CLOUD: String = "--ai-tutor-cloud"
+const USER_ARG_BACKEND_URL_PREFIX: String = "--tutor-backend-url="
 const DEFAULT_BACKEND_URL: String = "http://127.0.0.1:8787"
 
 
@@ -36,8 +44,26 @@ static func local_tutor_enabled() -> bool:
 
 
 static func backend_url() -> String:
+	var dev_url: String = backend_url_from_args(OS.get_cmdline_user_args())
+	if not dev_url.is_empty():
+		return dev_url
 	if ProjectSettings.has_setting(SETTING_BACKEND_URL):
 		var url: String = String(ProjectSettings.get_setting(SETTING_BACKEND_URL)).strip_edges()
 		if not url.is_empty():
 			return url
 	return DEFAULT_BACKEND_URL
+
+
+## The developer backend override in `args`, or "" when absent, malformed, or
+## not accompanied by `--ai-tutor-cloud`. Pure, so a test can pin the rule.
+static func backend_url_from_args(args: PackedStringArray) -> String:
+	if not args.has(USER_ARG_CLOUD):
+		return ""
+	for arg: String in args:
+		if not arg.begins_with(USER_ARG_BACKEND_URL_PREFIX):
+			continue
+		var url: String = arg.trim_prefix(USER_ARG_BACKEND_URL_PREFIX).strip_edges().trim_suffix("/")
+		var lower: String = url.to_lower()
+		if lower.begins_with("https://") or lower.begins_with("http://"):
+			return url
+	return ""

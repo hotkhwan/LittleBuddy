@@ -14,14 +14,18 @@ extends RefCounted
 ## Everything visual still goes through the scene's own `_speak_turn()`;
 ## the bridge only keeps the subtitle growing as words stream, shows a
 ## tool-called card at once, and ends the cloud session when the scene
-## leaves, breaks or backgrounds.
+## leaves, breaks, backgrounds or a grown-up stops the lesson.
 ##
-## Credentials: there is no parental consent service yet, so the parent token
-## and approval token are the DEV literals the mock server accepts
-## (`dev-parent-token`, `dev-parent-approval`); the device id is a random
-## per-install id kept under the SaveService setting `tutorDeviceId`, and the
-## child id is that same pseudonymous id (one child profile per install
-## today). Never a name, never a device serial.
+## Credentials: there is no Parent Corner sign-in in the app yet, so the
+## session performs the Worker's DEV_MODE sign-in (`POST /v1/parents
+## {provider: "dev"}`) with the pseudonymous per-install id as the subject and
+## `clientId`, then grants the `ai_tutor` consent for that synthetic family.
+## The id is random, kept under the SaveService setting `tutorDeviceId`.
+## Never a name, never a device serial; the tokens stay in memory.
+##
+## Tests: `set_api_factory_for_tests(Callable)` makes `attach()` take its REST
+## client from the factory instead of building one (a scripted fake; the
+## suite never dials anything). Cleared with an invalid Callable.
 
 const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
 const ApiScript := preload("res://scripts/tutor/cloud/cloud_tutor_api.gd")
@@ -31,10 +35,10 @@ const PlayerScript := preload("res://scripts/tutor/cloud/cloud_audio_player.gd")
 const ProviderScript := preload("res://scripts/tutor/cloud/cloud_tutor_provider.gd")
 const SynthScript := preload("res://scripts/tutor/cloud/cloud_synthesis_provider.gd")
 
-const DEV_PARENT_TOKEN: String = "dev-parent-token"
-const DEV_APPROVAL_TOKEN: String = "dev-parent-approval"
 const DEVICE_ID_SETTING: String = "tutorDeviceId"
 const SAVE_SERVICE_NAME: String = "SaveService"
+
+static var _api_factory: Callable = Callable()
 
 var _scene: Node = null
 var _api: RefCounted = null
@@ -45,13 +49,20 @@ var _provider: RefCounted = null
 var _synth: Node = null
 
 
+static func set_api_factory_for_tests(factory: Callable) -> void:
+	_api_factory = factory
+
+
 func attach(scene: Node, engine: Object, _scripted_provider: RefCounted, local_synth: Node) -> Dictionary:
 	if not TutorFlags.cloud_enabled() or scene == null:
 		return {}
 	_scene = scene
 	var device_id: String = _device_id()
-	_api = ApiScript.new()
-	_api.configure(DEV_PARENT_TOKEN, DEV_APPROVAL_TOKEN, device_id, device_id)
+	if _api_factory.is_valid():
+		_api = _api_factory.call(device_id)
+	if _api == null:
+		_api = ApiScript.new()
+		_api.configure(device_id)
 	_transport = TransportScript.new()
 	_player = PlayerScript.new()
 	_player.name = "CloudAudio"
@@ -102,6 +113,10 @@ func synthesis() -> Node:
 	return _synth
 
 
+func api() -> RefCounted:
+	return _api
+
+
 # -- scene glue ------------------------------------------------------------------------------
 
 func _capture_allowed() -> bool:
@@ -145,16 +160,33 @@ func _on_fell_back(reason: String) -> void:
 	push_warning("cloud tutor: falling back to the scripted tutor (%s)" % reason)
 
 
+## The scene's exits, each ending the cloud session with the reason the
+## Worker records: the break card after the day's minutes (`quota_expired`),
+## after the lesson (`lesson_complete`) or after a grown-up's End lesson
+## (`parent_stop`); leaving the scene (`scene`); the app backgrounding.
 func _on_scene_state(state: String) -> void:
 	if _session == null:
 		return
 	match state:
-		"break", "done":
-			_session.call("end", SessionScript.REASON_COMPLETE)
+		"break":
+			_session.call("end", _break_reason())
+		"done":
+			_session.call("end", SessionScript.REASON_SCENE)
 		"background":
 			_session.call("on_app_background")
 		_:
 			pass
+
+
+func _break_reason() -> String:
+	if _scene == null:
+		return SessionScript.REASON_COMPLETE
+	var meter: Object = _scene.call("quota") if _scene.has_method("quota") else null
+	if meter != null and meter.has_method("is_exhausted") and bool(meter.call("is_exhausted")):
+		return SessionScript.REASON_QUOTA
+	if _scene.has_method("is_lesson_complete") and bool(_scene.call("is_lesson_complete")):
+		return SessionScript.REASON_COMPLETE
+	return SessionScript.REASON_PARENT_STOP
 
 
 func _on_scene_exiting() -> void:

@@ -31,6 +31,16 @@ extends "res://scripts/tutor/providers/conversation_provider.gd"
 ## reply the session had to replace mid-stream (URL, banned word) is voiced as
 ## "Let's try together!" by the synthesis wrapper; the turn already emitted
 ## keeps the engine's action.
+##
+## ## The turns path
+##
+## When the session runs on REST turns (no realtime provider on the server,
+## which is the deployed development Worker's shape) the whole validated
+## TutorTurn arrives at once: the server's words, emotion, gesture and card
+## drive the classroom through the same `_speak_turn()`, voiced by the local
+## synthesis; `lessonAction` still comes from the LessonEngine's local
+## verdict. The patience for a first reply is `FIRST_REPLY_SECONDS_TURNS`
+## (one REST round trip plus one idempotent retry).
 
 signal fallback_used(reason: String)
 signal turn_meta(meta: Dictionary)
@@ -38,6 +48,7 @@ signal turn_meta(meta: Dictionary)
 const ScriptedProviderScript := preload("res://scripts/tutor/providers/scripted_conversation_provider.gd")
 
 const FIRST_DELTA_SECONDS: float = 6.0
+const FIRST_REPLY_SECONDS_TURNS: float = 10.0
 
 var _scripted: RefCounted = ScriptedProviderScript.new()
 var _cloud: RefCounted = null
@@ -125,7 +136,8 @@ func submit_turn(transcript: String, lesson_context: Dictionary) -> void:
 		_fallback("busy", local_turn)
 		return
 	_pending = {"localTurn": local_turn, "answered": false, "phase": phase, "stepId": String(step.get("stepId", "")), "said": said}
-	_first_delta_left = FIRST_DELTA_SECONDS
+	var turns_path: bool = _cloud.has_method("is_turns_mode") and bool(_cloud.call("is_turns_mode"))
+	_first_delta_left = FIRST_REPLY_SECONDS_TURNS if turns_path else FIRST_DELTA_SECONDS
 
 
 func end_session() -> void:
@@ -261,6 +273,14 @@ func _fallback(reason: String, local_turn: Dictionary) -> void:
 	turn_ready.emit(TurnValidator.coerce(local_turn))
 
 
+## The session ended (leave, background, parent stop, quota): whatever was
+## pending is forgotten without a turn, so the scene -- which is no longer
+## waiting -- is never spoken to, and the next attempt is judged afresh.
+func _on_cloud_ended(_reason: String, _summary: Dictionary) -> void:
+	_pending = {}
+	_first_delta_left = -1.0
+
+
 func _on_scripted_routed(action: String, target_id: String) -> void:
 	lesson_routed.emit(action, target_id)
 
@@ -276,3 +296,4 @@ func _wire() -> void:
 	_cloud.cancelled.connect(_on_cloud_cancelled)
 	_cloud.reply_replaced.connect(_on_cloud_replaced)
 	_cloud.fell_back.connect(_on_cloud_fell_back)
+	_cloud.ended.connect(_on_cloud_ended)

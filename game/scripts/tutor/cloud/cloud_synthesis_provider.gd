@@ -33,6 +33,9 @@ var _current_text: String = ""
 var _muted: bool = false
 var _wired: bool = false
 var _finish_next_frame: bool = false
+## Who authored the words of the last `speak_turn()`: "cloud" (a reply the
+## session claimed, streamed or a REST turn voiced locally) or "local".
+var _words_source: String = ""
 
 
 func _ready() -> void:
@@ -113,11 +116,19 @@ func mode() -> String:
 	return _mode
 
 
+## "cloud" when the last turn's words came from the cloud session (whichever
+## voice played them), "local" otherwise, "" before any turn.
+func words_source() -> String:
+	return _words_source
+
+
 func speak_turn(turn: Dictionary, spoken_line_id: String = "") -> void:
 	var text: String = String(turn.get("speech", "")).strip_edges()
 	if _cloud != null and bool(_cloud.call("claim_reply_for_speech")):
+		_words_source = "cloud"
 		_begin_cloud(text)  # the provider's turn for the reply that is streaming
 		return
+	_words_source = "local"
 	speak(text, spoken_line_id)
 
 

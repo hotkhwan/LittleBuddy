@@ -7,49 +7,59 @@ extends RefCounted
 ## the same duck-typed `TutorFace` calls the scripted path uses. No network
 ## primitive lives here; nothing here references a 3D node type.
 ##
-##   idle -> quota -> creating -> minting -> connecting -> ready -> ending -> ended
-##                                   ^            |                  \
-##                                   +-- reconnect once (fresh token) -+-> failed (fell_back)
+##   idle -> [signing_in -> consenting] -> quota -> creating -> minting -+-> connecting -> ready(realtime)
+##                                                                      |        ^     |
+##                                                   token 503 ---------+        +-----+ reconnect once
+##                                                        v                          |
+##                                                   ready(turns) ----------------> ending -> ended
+##                                                                                  (failed -> fell_back)
 ##
-##   start()                 GET /quota (0 left -> fell_back "quota_exhausted",
-##                           no session), POST /sessions, POST /realtime/token,
-##                           transport.connect_session(token) -> `ready`.
-##   push_audio(pcm)         forwarded ONLY while ready, not muted, and the
-##                           capture source (the hands-free session: capturing
-##                           and not echo-gated) says yes. There is no PCM
-##                           source in the game today; the path is exercised
-##                           with synthetic frames.
+##   start()                 DEV sign-in + consent when no approval token is
+##                           held yet (POST /v1/parents, PUT /v1/consent),
+##                           GET /tutor/entitlement (0 left -> fell_back
+##                           "quota_exhausted", no session), POST /sessions,
+##                           POST /realtime/token, transport.connect_session
+##                           -> `ready`. When the token endpoint answers
+##                           503 provider_unavailable (or any other
+##                           non-fatal error: the deployed Worker has no
+##                           realtime provider) the session is READY on the
+##                           TURNS path instead: `send_transcript()` posts
+##                           each answer to /sessions/:id/turns and the
+##                           validated TutorTurn drives the classroom.
+##   push_audio(pcm)         forwarded ONLY while ready on the realtime
+##                           path, not muted, and the capture source (the
+##                           hands-free session: capturing and not
+##                           echo-gated) says yes. There is no PCM source in
+##                           the game today; the path is exercised with
+##                           synthetic frames. Never on the turns path.
 ##   send_transcript(text, lesson_context)   the on-device transcript path;
-##                           ONE reply follows: text deltas (`subtitle_delta`,
-##                           `subtitle_changed`), audio chunks (player +
-##                           `speaking_changed(true)`, mouth from the played
-##                           level), validated tool calls (`tool_applied`),
-##                           then `turn_ready(turn)` at response.done and
-##                           `speaking_changed(false)` when the audio drained.
-##                           The RUNNING transcript is checked on every delta
-##                           for a URL or a banned word: the reply is cancelled
-##                           at once, playback truncated, and
-##                           `reply_replaced(fallback_turn)` says what to say
-##                           instead ("Let's try together!").
-##   barge_in()              transport.cancel() (response.cancel + truncate at
-##                           the played position) + playback dropped.
-##   end(reason)             transport closed, POST /sessions/:id/end with
-##                           {reason, secondsUsed, usage}, then `ended`.
-##                           Reasons: parent_stop, background, quota_expired,
-##                           idle, lesson_complete, scene, token_expired,
+##                           ONE reply follows: realtime -> text deltas,
+##                           audio chunks, tool calls, then `turn_ready`;
+##                           turns -> `subtitle_changed`, `tool_applied`
+##                           (`show_card`) and `turn_ready` at once from the
+##                           server's validated turn, voiced locally.
+##   barge_in()              realtime: transport.cancel() + playback dropped;
+##                           turns: the in-flight request is dropped.
+##   end(reason)             transport closed, POST /sessions/:id/end
+##                           {reason} ONCE, then `ended`. Reasons:
+##                           parent_stop, background, quota_expired, idle,
+##                           lesson_complete, scene, token_expired,
 ##                           session_ended, provider_failed, not_approved.
 ##
 ## Quota, both sides: the client mirror (`TutorQuota`, passed in) stays
 ## authoritative for the safe-point closing -- when it reports exhausted this
-## session ends at the next boundary; the server's 402 also ends the session
-## at the next boundary and is handed to the mirror as `exhausted`. Idle for
-## `IDLE_SECONDS` ends it; the app backgrounding ends it; the token expiring
-## ends it at the boundary.
+## session ends at the next boundary. The server's word only ever shortens a
+## session: a `quota` block with nothing left, a turn's `endAtBoundary`, or a
+## 429 quota_exhausted is handed to the mirror as `exhausted`, the current
+## reply finishes, the session ends and no further turn is sent.
 ##
-## Provider failure: a socket error, a close, a 503 or a timeout while the
+## Provider failure: a socket error, a close, or a timeout while the realtime
 ## session is up is answered ONCE by minting a fresh token and reconnecting;
-## a second failure emits `fell_back(reason)` and the owner runs the local
-## scripted tutor -- never a dead classroom. A reply lost to that failure is
+## if the mint then fails the session continues on the turns path; a turn
+## request that fails transiently is retried once with the SAME
+## Idempotency-Key (the server replays, never charges twice); two lost
+## turns in a row emit `fell_back(reason)` and the owner runs the local
+## scripted tutor -- never a dead classroom. A reply lost to any failure is
 ## reported as `turn_failed(reason)` so exactly one turn still reaches the
 ## scene for every request.
 
@@ -73,6 +83,8 @@ const ApiScript := preload("res://scripts/tutor/cloud/cloud_tutor_api.gd")
 const TurnValidator := preload("res://scripts/tutor/turn/tutor_turn.gd")
 
 const STATE_IDLE: String = "idle"
+const STATE_SIGNING_IN: String = "signing_in"
+const STATE_CONSENTING: String = "consenting"
 const STATE_QUOTA: String = "quota"
 const STATE_CREATING: String = "creating"
 const STATE_MINTING: String = "minting"
@@ -81,6 +93,9 @@ const STATE_READY: String = "ready"
 const STATE_ENDING: String = "ending"
 const STATE_ENDED: String = "ended"
 const STATE_FAILED: String = "failed"
+
+const MODE_REALTIME: String = "realtime"
+const MODE_TURNS: String = "turns"
 
 const REASON_PARENT_STOP: String = "parent_stop"
 const REASON_BACKGROUND: String = "background"
@@ -97,10 +112,18 @@ const IDLE_SECONDS: float = 120.0
 const BUSY_ERROR_CODE: String = "conversation_already_has_active_response"
 const MAX_RECONNECTS: int = 1
 const MAX_RATE_LIMIT_RETRIES: int = 1
+## A turn request that fails transiently is re-sent once with the same key.
+const MAX_TURN_RETRIES: int = 1
+## Consecutive lost turns before the session falls back to the scripted tutor.
+const MAX_TURN_FAILURES: int = 2
 const RETRY_DELAY_SECONDS: float = 0.5
 const RATE_LIMIT_DEFAULT_RETRY_SECONDS: float = 2.0
+const RETRY_TURN: String = "turn"
 ## The token is refreshed this many seconds before it expires (a boundary).
 const TOKEN_EXPIRY_MARGIN_SECONDS: int = 5
+## Token errors that mean "no realtime here, use the turns path".
+const TURNS_FALLBACK_CODES: Array[String] = [ApiScript.CODE_PROVIDER_UNAVAILABLE, ApiScript.CODE_TIMEOUT, ApiScript.CODE_BAD_RESPONSE]
+const TRANSIENT_CODES: Array[String] = [ApiScript.CODE_PROVIDER_UNAVAILABLE, ApiScript.CODE_TIMEOUT, ApiScript.CODE_BAD_RESPONSE]
 
 var _api: RefCounted = null
 var _transport: RefCounted = null
@@ -113,7 +136,9 @@ var _clock: Callable = Callable()
 
 var _state: String = STATE_IDLE
 var _lesson_id: String = ""
-var _mode: String = "realtime"
+var _requested_mode: String = MODE_REALTIME
+## "" until ready; then MODE_REALTIME or MODE_TURNS.
+var _transport_mode: String = ""
 var _session_id: String = ""
 var _entitlement: String = ""
 var _server_quota: Dictionary = {}
@@ -136,6 +161,12 @@ var _reply_claimable: bool = false
 var _streamed_text: String = ""
 var _retry_left: float = -1.0
 var _retry_action: String = ""
+## Turns path: the request in flight `{key, text, context, retries}`.
+var _turn_request: Dictionary = {}
+var _turn_serial: int = 0
+var _turn_failures: int = 0
+var _turn_log: Array = []
+var _end_posted: bool = false
 ## Set while THIS object closes the transport, so its synchronous `closed`
 ## is not mistaken for a failure; and while a reply is replaced for safety,
 ## so its cancel is not reported as a barge-in.
@@ -184,9 +215,9 @@ func set_clock(clock: Callable) -> void:
 	_clock = clock
 
 
-func configure(lesson_id: String, mode: String = "realtime") -> void:
+func configure(lesson_id: String, mode: String = MODE_REALTIME) -> void:
 	_lesson_id = lesson_id
-	_mode = mode
+	_requested_mode = mode
 
 
 func api() -> RefCounted:
@@ -208,11 +239,24 @@ func state_history() -> Array:
 
 
 func is_active() -> bool:
-	return _state in [STATE_QUOTA, STATE_CREATING, STATE_MINTING, STATE_CONNECTING, STATE_READY]
+	return _state in [STATE_SIGNING_IN, STATE_CONSENTING, STATE_QUOTA, STATE_CREATING, STATE_MINTING, STATE_CONNECTING, STATE_READY]
 
 
 func is_ready() -> bool:
-	return _state == STATE_READY and _transport != null and _transport.is_connected_session()
+	if _state != STATE_READY:
+		return false
+	if _transport_mode == MODE_TURNS:
+		return true
+	return _transport != null and _transport.is_connected_session()
+
+
+## "" before ready, then "realtime" or "turns".
+func transport_mode() -> String:
+	return _transport_mode
+
+
+func is_turns_mode() -> bool:
+	return _transport_mode == MODE_TURNS
 
 
 func is_speaking() -> bool:
@@ -290,18 +334,29 @@ func last_summary() -> Dictionary:
 	return _last_summary.duplicate(true)
 
 
-## `{tokensIn, tokensOut, audioSeconds, audioSecondsIn, audioSecondsOut, responses}`.
+## Turns path: one row per served turn
+## `{turnIndex, chargedSeconds, replayed, endAtBoundary, provider, fallback, usedSeconds, usedTurns}`.
+func turn_log() -> Array:
+	return _turn_log.duplicate(true)
+
+
+func has_turn_in_flight() -> bool:
+	return not _turn_request.is_empty()
+
+
+## `{tokensIn, tokensOut, audioSeconds, audioSecondsIn, audioSecondsOut, responses, turns}`.
 func usage() -> Dictionary:
 	var out: Dictionary = {"tokensIn": 0, "tokensOut": 0, "audioSecondsIn": 0.0, "audioSecondsOut": 0.0, "responses": 0}
 	if _transport != null and _transport.has_method("usage"):
 		out = _transport.call("usage")
 	out["audioSeconds"] = float(out.get("audioSecondsIn", 0.0)) + float(out.get("audioSecondsOut", 0.0))
+	out["turns"] = _turn_log.size()
 	return out
 
 
-## May microphone frames stream right now?
+## May microphone frames stream right now? Never on the turns path.
 func is_streaming_allowed() -> bool:
-	if not is_ready() or _muted:
+	if not is_ready() or _muted or _transport_mode != MODE_REALTIME:
 		return false
 	if _capture_source.is_valid():
 		return bool(_capture_source.call())
@@ -322,10 +377,19 @@ func start() -> bool:
 	_wire()
 	_reconnects = 0
 	_rate_limit_retries = 0
+	_turn_failures = 0
 	_end_at_boundary = false
 	_boundary_reason = ""
 	_idle_seconds = 0.0
 	_active_seconds = 0.0
+	_transport_mode = ""
+	_end_posted = false
+	if _api.has_method("has_approval") and not bool(_api.call("has_approval")):
+		# No parental-approval token yet: the DEV sign-in mints one (DEV_MODE
+		# Worker only; the Parent Corner flow replaces this later).
+		_set_state(STATE_SIGNING_IN)
+		_api.call("sign_in_dev", "")
+		return true
 	_set_state(STATE_QUOTA)
 	_api.call("fetch_quota")
 	return true
@@ -339,9 +403,16 @@ func push_audio(pcm: PackedByteArray) -> bool:
 
 
 func send_transcript(text: String, lesson_context: Dictionary) -> bool:
-	if not is_ready() or _transport.is_responding():
+	if not is_ready() or _is_responding():
 		return false
 	_begin_reply()
+	if _transport_mode == MODE_TURNS:
+		_turn_serial += 1
+		var key: String = "%s:t%d" % [_session_id, _turn_serial]
+		_turn_request = {"key": key, "text": text, "context": lesson_context.duplicate(true), "retries": 0}
+		_api.call("submit_turn", _session_id, key, text, lesson_context, 0.0)
+		_idle_seconds = 0.0
+		return true
 	if not bool(_transport.send_text(text, lesson_context)):
 		_reply_open = false
 		return false
@@ -351,6 +422,13 @@ func send_transcript(text: String, lesson_context: Dictionary) -> bool:
 
 ## The child interrupted: cancel the reply now; what was not played is never played.
 func barge_in() -> void:
+	if _transport_mode == MODE_TURNS:
+		var was_pending: bool = not _turn_request.is_empty()
+		_drop_turn_request()
+		_close_reply()
+		if was_pending:
+			cancelled.emit()
+		return
 	if _transport != null and _transport.is_responding():
 		_transport.cancel()  # emits response_cancelled -> _on_cancelled
 	else:
@@ -371,18 +449,16 @@ func parent_stop() -> void:
 		end(REASON_PARENT_STOP)
 
 
-## Ends the session now. Idempotent.
+## Ends the session now. Idempotent: `/end` is posted once.
 func end(reason: String) -> void:
 	if _state == STATE_ENDING or _state == STATE_ENDED:
 		return
 	_end_reason = reason
 	_set_state(STATE_ENDING)
+	_drop_turn_request()
 	_close_reply()
 	_close_transport()
-	if _session_id.is_empty() or _api == null or not bool(_api.call("is_available")):
-		_finish_end({"ok": false, "code": "no_session", "body": {}})
-		return
-	_api.call("end_session", _session_id, reason, _active_seconds, usage())
+	_post_end()
 
 
 ## Asks the server for the current quota (after the session, for the break card).
@@ -411,18 +487,20 @@ func advance(delta: float) -> void:
 	if _state != STATE_READY:
 		return
 	_active_seconds += delta
-	if not _reply_open and not _transport.is_responding():
+	var responding: bool = _is_responding()
+	if not _reply_open and not responding:
 		_idle_seconds += delta
 		if _idle_seconds >= IDLE_SECONDS:
 			end(REASON_IDLE)
 			return
-	var expires: int = int(_transport.call("token_expires_unix")) if _transport.has_method("token_expires_unix") else 0
-	if expires > 0 and _now() >= expires - TOKEN_EXPIRY_MARGIN_SECONDS:
-		_arm_boundary(REASON_TOKEN_EXPIRED)
+	if _transport_mode == MODE_REALTIME:
+		var expires: int = int(_transport.call("token_expires_unix")) if _transport.has_method("token_expires_unix") else 0
+		if expires > 0 and _now() >= expires - TOKEN_EXPIRY_MARGIN_SECONDS:
+			_arm_boundary(REASON_TOKEN_EXPIRED)
 	var mirror: Object = _quota_now()
 	if mirror != null and mirror.has_method("is_exhausted") and bool(mirror.call("is_exhausted")):
 		_arm_boundary(REASON_QUOTA)
-	if _end_at_boundary and not _reply_open and not _transport.is_responding():
+	if _end_at_boundary and not _reply_open and not _is_responding():
 		end(_boundary_reason)
 
 
@@ -433,6 +511,24 @@ func _on_api_completed(kind: String, result: Dictionary) -> void:
 	var code: String = String(result.get("code", ""))
 	var body: Dictionary = result.get("body", {})
 	match kind:
+		ApiScript.KIND_SIGN_IN:
+			if _state != STATE_SIGNING_IN:
+				return
+			if not ok:
+				_on_api_error(kind, code, body, result)
+				return
+			_set_state(STATE_CONSENTING)
+			_api.call("grant_consent", ApiScript.CONSENT_AI_TUTOR)
+		ApiScript.KIND_CONSENT:
+			if _state != STATE_CONSENTING:
+				return
+			if not ok and (code in [ApiScript.CODE_NOT_APPROVED, ApiScript.CODE_CLOUD_DISABLED, ApiScript.CODE_NOT_CONFIGURED] \
+					or int(result.get("status", 0)) in [400, 401, 403]):
+				_on_api_error(kind, ApiScript.CODE_NOT_APPROVED, body, result)
+				return
+			# A transient consent failure is not fatal on its own: the session call decides.
+			_set_state(STATE_QUOTA)
+			_api.call("fetch_quota")
 		ApiScript.KIND_QUOTA:
 			if ok:
 				_apply_quota(body, String(body.get("entitlement", _entitlement)))
@@ -441,47 +537,53 @@ func _on_api_completed(kind: String, result: Dictionary) -> void:
 			if ok and bool(_server_quota.get("known", false)) and float(_server_quota.get("remainingSeconds", 1.0)) <= 0.0:
 				_on_quota_exhausted(body)
 				return
-			if not ok and code in [ApiScript.CODE_NOT_APPROVED, ApiScript.CODE_QUOTA_EXHAUSTED, ApiScript.CODE_CLOUD_DISABLED]:
-				_on_api_error(code, body, result)
+			if not ok and code in [ApiScript.CODE_NOT_APPROVED, ApiScript.CODE_CONSENT_REQUIRED, ApiScript.CODE_QUOTA_EXHAUSTED, ApiScript.CODE_CLOUD_DISABLED]:
+				_on_api_error(kind, code, body, result)
 				return
 			# Unreachable quota is not fatal on its own: the session call decides.
 			_set_state(STATE_CREATING)
-			_api.call("create_session", _lesson_id, _mode)
+			_api.call("create_session", _lesson_id)
 		ApiScript.KIND_SESSION:
 			if _state != STATE_CREATING:
 				return
 			if not ok:
-				_on_api_error(code, body, result)
+				_on_api_error(kind, code, body, result)
 				return
 			_session_id = String(body.get("sessionId", ""))
 			if _session_id.is_empty():
 				_fail(ApiScript.CODE_BAD_RESPONSE)
 				return
-			_apply_quota(body.get("quota", {}), String(body.get("entitlement", "")))
+			_apply_quota(ApiScript.quota_of(body), String(body.get("entitlement", "")))
+			if _requested_mode == MODE_TURNS:
+				_enter_turns_mode("requested")
+				return
 			_set_state(STATE_MINTING)
 			_api.call("mint_token", _session_id)
 		ApiScript.KIND_TOKEN:
 			if _state != STATE_MINTING:
 				return
 			if not ok:
-				_on_api_error(code, body, result)
+				_on_api_error(kind, code, body, result)
 				return
 			_set_state(STATE_CONNECTING)
 			if not bool(_transport.connect_session(body)):
 				_on_transport_trouble(String(_transport.call("last_error")))
+		ApiScript.KIND_TURN:
+			_on_turn_completed(result)
 		ApiScript.KIND_END:
 			_finish_end(result)
 		_:
 			pass
 
 
-func _on_api_error(code: String, body: Dictionary, result: Dictionary) -> void:
+func _on_api_error(kind: String, code: String, body: Dictionary, result: Dictionary) -> void:
+	var status: int = int(result.get("status", 0))
 	match code:
 		ApiScript.CODE_QUOTA_EXHAUSTED:
 			_on_quota_exhausted(body)
-		ApiScript.CODE_NOT_APPROVED:
+		ApiScript.CODE_NOT_APPROVED, ApiScript.CODE_CONSENT_REQUIRED:
 			_fail(REASON_NOT_APPROVED)
-		ApiScript.CODE_SESSION_ENDED:
+		ApiScript.CODE_SESSION_ENDED, ApiScript.CODE_NOT_FOUND:
 			_fail(REASON_SESSION_ENDED)
 		ApiScript.CODE_RATE_LIMITED:
 			if _rate_limit_retries < MAX_RATE_LIMIT_RETRIES:
@@ -490,11 +592,25 @@ func _on_api_error(code: String, body: Dictionary, result: Dictionary) -> void:
 				_schedule_retry(_state, wait if wait > 0.0 else RATE_LIMIT_DEFAULT_RETRY_SECONDS)
 			else:
 				_fail(code)
-		ApiScript.CODE_CLOUD_DISABLED:
+		ApiScript.CODE_CLOUD_DISABLED, ApiScript.CODE_NOT_CONFIGURED:
 			_fail(code)
 		_:
-			# provider_unavailable, timeout, bad_response, not_configured, http_*
-			_on_transport_trouble(code)
+			if kind == ApiScript.KIND_TOKEN and _state == STATE_MINTING:
+				# No realtime on this server (503 provider_unavailable on the
+				# deployed Worker, a timeout, a 5xx): the session is up, the
+				# turns path carries the lesson.
+				_enter_turns_mode(code)
+				return
+			if _is_transient(code, status):
+				_on_transport_trouble(code)
+			else:
+				# bad_request, unknown_lesson, invalid_turn, conflict, http_4xx: a
+				# client/server disagreement; the scripted tutor takes over.
+				_fail(code)
+
+
+static func _is_transient(code: String, status: int) -> bool:
+	return code in TRANSIENT_CODES or status == 0 or status >= 500 or code.begins_with("http_5")
 
 
 ## One reconnect with a fresh token; the second failure falls back.
@@ -515,6 +631,7 @@ func _on_transport_trouble(reason: String) -> void:
 	if not is_active():
 		return  # the boundary closed the session while the reply was dropped
 	_close_transport()
+	_transport_mode = ""
 	_set_state(STATE_MINTING)
 	_schedule_retry(STATE_MINTING, RETRY_DELAY_SECONDS)
 
@@ -530,32 +647,55 @@ func _run_retry() -> void:
 	if not is_active():
 		return
 	match action:
+		STATE_SIGNING_IN:
+			_api.call("sign_in_dev", "")
+		STATE_CONSENTING:
+			_api.call("grant_consent", ApiScript.CONSENT_AI_TUTOR)
 		STATE_QUOTA:
 			_api.call("fetch_quota")
 		STATE_CREATING:
-			_api.call("create_session", _lesson_id, _mode)
+			_api.call("create_session", _lesson_id)
 		STATE_MINTING:
 			_set_state(STATE_MINTING)
 			_api.call("mint_token", _session_id)
+		RETRY_TURN:
+			if _state == STATE_READY and not _turn_request.is_empty():
+				_api.call("submit_turn", _session_id, String(_turn_request["key"]), String(_turn_request["text"]), _turn_request["context"], 0.0)
 		_:
 			pass
 
 
+## The token endpoint said no realtime: the session carries on over REST turns.
+func _enter_turns_mode(reason: String) -> void:
+	_transport_mode = MODE_TURNS
+	_close_transport()
+	_turn_failures = 0
+	_idle_seconds = 0.0
+	_set_state(STATE_READY)
+	ready.emit({"sessionId": _session_id, "entitlement": _entitlement, "quota": server_quota(),
+		"transport": MODE_TURNS, "reconnects": _reconnects, "realtimeFallback": reason})
+
+
 func _on_quota_exhausted(body: Dictionary) -> void:
-	if body.has("quota"):
-		_apply_quota(body["quota"], _entitlement)
+	var block: Dictionary = ApiScript.quota_of(body)
+	if not block.is_empty():
+		_apply_quota(block, _entitlement)
+	_tell_mirror_exhausted()
+	if _state in [STATE_SIGNING_IN, STATE_CONSENTING, STATE_QUOTA, STATE_CREATING, STATE_MINTING, STATE_CONNECTING]:
+		_fail(ApiScript.CODE_QUOTA_EXHAUSTED)
+		return
+	_arm_boundary(REASON_QUOTA)
+	if not _reply_open and not _is_responding():
+		end(REASON_QUOTA)
+
+
+func _tell_mirror_exhausted() -> void:
 	var mirror: Object = _quota_now()
 	if mirror != null and mirror.has_method("apply_server_failure"):
 		var failure: Dictionary = {"ok": false, "state": "exhausted", "code": ApiScript.CODE_QUOTA_EXHAUSTED}
 		if not _server_quota.is_empty():
 			failure["quota"] = _server_quota_for_mirror()
 		mirror.call("apply_server_failure", failure)
-	if _state in [STATE_QUOTA, STATE_CREATING, STATE_MINTING, STATE_CONNECTING]:
-		_fail(ApiScript.CODE_QUOTA_EXHAUSTED)
-		return
-	_arm_boundary(REASON_QUOTA)
-	if not _reply_open and not _transport.is_responding():
-		end(REASON_QUOTA)
 
 
 func _arm_boundary(reason: String) -> void:
@@ -565,34 +705,41 @@ func _arm_boundary(reason: String) -> void:
 	_boundary_reason = reason
 
 
-func _apply_quota(raw: Variant, entitlement_name: String) -> void:
+## `end_at_boundary`: the server said this reply used the last of the day
+## (a turn's `endAtBoundary`); the mirror is told so the classroom closes.
+func _apply_quota(raw: Variant, entitlement_name: String, end_at_boundary: bool = false) -> void:
 	if typeof(raw) != TYPE_DICTIONARY:
 		return
 	var block: Dictionary = raw
 	if block.has("quota") and typeof(block["quota"]) == TYPE_DICTIONARY:
 		block = block["quota"]
-	var allowance: float = _number(block.get("allowanceSeconds", block.get("dailyAllowanceSeconds", 0.0)))
+	var allowance: float = _number(block.get("dailyAllowanceSeconds", block.get("allowanceSeconds", 0.0)))
 	var used: float = _number(block.get("usedSeconds", 0.0))
 	var known: bool = block.has("allowanceSeconds") or block.has("dailyAllowanceSeconds")
-	if not known and _server_quota.is_empty():
-		return  # a reply without a quota block tells us nothing
 	if not known:
-		return
+		return  # a reply without a quota block tells us nothing
+	var remaining: float = maxf(allowance - used, 0.0)
+	if block.has("remainingSeconds"):
+		remaining = minf(remaining, _number(block["remainingSeconds"]))
 	_server_quota = {
-		"allowanceSeconds": allowance, "usedSeconds": used, "remainingSeconds": maxf(allowance - used, 0.0),
+		"allowanceSeconds": allowance, "usedSeconds": used, "remainingSeconds": remaining,
 		"resetAtUtc": String(block.get("resetAtUtc", "")),
 		"entitlement": entitlement_name if not entitlement_name.is_empty() else String(block.get("entitlement", "free")),
+		"dailyTurnAllowance": int(_number(block.get("dailyTurnAllowance", 0))),
+		"usedTurns": int(_number(block.get("usedTurns", 0))),
 		"known": true,
 	}
 	if not entitlement_name.is_empty():
 		_entitlement = entitlement_name
 	var mirror: Object = _quota_now()
 	if mirror != null and mirror.has_method("apply_server_quota"):
-		mirror.call("apply_server_quota", _server_quota_for_mirror(), false)
+		mirror.call("apply_server_quota", _server_quota_for_mirror(), end_at_boundary)
+	if end_at_boundary or remaining <= 0.0:
+		_tell_mirror_exhausted()
 	quota_updated.emit(server_quota())
 
 
-## `TutorQuota` reads `dailyAllowanceSeconds`; the contract says `allowanceSeconds`.
+## `TutorQuota` reads `dailyAllowanceSeconds`; kept under its own key names.
 func _server_quota_for_mirror() -> Dictionary:
 	return {
 		"entitlement": String(_server_quota.get("entitlement", "free")),
@@ -603,17 +750,113 @@ func _server_quota_for_mirror() -> Dictionary:
 	}
 
 
+# -- turns path --------------------------------------------------------------------------------
+
+func _on_turn_completed(result: Dictionary) -> void:
+	if _turn_request.is_empty() or _state != STATE_READY:
+		return  # cancelled, superseded or ended while in flight
+	var ok: bool = bool(result.get("ok", false))
+	var code: String = String(result.get("code", ""))
+	var body: Dictionary = result.get("body", {})
+	var status: int = int(result.get("status", 0))
+	if ok:
+		var key: String = String(_turn_request.get("key", ""))
+		_turn_request = {}
+		_turn_failures = 0
+		_on_turn_reply(body, bool(result.get("replayed", false)), key)
+		return
+	match code:
+		ApiScript.CODE_RATE_LIMITED:
+			if int(_turn_request["retries"]) < MAX_TURN_RETRIES:
+				_turn_request["retries"] = int(_turn_request["retries"]) + 1
+				var wait: float = float(result.get("retryAfterSeconds", 0.0))
+				_schedule_retry(RETRY_TURN, wait if wait > 0.0 else RATE_LIMIT_DEFAULT_RETRY_SECONDS)
+			else:
+				_turn_lost(code)
+		ApiScript.CODE_QUOTA_EXHAUSTED:
+			_turn_lost(code)
+			_on_quota_exhausted(body)
+		ApiScript.CODE_NOT_APPROVED, ApiScript.CODE_CONSENT_REQUIRED:
+			_turn_lost(code)
+			_fail(REASON_NOT_APPROVED)
+		ApiScript.CODE_SESSION_ENDED, ApiScript.CODE_NOT_FOUND:
+			_turn_lost(code)
+			_fail(REASON_SESSION_ENDED)
+		_:
+			if _is_transient(code, status):
+				if int(_turn_request["retries"]) < MAX_TURN_RETRIES:
+					# Same Idempotency-Key: a served-but-lost reply is replayed, not charged again.
+					_turn_request["retries"] = int(_turn_request["retries"]) + 1
+					_schedule_retry(RETRY_TURN, RETRY_DELAY_SECONDS)
+					return
+				_turn_lost(code)
+				_turn_failures += 1
+				if _turn_failures >= MAX_TURN_FAILURES:
+					_fail(code)
+			else:
+				# invalid_turn, bad_request, idempotency_mismatch, unknown_lesson: a
+				# client bug; the scripted line answers, the session stays.
+				push_warning("cloud tutor: turn refused by the server (%s)" % code)
+				_turn_lost(code)
+
+
+## The request is gone; the provider answers with the scripted turn.
+func _turn_lost(code: String) -> void:
+	_turn_request = {}
+	_close_reply()
+	turn_failed.emit(code)
+
+
+func _drop_turn_request() -> void:
+	if _turn_request.is_empty():
+		return
+	_turn_request = {}
+	if _retry_action == RETRY_TURN:
+		_retry_action = ""
+		_retry_left = -1.0
+	if _api != null:
+		_api.call("cancel")
+
+
+func _on_turn_reply(body: Dictionary, replayed: bool, key: String = "") -> void:
+	var block: Dictionary = ApiScript.quota_of(body)
+	var at_boundary: bool = bool(body.get("endAtBoundary", false))
+	_apply_quota(block, _entitlement, at_boundary)
+	var turn: Dictionary = TurnValidator.coerce(body.get("turn", {}))
+	_reply_done = true
+	_reply_had_audio = false
+	_reply_turn = turn
+	_streamed_text = String(turn.get("speech", ""))
+	_idle_seconds = 0.0
+	_turn_log.append({
+		"key": key,
+		"turnIndex": int(_number(body.get("turnIndex", 0))), "chargedSeconds": _number(body.get("chargedSeconds", 0.0)),
+		"replayed": replayed, "endAtBoundary": at_boundary, "provider": String(body.get("provider", "")),
+		"fallback": String(body.get("fallback", "")) if body.get("fallback", null) != null else "",
+		"usedSeconds": float(_server_quota.get("usedSeconds", 0.0)), "usedTurns": int(_server_quota.get("usedTurns", 0)),
+	})
+	subtitle_changed.emit(String(turn.get("subtitle", turn.get("speech", ""))))
+	var visual: Dictionary = turn.get("visual", {})
+	if String(visual.get("type", "none")) == "flashcard" and not String(visual.get("assetId", "")).is_empty():
+		tool_applied.emit("show_card", {"assetId": String(visual["assetId"])})
+	if at_boundary:
+		_arm_boundary(REASON_QUOTA)
+	turn_ready.emit(turn.duplicate(true))
+	_close_reply()
+
+
 # -- transport events --------------------------------------------------------------------------
 
 func _on_connected(info: Dictionary) -> void:
 	if _state != STATE_CONNECTING:
 		return
 	_idle_seconds = 0.0
+	_transport_mode = MODE_REALTIME
 	_set_state(STATE_READY)
 	if _transport.has_method("set_played_ms_source") and _player != null:
 		_transport.call("set_played_ms_source", Callable(_player, "played_ms"))
 	ready.emit({"sessionId": _session_id, "entitlement": _entitlement, "quota": server_quota(),
-		"transport": String(info.get("transport", "")), "reconnects": _reconnects})
+		"transport": String(info.get("transport", MODE_REALTIME)), "reconnects": _reconnects})
 
 
 func _on_text_delta(text: String) -> void:
@@ -705,7 +948,7 @@ func _on_server_speech_started() -> void:
 
 
 func _on_transport_error(code: String, _message: String) -> void:
-	if _state == STATE_ENDING or _state == STATE_ENDED or _closing_transport:
+	if _state == STATE_ENDING or _state == STATE_ENDED or _closing_transport or _transport_mode == MODE_TURNS:
 		return
 	if _state == STATE_READY and code == BUSY_ERROR_CODE:
 		# The request raced the server's cancel of the previous reply: this
@@ -723,7 +966,7 @@ func _on_transport_error(code: String, _message: String) -> void:
 
 
 func _on_transport_closed(reason: String) -> void:
-	if _state == STATE_ENDING or _state == STATE_ENDED or _closing_transport:
+	if _state == STATE_ENDING or _state == STATE_ENDED or _closing_transport or _transport_mode == MODE_TURNS:
 		return
 	_on_transport_trouble(reason)
 
@@ -738,11 +981,17 @@ func _close_transport() -> void:
 
 # -- reply bookkeeping -------------------------------------------------------------------------------
 
+func _is_responding() -> bool:
+	if _transport_mode == MODE_TURNS:
+		return not _turn_request.is_empty()
+	return _transport != null and _transport.is_responding()
+
+
 ## A reply the SERVER started (server VAD on streamed audio): played and
 ## lip-synced like any other, but no `send_transcript()` asked for it, so the
 ## conversation provider has nothing pending and the lesson loop is untouched.
 func _open_server_reply() -> bool:
-	if _state != STATE_READY or _transport == null or not _transport.is_responding():
+	if _state != STATE_READY or _transport_mode != MODE_REALTIME or _transport == null or not _transport.is_responding():
 		return false
 	if _transport.has_method("is_server_initiated") and not bool(_transport.call("is_server_initiated")):
 		return false
@@ -783,8 +1032,7 @@ func _replace_reply(reason: String) -> void:
 
 
 func _after_boundary() -> void:
-	if _state == STATE_READY and _end_at_boundary and not _reply_open \
-			and (_transport == null or not _transport.is_responding()):
+	if _state == STATE_READY and _end_at_boundary and not _reply_open and not _is_responding():
 		end(_boundary_reason)
 
 
@@ -821,14 +1069,21 @@ func _fail(reason: String) -> void:
 	if _state in [STATE_ENDING, STATE_ENDED, STATE_FAILED]:
 		return
 	_set_state(STATE_FAILED)
+	_drop_turn_request()
 	_close_reply()
 	_close_transport()
 	fell_back.emit(reason)
 	_end_reason = "%s:%s" % [REASON_PROVIDER_FAILED, reason]
-	if _session_id.is_empty() or _api == null or not bool(_api.call("is_available")):
+	_post_end()
+
+
+## `/end` leaves exactly once per session, with `{reason}` only.
+func _post_end() -> void:
+	if _session_id.is_empty() or _api == null or not bool(_api.call("is_available")) or _end_posted:
 		_finish_end({"ok": false, "code": "no_session", "body": {}})
 		return
-	_api.call("end_session", _session_id, _end_reason, _active_seconds, usage())
+	_end_posted = true
+	_api.call("end_session", _session_id, _end_reason)
 
 
 func _finish_end(result: Dictionary) -> void:
@@ -838,11 +1093,16 @@ func _finish_end(result: Dictionary) -> void:
 		"reason": _end_reason, "secondsUsed": snappedf(_active_seconds, 0.1), "usage": usage(),
 		"serverAck": bool(result.get("ok", false)), "code": String(result.get("code", "")),
 		"quota": server_quota(), "reconnects": _reconnects, "sessionId": _session_id,
+		"transport": _transport_mode, "turns": _turn_log.size(),
 	}
 	var body: Dictionary = result.get("body", {})
 	if typeof(body.get("quota", null)) == TYPE_DICTIONARY:
 		_apply_quota(body["quota"], _entitlement)
 		_last_summary["quota"] = server_quota()
+	if typeof(body.get("usage", null)) == TYPE_DICTIONARY:
+		_last_summary["serverUsage"] = (body["usage"] as Dictionary).duplicate(true)
+	if body.has("endedAt"):
+		_last_summary["endedAt"] = String(body["endedAt"])
 	_set_state(STATE_ENDED)
 	ended.emit(_end_reason, _last_summary.duplicate(true))
 
