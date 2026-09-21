@@ -280,15 +280,33 @@ func show_gate_card() -> void:
 
 
 ## Back / Escape at any time: the same as Done when the panel is open, the same
-## as the gate card's Back when it is not. Nothing here can trap a grown-up.
+## as the gate card's Back when the card is up (whichever way the card was
+## reached: the title, the pause card, a tap on the gear). Nothing here can
+## trap a grown-up. With only the corner gear showing the event is not ours and
+## goes on to the room.
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
-		if _panel.visible:
-			close_settings()
-			get_viewport().set_input_as_handled()
-		elif _standalone:
-			_on_back_pressed()
-			get_viewport().set_input_as_handled()
+	if event.is_action_pressed("ui_cancel") and request_back():
+		get_viewport().set_input_as_handled()
+
+
+## The Android back button arrives as a window notification, not as
+## `ui_cancel`. (Whether the app then also quits is `quit_on_go_back` in
+## project.godot, which is not this panel's to decide.)
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		request_back()
+
+
+## Leaves whatever is open: Done for the panel, Back for the gate card. Returns
+## true when there was something to leave.
+func request_back() -> bool:
+	if _panel != null and _panel.visible:
+		close_settings()
+		return true
+	if _gate_screen != null and _gate_screen.visible:
+		_on_back_pressed()
+		return true
+	return false
 
 
 ## ---------------------------------------------------------------------------
@@ -332,16 +350,38 @@ func _unhandled_input(event: InputEvent) -> void:
 ## second copy contributes a delta of zero instead of doubling the scroll. On
 ## the Mac the same code lets a mouse drag scroll the panel, which is how the
 ## fix was reproduced without a device.
+##
+## ## One finger at a time (QA, 2026-09-21)
+##
+## "A second finger can press an option while the first scrolls." Only the
+## FIRST finger down is the mouse; a second one reaches the GUI as a bare
+## `InputEventScreenTouch` with its own index -- and a Button, a slider and the
+## hold-to-erase bar all answer bare touches. So while a gesture is live the
+## recogniser remembers which touch index it belongs to and marks every event
+## of any OTHER index as handled before the GUI sees it: a second finger can
+## neither press, hold, close nor scroll until the first has lifted. The first
+## finger's own tap and scroll are unaffected. See `_two_fingers` in
+## `tests/input_settings_harness.gd`.
 
-enum Gesture { NONE, PENDING, SCROLLING, CONTROL }
+## OUTSIDE: a press on the open panel but outside the scroll area (the footer:
+## Done, Reset, the erase bar). It never becomes a scroll; it is tracked only so
+## the one-finger rule holds there too.
+enum Gesture { NONE, PENDING, SCROLLING, CONTROL, OUTSIDE }
 
 ## Movement, in design pixels, before a press becomes a gesture at all. A
 ## fingertip that is merely pressing wobbles by less than this.
 const SCROLL_DEADZONE: float = 12.0
+## How close a touch press must land to a gesture the emulated mouse has just
+## started to be recognised as the SAME finger (the two copies share a
+## position; anything further away is another finger).
+const SAME_FINGER_DISTANCE: float = 4.0
 
 var _gesture: Gesture = Gesture.NONE
 var _gesture_start: Vector2 = Vector2.ZERO
 var _gesture_last: Vector2 = Vector2.ZERO
+## The touch index of the finger the live gesture belongs to; -1 until its
+## touch event has been seen (a mouse-only gesture on the Mac stays -1).
+var _gesture_index: int = -1
 ## The slider the press landed on (if any) and its value before the press.
 var _gesture_slider: HSlider = null
 var _gesture_slider_value: float = 0.0
@@ -357,16 +397,29 @@ func _input(event: InputEvent) -> void:
 	var released: bool = false
 	var moved: bool = false
 	var position: Vector2 = Vector2.ZERO
+	## The touch index this event carries, or -1 for a mouse event.
+	var touch_index: int = -1
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
-		if touch.index != 0:
+		if _gesture != Gesture.NONE and not _is_gesture_finger(touch.index, touch.position, touch.pressed):
+			# A second finger while the first one's gesture is live: swallowed.
+			get_viewport().set_input_as_handled()
 			return
+		if touch.pressed and _gesture != Gesture.NONE and _gesture_index < 0:
+			# The touch half of the press the emulated mouse already delivered:
+			# remember whose finger this is, and let it through as before.
+			_gesture_index = touch.index
+			return
+		touch_index = touch.index
 		position = touch.position
 		pressed = touch.pressed
 		released = not touch.pressed
 	elif event is InputEventScreenDrag:
 		var drag := event as InputEventScreenDrag
-		if drag.index != 0:
+		if _gesture == Gesture.NONE:
+			return
+		if not _is_gesture_finger(drag.index, drag.position, false):
+			get_viewport().set_input_as_handled()
 			return
 		position = drag.position
 		moved = true
@@ -386,17 +439,20 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if pressed:
-		if _gesture == Gesture.NONE and _scroll.get_global_rect().has_point(position):
-			_gesture = Gesture.PENDING
+		if _gesture == Gesture.NONE:
+			var in_scroll: bool = _scroll.get_global_rect().has_point(position)
+			_gesture = Gesture.PENDING if in_scroll else Gesture.OUTSIDE
 			_gesture_start = position
 			_gesture_last = position
-			_gesture_slider = _slider_at(position)
+			_gesture_index = touch_index
+			_gesture_slider = _slider_at(position) if in_scroll else null
 			_gesture_slider_value = _gesture_slider.value if _gesture_slider != null else 0.0
 		return
 
 	if released:
 		var was_scrolling: bool = _gesture == Gesture.SCROLLING
 		_gesture = Gesture.NONE
+		_gesture_index = -1
 		_gesture_slider = null
 		if was_scrolling:
 			# The control already had its release (synthetic); the real one must
@@ -404,7 +460,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 
-	if not moved or _gesture == Gesture.NONE or _gesture == Gesture.CONTROL:
+	if not moved or _gesture == Gesture.NONE or _gesture == Gesture.CONTROL or _gesture == Gesture.OUTSIDE:
 		return
 
 	if _gesture == Gesture.PENDING:
@@ -422,6 +478,18 @@ func _input(event: InputEvent) -> void:
 	_scroll.scroll_vertical -= int(round(position.y - _gesture_last.y))
 	_gesture_last = position
 	get_viewport().set_input_as_handled()
+
+
+## Whether a touch event with `index` belongs to the finger whose gesture is
+## live. Once that finger's index is known it is simply compared; before it is
+## known (the emulated mouse press has arrived, its touch copy has not) a press
+## at the same spot is the same finger and anything else is another one.
+func _is_gesture_finger(index: int, position: Vector2, pressed: bool) -> bool:
+	if _gesture_index >= 0:
+		return index == _gesture_index
+	if pressed:
+		return position.distance_to(_gesture_start) <= SAME_FINGER_DISTANCE
+	return true
 
 
 ## The press has just turned out to be a scroll. Take it back from the control.
@@ -854,6 +922,7 @@ func open_settings() -> void:
 	_panel.visible = true
 	_scroll.scroll_vertical = 0
 	_gesture = Gesture.NONE
+	_gesture_index = -1
 	_hide_reset_confirmation()
 	_collapse_songs_for_fun()
 	_collapse_learn_with_aliz()
@@ -890,6 +959,7 @@ func _show_locked() -> void:
 	_footer.visible = false
 	_panel.visible = false
 	_gesture = Gesture.NONE
+	_gesture_index = -1
 	_hide_reset_confirmation()
 	# The external link never survives a close: locking the panel puts it away.
 	_collapse_songs_for_fun()
@@ -955,13 +1025,20 @@ func _on_footer_resized() -> void:
 func _go_home() -> void:
 	if _going_home:
 		return
+	if not ResourceLoader.exists(HOME_SCENE):
+		return
+	# The request is recorded before the navigation guard, so a harness can see
+	# that Done / Close / Back asked for the title even though it will not swap.
+	_going_home = true
 	var tree: SceneTree = _scene_tree()
 	if tree == null or tree.get_script() != null:
 		return
-	if not ResourceLoader.exists(HOME_SCENE):
-		return
-	_going_home = true
 	tree.call_deferred("change_scene_to_file", HOME_SCENE)
+
+
+## True once a standalone panel has asked for the title screen. Tests.
+func is_going_home() -> bool:
+	return _going_home
 
 
 ## True while the standalone gate card is showing. Tests.
@@ -1041,6 +1118,10 @@ func _refresh_row_helpers() -> void:
 	var hold_hint: String = Localization.helper("hold_for_3_seconds_to_open", "")
 	_gate_hold_label.text = "Hold for 3 seconds to open" \
 			if hold_hint.is_empty() else "Hold for 3 seconds to open\n%s" % hold_hint
+	# The Thai privacy block follows the language at once too, not only on the
+	# next open (harness, 2026-09-21: it stayed up under Japanese).
+	if _aliz_privacy_th != null:
+		_aliz_privacy_th.visible = _model.get_helper_language() == "th"
 
 
 ## -- volumes -------------------------------------------------------------------
