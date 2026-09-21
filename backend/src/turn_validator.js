@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 
 export const EMOTIONS = Object.freeze(['neutral', 'listening', 'thinking', 'happy', 'encouraging', 'smile']);
-export const GESTURES = Object.freeze(['none', 'nod', 'tilt', 'point', 'clap', 'wave']);
+export const GESTURES = Object.freeze(['none', 'nod', 'tilt', 'point', 'clap', 'wave', 'thumbsUp', 'celebrate', 'listening', 'thinking', 'encourage']);
 export const VISUAL_TYPES = Object.freeze(['none', 'flashcard', 'model']);
 // switch_lesson + jump_step: addendum 2026-09-20 evening (choose steps, barge-in routing); the client validator and
 // game/content/tutor/turn_fixtures.json already carry them (Agent E).

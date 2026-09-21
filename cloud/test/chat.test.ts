@@ -25,7 +25,9 @@ function turn(c: Client, sid: string, transcript: string, extra: Record<string, 
 
 describe('free chat: the gate', () => {
   it('is OFF by default: DEV_MODE without FREE_CHAT_ENABLED answers 403 feature_disabled and opens no session', async () => {
-    const c = makeClient();
+    // The dev environment now sets FREE_CHAT_ENABLED=1 (wrangler.toml); the
+    // default is exercised with the flag explicitly absent.
+    const c = makeClient({ env: { FREE_CHAT_ENABLED: '' } as never });
     const clientId = uniqueId('nochat');
     const r = await c.api('POST', '/v1/tutor/sessions', { mode: 'chat', clientId });
     expect(r.status).toBe(403);

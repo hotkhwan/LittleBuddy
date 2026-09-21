@@ -42,7 +42,7 @@ test('fallback turn matches the contract exactly', () => {
 test('truth table: every enum value is accepted and one-off values are not', () => {
   const base = { speech: 'Hi!', emotion: 'happy', gesture: 'nod', visual: { type: 'none' }, lessonAction: 'retry' };
   for (const emotion of ['neutral', 'listening', 'thinking', 'happy', 'encouraging', 'smile']) assert.ok(validateTurn({ ...base, emotion }).ok, emotion);
-  for (const gesture of ['none', 'nod', 'tilt', 'point', 'clap', 'wave']) assert.ok(validateTurn({ ...base, gesture }).ok, gesture);
+  for (const gesture of ['none', 'nod', 'tilt', 'point', 'clap', 'wave', 'thumbsUp', 'celebrate', 'listening', 'thinking', 'encourage']) assert.ok(validateTurn({ ...base, gesture }).ok, gesture);
   for (const lessonAction of ['next_question', 'retry', 'give_hint', 'complete', 'end_session']) assert.ok(validateTurn({ ...base, lessonAction }).ok, lessonAction);
   for (const id of DEFAULT_ASSET_ALLOWLIST) assert.ok(validateTurn({ ...base, visual: { type: 'flashcard', assetId: id } }).ok, id);
   assert.equal(validateTurn({ ...base, emotion: 'Happy' }).ok, false);

@@ -64,7 +64,7 @@ test('openai provider: schema mirrors TutorTurn enums and is strict', () => {
   assert.equal(s.additionalProperties, false);
   assert.deepEqual(s.required.sort(), ['emotion', 'gesture', 'lessonAction', 'nextQuestion', 'speech', 'subtitle', 'visual'].sort());
   assert.deepEqual(s.properties.emotion.enum, ['neutral', 'listening', 'thinking', 'happy', 'encouraging', 'smile']);
-  assert.deepEqual(s.properties.gesture.enum, ['none', 'nod', 'tilt', 'point', 'clap', 'wave']);
+  assert.deepEqual(s.properties.gesture.enum, ['none', 'nod', 'tilt', 'point', 'clap', 'wave', 'thumbsUp', 'celebrate', 'listening', 'thinking', 'encourage']);
   assert.deepEqual(s.properties.visual.properties.type.enum, ['none', 'flashcard', 'model']);
   assert.deepEqual(s.properties.lessonAction.enum, ['next_question', 'retry', 'give_hint', 'complete', 'end_session', 'switch_lesson', 'jump_step']);
   assert.equal(s.properties.visual.additionalProperties, false);
