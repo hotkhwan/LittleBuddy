@@ -30,10 +30,14 @@ extends Control
 ##
 ## ## Child UX (CLAUDE.md, ART_BIBLE §8)
 ##
-## Cards are 256 px square (floor 240), captions 28 pt (floor 27), pictures
-## first and words second, the palette only, a big Back button, no lock icons,
-## no greyed-out cards, no timers. The stars are `rating_star.gd`'s: earned
-## gold, the next one breathing, the rest a ghost -- never an empty slot.
+## Cards are the TITLE SCREEN's cards (2026-09-21): 240 px square, the same
+## 9-slice frames in the same rotation, the picture in a box at the top, a
+## 30 pt caption under it -- exactly the Play with Bunny card's own geometry
+## (`main.tscn`: 240 card, 116 picture box from y 12, caption 30 pt from y
+## 128), with the caption band shortened so the three stars fit under it.
+## Pictures first and words second, the palette only, a big Back button, no
+## lock icons, no greyed-out cards, no timers. The stars are `rating_star.gd`'s:
+## earned gold, the next one breathing, the rest a ghost -- never an empty slot.
 
 signal activity_chosen(mission_id: String)
 signal back_pressed
@@ -52,21 +56,26 @@ const HOUSE_CHAPTER_ID: String = "ch3"
 const TITLE: String = "Play with Bunny"
 const BACK_LABEL: String = "Back"
 
-const CARD_SIDE: float = 256.0
-const CARD_GAP: float = 28.0
+## The title screen's card: 240 px (ART_BIBLE §8 floor, and what `main.tscn`
+## draws), 40 px gaps, the picture box 100 px from y 10 (the title's is 116
+## from y 12 with no stars to fit), the caption 30 pt in a two-line band, the
+## three stars under it. `test_ui_chrome.gd` pins the card side and caption
+## size to the title screen's Play card so the two cannot drift apart again.
+const CARD_SIDE: float = 240.0
+const CARD_GAP: float = 40.0
 const COLUMNS: int = 4
-const CAPTION_FONT_SIZE: int = 28
+const CAPTION_FONT_SIZE: int = 30
 const TITLE_FONT_SIZE: int = 52
 const BACK_FONT_SIZE: int = 34
 const BACK_SIZE: Vector2 = Vector2(260.0, 120.0)
 const MARGIN: float = 24.0
 const GRID_TOP: float = 168.0
-const STAR_SIZE: float = 44.0
-const PICTURE_TOP: float = 18.0
-const PICTURE_SIZE: float = 104.0
-const CAPTION_TOP: float = 126.0
-const CAPTION_HEIGHT: float = 72.0
-const STARS_TOP: float = 202.0
+const STAR_SIZE: float = 38.0
+const PICTURE_TOP: float = 10.0
+const PICTURE_SIZE: float = 100.0
+const CAPTION_TOP: float = 110.0
+const CAPTION_HEIGHT: float = 76.0
+const STARS_TOP: float = 192.0
 const PRESS_SCALE: Vector2 = Vector2(0.94, 0.94)
 const PRESS_SECONDS: float = 0.08
 const TAP_SFX: String = "gentle_tap"

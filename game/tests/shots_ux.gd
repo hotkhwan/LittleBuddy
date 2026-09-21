@@ -15,14 +15,34 @@ extends SceneTree
 ##   <prefix>_pause         the pause card open
 ##   <prefix>_tap_hint      the redesigned tap indicator on a prop
 ##
+## and, with `badge` as the fourth argument (the interaction-layer pass,
+## 2026-09-21), one run that photographs every badge the owner asked about:
+##
+##   <prefix>_badge_bunny    CARRY on Bunny, his bubble up, Aliz square to camera
+##   <prefix>_badge_fridge   OPEN on the shut fridge, Aliz in front of it
+##   <prefix>_badge_carry    PLACE while Bunny rides in her arms, at the bed
+##   <prefix>_badge_hud      the HUD alone: star glyph + count, Home
+##
+## each asserted (verb, laid out, drawn badge off every face / bubble /
+## silhouette the layer measured, hit box off every control) and printed with
+## its visible-vs-target numbers.
+##
+## A fifth argument `design` hosts the world the way a DEVICE does: the
+## SubViewport's 2D space is overridden to the 1024 px design height at the
+## frame's aspect and stretched onto the pixels (`canvas_items` / `expand`,
+## see `shots_menu.gd`). Without it the UI draws 1:1 in the frame, which is a
+## smaller HUD than the child sees.
+##
 ## Every affordance frame is ASSERTED before it is written: the layer must be
 ## showing the verb the file name claims, or the run fails. The PNG's own size
 ## is asserted afterwards.
 
 const OUT_DIR: String = "docs/shots/"
+const DESIGN_HEIGHT: int = 1024
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 const NavMath := preload("res://scripts/navigation/nav_math.gd")
 const HouseLayout := preload("res://scripts/house/house_layout.gd")
+const LayerScript := preload("res://scripts/interaction/affordance_layer.gd")
 
 var _prefix: String = "ux_ipad"
 var _frame := Vector2i(1334, 750)
@@ -55,6 +75,11 @@ func _run() -> void:
 
 	_viewport = SubViewport.new()
 	_viewport.size = _frame
+	if args.size() > 4 and String(args[4]) == "design":
+		var design_width: int = int(round(float(_frame.x) * float(DESIGN_HEIGHT) / float(_frame.y)))
+		_viewport.size_2d_override = Vector2i(design_width, DESIGN_HEIGHT)
+		_viewport.size_2d_override_stretch = true
+		print("  design space %dx%d stretched onto %dx%d" % [design_width, DESIGN_HEIGHT, _frame.x, _frame.y])
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	root.add_child(_viewport)
 
@@ -70,6 +95,9 @@ func _run() -> void:
 		return
 	if args.size() > 3 and String(args[3]) == "free":
 		await _run_free_play_acts()
+		return
+	if args.size() > 3 and String(args[3]) == "badge":
+		await _run_badges()
 		return
 	# Free Play: the objective-free house, which is where a child meets the
 	# fridge without a mission steering the camera.
@@ -268,10 +296,12 @@ func _run_free_play_acts() -> void:
 	await _settle(0.6)
 	_quiet()
 	_expect("OPEN", "bedroom.toyBox", "badge_bedroom")
-	var disc: float = float(_layer.call("badge_diameter", float(_frame.y)))
-	print("  badge_bedroom: disc %.0f px on a %d px tall frame" % [disc, _frame.y])
-	if absf(disc - float(_frame.y) * 0.128) > 2.0:
-		_fail.append("badge_bedroom: the disc is %.0f px; 12.8%% of %d is %.0f" % [disc, _frame.y, float(_frame.y) * 0.128])
+	var view_h: float = _layer.get_viewport_rect().size.y
+	var disc: float = float(_layer.call("badge_diameter", view_h))
+	print("  badge_bedroom: disc %.0f px in a %.0f px tall layer" % [disc, view_h])
+	if absf(disc - view_h * LayerScript.DISC_DIAMETER / LayerScript.REFERENCE_HEIGHT) > 2.0:
+		_fail.append("badge_bedroom: the disc is %.0f px; %.0f/1024 of %.0f is %.0f"
+				% [disc, LayerScript.DISC_DIAMETER, view_h, view_h * LayerScript.DISC_DIAMETER / LayerScript.REFERENCE_HEIGHT])
 	await _shot("%s_badge_bedroom" % _prefix)
 
 	var bedroom: Node = _world.call("get_current_room")
@@ -407,6 +437,114 @@ func _run_free_play_acts() -> void:
 	_expect("ENTER", "bedroom.doorToBathroom", "bathroom_enter")
 	await _shot("%s_bathroom_enter" % _prefix)
 	_finish()
+
+
+## THE BADGES, photographed (interaction-layer pass, 2026-09-21). Free Play,
+## the real rooms; each frame asserted against the layer's own measurements
+## before it is written, and the visible-vs-target numbers printed.
+func _run_badges() -> void:
+	_world.call("set_progression_mode", 1)
+	_viewport.add_child(_world)
+	await _settle(0.8)
+	_director = _world.call("get_free_play_director")
+	_hud = _director.call("get_hud") if _director != null else null
+	_layer = _hud.call("get_affordance_layer") if _hud != null else null
+	if _layer == null:
+		_fail.append("the HUD has no affordance layer")
+		return _finish()
+	var aliz: Node3D = _world.call("get_character")
+	var view: Vector2 = _layer.get_viewport_rect().size
+	var s: float = LayerScript.badge_scale(view.y)
+	print("  layer space %s, scale %.3f: disc %.0f px, glyph %.0f px, pill %.0f px tall, word %d px, hit %.0f px"
+			% [str(view), s, LayerScript.badge_diameter(view.y), LayerScript.glyph_box(view.y),
+				LayerScript.LABEL_HEIGHT * s, int(round(LayerScript.LABEL_FONT_SIZE * s)), LayerScript.HIT_SIZE])
+
+	# -- Bunny, standing: CARRY ---------------------------------------------------------
+	_world.call("place_in_room", "bedroom", "")
+	await _settle(0.5)
+	_quiet()
+	_stand_at("bedroom.littleBuddy")
+	await _settle(0.7)
+	_quiet()
+	_expect_any(["CARRY", "HUG"], "bedroom.littleBuddy", "badge_bunny")
+	_report_badge("badge_bunny")
+	await _shot("%s_badge_bunny" % _prefix)
+
+	# -- The fridge, shut: OPEN -----------------------------------------------------------
+	_world.call("place_in_room", "kitchen", "")
+	await _settle(0.5)
+	_quiet()
+	var kitchen: RefCounted = _world.call("get_kitchen_state")
+	if kitchen != null:
+		kitchen.call("set_open", "fridge", false)
+	_stand_at("kitchen.fridge")
+	await _settle(0.7)
+	_quiet()
+	_expect("OPEN", "kitchen.fridge", "badge_fridge")
+	_report_badge("badge_fridge")
+	await _shot("%s_badge_fridge" % _prefix)
+
+	# -- Bunny in her arms, at the bed: PLACE -----------------------------------------------
+	_world.call("place_in_room", "bedroom", "")
+	await _settle(0.5)
+	_quiet()
+	var bunny: Node = null
+	for child: Node in (_world.call("get_current_room") as Node).get_children():
+		if child.has_method("set_carried_by"):
+			bunny = child
+	if bunny == null:
+		_fail.append("badge_carry: no Bunny in the bedroom")
+	else:
+		_stand_at("bedroom.littleBuddy")
+		await _settle(0.3)
+		if not bool(bunny.call("perform_affordance", aliz)):
+			_fail.append("badge_carry: perform_affordance(carry) refused")
+		await _settle(0.9)
+		_stand_at("bedroom.bed")
+		aliz.rotation.y = PI  # square to the camera, the pose the owner saw
+		await _settle(0.7)
+		_quiet()
+		_expect("PLACE", "bedroom.bed", "badge_carry")
+		_report_badge("badge_carry")
+		await _shot("%s_badge_carry" % _prefix)
+		aliz.call("put_down_carried")
+		await _settle(0.9)
+
+	# -- The HUD alone ---------------------------------------------------------------------
+	SpatialUtil.set_world_position(aliz, SpatialUtil.world_position(aliz) + Vector3(0.0, 0.0, 1.2))
+	await _settle(0.5)
+	_quiet()
+	_hud.call("set_stars", 3)
+	await _settle(0.2)
+	var counter: Control = _hud.call("get_star_counter")
+	print("  badge_hud: star counter %s, glyph %s, count '%s', Home %s" % [
+		str(Rect2(counter.position, counter.size)),
+		str(counter.get_node("StarGlyph").size), _hud.call("get_star_text"),
+		str(_hud.call("home_button_rect", view))])
+	await _shot("%s_badge_hud" % _prefix)
+	_finish()
+
+
+## Prints the live badge's parts and asserts the two promises: the drawn
+## badge clears every visual keep-out the layer measured; the hit box clears
+## every control.
+func _report_badge(shot: String) -> void:
+	if not bool(_layer.call("is_laid_out")):
+		return
+	var rects: Dictionary = _layer.call("get_layout_rects")
+	var visual: Dictionary = _layer.call("get_visual_keep_outs")
+	print("  %s: %s, disc %s, glyph %s, pill %s, hit %s" % [shot, _layer.call("get_placement"),
+			str((rects["disc"] as Rect2).size), str((rects["glyph"] as Rect2).size),
+			str((rects["pill"] as Rect2).size), str((rects["hit"] as Rect2).size)])
+	for key: String in visual.keys():
+		print("    keep-out %-11s %s" % [key, str(visual[key])])
+		if (rects["footprint"] as Rect2).intersects(visual[key]):
+			_fail.append("%s: the drawn badge %s covers %s %s" % [shot, str(rects["footprint"]), key, str(visual[key])])
+	for blocked: Rect2 in (_layer.call("get_keep_out_rects") as Array):
+		if (rects["hit"] as Rect2).intersects(blocked):
+			_fail.append("%s: the hit box %s covers a control %s" % [shot, str(rects["hit"]), str(blocked)])
+	if (rects["hit"] as Rect2).size.x < 239.5 or (rects["hit"] as Rect2).size.y < 239.5:
+		_fail.append("%s: the hit box %s is under 240 px" % [shot, str(rects["hit"])])
 
 
 ## Stands Aliz at the target and fires the arrival, as a finished walk would.

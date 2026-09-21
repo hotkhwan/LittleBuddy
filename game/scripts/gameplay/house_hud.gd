@@ -43,6 +43,7 @@ const SafeAreaScript := preload("res://scripts/ui/safe_area.gd")
 const Localization := preload("res://scripts/localization/localization.gd")
 const HelperFont := preload("res://scripts/localization/helper_font.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
+const IconGlyphScript := preload("res://scripts/progression/icon_glyph.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 
 ## The grown-ups screen the pause card's third button opens, as an overlay on
@@ -63,6 +64,11 @@ const HINT_FONT_SIZE: int = 27
 const CAPTION_FONT_SIZE: int = 24
 const BUTTON_FONT_SIZE: int = 30
 const STAR_FONT_SIZE: int = 34
+## The star glyph beside the number: 1.3x the digits' size, with a 3 px ink
+## rim (a second copy of the same glyph under it).
+const STAR_GLYPH_RATIO: float = 1.3
+const STAR_RIM_PX: float = 3.0
+const STAR_GAP: float = 8.0
 
 ## Free Play's word card. Much bigger than a prompt, because in Free Play the
 ## word IS the content: a child taps the fridge and this is the reward, together
@@ -180,7 +186,12 @@ var _paused_world: bool = false
 var _prior_taps_enabled: bool = true
 var _prior_character_disabled: bool = false
 var _caption: Label = null
-var _stars: Label = null
+## The star counter box, its two glyph layers and the number (see `build()`).
+var _stars: Control = null
+var _star_rim: TextureRect = null
+var _star_glyph: TextureRect = null
+var _star_count: Label = null
+var _star_total: int = 0
 var _encouragement: Label = null
 var _subtitle: Control = null
 var _dots: HBoxContainer = null
@@ -275,16 +286,44 @@ func build() -> void:
 	_encouragement.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_encouragement.visible = false
 
-	_stars = _add_label("StarCount", STAR_FONT_SIZE, STAR_GOLD)
+	# The star counter: the SHARED star glyph (ART_BIBLE §8: "one shared glyph
+	# at every size") and the number, in one box. It used to be a text "★",
+	# which was the one star in the game that was not the star.
+	_stars = Control.new()
+	_stars.name = "StarCounter"
+	_stars.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stars.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	_stars.offset_left = 36.0
 	_stars.offset_top = 26.0
 	_stars.offset_right = 260.0
-	# 86 rather than 84: COMPLETE grows this label to 42 pt, and a box the text
+	# 86 rather than 84: COMPLETE grows the number to 42 pt, and a box the text
 	# overflows would clip the thing the reward presentation is ABOUT.
 	_stars.offset_bottom = 86.0
-	_stars.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_stars.text = "★ 0"
+	add_child(_stars)
+	# An ink star a little bigger, under the gold one: the same outline the
+	# number has, so the pair reads on a cream wall and a blue floor alike.
+	_star_rim = IconGlyphScript.new()
+	_star_rim.name = "StarRim"
+	_star_rim.set("glyph", IconGlyphScript.Glyph.STAR)
+	_star_rim.set("tint", INK)
+	_stars.add_child(_star_rim)
+	_star_glyph = IconGlyphScript.new()
+	_star_glyph.name = "StarGlyph"
+	_star_glyph.set("glyph", IconGlyphScript.Glyph.STAR)
+	_star_glyph.set("tint", Palette.STAR_EARNED)
+	_stars.add_child(_star_glyph)
+	_star_count = Label.new()
+	_star_count.name = "StarCount"
+	_star_count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_star_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_star_count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_star_count.add_theme_font_size_override("font_size", STAR_FONT_SIZE)
+	_star_count.add_theme_color_override("font_color", STAR_GOLD)
+	_star_count.add_theme_color_override("font_outline_color", INK)
+	_star_count.add_theme_constant_override("outline_size", 10)
+	_star_count.text = "0"
+	_stars.add_child(_star_count)
+	_layout_star_counter(STAR_FONT_SIZE)
 
 	_dots = HBoxContainer.new()
 	_dots.name = "ProgressDots"
@@ -540,10 +579,37 @@ func _apply_mode(initial: bool) -> void:
 	_place(_encouragement, l["encouragementRect"])
 	_encouragement.add_theme_font_size_override("font_size", int(l["encouragementSize"]))
 
-	_stars.add_theme_font_size_override("font_size", int(l["starSize"]))
+	_layout_star_counter(int(l["starSize"]))
 
 	if not initial:
 		_refresh_visibility()
+
+
+## Lays the star counter out for a number `font_size` tall: the glyph a little
+## taller than the digits, vertically centred in the box, the number to its
+## right. The box itself never moves (the badge layer keeps out of it).
+func _layout_star_counter(font_size: int) -> void:
+	if _stars == null:
+		return
+	var box_h: float = _stars.offset_bottom - _stars.offset_top
+	var glyph: float = minf(box_h - 4.0, float(font_size) * STAR_GLYPH_RATIO)
+	var top: float = (box_h - glyph) * 0.5
+	_star_glyph.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_star_glyph.offset_left = 0.0
+	_star_glyph.offset_top = top
+	_star_glyph.offset_right = glyph
+	_star_glyph.offset_bottom = top + glyph
+	_star_rim.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_star_rim.offset_left = -STAR_RIM_PX
+	_star_rim.offset_top = top - STAR_RIM_PX
+	_star_rim.offset_right = glyph + STAR_RIM_PX
+	_star_rim.offset_bottom = top + glyph + STAR_RIM_PX
+	_star_count.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_star_count.offset_left = glyph + STAR_GAP
+	_star_count.offset_top = 0.0
+	_star_count.offset_right = _stars.offset_right - _stars.offset_left
+	_star_count.offset_bottom = box_h
+	_star_count.add_theme_font_size_override("font_size", font_size)
 
 
 ## Swaps a label between "pale text, ink edge" and "ink text, cream edge".
@@ -891,12 +957,26 @@ func _refresh_dots() -> void:
 
 func set_stars(total: int) -> void:
 	build()
-	_stars.text = "★ %d" % maxi(0, total)
+	_star_total = maxi(0, total)
+	_star_count.text = str(_star_total)
 
 
+## The counter as a line of text, "★ N", for tests and logs. The screen shows
+## the shared star glyph and the number, not this string.
 func get_star_text() -> String:
 	build()
-	return _stars.text
+	return "★ %d" % _star_total
+
+
+func get_star_total() -> int:
+	build()
+	return _star_total
+
+
+## The counter's parts, for tests: the box, the glyph and the number.
+func get_star_counter() -> Control:
+	build()
+	return _stars
 
 
 ## -- Buttons -------------------------------------------------------------------

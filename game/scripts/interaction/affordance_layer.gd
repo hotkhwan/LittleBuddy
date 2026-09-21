@@ -12,11 +12,26 @@ extends Control
 ## picture on it, placed by the game, and it only exists while the child is near
 ## enough for the action to make sense -- which is also how it teaches the word.
 ##
-## The PICTURE is small -- a disc 12.8 % of the screen's height, 96 px on an
-## iPad, so it never hides the thing it points at -- and the TAP TARGET is not:
-## the invisible hit box under it stays at least 240 px whatever the viewport.
-## A press on that box that turns out to have nothing to do is handed to the
-## floor router, so no tap ever dies under a badge.
+## The PICTURE is small and the TAP TARGET is not. Every drawn size is stated
+## at the 1366x1024 design reference (ART_BIBLE §8, the space the CanvasLayer
+## lays out in on a device) and scales with the viewport's height: a 120 px
+## disc with a 72 px verb glyph and a 40 px word pill under it, 88 / 53 / 29
+## px on a bare 750 px frame, 127 / 76 / 42 px at 1080. The invisible hit box
+## under it stays at least 240 px whatever the viewport, and `layout_rects()`
+## reports both so a test can hold the two apart. A press on that box that
+## turns out to have nothing to do is handed to the floor router, so no tap
+## ever dies under a badge.
+##
+## ## Never over a face, never over the thing itself
+##
+## Two kinds of keep-out (2026-09-21, owner: "badges must never cover faces or
+## important objects"). HARD keep-outs are other controls -- the thumbstick,
+## Home, Next, Speak -- and the whole hit box must clear them, or a press meant
+## for one lands on the other. VISUAL keep-outs are things the child must keep
+## SEEING: Aliz's face, Bunny's face (standing, or in her arms), the speech
+## bubble, and the target's own silhouette. Only the drawn disc and pill must
+## clear those; the hit box may reach over them, because a tap on the object
+## through the badge's box does exactly what a tap on the badge does.
 ##
 ## ## The contract (shared with every other agent)
 ##
@@ -58,50 +73,77 @@ const GROUP: String = "affordable"
 
 ## ART_BIBLE §8: a child's tap target is at least 240 px across at the
 ## 1366x1024 reference. The drawn disc is smaller; the invisible hit box is not.
+## The hit box is NOT scaled: 240 is the floor in whatever space the layer is
+## laid out in, and it only ever grows (to cover a badge drawn bigger than it).
 const HIT_SIZE: float = 240.0
-## Every drawn size below is stated at the REFERENCE height and scaled by
-## `badge_scale()` -- the disc is 12.8 % of the viewport's height whatever the
-## device: 96 px on a 1334x750 iPad frame, 138 px at 2340x1080. The first build
-## drew a 148 px disc at every size, and on the iPad it hid the thing it was
-## pointing at (owner feedback, 2026-09-20).
-const REFERENCE_HEIGHT: float = 750.0
-const BADGE_DIAMETER_FRACTION: float = 0.128
-const BADGE_RADIUS: float = 48.0
+## Every drawn size below is stated at the 1024 px DESIGN height and scaled by
+## `badge_scale()`, so the badge is the same fraction of the screen on every
+## device. History: the first build drew a 148 px disc at every size and hid
+## the thing it pointed at (owner, 2026-09-20); the second drew 12.8 % of the
+## height (131 design px) and the owner still called it oversized (2026-09-21).
+## This one is 120 design px -- 11.7 % -- with the ring around the object
+## halved and the badge held off faces and silhouettes, which is where most of
+## the "big" came from.
+const REFERENCE_HEIGHT: float = 1024.0
+## The visible disc, design px. `BADGE_RADIUS` is what the layout maths uses.
+const DISC_DIAMETER: float = 120.0
+const BADGE_RADIUS: float = DISC_DIAMETER * 0.5
+## The square the verb picture fills inside the disc, design px. 60 % of the
+## disc: big enough to read as a picture, small enough to leave the coloured
+## rim that says which verb this is from across the room.
+const GLYPH_BOX: float = 72.0
 const OUTLINE_PX: float = 4.0
-const MIN_SCALE: float = 0.7
+const MIN_SCALE: float = 0.6
 const MAX_SCALE: float = 2.2
 ## How far above the object's highlight ring the badge floats.
-const BADGE_LIFT: float = 40.0
+const BADGE_LIFT: float = 36.0
 const EDGE_MARGIN: float = 22.0
 ## The top band nothing may sit in unless the HUD says otherwise: the star
 ## counter and the Home button live there. `set_top_keep_out()` raises it while
 ## a prompt is on screen.
 const TOP_MARGIN: float = 40.0
 ## Gap between the highlight ring and a badge placed beside it.
-const SIDE_GAP: float = 28.0
+const SIDE_GAP: float = 24.0
 ## Breathing room around every keep-out rect (the stick, Home, Next ...).
 const KEEP_OUT_PAD: float = 6.0
 ## How far a badge may slide off its preferred spot to clear a keep-out before
 ## it stops being "beside the object" and becomes a badge for nothing.
 const MAX_SLIDE_PX: float = 260.0
+## A slide this short (design px) is a nudge, not a move: a spot that clears
+## with a nudge keeps its place in the order of preference. Without this,
+## CARRY beside Bunny lost to CARRY under his feet whenever the disc grazed his
+## silhouette by a few pixels, because "unslid beats slid" is otherwise absolute.
+const NUDGE_PX: float = 24.0
 ## The care close-up's node name. While it is visible the room is not being
 ## played and no badge may show, whoever mounted this layer.
 const CARE_OVERLAY_NAME: String = "CareOverlay"
 
-## The word under the picture: 22 px at the reference height, on a cream pill
-## that fits the word (SOON's pill carries a short sentence).
-const LABEL_FONT_SIZE: int = 22
-const LABEL_WIDTH: float = 104.0
-const LABEL_HEIGHT: float = 30.0
+## The word under the picture: 30 px at the design height (the §8 27 pt floor
+## with a little to spare; 22 px on a bare 750 px frame), on a cream pill that
+## fits the word (SOON's pill carries a short sentence).
+const LABEL_FONT_SIZE: int = 30
+const LABEL_WIDTH: float = 132.0
+const LABEL_HEIGHT: float = 40.0
 const LABEL_GAP: float = 8.0
-const LABEL_PAD: float = 16.0
+const LABEL_PAD: float = 22.0
 
-## The highlight ring around the thing itself, px, clamped so a fridge across
-## the room and a table under the camera both get a ring you can see.
-const RING_MIN_PX: float = 36.0
-const RING_MAX_PX: float = 150.0
-const RING_WIDTH: float = 5.0
+## The highlight ring around the thing itself, design px, clamped so a fridge
+## across the room and a table under the camera both get a ring you can see --
+## and so a wardrobe never gets one that fills the room. Characters get no
+## ring at all (`draws_ring()`): a circle round Bunny is a circle across his
+## face, and the tail on the badge already says who it is about.
+const RING_MIN_PX: float = 40.0
+const RING_MAX_PX: float = 110.0
+const RING_WIDTH: float = 4.0
 const DEFAULT_EXTENT_M: float = 0.35
+
+## A child character's face, metres above his root and either side of it:
+## Bunny is 0.78 m tall with the top of his head at 0.72 m, so his face is the
+## band just under that. Used both for a child standing (the badge's target)
+## and for a child in Aliz's arms (whose root rides on her chest socket).
+const CHILD_FACE_BOTTOM_M: float = 0.48
+const CHILD_FACE_TOP_M: float = 0.78
+const CHILD_FACE_HALF_WIDTH_M: float = 0.16
 
 ## `NavigationController.TapKind.TARGET`. Mirrored rather than imported so this
 ## layer never depends on the router parsing; `test_affordance.gd` pins the two.
@@ -152,6 +194,12 @@ var _shown_key: String = ""
 ## rect. A transient keep-out: it moves with him and only matters while the
 ## badge is his.
 var _bubble_rect: Rect2 = Rect2()
+## The other visual keep-outs the last layout measured (see
+## `get_visual_keep_outs()`); empty when there was nothing to keep off.
+var _actor_face_rect: Rect2 = Rect2()
+var _target_face_rect: Rect2 = Rect2()
+var _carried_face_rect: Rect2 = Rect2()
+var _silhouette_rect: Rect2 = Rect2()
 var _screen: Vector2 = Vector2.ZERO
 var _badge: Vector2 = Vector2.ZERO
 var _ring_px: float = RING_MIN_PX
@@ -330,17 +378,66 @@ func is_enabled() -> bool:
 
 ## -- Sizing --------------------------------------------------------------------
 
-## How much bigger (or smaller) than the reference every drawn size is, for a
-## viewport `view_height` px tall. Pure, so a test can pin 96 px on the iPad.
+## How much bigger (or smaller) than the design reference every drawn size is,
+## for a viewport `view_height` px tall. Pure, so a test can pin 120 px at 1024
+## and 88 px on a bare 750 px frame.
 static func badge_scale(view_height: float) -> float:
 	if view_height <= 0.0:
 		return 1.0
-	return clampf(view_height * BADGE_DIAMETER_FRACTION / (BADGE_RADIUS * 2.0), MIN_SCALE, MAX_SCALE)
+	return clampf(view_height / REFERENCE_HEIGHT, MIN_SCALE, MAX_SCALE)
 
 
 ## The disc's drawn diameter at `view_height`, px.
 static func badge_diameter(view_height: float) -> float:
-	return BADGE_RADIUS * 2.0 * badge_scale(view_height)
+	return DISC_DIAMETER * badge_scale(view_height)
+
+
+## The verb picture's box at `view_height`, px.
+static func glyph_box(view_height: float) -> float:
+	return GLYPH_BOX * badge_scale(view_height)
+
+
+## The badge's parts for a badge centred at `centre` at `scale`, as rects in
+## the layer's space. The visible parts and the invisible one, side by side,
+## so nobody has to infer one from the other:
+##
+##   `disc`       the coloured disc with its ink outline
+##   `glyph`      the square the verb picture fills, inside the disc
+##   `pill`       the cream word pill under the disc
+##   `footprint`  disc + pill: what must clear a face, a bubble, the object
+##   `hit`        the tap target: >= HIT_SIZE square, centred on the disc,
+##                grown to cover the footprint; what must clear other controls
+static func layout_rects(centre: Vector2, scale: float = 1.0, label_width: float = -1.0) -> Dictionary:
+	var radius: float = BADGE_RADIUS * scale
+	var half: float = radius + OUTLINE_PX * scale
+	var glyph: float = GLYPH_BOX * scale
+	var pill_w: float = label_width if label_width > 0.0 else LABEL_WIDTH * scale
+	var pill_h: float = LABEL_HEIGHT * scale
+	var footprint: Rect2 = badge_footprint(centre, scale, label_width)
+	var hit_size: Vector2 = hit_size_for(footprint, scale)
+	return {
+		"disc": Rect2(centre - Vector2(half, half), Vector2(half * 2.0, half * 2.0)),
+		"glyph": Rect2(centre - Vector2(glyph, glyph) * 0.5, Vector2(glyph, glyph)),
+		"pill": Rect2(Vector2(centre.x - pill_w * 0.5, centre.y + radius + LABEL_GAP * scale),
+				Vector2(pill_w, pill_h)),
+		"footprint": footprint,
+		"hit": Rect2(centre - hit_size * 0.5, hit_size),
+	}
+
+
+## The hit box for a badge whose drawn footprint is `footprint`: never under the
+## 240 px floor on either side, and a badge drawn bigger than that gets a box
+## that covers the whole of it (plus a disc radius, so the pill's underside is
+## never the edge of the target).
+static func hit_size_for(footprint: Rect2, scale: float) -> Vector2:
+	return Vector2(
+		maxf(HIT_SIZE, footprint.size.x), maxf(HIT_SIZE, footprint.size.y + BADGE_RADIUS * scale))
+
+
+## Whether the thing gets a highlight ring: furniture, doors and props do; a
+## person does not (the ring would sit across his face).
+static func draws_ring(character: bool) -> bool:
+	return not character
 
 
 ## The pill's width for `verb`'s label at `scale`: the reference width, or wider
@@ -429,7 +526,9 @@ func _candidates() -> Array:
 		sources = tree.get_nodes_in_group(GROUP)
 	var offers: Array = []
 	for node: Variant in sources:
-		if not (node is Object) or not is_instance_valid(node):
+		# `is_instance_valid()` first: `is Object` on a freed instance is an
+		# error, and a supplied source list can outlive a room's props.
+		if not is_instance_valid(node) or not (node is Object):
 			continue
 		var candidate: Object = node
 		if not candidate.has_method("get_affordance"):
@@ -659,6 +758,47 @@ func _camera_now() -> Camera3D:
 	return viewport.get_camera_3d() if viewport != null else null
 
 
+## -- Projection ----------------------------------------------------------------
+##
+## `Camera3D.unproject_position()` needs the camera inside a live viewport. The
+## headless runner's root is not an active tree (`test_badge_keepouts.gd`
+## hosts the real house in a SubViewport there and asks this layer to lay out
+## against the real camera), so a camera that is NOT inside the tree is
+## projected by hand, the way `tutor_scene.gd::project_point()` does it:
+## `Projection.create_perspective()` from the camera's own fov/near/far at the
+## layer's view size, through the camera's transform. In the game the camera
+## is always in the tree and the engine does it.
+
+## `point` in the layer's space, or `Vector2.INF` when it is behind the camera.
+func _unproject(camera: Camera3D, point: Vector3) -> Vector2:
+	if camera.is_inside_tree():
+		if camera.is_position_behind(point):
+			return Vector2.INF
+		return camera.unproject_position(point)
+	var view: Vector2 = _view_size()
+	var xform: Transform3D = SpatialUtil.world_transform(camera)
+	var local: Vector3 = xform.affine_inverse() * point
+	if -local.z < camera.near:
+		return Vector2.INF
+	var aspect: float = view.x / maxf(view.y, 1.0)
+	var projection: Projection
+	if camera.projection == Camera3D.PROJECTION_ORTHOGONAL:
+		var half_h: float = camera.size * 0.5
+		projection = Projection.create_orthogonal(-half_h * aspect, half_h * aspect, -half_h, half_h, camera.near, camera.far)
+	else:
+		projection = Projection.create_perspective(camera.fov, aspect, camera.near, camera.far,
+				camera.keep_aspect == Camera3D.KEEP_WIDTH)
+	var clip: Vector4 = projection * Vector4(local.x, local.y, local.z, 1.0)
+	if is_zero_approx(clip.w):
+		return Vector2.INF
+	var ndc: Vector2 = Vector2(clip.x, clip.y) / clip.w
+	return Vector2((ndc.x + 1.0) * 0.5 * view.x, (1.0 - ndc.y) * 0.5 * view.y)
+
+
+static func _is_behind(point: Vector2) -> bool:
+	return point == Vector2.INF
+
+
 ## Places the badge and the hit box for `_current`. With no camera nothing is
 ## placed and the hit box hides, so a headless world can never be tapped.
 func _layout() -> void:
@@ -682,13 +822,16 @@ func _layout() -> void:
 		_hit.visible = false
 		return
 	var anchor: Vector3 = _current["anchor"]
-	if camera.is_position_behind(anchor):
+	var screen: Vector2 = _unproject(camera, anchor)
+	if _is_behind(screen):
 		_hit.visible = false
 		return
-	_screen = camera.unproject_position(anchor)
+	_screen = screen
 	var extent: float = float(_current.get("extent", DEFAULT_EXTENT_M))
 	var basis: Basis = SpatialUtil.world_transform(camera).basis
-	var edge: Vector2 = camera.unproject_position(anchor + basis.x * maxf(extent, 0.05))
+	var edge: Vector2 = _unproject(camera, anchor + basis.x * maxf(extent, 0.05))
+	if _is_behind(edge):
+		edge = _screen
 	_ring_px = clampf((edge - _screen).length(), RING_MIN_PX, RING_MAX_PX)
 
 	var view: Vector2 = _view_size()
@@ -696,7 +839,11 @@ func _layout() -> void:
 	_ring_px = clampf(_ring_px, RING_MIN_PX * scale, RING_MAX_PX * scale)
 	var target: Variant = _current.get("target", null)
 	var character: bool = is_character_target(target)
+	# HARD keep-outs: other controls. The hit box must clear them.
 	var keep_outs: Array = get_keep_out_rects()
+	# VISUAL keep-outs: what the child must keep seeing. The drawn badge must
+	# clear them; the hit box may reach over them.
+	var visual: Array = []
 	# A speech line is a keep-out for EVERY badge, not only for a badge about
 	# its speaker: a SIT badge for the bed sat squarely on "I'm hungry, Aliz!"
 	# with Bunny standing on the rug beside it. His bubble first when he is the
@@ -705,23 +852,42 @@ func _layout() -> void:
 	if _bubble_rect.size.x <= 0.0:
 		_bubble_rect = _any_bubble_keep_out(camera)
 	if _bubble_rect.size.x > 0.0:
-		keep_outs.append(_bubble_rect)
+		visual.append(_bubble_rect)
 	# Aliz's own face is a keep-out too: standing square to the camera in front
 	# of Bunny, the CARRY disc landed on her face (the side-step alone only
 	# helps when she is off to one side).
-	var face: Rect2 = _actor_face_keep_out(camera)
-	if face.size.x > 0.0:
-		keep_outs.append(face)
+	_actor_face_rect = _actor_face_keep_out(camera)
+	if _actor_face_rect.size.x > 0.0:
+		visual.append(_actor_face_rect)
+	# Bunny's face: standing (he is the target) or riding in her arms (whatever
+	# the target is -- the PLACE badge for the bed sat on him while she held him).
+	_target_face_rect = _character_face_keep_out(camera, _bubble_owner(target)) if character else Rect2()
+	if _target_face_rect.size.x > 0.0:
+		visual.append(_target_face_rect)
+	var carried: Node = _carried_node(_actor)
+	_carried_face_rect = Rect2()
+	if carried != null and carried.has_method("set_carried_by") and carried != _bubble_owner(target):
+		_carried_face_rect = _character_face_keep_out(camera, carried)
+		if _carried_face_rect.size.x > 0.0:
+			visual.append(_carried_face_rect)
+	# The thing itself. A badge that sits on the fridge door is a badge hiding
+	# the fridge; it goes beside or above the silhouette, never over it. For a
+	# person the silhouette is the whole child, feet to head: CARRY under his
+	# chin sat on his legs otherwise ("below" needed no slide, so it won).
+	_silhouette_rect = _character_body_keep_out(camera, _bubble_owner(target)) if character \
+			else _target_silhouette_keep_out(camera, target)
+	if _silhouette_rect.size.x > 0.0:
+		visual.append(_silhouette_rect)
 	var verb: String = String(_current.get("verb", ""))
+	var ring_for_layout: float = _ring_px if draws_ring(character) else RING_MIN_PX * scale
 	var placed: Dictionary = place_badge(
-		_screen, _ring_px, view, _top_keep_out, _actor_screen_x(camera), keep_outs, character,
-		label_width_for(verb, scale, _font))
+		_screen, ring_for_layout, view, _top_keep_out, _actor_screen_x(camera), keep_outs, character,
+		label_width_for(verb, scale, _font), visual)
 	_apply_placement_hysteresis(String(_current.get("targetId", "")), verb, placed)
 	# The hit box never shrinks with the picture: 240 px stays the floor, and a
 	# badge drawn bigger than that gets a box that covers the whole of it.
 	var footprint: Rect2 = badge_footprint(_badge, scale, label_width_for(verb, scale, _font))
-	var hit_size: Vector2 = Vector2(
-		maxf(HIT_SIZE, footprint.size.x), maxf(HIT_SIZE, footprint.size.y + BADGE_RADIUS * scale))
+	var hit_size: Vector2 = hit_size_for(footprint, scale)
 	_hit.size = hit_size
 	_hit.position = _badge - hit_size * 0.5
 	_hit.visible = true
@@ -795,20 +961,35 @@ func _bubble_keep_out(camera: Camera3D, target: Variant) -> Rect2:
 	half = Vector2(maxf(half.x, 0.05), maxf(half.y, 0.03))
 	var centre: Vector3 = SpatialUtil.world_position(bubble as Node3D)
 	var basis: Basis = SpatialUtil.world_transform(camera).basis
-	var rect: Rect2 = Rect2()
-	var first: bool = true
+	var corners: Array = []
 	for sx: float in [-1.0, 1.0]:
 		for sy: float in [-1.0, 1.0]:
-			var corner: Vector3 = centre + basis.x * (half.x * sx) + basis.y * (half.y * sy)
-			if camera.is_position_behind(corner):
-				return Rect2()
-			var point: Vector2 = camera.unproject_position(corner)
-			if first:
-				rect = Rect2(point, Vector2.ZERO)
-				first = false
-			else:
-				rect = rect.expand(point)
-	return rect.grow(8.0)
+			corners.append(centre + basis.x * (half.x * sx) + basis.y * (half.y * sy))
+	var rect: Rect2 = _project_points(camera, corners)
+	return rect.grow(8.0) if rect.size.x > 0.0 else Rect2()
+
+
+## The bounding rect of `points` on screen, or an empty rect when any of them
+## is behind the camera.
+func _project_points(camera: Camera3D, points: Array) -> Rect2:
+	var rect: Rect2 = Rect2()
+	var first: bool = true
+	for point: Vector3 in points:
+		var at: Vector2 = _unproject(camera, point)
+		if _is_behind(at):
+			return Rect2()
+		if first:
+			rect = Rect2(at, Vector2.ZERO)
+			first = false
+		else:
+			rect = rect.expand(at)
+	# A degenerate rect (all points on one line) still counts as something
+	# on screen: give it a pixel so callers' emptiness checks read "present".
+	if rect.size.x <= 0.0:
+		rect.size.x = 1.0
+	if rect.size.y <= 0.0:
+		rect.size.y = 1.0
+	return rect
 
 
 ## The bubble of any speaking character in the same room as the actor, when the
@@ -833,6 +1014,110 @@ func _any_bubble_keep_out(camera: Camera3D) -> Rect2:
 ## The bubble rect the last layout kept out of, for a harness to assert against.
 func get_bubble_keep_out() -> Rect2:
 	return _bubble_rect
+
+
+## Every VISUAL keep-out the last layout measured, by name, for tests and the
+## shot harnesses: `bubble`, `actorFace`, `targetFace`, `carriedFace`,
+## `silhouette`. Empty rects are left out.
+func get_visual_keep_outs() -> Dictionary:
+	var rects: Dictionary = {}
+	for pair: Array in [["bubble", _bubble_rect], ["actorFace", _actor_face_rect],
+			["targetFace", _target_face_rect], ["carriedFace", _carried_face_rect],
+			["silhouette", _silhouette_rect]]:
+		var rect: Rect2 = pair[1]
+		if rect.size.x > 0.0 and rect.size.y > 0.0:
+			rects[String(pair[0])] = rect
+	return rects
+
+
+## The live badge's parts (see the static `layout_rects()`), or `{}` before a
+## laid-out step.
+func get_layout_rects() -> Dictionary:
+	if not _laid_out:
+		return {}
+	var verb: String = String(_current.get("verb", ""))
+	var scale: float = current_scale()
+	var rects: Dictionary = layout_rects(_badge, scale, label_width_for(verb, scale, _font))
+	# The hit box as it really is (a press can freeze it a frame behind).
+	rects["hit"] = Rect2(_hit.position, _hit.size)
+	return rects
+
+
+## A box around a child character's face on screen (`CHILD_FACE_*` above his
+## root), or empty when he is off screen or `character` is not one.
+func _character_face_keep_out(camera: Camera3D, character: Object) -> Rect2:
+	if camera == null or not (character is Node3D) or not is_instance_valid(character):
+		return Rect2()
+	var root: Vector3 = SpatialUtil.world_position(character as Node3D)
+	var basis: Basis = SpatialUtil.world_transform(camera).basis
+	return _project_box(camera, root, basis, CHILD_FACE_BOTTOM_M, CHILD_FACE_TOP_M, CHILD_FACE_HALF_WIDTH_M)
+
+
+## The four corners of a camera-facing box `bottom`..`top` metres above `foot`
+## and `half_w` either side, projected and boxed. Empty when any corner is
+## behind the camera.
+func _project_box(camera: Camera3D, foot: Vector3, basis: Basis, bottom: float, top: float,
+		half_w: float) -> Rect2:
+	var corners: Array = []
+	for h: float in [bottom, top]:
+		for sx: float in [-half_w, half_w]:
+			corners.append(foot + Vector3(0.0, h, 0.0) + basis.x * sx)
+	var rect: Rect2 = _project_points(camera, corners)
+	return rect.grow(6.0) if rect.size.x > 0.0 else Rect2()
+
+
+## A child character's whole silhouette -- feet to the top of his head -- so a
+## badge never sits on his legs or his tummy either. His face is inside this
+## box; it is also measured on its own (`_character_face_keep_out()`) so the
+## harnesses and tests can name what was covered.
+func _character_body_keep_out(camera: Camera3D, character: Object) -> Rect2:
+	if camera == null or not (character is Node3D) or not is_instance_valid(character):
+		return Rect2()
+	var root: Vector3 = SpatialUtil.world_position(character as Node3D)
+	var basis: Basis = SpatialUtil.world_transform(camera).basis
+	return _project_box(camera, root, basis, 0.0, CHILD_FACE_TOP_M, CHILD_FACE_HALF_WIDTH_M)
+
+
+## The target's own silhouette on screen: its tap box (the `CollisionShape3D`
+## under an `ActivityTarget`, a prop, a drop zone), all eight corners projected
+## and boxed. A target with no box falls back to the highlight ring's square,
+## which is what the badge used to keep off implicitly. Empty when the target
+## is not a 3D node or is behind the camera.
+func _target_silhouette_keep_out(camera: Camera3D, target: Variant) -> Rect2:
+	if camera == null or not (target is Node3D) or not is_instance_valid(target):
+		return Rect2()
+	var node: Node3D = target
+	var shape_node: CollisionShape3D = null
+	for child: Node in node.get_children():
+		if child is CollisionShape3D and (child as CollisionShape3D).shape != null:
+			shape_node = child
+			break
+	var ring_square: Rect2 = Rect2(_screen - Vector2(_ring_px, _ring_px), Vector2(_ring_px, _ring_px) * 2.0)
+	if shape_node == null:
+		return ring_square
+	var half: Vector3 = Vector3.ZERO
+	var shape: Shape3D = shape_node.shape
+	if shape is BoxShape3D:
+		half = (shape as BoxShape3D).size * 0.5
+	elif shape is SphereShape3D:
+		var r: float = (shape as SphereShape3D).radius
+		half = Vector3(r, r, r)
+	elif shape is CapsuleShape3D:
+		var capsule: CapsuleShape3D = shape
+		half = Vector3(capsule.radius, capsule.height * 0.5, capsule.radius)
+	elif shape is CylinderShape3D:
+		var cylinder: CylinderShape3D = shape
+		half = Vector3(cylinder.radius, cylinder.height * 0.5, cylinder.radius)
+	else:
+		return ring_square
+	var xform: Transform3D = SpatialUtil.world_transform(shape_node)
+	var corners: Array = []
+	for sx: float in [-1.0, 1.0]:
+		for sy: float in [-1.0, 1.0]:
+			for sz: float in [-1.0, 1.0]:
+				corners.append(xform * Vector3(half.x * sx, half.y * sy, half.z * sz))
+	var rect: Rect2 = _project_points(camera, corners)
+	return rect if rect.size.x > 0.0 else ring_square
 
 
 ## The badge's on-screen footprint -- disc, outline and the word pill -- for a
@@ -866,9 +1151,14 @@ static func placement_rect(centre: Vector2, scale: float = 1.0, label_width: flo
 ##   `view`         -- viewport size
 ##   `top_keep_out` -- nothing above this line (the HUD's prompt band)
 ##   `actor_x`      -- Aliz's screen x, so a side placement steps AWAY from her
-##   `keep_outs`    -- rects the badge may not cover: the stick, Home, Next ...
+##   `keep_outs`    -- HARD: rects the badge's HIT BOX may not cover -- the
+##                     stick, Home, Next ... (other controls)
 ##   `prefer_beside` -- a character: his bubble lives above his head, so the
 ##                     order becomes beside, other side, below, and above last
+##   `label_width`  -- the word pill's width, px (see `label_width_for()`)
+##   `visual_keep_outs` -- VISUAL: rects only the DRAWN badge may not cover --
+##                     a face, a speech bubble, the object's own silhouette.
+##                     The hit box may reach over these.
 ##
 ## Order of preference: above the ring; beside it on the side away from Aliz;
 ## beside it on the other side; below it. The first spot that fits the screen
@@ -877,7 +1167,7 @@ static func placement_rect(centre: Vector2, scale: float = 1.0, label_width: flo
 ## Returns `{"centre": Vector2, "placement": String}`.
 static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep_out: float,
 		actor_x: float, keep_outs: Array, prefer_beside: bool = false,
-		label_width: float = -1.0) -> Dictionary:
+		label_width: float = -1.0, visual_keep_outs: Array = []) -> Dictionary:
 	var s: float = badge_scale(view.y)
 	var radius: float = BADGE_RADIUS * s
 	var pill_w: float = label_width if label_width > 0.0 else LABEL_WIDTH * s
@@ -907,13 +1197,14 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 	var candidates: Array = [near_side, far_side, below, above] if prefer_beside \
 			else [above, near_side, far_side, below]
 
-	# Pass 0: every spot exactly where it wants to be. Pass 1: each spot slid
-	# outward along its own direction until it clears whatever it landed on --
-	# a toy box in the stick's corner gets its badge just past the stick's
-	# edge, still beside the box. Unslid always beats slid: a badge 260 px
-	# above its object is worse than one beside it that needed no slide. And
-	# among the slid spots the SHORTEST slide wins, not the first in the list:
-	# 17 px further right beats 135 px further up.
+	# Pass 0: every spot exactly where it wants to be, or within a NUDGE of it.
+	# Pass 1: each spot slid outward along its own direction until it clears
+	# whatever it landed on -- a toy box in the stick's corner gets its badge
+	# just past the stick's edge, still beside the box. Unslid (or nudged)
+	# always beats slid: a badge 260 px above its object is worse than one
+	# beside it that needed no slide. And among the slid spots the SHORTEST
+	# slide wins, not the first in the list: 17 px further right beats 135 px
+	# further up.
 	var best: Dictionary = {}
 	var best_overlap: float = INF
 	for pass_index: int in range(2):
@@ -926,20 +1217,19 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 			# object it would sit on whatever stands in front of it.
 			if placement == "above" and wanted.y < min_y:
 				continue
-			var centre: Vector2 = Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y))
-			var measured: Dictionary = _overlap(placement_rect(centre, s, pill_w), keep_outs)
-			var slide: float = 0.0
-			if pass_index == 1:
-				if float(measured["overlap"]) <= 0.0:
-					continue
-				var slid: Vector2 = _slid_clear(placement, centre, placement_rect(centre, s, pill_w), measured["block"])
-				slid = Vector2(clampf(slid.x, min_x, max_x), clampf(slid.y, min_y, max_y))
-				slide = slid.distance_to(centre)
-				if slide > MAX_SLIDE_PX * s or slid.is_equal_approx(centre):
-					continue
-				centre = slid
-				measured = _overlap(placement_rect(centre, s, pill_w), keep_outs)
-			var overlap: float = float(measured["overlap"])
+			var start: Vector2 = Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y))
+			# Pass 0 may nudge; pass 1 may slide. Either way the spot is moved
+			# block by block until it is clear or the budget runs out.
+			var budget: float = (NUDGE_PX if pass_index == 0 else MAX_SLIDE_PX) * s
+			var moved: Dictionary = _slide_until_clear(placement, start, s, pill_w, keep_outs,
+					visual_keep_outs, budget, Vector2(min_x, min_y), Vector2(max_x, max_y))
+			var centre: Vector2 = moved["centre"]
+			var slide: float = float(moved["slide"])
+			if pass_index == 0 and float(moved["overlap"]) > 0.0:
+				continue  # more than a nudge: pass 1's business
+			if pass_index == 1 and slide <= 0.0:
+				continue  # could not move at all; pass 0 already judged it
+			var overlap: float = float(moved["overlap"])
 			if overlap <= 0.0:
 				if pass_index == 0:
 					return {"centre": centre, "placement": placement}
@@ -960,6 +1250,47 @@ static func place_badge(screen: Vector2, ring_px: float, view: Vector2, top_keep
 		best = {"centre": Vector2(clampf(wanted.x, min_x, max_x), clampf(wanted.y, min_y, max_y)),
 				"placement": String(side["placement"])}
 	return best
+
+
+## Moves a `placement` spot from `start` along its own direction, one blocking
+## rect at a time, until nothing is covered or the total slide passes
+## `budget` px (the last clear-able step is kept inside the budget; a step
+## that would pass it is not taken). Returns `{"centre", "slide", "overlap"}`
+## -- the position reached, how far it is from `start`, and what it still
+## covers there (0 when clear). At most a handful of steps: a spot boxed in
+## by more rects than that is not going to be a good spot.
+static func _slide_until_clear(placement: String, start: Vector2, s: float, pill_w: float,
+		keep_outs: Array, visual_keep_outs: Array, budget: float, low: Vector2, high: Vector2) -> Dictionary:
+	var centre: Vector2 = start
+	var measured: Dictionary = _measure(centre, s, pill_w, keep_outs, visual_keep_outs)
+	for _step: int in range(6):
+		if float(measured["overlap"]) <= 0.0:
+			break
+		var slid: Vector2 = _slid_clear(placement, centre, measured["against"], measured["block"])
+		slid = Vector2(clampf(slid.x, low.x, high.x), clampf(slid.y, low.y, high.y))
+		if slid.is_equal_approx(centre) or slid.distance_to(start) > budget:
+			break
+		centre = slid
+		measured = _measure(centre, s, pill_w, keep_outs, visual_keep_outs)
+	return {"centre": centre, "slide": centre.distance_to(start), "overlap": float(measured["overlap"])}
+
+
+## How much a badge centred at `centre` covers: the HIT BOX (`placement_rect`)
+## against the hard keep-outs plus the DRAWN badge (`badge_footprint`) against
+## the visual ones, as one area; `block` is the first rect hit and `against` is
+## whichever of the two badge rects hit it, for `_slid_clear()`.
+static func _measure(centre: Vector2, s: float, pill_w: float, keep_outs: Array,
+		visual_keep_outs: Array) -> Dictionary:
+	var reach: Rect2 = placement_rect(centre, s, pill_w)
+	var drawn: Rect2 = badge_footprint(centre, s, pill_w)
+	var hard: Dictionary = _overlap(reach, keep_outs)
+	var soft: Dictionary = _overlap(drawn, visual_keep_outs)
+	var block: Rect2 = hard["block"]
+	var against: Rect2 = reach
+	if block.size == Vector2.ZERO:
+		block = soft["block"]
+		against = drawn
+	return {"overlap": float(hard["overlap"]) + float(soft["overlap"]), "block": block, "against": against}
 
 
 ## Total area of `footprint` inside any keep-out, and the first rect it hit.
@@ -996,9 +1327,8 @@ func _actor_screen_x(camera: Camera3D) -> float:
 	if _actor == null or not is_instance_valid(_actor):
 		return _screen.x
 	var chest: Vector3 = SpatialUtil.world_position(_actor) + Vector3(0.0, 0.8, 0.0)
-	if camera.is_position_behind(chest):
-		return _screen.x
-	return camera.unproject_position(chest).x
+	var at: Vector2 = _unproject(camera, chest)
+	return _screen.x if _is_behind(at) else at.x
 
 
 ## A box around the caregiver's head on screen (1.25 m to 1.7 m above her
@@ -1008,20 +1338,7 @@ func _actor_face_keep_out(camera: Camera3D) -> Rect2:
 		return Rect2()
 	var feet: Vector3 = SpatialUtil.world_position(_actor)
 	var basis: Basis = SpatialUtil.world_transform(camera).basis
-	var rect: Rect2 = Rect2()
-	var first: bool = true
-	for h: float in [1.25, 1.72]:
-		for sx: float in [-0.2, 0.2]:
-			var corner: Vector3 = feet + Vector3(0.0, h, 0.0) + basis.x * sx
-			if camera.is_position_behind(corner):
-				return Rect2()
-			var point: Vector2 = camera.unproject_position(corner)
-			if first:
-				rect = Rect2(point, Vector2.ZERO)
-				first = false
-			else:
-				rect = rect.expand(point)
-	return rect.grow(6.0)
+	return _project_box(camera, feet, basis, 1.25, 1.72, 0.2)
 
 
 func get_placement() -> String:
@@ -1197,13 +1514,15 @@ func _draw() -> void:
 	var ring_w: float = RING_WIDTH * s
 
 	# The thing itself: a ring in the verb's colour, breathing at the art
-	# bible's 0.6 Hz, with a faint cream halo so it reads on any wall.
-	draw_arc(_screen, _ring_px + (8.0 + pulse * 5.0) * s, 0.0, TAU, 56,
-			Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, 0.16 + pulse * 0.12), ring_w + 4.0 * s, true)
-	draw_arc(_screen, _ring_px + pulse * 4.0 * s, 0.0, TAU, 56,
-			Color(tint.r, tint.g, tint.b, 0.62 + pulse * 0.28), ring_w, true)
-	draw_arc(_screen, _ring_px + pulse * 4.0 * s, 0.0, TAU, 56,
-			Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.22), 1.5 * s, true)
+	# bible's 0.6 Hz, with a faint cream halo so it reads on any wall. Not for
+	# a person: a ring round Bunny is a ring across his face.
+	if draws_ring(is_character_target(_current.get("target", null))):
+		draw_arc(_screen, _ring_px + (6.0 + pulse * 4.0) * s, 0.0, TAU, 56,
+				Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, 0.14 + pulse * 0.10), ring_w + 3.0 * s, true)
+		draw_arc(_screen, _ring_px + pulse * 3.0 * s, 0.0, TAU, 56,
+				Color(tint.r, tint.g, tint.b, 0.62 + pulse * 0.28), ring_w, true)
+		draw_arc(_screen, _ring_px + pulse * 3.0 * s, 0.0, TAU, 56,
+				Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.22), 1.5 * s, true)
 
 	# The badge bobs gently so it reads as alive, and squashes on a press.
 	var bob: float = sin(_clock * TAU * 0.9) * 3.0 * s
@@ -1247,7 +1566,9 @@ func _draw() -> void:
 	draw_circle(centre + Vector2(-radius * 0.34, -radius * 0.38), radius * 0.22,
 			Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, 0.55))
 
-	_draw_glyph(verb, centre, radius * 1.18)
+	# ONE badge language: the same disc, stroke, shadow, glyph box and pill for
+	# every verb; only `tint` (from `AffordanceRules.verb_color()`) changes.
+	_draw_glyph(verb, centre, GLYPH_BOX * s * squash)
 
 	# The word, on a cream pill under the disc.
 	var pill_w: float = label_width_for(verb, s, _font)

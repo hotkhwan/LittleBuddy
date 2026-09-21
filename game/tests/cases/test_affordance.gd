@@ -119,6 +119,8 @@ func run():
 	failures.append_array(_test_doors_outrank_loose_props())
 	failures.append_array(_test_a_character_badge_keeps_off_his_bubble())
 	failures.append_array(_test_badge_is_small_and_scales_with_the_screen())
+	failures.append_array(_test_one_badge_language())
+	failures.append_array(_test_visual_keep_outs_move_the_picture_not_the_hit_box())
 	failures.append_array(_test_the_thing_she_faces_wins())
 	failures.append_array(_test_touch_mouse_twin_does_not_double_perform())
 	failures.append_array(_test_rapid_taps_carry_bunny_only_once())
@@ -893,6 +895,7 @@ func _test_a_character_is_never_taken():
 func _test_badge_placement_avoids_keep_outs():
 	var failures: Array = []
 	var view: Vector2 = Vector2(1334.0, 750.0)
+	var s: float = LayerScript.badge_scale(view.y)
 	var stick: Rect2 = Rect2(24.0, 300.0, 453.0, 434.0)
 	var home: Rect2 = Rect2(1194.0, 26.0, 104.0, 104.0)
 	var next: Rect2 = Rect2(1074.0, 624.0, 224.0, 92.0)
@@ -902,33 +905,81 @@ func _test_badge_placement_avoids_keep_outs():
 	var mid: Dictionary = LayerScript.place_badge(Vector2(667.0, 500.0), 60.0, view, 0.0, 600.0, keep_outs)
 	if String(mid["placement"]) != "above":
 		failures.append("affordance: with room above, the badge went %s" % str(mid["placement"]))
-	failures.append_array(_clear_of(LayerScript.badge_footprint(mid["centre"]), keep_outs, "mid-room"))
+	failures.append_array(_clear_of(LayerScript.badge_footprint(mid["centre"], s), keep_outs, "mid-room"))
 
 	# The toy box, low-left, inside the stick's zone: above would sit in the
 	# zone, so the badge must end up clear of it, on the side away from the edge.
 	var toy_box: Dictionary = LayerScript.place_badge(Vector2(300.0, 520.0), 70.0, view, 0.0, 420.0, keep_outs)
-	var toy_rect: Rect2 = LayerScript.badge_footprint(toy_box["centre"])
+	var toy_rect: Rect2 = LayerScript.badge_footprint(toy_box["centre"], s)
 	failures.append_array(_clear_of(toy_rect, keep_outs, "toy box"))
 	if toy_rect.position.x < stick.end.x and toy_rect.intersects(stick.grow(1.0)):
 		failures.append("affordance: the toy box badge %s is inside the thumbstick zone %s" % [str(toy_rect), str(stick)])
+	# ...and so must the HIT BOX: these are other controls, not pictures.
+	failures.append_array(_clear_of(LayerScript.placement_rect(toy_box["centre"], s), keep_outs, "toy box hit box"))
 
 	# A fridge high in the frame with the prompt band above it steps beside,
 	# away from Aliz (who stands to its right).
 	var fridge: Dictionary = LayerScript.place_badge(Vector2(880.0, 150.0), 60.0, view, 244.0, 900.0, keep_outs)
 	if String(fridge["placement"]) != "left":
 		failures.append("affordance: the fridge badge should step LEFT, away from Aliz (got %s)" % str(fridge["placement"]))
-	if (fridge["centre"] as Vector2).y - LayerScript.BADGE_RADIUS < 244.0 - 0.01:
+	if (fridge["centre"] as Vector2).y - LayerScript.BADGE_RADIUS * s < 244.0 - 0.01:
 		failures.append("affordance: the fridge badge %s rises into the prompt band" % str(fridge["centre"]))
 
 	# Bottom-right, under Next: the badge must not cover Next or Home.
 	var stool: Dictionary = LayerScript.place_badge(Vector2(1200.0, 600.0), 50.0, view, 0.0, 1100.0, keep_outs)
-	failures.append_array(_clear_of(LayerScript.badge_footprint(stool["centre"]), keep_outs, "stool"))
+	failures.append_array(_clear_of(LayerScript.badge_footprint(stool["centre"], s), keep_outs, "stool"))
 
 	# Everything on screen, always.
 	for placed: Dictionary in [mid, toy_box, fridge, stool]:
-		var rect: Rect2 = LayerScript.badge_footprint(placed["centre"])
+		var rect: Rect2 = LayerScript.badge_footprint(placed["centre"], s)
 		if not Rect2(Vector2.ZERO, view).encloses(rect):
 			failures.append("affordance: badge %s leaves the %s screen" % [str(rect), str(view)])
+	return failures
+
+
+## The two kinds of keep-out. A HARD one (a control) pushes the whole hit box
+## away; a VISUAL one (a face, the object) only has to clear the drawn badge,
+## so the badge can stay beside the thing it is about rather than being
+## shoved a hit-box's width off it.
+func _test_visual_keep_outs_move_the_picture_not_the_hit_box():
+	var failures: Array = []
+	var view: Vector2 = Vector2(1366.0, 1024.0)
+	var s: float = LayerScript.badge_scale(view.y)
+	var anchor: Vector2 = Vector2(683.0, 600.0)
+	# A face box that sits just left of where "above" puts the badge: the hit
+	# box (240 wide, centred) reaches over it, the 128 px disc does not.
+	var unplaced: Dictionary = LayerScript.place_badge(anchor, 60.0, view, 0.0, 600.0, [])
+	var drawn: Rect2 = LayerScript.badge_footprint(unplaced["centre"], s)
+	var face: Rect2 = Rect2(drawn.position.x - 60.0, drawn.position.y, 40.0, 60.0)
+
+	var as_visual: Dictionary = LayerScript.place_badge(anchor, 60.0, view, 0.0, 600.0, [], false, -1.0, [face])
+	if String(as_visual["placement"]) != "above" \
+			or not (as_visual["centre"] as Vector2).is_equal_approx(unplaced["centre"]):
+		failures.append("affordance: a face the disc already clears moved the badge from %s/%s to %s/%s"
+				% [unplaced["placement"], str(unplaced["centre"]), as_visual["placement"], str(as_visual["centre"])])
+	if LayerScript.badge_footprint(as_visual["centre"], s).intersects(face):
+		failures.append("affordance: the drawn badge covers the face it was told to keep off")
+
+	var as_hard: Dictionary = LayerScript.place_badge(anchor, 60.0, view, 0.0, 600.0, [face])
+	if LayerScript.placement_rect(as_hard["centre"], s).intersects(face.grow(1.0)):
+		failures.append("affordance: a HARD keep-out under the hit box was not cleared (%s)" % str(as_hard))
+	if (as_hard["centre"] as Vector2).is_equal_approx(unplaced["centre"]):
+		failures.append("affordance: a hard keep-out under the hit box did not move the badge at all")
+
+	# A face box squarely where the disc wants to be: visual or hard, the
+	# drawn badge ends up clear of it.
+	var on_disc: Rect2 = Rect2(drawn.position, Vector2(drawn.size.x, drawn.size.y * 0.5))
+	var dodged: Dictionary = LayerScript.place_badge(anchor, 60.0, view, 0.0, 600.0, [], false, -1.0, [on_disc])
+	if LayerScript.badge_footprint(dodged["centre"], s).intersects(on_disc):
+		failures.append("affordance: the badge still sits on a face that was where it wanted to be (%s)" % str(dodged))
+
+	# The object's silhouette, tall: a fridge whose box rises above the anchor.
+	# "Above" clips it and slides up; the drawn badge never sits on the fridge.
+	var fridge: Rect2 = Rect2(anchor.x - 90.0, anchor.y - 200.0, 180.0, 420.0)
+	var beside_or_over: Dictionary = LayerScript.place_badge(anchor, 90.0, view, 0.0, 900.0, [], false, -1.0, [fridge])
+	var on_fridge: Rect2 = LayerScript.badge_footprint(beside_or_over["centre"], s)
+	if on_fridge.intersects(fridge):
+		failures.append("affordance: the badge %s sits on the fridge's silhouette %s" % [str(on_fridge), str(fridge)])
 	return failures
 
 
@@ -1059,11 +1110,12 @@ func _test_doors_outrank_loose_props():
 func _test_a_character_badge_keeps_off_his_bubble():
 	var failures: Array = []
 	var view: Vector2 = Vector2(1334.0, 750.0)
+	var s: float = LayerScript.badge_scale(view.y)
 	var head: Vector2 = Vector2(760.0, 420.0)
 	# The bubble hangs above his head, right where "above" would put the badge.
 	var bubble: Rect2 = Rect2(640.0, 190.0, 240.0, 60.0)
-	var placed: Dictionary = LayerScript.place_badge(head, 60.0, view, 0.0, 600.0, [bubble], true)
-	var rect: Rect2 = LayerScript.badge_footprint(placed["centre"])
+	var placed: Dictionary = LayerScript.place_badge(head, 60.0, view, 0.0, 600.0, [], true, -1.0, [bubble])
+	var rect: Rect2 = LayerScript.badge_footprint(placed["centre"], s)
 	if rect.intersects(bubble):
 		failures.append("affordance: the character badge %s covers his bubble %s" % [str(rect), str(bubble)])
 	if String(placed["placement"]) == "above":
@@ -1071,8 +1123,8 @@ func _test_a_character_badge_keeps_off_his_bubble():
 	if String(placed["placement"]) != "right":
 		failures.append("affordance: with Aliz on his left the badge should step right (got %s)" % str(placed["placement"]))
 	# Without the character flag the same geometry still keeps off the bubble.
-	var plain: Dictionary = LayerScript.place_badge(head, 60.0, view, 0.0, 600.0, [bubble])
-	if LayerScript.badge_footprint(plain["centre"]).intersects(bubble):
+	var plain: Dictionary = LayerScript.place_badge(head, 60.0, view, 0.0, 600.0, [], false, -1.0, [bubble])
+	if LayerScript.badge_footprint(plain["centre"], s).intersects(bubble):
 		failures.append("affordance: a non-character badge covers a keep-out that sits above the object")
 	# A bubble-less target is not a character.
 	if LayerScript.is_character_target(null):
@@ -1084,45 +1136,117 @@ func _test_a_character_badge_keeps_off_his_bubble():
 	return failures
 
 
-## Owner feedback (2026-09-20): the badge hid the thing it pointed at. The disc
-## is 12.8 % of the viewport's height -- 96 px on the iPad frame -- the word is
-## 22 px there, and the invisible hit box stays at the 240 px floor regardless.
+## Owner feedback (2026-09-20, again 2026-09-21): the badge hid the thing it
+## pointed at, then was still "oversized". The VISIBLE disc is 120 px at the
+## 1024 px design height (88 px on a bare 750 px frame, 127 px at 1080) with a
+## 72 px picture and a 30 px word; the invisible HIT BOX stays at the 240 px
+## floor regardless. `layout_rects()` reports both, and they must stay
+## visibly different things: the target is twice the picture.
 func _test_badge_is_small_and_scales_with_the_screen():
 	var failures: Array = []
-	var ipad: float = LayerScript.badge_diameter(750.0)
-	if absf(ipad - 96.0) > 1.0:
-		failures.append("affordance: the disc is %.0f px on a 750 px tall frame; 96 px was asked for" % ipad)
+	var design: float = LayerScript.badge_diameter(1024.0)
+	if absf(design - 120.0) > 0.5:
+		failures.append("affordance: the disc is %.0f px at the 1024 px design height; 120 px was asked for" % design)
+	var bare: float = LayerScript.badge_diameter(750.0)
+	if absf(bare - 120.0 * 750.0 / 1024.0) > 1.0:
+		failures.append("affordance: the disc is %.0f px on a 750 px tall frame; it should be 120/1024 of the height" % bare)
 	var phone: float = LayerScript.badge_diameter(1080.0)
-	if absf(phone - 1080.0 * 0.128) > 1.5:
+	if absf(phone - 120.0 * 1080.0 / 1024.0) > 1.0:
 		failures.append("affordance: the disc is %.0f px at 1080 px tall; it should scale with the height" % phone)
-	if phone <= ipad:
+	if phone <= bare:
 		failures.append("affordance: the badge does not grow with the viewport")
-	if LayerScript.LABEL_FONT_SIZE != 22:
-		failures.append("affordance: the pill text is %d px at the reference; 22 was asked for" % LayerScript.LABEL_FONT_SIZE)
-	if LayerScript.HIT_SIZE < 200.0:
-		failures.append("affordance: the hit box floor is %.0f px; it must stay 200 px or more" % LayerScript.HIT_SIZE)
-	# The footprint at the reference is the picture plus the pill, no more.
-	var footprint: Rect2 = LayerScript.badge_footprint(Vector2(400.0, 300.0))
-	if footprint.size.x > 130.0 or footprint.size.y > 150.0:
-		failures.append("affordance: the drawn footprint %s is bigger than a 96 px disc and a 30 px pill" % str(footprint))
-	# A laid-out layer in a real viewport: the hit box covers the picture and is
-	# never under the 240 px floor.
+	if design / 1024.0 > 0.125:
+		failures.append("affordance: the disc is %.1f%% of the screen height; the owner called 12.8%% oversized" % (design / 1024.0 * 100.0))
+	if absf(LayerScript.glyph_box(1024.0) - 72.0) > 0.5:
+		failures.append("affordance: the verb picture is %.0f px at the design height; 72 was asked for" % LayerScript.glyph_box(1024.0))
+	if LayerScript.LABEL_FONT_SIZE < 27 or LayerScript.LABEL_FONT_SIZE > 32:
+		failures.append("affordance: the pill text is %d px at the design height; ART_BIBLE §8 floors it at 27" % LayerScript.LABEL_FONT_SIZE)
+	if LayerScript.HIT_SIZE < 240.0:
+		failures.append("affordance: the hit box floor is %.0f px; ART_BIBLE §8 says 240 and never shrink it" % LayerScript.HIT_SIZE)
+
+	# The parts, at the design height, from one call.
+	var centre: Vector2 = Vector2(600.0, 500.0)
+	var rects: Dictionary = LayerScript.layout_rects(centre, LayerScript.badge_scale(1024.0))
+	for key: String in ["disc", "glyph", "pill", "footprint", "hit"]:
+		if not rects.has(key):
+			failures.append("affordance: layout_rects() has no '%s'" % key)
+	if failures.size() > 0:
+		return failures
+	var disc: Rect2 = rects["disc"]
+	var glyph: Rect2 = rects["glyph"]
+	var pill: Rect2 = rects["pill"]
+	var footprint: Rect2 = rects["footprint"]
+	var hit: Rect2 = rects["hit"]
+	if hit.size.x < 240.0 or hit.size.y < 240.0:
+		failures.append("affordance: the hit box %s is under 240 px" % str(hit))
+	if disc.size.x > 130.0 or disc.size.x < 120.0:
+		failures.append("affordance: the visible disc (with its outline) is %s; 120 px plus a 4 px rim was asked for" % str(disc.size))
+	if hit.size.x < disc.size.x * 1.8:
+		failures.append("affordance: the hit box (%s) is not visibly bigger than the disc (%s); the picture and the target must stay distinct"
+				% [str(hit.size), str(disc.size)])
+	if not disc.encloses(glyph):
+		failures.append("affordance: the picture %s pokes out of the disc %s" % [str(glyph), str(disc)])
+	if glyph.size.x > disc.size.x * 0.66 or glyph.size.x < disc.size.x * 0.5:
+		failures.append("affordance: the picture is %.0f px in a %.0f px disc; it should be about 60%%" % [glyph.size.x, disc.size.x])
+	if pill.position.y < disc.end.y - 1.0:
+		failures.append("affordance: the word pill %s is not under the disc %s" % [str(pill), str(disc)])
+	if not hit.encloses(disc) or not hit.encloses(pill):
+		failures.append("affordance: the hit box %s does not cover the disc %s and the pill %s" % [str(hit), str(disc), str(pill)])
+	if not footprint.encloses(disc) or not footprint.encloses(pill):
+		failures.append("affordance: the footprint %s is not the disc plus the pill" % str(footprint))
+	if footprint.size.x > 140.0 or footprint.size.y > 180.0:
+		failures.append("affordance: the drawn footprint %s is bigger than a 120 px disc and a 40 px pill" % str(footprint))
+	if not (hit.get_center().is_equal_approx(centre)) or not (disc.get_center().is_equal_approx(centre)):
+		failures.append("affordance: the hit box and the disc are not centred on the same point")
+
+	# The layer's own scale follows its viewport: 0.73 on a bare 750 px frame,
+	# 1.0 at the design height. (A camera needs a viewport to unproject; the
+	# laid-out hit box is asserted on a real frame in test_badge_keepouts.gd.)
 	var layer: Control = LayerScript.new()
 	layer.call("build")
+	layer.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	layer.size = Vector2(1334.0, 750.0)
-	var actor: FakeActor = FakeActor.new()
-	layer.call("set_actor", actor)
-	var camera: Camera3D = Camera3D.new()
-	camera.position = Vector3(0.0, 2.0, 4.0)
-	camera.look_at_from_position(camera.position, Vector3.ZERO, Vector3.UP)
-	# A camera needs a viewport to unproject; without one the hit box hides and
-	# that path is covered elsewhere. This asserts the pure sizing only.
+	if absf(float(layer.call("current_scale")) - 750.0 / 1024.0) > 0.01:
+		failures.append("affordance: a 750 px tall layer sits at scale %.2f, not 750/1024"
+				% float(layer.call("current_scale")))
+	layer.size = Vector2(1366.0, 1024.0)
 	if absf(float(layer.call("current_scale")) - 1.0) > 0.01:
-		failures.append("affordance: a 750 px tall layer does not sit at scale 1.0 (%.2f)"
+		failures.append("affordance: a 1024 px tall layer does not sit at scale 1.0 (%.2f)"
 				% float(layer.call("current_scale")))
 	layer.free()
-	actor.free()
-	camera.free()
+	return failures
+
+
+## ONE badge language: whatever the verb, the disc, the picture box, the pill
+## height and the hit box are the same rects; only the pill's width follows the
+## word and only the colour follows `AffordanceRules.verb_color()`. A person
+## gets no highlight ring; a thing does.
+func _test_one_badge_language():
+	var failures: Array = []
+	var s: float = LayerScript.badge_scale(1024.0)
+	var centre: Vector2 = Vector2(500.0, 400.0)
+	var base: Dictionary = LayerScript.layout_rects(centre, s, LayerScript.label_width_for("OPEN", s))
+	for verb: String in Rules.VERBS:
+		var width: float = LayerScript.label_width_for(verb, s)
+		var rects: Dictionary = LayerScript.layout_rects(centre, s, width)
+		for key: String in ["disc", "glyph"]:
+			if not (rects[key] as Rect2).is_equal_approx(base[key]):
+				failures.append("affordance: %s draws a different %s (%s vs %s)" % [verb, key, str(rects[key]), str(base[key])])
+		if absf((rects["pill"] as Rect2).size.y - (base["pill"] as Rect2).size.y) > 0.01:
+			failures.append("affordance: %s has a different pill height" % verb)
+		if width < LayerScript.LABEL_WIDTH * s - 0.01:
+			failures.append("affordance: %s's pill is narrower than the shared width" % verb)
+		if (rects["hit"] as Rect2).size.x < 240.0 or (rects["hit"] as Rect2).size.y < 240.0:
+			failures.append("affordance: %s's hit box is under 240 px" % verb)
+		var color: Color = Rules.verb_color(verb)
+		if Palette.is_red(color) or Palette.is_black(color) or Palette.is_grey(color):
+			failures.append("affordance: %s is coloured %s" % [verb, color])
+	if LayerScript.draws_ring(true):
+		failures.append("affordance: a person gets a highlight ring across the face")
+	if not LayerScript.draws_ring(false):
+		failures.append("affordance: a thing gets no highlight ring")
+	if LayerScript.RING_MAX_PX * s > LayerScript.HIT_SIZE * 0.5:
+		failures.append("affordance: the ring's radius can reach %.0f px; it used to fill the room" % (LayerScript.RING_MAX_PX * s))
 	return failures
 
 

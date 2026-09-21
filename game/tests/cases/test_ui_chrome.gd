@@ -16,7 +16,11 @@ extends RefCounted
 const IconGlyphScript := preload("res://scripts/progression/icon_glyph.gd")
 const CelebrationScript := preload("res://scripts/progression/celebration.gd")
 const StickerBookScreenScript := preload("res://scenes/progression/sticker_book_screen.gd")
+const HouseHudScript := preload("res://scripts/gameplay/house_hud.gd")
+const PickerScript := preload("res://scenes/activities_menu/activity_picker.gd")
+const Palette := preload("res://scripts/ui/palette.gd")
 
+const MENU_SCENE: String = "res://scenes/main/main.tscn"
 const BABY_ROOM_SCENE: String = "res://scenes/baby_room/baby_room.tscn"
 const PARENT_SCENE: String = "res://scenes/parent/parent_settings.tscn"
 const STYLES_DIR: String = "res://assets/ui/styles"
@@ -76,6 +80,129 @@ func run():
 	failures.append_array(_test_sticker_columns())
 	failures.append_array(_test_room_layout())
 	failures.append_array(_test_one_frame_system())
+	failures.append_array(_test_house_hud_star_counter_is_the_shared_glyph())
+	failures.append_array(_test_picker_cards_are_the_title_cards())
+	return failures
+
+
+# ---------------------------------------------------------------------------
+# The house HUD's chrome (interaction-layer pass, 2026-09-21)
+# ---------------------------------------------------------------------------
+
+## ART_BIBLE §8: "one shared glyph at every size". The house HUD's star
+## counter used to be a text "★"; it is now `IconGlyph.STAR` in earned gold
+## with an ink rim, beside the number, inside the same 224x60 box the badge
+## layer keeps out of. Home stays the 104 px peach disc with the 80 px house
+## picture (docs/UI_PACK_INTEGRATION.md's touch table).
+func _test_house_hud_star_counter_is_the_shared_glyph():
+	var failures: Array = []
+	var hud: Control = HouseHudScript.new()
+	hud.call("build")
+	var counter: Control = hud.call("get_star_counter")
+	if counter == null:
+		hud.free()
+		return ["ui_chrome: the house HUD has no star counter"]
+	var glyph: Node = counter.get_node_or_null("StarGlyph")
+	var rim: Node = counter.get_node_or_null("StarRim")
+	var count: Label = counter.get_node_or_null("StarCount") as Label
+	if not (glyph is TextureRect) or glyph.get_script() != IconGlyphScript:
+		failures.append("ui_chrome: the star counter's star is not the shared IconGlyph")
+	else:
+		if int(glyph.get("glyph")) != IconGlyphScript.Glyph.STAR:
+			failures.append("ui_chrome: the star counter's glyph is not IconGlyph.STAR")
+		if not (glyph.get("tint") as Color).is_equal_approx(Palette.STAR_EARNED):
+			failures.append("ui_chrome: the star counter's star is %s, not the earned gold" % str(glyph.get("tint")))
+		var side: float = (glyph as Control).offset_right - (glyph as Control).offset_left
+		if side < 36.0 or side > 60.0:
+			failures.append("ui_chrome: the star glyph is %.0f px; it should sit at the number's height" % side)
+	if rim == null or Palette.is_black(rim.get("tint")):
+		failures.append("ui_chrome: the star has no ink rim under it (or the rim is black)")
+	if count == null:
+		failures.append("ui_chrome: the star counter has no number")
+	else:
+		hud.call("set_stars", 3)
+		if count.text != "3":
+			failures.append("ui_chrome: the counter shows '%s' after set_stars(3); the star is the glyph, not text" % count.text)
+		if String(hud.call("get_star_text")) != "★ 3":
+			failures.append("ui_chrome: get_star_text() no longer reads '★ 3'")
+		if count.get_theme_font_size("font_size") < 27:
+			failures.append("ui_chrome: the star count is under the 27 pt floor")
+	var box: Rect2 = Rect2(counter.offset_left, counter.offset_top,
+			counter.offset_right - counter.offset_left, counter.offset_bottom - counter.offset_top)
+	if not Rect2(36.0, 26.0, 224.0, 60.0).encloses(box):
+		failures.append("ui_chrome: the star counter %s left the box the badge layer and Home are laid out around" % str(box))
+	for child: Node in counter.get_children():
+		if child is Control and (child as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			failures.append("ui_chrome: %s in the star counter can eat a touch" % child.name)
+	# Home, per the touch table.
+	var home: Button = hud.call("get_home_button")
+	var home_rect: Rect2 = HouseHudScript.home_button_rect(Vector2(1366.0, 1024.0))
+	if absf(home_rect.size.x - 104.0) > 0.5 or absf(home_rect.size.y - 104.0) > 0.5:
+		failures.append("ui_chrome: Home is %s; the touch table says a 104 px disc" % str(home_rect.size))
+	var house: Control = home.get_node_or_null("HouseGlyph") as Control
+	if house == null:
+		failures.append("ui_chrome: Home has no HouseGlyph")
+	else:
+		var picture_w: float = home_rect.size.x - house.offset_left + house.offset_right
+		var picture_h: float = home_rect.size.y - house.offset_top + house.offset_bottom
+		if absf(picture_w - 80.0) > 0.5 or absf(picture_h - 80.0) > 0.5:
+			failures.append("ui_chrome: Home's picture box is %.0fx%.0f; the touch table says 80x80" % [picture_w, picture_h])
+	hud.free()
+	return failures
+
+
+## The activity picker's mini-game cards are the title screen's cards: the
+## same side, the same caption size, the same frame faces. Read off
+## `main.tscn` rather than typed twice, so the two cannot drift.
+func _test_picker_cards_are_the_title_cards():
+	var failures: Array = []
+	if not ResourceLoader.exists(MENU_SCENE):
+		return ["%s does not exist" % MENU_SCENE]
+	var packed: PackedScene = load(MENU_SCENE) as PackedScene
+	if packed == null:
+		return ["%s cannot be loaded" % MENU_SCENE]
+	var menu: Node = packed.instantiate()
+	var play: Button = menu.get_node_or_null(NodePath("UI/SafeArea/PlayButton")) as Button
+	var caption: Label = menu.get_node_or_null(NodePath("UI/SafeArea/PlayButton/PlayCaption")) as Label
+	if play == null or caption == null:
+		menu.free()
+		return ["ui_chrome: the title screen has no PlayButton/PlayCaption to compare the picker with"]
+	var side: float = play.offset_right - play.offset_left
+	if absf(PickerScript.CARD_SIDE - side) > 0.5:
+		failures.append("ui_chrome: picker cards are %.0f px, the title's cards %.0f px" % [PickerScript.CARD_SIDE, side])
+	if PickerScript.CARD_SIDE < 240.0:
+		failures.append("ui_chrome: picker cards are under the 240 px floor")
+	if PickerScript.CAPTION_FONT_SIZE != caption.get_theme_font_size("font_size"):
+		failures.append("ui_chrome: picker captions are %d pt, the title's Play caption %d pt"
+				% [PickerScript.CAPTION_FONT_SIZE, caption.get_theme_font_size("font_size")])
+	# The frame faces: every picker style is one of the title row's frames.
+	var title_faces: Array = []
+	for button_name: String in ["PlayButton", "FreePlayButton", "DressUpButton"]:
+		var button: Button = menu.get_node_or_null(NodePath("UI/SafeArea/%s" % button_name)) as Button
+		if button != null and button.get_theme_stylebox("normal") != null:
+			title_faces.append(button.get_theme_stylebox("normal").resource_path)
+	for style: Array in PickerScript.CARD_STYLES:
+		if not String(style[0]).begins_with("%s/btn_" % STYLES_DIR):
+			failures.append("ui_chrome: picker card face %s is not one of the shared button frames" % String(style[0]))
+		if not ResourceLoader.exists(String(style[0])) or not ResourceLoader.exists(String(style[1])):
+			failures.append("ui_chrome: picker card style %s / %s is missing" % [String(style[0]), String(style[1])])
+	var shared: int = 0
+	for face: String in title_faces:
+		for style: Array in PickerScript.CARD_STYLES:
+			if String(style[0]) == face:
+				shared += 1
+	if shared < 3:
+		failures.append("ui_chrome: the picker's card faces share only %d of the title row's %d frames" % [shared, title_faces.size()])
+	# The parts fit the card: picture, two caption lines, stars, in that order.
+	if PickerScript.PICTURE_TOP + PickerScript.PICTURE_SIZE > PickerScript.CAPTION_TOP:
+		failures.append("ui_chrome: the picker's picture runs into its caption")
+	if PickerScript.CAPTION_TOP + PickerScript.CAPTION_HEIGHT > PickerScript.STARS_TOP:
+		failures.append("ui_chrome: the picker's caption band runs into its stars")
+	if PickerScript.STARS_TOP + PickerScript.STAR_SIZE > PickerScript.CARD_SIDE:
+		failures.append("ui_chrome: the picker's stars hang off the card")
+	if PickerScript.CAPTION_HEIGHT < PickerScript.CAPTION_FONT_SIZE * 2.4:
+		failures.append("ui_chrome: the picker's caption band cannot hold two lines of %d pt" % PickerScript.CAPTION_FONT_SIZE)
+	menu.free()
 	return failures
 
 

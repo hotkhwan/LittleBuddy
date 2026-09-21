@@ -19,6 +19,9 @@ const SUMMARY_SCENE: String = "res://scenes/progression/session_summary.tscn"
 const STICKER_BOOK_SCENE: String = "res://scenes/progression/sticker_book.tscn"
 
 const StickerCellScript := preload("res://scripts/progression/sticker_cell.gd")
+const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
+const PickerScript := preload("res://scenes/activities_menu/activity_picker.gd")
+const Palette := preload("res://scripts/ui/palette.gd")
 
 ## Face colours of the re-paletted Kenney frames, i.e. what a label printed on
 ## one of them is actually sitting on. Kept here rather than read back out of
@@ -113,6 +116,21 @@ func run():
 	failures.append_array(_test_labels())
 	failures.append_array(_test_toggles())
 	failures.append_array(_test_sticker_caption())
+	failures.append_array(_test_badge_and_picker_text())
+	return failures
+
+
+## The affordance badge's word (ink on the cream pill, 30 px at the design
+## height -- under the 32 px "large text" line, so it is held to 4.5:1) and the
+## activity picker's captions (ink on each of the four title-card faces).
+func _test_badge_and_picker_text():
+	var failures: Array = []
+	failures.append_array(_check("affordance badge word", Palette.INK, Palette.CREAM,
+			AffordanceLayerScript.LABEL_FONT_SIZE))
+	for face: Array in [["mint", MINT_FACE], ["peach", PEACH_FACE], ["pink", PINK_FACE], ["lavender", LAVENDER_FACE]]:
+		failures.append_array(_check("activity picker caption on %s" % String(face[0]), Palette.INK,
+				face[1], PickerScript.CAPTION_FONT_SIZE))
+	failures.append_array(_check("activity picker Back", Palette.INK, PEACH_FACE, PickerScript.BACK_FONT_SIZE))
 	return failures
 
 
