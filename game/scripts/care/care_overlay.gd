@@ -78,6 +78,11 @@ const MASH: String = "mashFood"
 ## Bunny's real mouth as `FEED`, with food words instead of milk words, so a
 ## fruit bowl is never introduced as a drink.
 const GIVE_FOOD: String = "giveFood"
+## The kitchen counter's food (a mashed banana, a fruit bowl): `MIX`'s two
+## halves -- a hold, then a stir back and forth -- with food words. Minimal on
+## purpose: `kitchen_rules.gd` has named this gesture since the kitchen was
+## written, and until now the counter combined the food with no close-up.
+const MASH: String = "mashFood"
 
 ## Copy per act: the instruction, the word being taught, and the child's line.
 const COPY: Dictionary = {
@@ -116,6 +121,11 @@ const COPY: Dictionary = {
 		"hint": "Hold the spoon at Bunny's mouth.",
 		"childLine": "Yummy, please, Aliz!", "doneLine": "Thank you, Aliz!",
 	},
+	MASH: {
+		"title": "Let's mash it up!", "word": "mash", "thai": "บดอาหาร",
+		"hint": "Hold the spoon over the bowl, then stir.",
+		"childLine": "I'm hungry, Aliz!", "doneLine": "The food is ready!",
+	},
 }
 
 ## How much work each act is. Tuned so every one takes roughly the same few
@@ -136,7 +146,7 @@ const FEED_SECONDS: float = 2.2
 const FEED_DECAY: float = 0.7
 
 ## Acts whose progress advances with TIME rather than with movement.
-const HOLD_KINDS: Array[String] = [MIX, FEED, GIVE_FOOD]
+const HOLD_KINDS: Array[String] = [MIX, MASH, FEED, GIVE_FOOD]
 
 const FACE_RADIUS: float = 190.0
 const MOUTH_OFFSET := Vector2(0.0, 92.0)
@@ -520,7 +530,7 @@ func apply_stroke(to: Vector2) -> void:
 			var row: int = clampi(int((local.y + FACE_RADIUS) / (FACE_RADIUS * 2.0 / 3.0)), 0, 2)
 			_dry_patches[row * 3 + col] = true
 			_progress = clampf(float(_dry_patches.size()) / float(DRY_PATCHES), 0.0, 1.0)
-		MIX:
+		MIX, MASH:
 			# The SECOND half only. Pouring is a hold and is counted in `_process`;
 			# once the jug is empty the same finger shakes the bottle, and only a
 			# reversal counts -- a shake is back AND forth.
@@ -555,7 +565,7 @@ func apply_hold(delta: float, at: Vector2) -> void:
 		return
 	var centre: Vector2 = size * 0.5
 	match _kind:
-		MIX:
+		MIX, MASH:
 			if _poured >= POUR_SECONDS:
 				return
 			# Only over the bottle's neck, so the jug has to be aimed.
@@ -648,7 +658,7 @@ func _redraw() -> void:
 func _draw_face(_unused: Variant = null) -> void:
 	var c: Control = _face
 	var o := Vector2.ZERO
-	if _kind == MIX:
+	if _kind == MIX or _kind == MASH:
 		_draw_bottle(c, o)
 		return
 	if _is_feed():
@@ -808,7 +818,7 @@ func _draw_tool(_unused: Variant = null) -> void:
 					Palette.SOFT_PINK, true)
 			c.draw_rect(Rect2(o + Vector2(-38.0, -8.0), Vector2(76.0, 8.0)),
 					Palette.CREAM, true)
-		MIX:
+		MIX, MASH:
 			# A little jug, tipped, with a spout that points where the milk lands.
 			c.draw_rect(Rect2(o + Vector2(-34.0, -30.0), Vector2(60.0, 56.0)),
 					Palette.DUSTY_BLUE, true)

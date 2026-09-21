@@ -621,6 +621,30 @@ func _kitchen(world, director, aliz, bunny):
 	var made: String = String(kitchen.call("on_station", "counter"))
 	if held == "banana" and second == "bowl" and made != "fruitBowl":
 		failures.append("kitchen: banana + bowl did not cook (on the counter: %s)" % made)
+	# Food preparation is a close-up too (owner: the counter combined silently).
+	if made == "fruitBowl" or made == "mashedBanana":
+		if not bool(director.call("is_care_open")):
+			failures.append("kitchen: making the %s did not open the mashFood close-up" % made)
+		else:
+			var mash: Control = director.call("get_care_overlay")
+			if String(mash.call("get_care_kind")) != "mashFood":
+				failures.append("kitchen: the food close-up opened as '%s', not mashFood" % mash.call("get_care_kind"))
+			# The real gesture: hold the spoon over the bowl, then stir back and forth.
+			var neck: Vector2 = mash.size * 0.5 + Vector2(0.0, -120.0)
+			mash.call("_set_dragging", true, neck)
+			for _i: int in range(int(1.6 / DT)):
+				mash.call("apply_hold", DT, neck)
+			for i: int in range(24):
+				mash.call("apply_stroke", neck + Vector2(40.0 if i % 2 == 0 else -40.0, 0.0))
+				if bool(mash.call("is_finished")):
+					break
+			if not bool(mash.call("is_finished")):
+				failures.append("kitchen: a hold and 24 stirs did not finish mashing (progress %.2f)" % mash.call("get_progress"))
+				mash.call("complete_by_touch")
+			if bool(director.call("is_care_open")):
+				failures.append("kitchen: the mash close-up stayed open after completing")
+			if String(aliz.call("get_state_name")) == "disabled":
+				failures.append("kitchen: input was not given back after the mash close-up")
 	# A milk bottle: the MIX close-up opens from Free Play.
 	kitchen.call("reset")
 	kitchen.call("set_open", "fridge", true)
