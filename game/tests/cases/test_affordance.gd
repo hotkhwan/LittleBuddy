@@ -15,6 +15,12 @@ const NavigationController := preload("res://scripts/navigation/navigation_contr
 const KitchenState := preload("res://scripts/kitchen/kitchen_state.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+const CharacterScript := preload("res://scripts/character/little_buddy_character.gd")
+const BuddyViewScript := preload("res://scripts/characters/buddy/pink_girl_buddy.gd")
+const ChildActorScript := preload("res://scripts/care/child_actor.gd")
+const NavigationProvider := preload("res://scripts/navigation/navigation_provider.gd")
+
+const DT: float = 1.0 / 60.0
 
 
 ## A node that speaks the contract with a fixed answer.
@@ -105,6 +111,266 @@ func run():
 	failures.append_array(_test_a_character_badge_keeps_off_his_bubble())
 	failures.append_array(_test_badge_is_small_and_scales_with_the_screen())
 	failures.append_array(_test_the_thing_she_faces_wins())
+	failures.append_array(_test_touch_mouse_twin_does_not_double_perform())
+	failures.append_array(_test_rapid_taps_carry_bunny_only_once())
+	failures.append_array(_test_carried_child_ranks_below_a_reachable_surface())
+	failures.append_array(_test_placement_hysteresis_holds_the_badge_through_a_blink())
+	failures.append_array(_test_layout_freezes_while_a_press_is_live())
+	return failures
+
+
+## The other half of the badge-stability fix: while a press is still being
+## answered (`_press_clock` counting down from `perform()`), `_layout()` must
+## not touch the hit box at all, however much `_current` changed underneath --
+## a real device has no reliable moment to sneak the geometry sideways between
+## the finger landing and the tap being read.
+func _test_layout_freezes_while_a_press_is_live():
+	var failures: Array = []
+	var layer: Control = LayerScript.new()
+	layer.call("build")
+	var actor: FakeActor = FakeActor.new()
+	layer.call("set_actor", actor)
+	# No candidates at all: a fresh `evaluate()` this frame would return `{}`.
+	layer.call("set_candidate_sources", [])
+
+	# Pretend a previous frame laid the badge out and a press just landed.
+	layer.set("_laid_out", true)
+	layer.set("_press_clock", 0.05)
+	var hit: Control = layer.get_node("AffordanceHit")
+	hit.position = Vector2(111.0, 222.0)
+	hit.size = Vector2(240.0, 240.0)
+	hit.visible = true
+
+	layer.call("step", 0.016)
+
+	if hit.position != Vector2(111.0, 222.0) or hit.size != Vector2(240.0, 240.0) or not hit.visible:
+		failures.append("affordance: the hit box moved or hid itself while a press was still live")
+	if not bool(layer.call("is_laid_out")):
+		failures.append("affordance: is_laid_out() flipped false mid-press")
+
+	layer.free()
+	actor.free()
+	return failures
+
+
+## Owner bug: the badge's keep-outs blink every frame (a speech bubble, her own
+## face keep-out sliding as she steps), so a tap landing a moment after the
+## child saw the badge could find the hit box already walked to the other side
+## of the ring. `_apply_placement_hysteresis()` is exercised directly (bypassing
+## `step()`, which would also re-run `evaluate()`/`_layout()` with no actor
+## bound and reset the very state under test) so the dwell logic is proven on
+## its own, independent of any camera or viewport.
+func _test_placement_hysteresis_holds_the_badge_through_a_blink():
+	var failures: Array = []
+	var layer: Control = LayerScript.new()
+	layer.call("build")
+	layer.set("_clock", 0.0)
+
+	layer.call("_apply_placement_hysteresis", "kitchen.fridge", "OPEN",
+			{"centre": Vector2(400.0, 300.0), "placement": "above"})
+	if String(layer.call("get_placement")) != "above":
+		failures.append("affordance: hysteresis: a brand-new target did not snap to its placement at once")
+	if not (layer.call("get_badge_centre") as Vector2).is_equal_approx(Vector2(400.0, 300.0)):
+		failures.append("affordance: hysteresis: a brand-new target did not snap to its position at once")
+
+	# 50 ms later (well inside the dwell) a keep-out blinks on and the same
+	# search now wants the other side: the side, and the position, must hold.
+	layer.set("_clock", 0.05)
+	layer.call("_apply_placement_hysteresis", "kitchen.fridge", "OPEN",
+			{"centre": Vector2(120.0, 300.0), "placement": "left"})
+	if String(layer.call("get_placement")) != "above":
+		failures.append("affordance: hysteresis: the side flipped %.2f s into the dwell window (now '%s')"
+				% [0.05, layer.call("get_placement")])
+	if not (layer.call("get_badge_centre") as Vector2).is_equal_approx(Vector2(400.0, 300.0)):
+		failures.append("affordance: hysteresis: the badge moved before the dwell ran out")
+
+	# The blink passes; the object simply moved a little on the SAME side --
+	# that still tracks smoothly, dwell or no dwell.
+	layer.set("_clock", 0.08)
+	layer.call("_apply_placement_hysteresis", "kitchen.fridge", "OPEN",
+			{"centre": Vector2(410.0, 300.0), "placement": "above"})
+	if not (layer.call("get_badge_centre") as Vector2).is_equal_approx(Vector2(410.0, 300.0)):
+		failures.append("affordance: hysteresis: a same-side move was not tracked")
+
+	# The other side is wanted again, and this time it is sustained past the
+	# dwell: the badge is finally allowed to move.
+	layer.call("_apply_placement_hysteresis", "kitchen.fridge", "OPEN",
+			{"centre": Vector2(120.0, 300.0), "placement": "left"})
+	layer.set("_clock", 0.08 + LayerScript.PLACEMENT_DWELL_SEC + 0.02)
+	layer.call("_apply_placement_hysteresis", "kitchen.fridge", "OPEN",
+			{"centre": Vector2(120.0, 300.0), "placement": "left"})
+	if String(layer.call("get_placement")) != "left":
+		failures.append("affordance: hysteresis: the side never changed even after wanting to for longer than the dwell")
+	if not (layer.call("get_badge_centre") as Vector2).is_equal_approx(Vector2(120.0, 300.0)):
+		failures.append("affordance: hysteresis: the position did not follow once the dwell ran out")
+
+	# A genuinely different target snaps at once rather than inheriting the old
+	# target's dwell clock or position.
+	layer.call("_apply_placement_hysteresis", "kitchen.doorToBathroom", "ENTER",
+			{"centre": Vector2(900.0, 200.0), "placement": "below"})
+	if String(layer.call("get_placement")) != "below":
+		failures.append("affordance: hysteresis: a new target inherited the old one's dwell")
+	if not (layer.call("get_badge_centre") as Vector2).is_equal_approx(Vector2(900.0, 200.0)):
+		failures.append("affordance: hysteresis: a new target did not snap to its own position at once")
+
+	layer.free()
+	return failures
+
+
+## -- Owner bug regressions: "picking up Bunny works intermittently" ------------
+##
+## A real caregiver and a real carryable child, wired the way
+## `test_carry_bunny.gd` stages them -- these three need `perform_affordance()`
+## to actually flip `is_carried()`, which a `FakeAffordable`'s scripted answer
+## cannot stand in for.
+
+func _carry_stage() -> Dictionary:
+	var room: Node3D = Node3D.new()
+	room.name = "Room"
+	var aliz: CharacterBody3D = CharacterScript.new()
+	aliz.name = "LittleBuddy"
+	aliz.motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+	var view: Node3D = BuddyViewScript.new()
+	view.name = "BuddyView"
+	aliz.add_child(view)
+	view.call("build")
+	room.add_child(aliz)
+	aliz.position = Vector3.ZERO
+	aliz.call("set_navigation_provider", NavigationProvider.new())
+
+	var bunny: Node3D = ChildActorScript.new()
+	bunny.name = "LittleBuddyChild"
+	room.add_child(bunny)
+	bunny.position = Vector3(0.0, 0.0, -0.5)
+	bunny.call("build")
+
+	var layer: Control = LayerScript.new()
+	layer.call("build")
+	layer.call("set_actor", aliz)
+	layer.call("set_candidate_sources", [bunny])
+	layer.call("step", 0.016)
+	return {"room": room, "aliz": aliz, "bunny": bunny, "layer": layer}
+
+
+func _release_carry_stage(stage: Dictionary) -> void:
+	(stage["layer"] as Node).free()
+	(stage["room"] as Node).free()
+
+
+## One finger, one tap: `pointing/emulate_mouse_from_touch` delivers an
+## `InputEventScreenTouch` AND a synthetic `InputEventMouseButton` at the same
+## spot to whatever `Control` the finger landed on. Fed straight into the
+## layer's hit box exactly as Godot would, this must carry Bunny up ONCE, not
+## carry-then-immediately-place him back down.
+func _test_touch_mouse_twin_does_not_double_perform():
+	var failures: Array = []
+	var stage: Dictionary = _carry_stage()
+	var aliz: CharacterBody3D = stage["aliz"]
+	var bunny: Node3D = stage["bunny"]
+	var layer: Control = stage["layer"]
+
+	var performed: Array = []
+	layer.connect("affordance_performed", func(verb: String, id: String, handled: bool) -> void:
+		performed.append([verb, id, handled]))
+
+	if String(layer.call("get_current_verb")) != "CARRY":
+		failures.append("precondition: the layer should offer CARRY on a free Bunny (got %s)"
+				% str(layer.call("get_current_verb")))
+
+	var touch := InputEventScreenTouch.new()
+	touch.pressed = true
+	touch.position = Vector2(600.0, 400.0)
+	layer.call("_on_hit_input", touch)
+
+	var mouse := InputEventMouseButton.new()
+	mouse.button_index = MOUSE_BUTTON_LEFT
+	mouse.pressed = true
+	mouse.position = Vector2(601.0, 400.0)
+	layer.call("_on_hit_input", mouse)
+
+	if performed.size() != 1:
+		failures.append("affordance: a touch/mouse twin fired affordance_performed %d times, not once"
+				% performed.size())
+	if not bool(bunny.call("is_carried")):
+		failures.append("affordance: Bunny was not carried after the tap")
+	for _i: int in range(60):
+		aliz.call("step_movement", DT)
+	if not bool(bunny.call("is_carried")):
+		failures.append("affordance: Bunny was dropped again within 60 physics steps of being picked up")
+
+	_release_carry_stage(stage)
+	return failures
+
+
+## Five presses 50 ms apart on the badge (no synthetic twin this time, just a
+## fast finger): still one carry, not carry-place-carry-place-carry.
+func _test_rapid_taps_carry_bunny_only_once():
+	var failures: Array = []
+	var stage: Dictionary = _carry_stage()
+	var aliz: CharacterBody3D = stage["aliz"]
+	var bunny: Node3D = stage["bunny"]
+	var layer: Control = stage["layer"]
+
+	var performed: Array = []
+	layer.connect("affordance_performed", func(verb: String, id: String, handled: bool) -> void:
+		performed.append([verb, id, handled]))
+
+	for i: int in range(5):
+		var touch := InputEventScreenTouch.new()
+		touch.pressed = true
+		touch.position = Vector2(600.0, 400.0)
+		layer.call("_on_hit_input", touch)
+		if i < 4:
+			layer.call("step", 0.05)
+
+	if performed.size() != 1:
+		failures.append("affordance: five taps 50 ms apart fired affordance_performed %d times, not once"
+				% performed.size())
+	if not bool(bunny.call("is_carried")):
+		failures.append("affordance: Bunny is not carried after five rapid taps")
+	for _i: int in range(30):
+		aliz.call("step_movement", DT)
+	if not bool(bunny.call("is_carried")):
+		failures.append("affordance: Bunny was dropped after the rapid-tap burst settled")
+
+	_release_carry_stage(stage)
+	return failures
+
+
+## Carrying Bunny, a reachable surface's PLACE must outrank the floor put-down
+## she is always offering on the child in her own arms; with nothing else in
+## reach, his own put-down is still there as the fallback. Uses the REAL
+## `child_actor.get_affordance()` while carried, not a scripted stand-in, so
+## this regresses against `child_actor.gd`'s own priority, not just the rule.
+func _test_carried_child_ranks_below_a_reachable_surface():
+	var failures: Array = []
+	var stage: Dictionary = _carry_stage()
+	var aliz: CharacterBody3D = stage["aliz"]
+	var bunny: Node3D = stage["bunny"]
+	if not bool(aliz.call("carry_node", bunny, "carryFront")):
+		failures.append("precondition: could not carry Bunny")
+		_release_carry_stage(stage)
+		return failures
+
+	var own_place: Dictionary = bunny.call("get_affordance", aliz)
+	if Rules.normalize_verb(own_place.get("verb", "")) != "PLACE":
+		failures.append("precondition: carrying him he should offer PLACE, got %s" % str(own_place.get("verb")))
+	own_place["verb"] = "PLACE"
+	own_place["targetId"] = "bedroom.littleBuddy"
+	var bed: Dictionary = {"verb": "PLACE", "anchor": Vector3(0.0, 0.4, -0.8), "radius": 1.6,
+			"priority": Rules.PRIORITY_FURNITURE, "targetId": "bedroom.bed"}
+	var facing_forward: Vector3 = Vector3(0.0, 0.0, -1.0)
+
+	var with_bed: Dictionary = Rules.pick([own_place, bed], Vector3.ZERO, [], facing_forward)
+	if String(with_bed.get("targetId", "")) != "bedroom.bed":
+		failures.append("affordance: carrying him, a reachable bed lost to his own floor put-down (got %s)"
+				% str(with_bed.get("targetId")))
+
+	var alone: Dictionary = Rules.pick([own_place], Vector3.ZERO, [], facing_forward)
+	if String(alone.get("targetId", "")) != "bedroom.littleBuddy":
+		failures.append("affordance: with nothing else in reach, his own put-down should still be offered")
+
+	_release_carry_stage(stage)
 	return failures
 
 
@@ -451,9 +717,12 @@ func _test_layer_tap_falls_through_or_is_handled():
 	if performed.size() != 1 or bool(performed[0][2]):
 		failures.append("affordance: affordance_performed should report handled=false on fall-through")
 
-	# A target that handles its own tap keeps the router out of it.
+	# A target that handles its own tap keeps the router out of it. Stepped past
+	# `PRESS_SEC` first: this is a second, later press, not the debounced twin
+	# of the one just above (see `test_carry_bunny.gd`'s pick-up-then-put-down
+	# case for that).
 	fridge.handles = true
-	layer.call("step", 0.016)
+	layer.call("step", LayerScript.PRESS_SEC + 0.05)
 	layer.call("perform")
 	if nav.taps.size() != 1:
 		failures.append("affordance: a handled affordance still fell through to routing")

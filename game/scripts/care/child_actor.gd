@@ -67,6 +67,7 @@ const Life := preload("res://scripts/care/child_life.gd")
 const ActivityTargetScript := preload("res://scripts/navigation/activity_target.gd")
 const InteractionPointScript := preload("res://scripts/navigation/interaction_point.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+const AffordanceRulesScript := preload("res://scripts/interaction/affordance_rules.gd")
 
 ## Emitted when the child's dominant need changes, so a mission can react without
 ## polling. Empty string means content.
@@ -1289,10 +1290,21 @@ func get_affordance(actor: Node3D) -> Dictionary:
 	var anchor: Vector3 = SpatialUtil.world_position(self) \
 			+ Vector3(0.0, CHILD_HEAD_HEIGHT + AFFORD_ANCHOR_LIFT, 0.0)
 	var verb: String = AFFORD_VERB_CARRY
+	var priority: int = AFFORD_PRIORITY
 	if _carrier != null:
 		if actor != _carrier:
 			return {}
 		verb = AFFORD_VERB_PLACE
+		# In her arms he is no longer "the thing a beat is about" fighting a
+		# reachable surface for the badge -- he already IS her hands. At his own
+		# band this offer's `FACING_BONUS` (she is always facing straight at
+		# what she is carrying) beat a bed or a table's own PLACE/WASH every
+		# time, so the badge kept re-offering to put him down where he already
+		# was not, and a same-instant CARRY-then-PLACE double tap looked like
+		# him being dropped the moment he was picked up. Owner bug, root cause
+		# #2. Dropped to the loose-prop band: a reachable surface now wins, and
+		# his own floor put-down stays the fallback when nothing else is close.
+		priority = AffordanceRulesScript.PRIORITY_PROP
 	elif actor.has_method("is_carrying_node") and bool(actor.call("is_carrying_node")):
 		# Her hands are full of something else; nothing to offer on him.
 		return {}
@@ -1302,16 +1314,29 @@ func get_affordance(actor: Node3D) -> Dictionary:
 		"verb": verb,
 		"anchor": anchor,
 		"radius": AFFORD_REACH,
-		"priority": AFFORD_PRIORITY,
+		"priority": priority,
 		"target": self,
 	}
+
+
+## The verb `perform_affordance()` actually ran last time, for
+## `affordance_layer.gd` to report instead of whatever it had cached from its
+## last `evaluate()` -- which can be a frame stale relative to a second call
+## landing in the same instant (see `AffordanceLayer.perform()`).
+var _last_performed_verb: String = ""
+
+
+func get_last_performed_verb() -> String:
+	return _last_performed_verb
 
 
 func perform_affordance(actor: Node3D) -> bool:
 	var offer: Dictionary = get_affordance(actor)
 	if offer.is_empty():
 		return false
-	match String(offer["verb"]):
+	var verb: String = String(offer["verb"])
+	_last_performed_verb = verb
+	match verb:
 		AFFORD_VERB_PLACE:
 			if not actor.has_method("put_down_carried"):
 				return false

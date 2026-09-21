@@ -69,6 +69,7 @@ func run():
 	failures.append_array(_test_pick_up_hold_put_down())
 	failures.append_array(_test_put_down_respects_the_room())
 	failures.append_array(_test_affordances())
+	failures.append_array(_test_put_down_refused_mid_pick_up())
 	return failures
 
 
@@ -433,5 +434,66 @@ func _test_affordances():
 			failures.append("the hug did not cheer him up")
 	else:
 		failures.append("could not stage a comfort need (dominant need is '%s')" % need)
+	_teardown(stage)
+	return failures
+
+
+## -- 5. Owner bug regression: a same-instant CARRY then PLACE must not drop
+## him right back down before he has even reached her arms ---------------------
+##
+## `child_actor.perform_affordance()` re-derives CARRY/PLACE fresh each call
+## (`is_carried()` flips the instant `set_carried_by()` runs), so a one-finger
+## tap that reached the affordance layer twice in the same instant -- the
+## emulated touch/mouse twin `pointing/emulate_mouse_from_touch` fires, or a
+## four-year-old's fast double tap -- used to carry him up and immediately put
+## him straight back down. `carry_controller.put_down()` is the state
+## machine's own backstop for that: refused while still `STATE_PICKING_UP`,
+## independent of whatever caught (or missed) the tap upstream.
+func _test_put_down_refused_mid_pick_up():
+	var failures: Array = []
+	var stage: Dictionary = _stage()
+	var aliz: CharacterBody3D = stage["aliz"]
+	var bunny: Node3D = stage["bunny"]
+	var room: Node3D = stage["room"]
+	var controller: Node = aliz.call("get_carry_controller")
+
+	var settled: Array = [0]
+	controller.connect("carry_settled", func(_node: Node3D) -> void: settled[0] += 1)
+
+	if not bool(aliz.call("carry_node", bunny, "carryFront")):
+		failures.append("carry_node() refused Bunny")
+		_teardown(stage)
+		return failures
+	if String(aliz.call("get_carry_state")) != CarryScript.STATE_PICKING_UP:
+		failures.append("state right after carry_node() is '%s', not pickingUp" % aliz.call("get_carry_state"))
+
+	# The same instant: a put-down landing before the lift has even started.
+	if bool(aliz.call("put_down_carried")):
+		failures.append("put_down_carried() succeeded mid-pick-up; Bunny would have been dropped the moment he was lifted")
+	if String(aliz.call("get_carry_state")) != CarryScript.STATE_PICKING_UP:
+		failures.append("a refused put-down changed the state to '%s'" % aliz.call("get_carry_state"))
+	if not bool(bunny.call("is_carried")):
+		failures.append("a refused mid-pick-up put-down let go of Bunny")
+	if _count_bunnies(room) != 1:
+		failures.append("%d Bunnies after a refused mid-pick-up put-down" % _count_bunnies(room))
+
+	# The lift finishes on its own: carry_settled still fires, exactly once.
+	_step(aliz, int(CarryScript.PICK_UP_SEC / DT) + 3)
+	if String(aliz.call("get_carry_state")) != CarryScript.STATE_HELD:
+		failures.append("after %.2f s the state is '%s', not held"
+				% [CarryScript.PICK_UP_SEC, aliz.call("get_carry_state")])
+	if settled[0] != 1:
+		failures.append("carry_settled fired %d times, not once" % settled[0])
+	if _count_bunnies(room) != 1:
+		failures.append("%d Bunnies once he is properly held" % _count_bunnies(room))
+
+	# Now that he really is held, put-down works normally.
+	if not bool(aliz.call("put_down_carried")):
+		failures.append("put_down_carried() was refused once he was properly held")
+	_step(aliz, int(CarryScript.PLACE_SEC / DT) + 3)
+	if bool(bunny.call("is_carried")):
+		failures.append("Bunny is still carried after the real put-down")
+	if _count_bunnies(room) != 1:
+		failures.append("%d Bunnies after the real put-down" % _count_bunnies(room))
 	_teardown(stage)
 	return failures

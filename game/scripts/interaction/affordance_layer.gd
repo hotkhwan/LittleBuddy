@@ -52,6 +52,7 @@ extends Control
 const AffordanceRules := preload("res://scripts/interaction/affordance_rules.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
+const NavigationControllerScript := preload("res://scripts/navigation/navigation_controller.gd")
 
 const GROUP: String = "affordable"
 
@@ -108,6 +109,15 @@ const TAP_KIND_TARGET: int = 1
 
 const PRESS_SEC: float = 0.22
 
+## How long a just-changed placement side (above/left/right/below) must keep
+## wanting to change before it actually does. Owner bug (real device, touch):
+## the badge's keep-outs blink every frame -- a speech bubble toggling, her own
+## face keep-out sliding as she takes a step -- so without this the hit box
+## could hop out from under a finger already descending on it, landing the tap
+## on the floor instead of on Bunny. The drawn/pressed SPOT only moves once a
+## new side has been wanted for this long; until then the old spot holds.
+const PLACEMENT_DWELL_SEC: float = 0.25
+
 signal affordance_shown(verb: String, target_id: String)
 signal affordance_hidden()
 signal affordance_performed(verb: String, target_id: String, handled_by_target: bool)
@@ -148,6 +158,22 @@ var _ring_px: float = RING_MIN_PX
 var _laid_out: bool = false
 var _clock: float = 0.0
 var _press_clock: float = -1.0
+
+## Which target/verb the current `_placement`/`_badge` belong to ("" for none
+## yet). A genuinely new target snaps into place at once; the dwell above only
+## damps a SIDE change on the SAME target.
+var _placement_key: String = ""
+var _pending_placement: String = ""
+var _pending_placement_since: float = -1.0
+
+## `[Vector2 position, int msec]`, this Control's own copy of the emulated-
+## touch latch (`NavigationControllerScript.check_emulated_twin()`): one
+## finger on the iPad delivers an `InputEventScreenTouch` AND a synthetic
+## `InputEventMouseButton` at the same spot to whichever `Control` the touch
+## landed on, and without this the hit box under the badge ran `perform()`
+## twice for one tap -- carry, then immediately place, because
+## `child_actor.perform_affordance()` re-derives the verb fresh each call.
+var _touch_twin_state: Array = []
 
 var _hit: Control = null
 var _pill: StyleBoxFlat = null
@@ -628,9 +654,20 @@ func _camera_now() -> Camera3D:
 ## Places the badge and the hit box for `_current`. With no camera nothing is
 ## placed and the hit box hides, so a headless world can never be tapped.
 func _layout() -> void:
+	if _press_clock >= 0.0 and _laid_out:
+		# A press is being answered (the squash animation is playing, roughly
+		# `PRESS_SEC` wide). The hit box and the drawn badge must not move
+		# under a finger that may still be on the glass: recomputing them here
+		# from this frame's keep-outs is exactly how a bubble blinking out at
+		# the wrong instant walked the badge out from under an already-landed
+		# tap. Whatever was laid out for the press stays until it ends.
+		return
 	_laid_out = false
 	if _current.is_empty():
 		_hit.visible = false
+		_placement_key = ""
+		_pending_placement = ""
+		_pending_placement_since = -1.0
 		return
 	var camera: Camera3D = _camera_now()
 	if camera == null:
@@ -671,8 +708,7 @@ func _layout() -> void:
 	var placed: Dictionary = place_badge(
 		_screen, _ring_px, view, _top_keep_out, _actor_screen_x(camera), keep_outs, character,
 		label_width_for(verb, scale, _font))
-	_badge = placed["centre"]
-	_placement = String(placed["placement"])
+	_apply_placement_hysteresis(String(_current.get("targetId", "")), verb, placed)
 	# The hit box never shrinks with the picture: 240 px stays the floor, and a
 	# badge drawn bigger than that gets a box that covers the whole of it.
 	var footprint: Rect2 = badge_footprint(_badge, scale, label_width_for(verb, scale, _font))
@@ -682,6 +718,37 @@ func _layout() -> void:
 	_hit.position = _badge - hit_size * 0.5
 	_hit.visible = true
 	_laid_out = true
+
+
+## Accepts `placed` (this frame's `place_badge()` answer) into `_badge`/
+## `_placement`, but only at once for a brand-new target/verb; on the SAME
+## target a side change must be wanted for `PLACEMENT_DWELL_SEC` running
+## before it takes -- see `PLACEMENT_DWELL_SEC`'s doc. The centre still moves
+## every frame while the side is not disputed, so a walking target is tracked
+## smoothly; only a flip-flopping SIDE is damped.
+func _apply_placement_hysteresis(target_id: String, verb: String, placed: Dictionary) -> void:
+	var key: String = "%s|%s" % [verb, target_id]
+	var new_placement: String = String(placed["placement"])
+	if key != _placement_key:
+		_placement_key = key
+		_placement = ""
+		_pending_placement = ""
+		_pending_placement_since = -1.0
+	if _placement.is_empty() or new_placement == _placement:
+		_badge = placed["centre"]
+		_placement = new_placement
+		_pending_placement = ""
+		_pending_placement_since = -1.0
+		return
+	if new_placement != _pending_placement:
+		_pending_placement = new_placement
+		_pending_placement_since = _clock
+	if _clock - _pending_placement_since >= PLACEMENT_DWELL_SEC:
+		_badge = placed["centre"]
+		_placement = new_placement
+		_pending_placement = ""
+		_pending_placement_since = -1.0
+	# Else: keep last frame's `_badge`/`_placement` -- the dwell has not run out.
 
 
 ## True for a person: the provider (or the target's owner) has a speech bubble.
@@ -969,6 +1036,16 @@ func _announce() -> void:
 ## -- Tap -----------------------------------------------------------------------
 
 func _on_hit_input(event: InputEvent) -> void:
+	if NavigationControllerScript.check_emulated_twin(event, _touch_twin_state):
+		# `pointing/emulate_mouse_from_touch` is on: this `InputEventMouseButton`
+		# is the synthetic echo of the touch this same hit box already answered
+		# a moment ago. Left alone, `perform()` ran twice for one tap -- carry,
+		# then immediately place, because `child_actor.perform_affordance()`
+		# re-derives the verb fresh each call and the second call landed after
+		# the first had already changed it. Swallowed here, not routed to the
+		# floor either: it is not a miss, it is an echo.
+		accept_event()
+		return
 	var pressed: bool = false
 	if event is InputEventMouseButton:
 		var mouse: InputEventMouseButton = event
@@ -986,7 +1063,15 @@ func _on_hit_input(event: InputEvent) -> void:
 	accept_event()
 
 
+## Belt-and-braces, matching `NavigationController._unhandled_input()`: this
+## calls `_nav.handle_tap()` directly rather than going through that method, so
+## it must repeat its own two early-outs rather than inherit them. Reached only
+## for a press already known not to be a twin (`_on_hit_input()` returns before
+## this for one), but a future caller of this method must not have to
+## rediscover that the hard way.
 func _route_press_to_floor(event: InputEvent) -> void:
+	if NavigationControllerScript.check_emulated_twin(event, _touch_twin_state):
+		return
 	if _nav == null or not is_instance_valid(_nav) or not _nav.has_method("handle_tap"):
 		return
 	var at: Vector2 = Vector2.ZERO
@@ -996,14 +1081,27 @@ func _route_press_to_floor(event: InputEvent) -> void:
 		at = (event as InputEventScreenTouch).position
 	else:
 		return
+	if _nav.has_method("is_press_claimed") and bool(_nav.call("is_press_claimed", at)):
+		return
 	_nav.call("handle_tap", at)
 
 
 ## Does the shown affordance. Returns whether anything was asked to happen.
+##
+## Debounced by `PRESS_SEC`: a second call while `_press_clock` is still
+## counting down from the last one is swallowed (returns `true`, nothing is
+## routed to the floor either) rather than performed again. That is what a
+## four-year-old's fast double tap looks like once the twin latch in
+## `_on_hit_input()` has already caught the one-finger echo, and it is also the
+## second line of defence for it: `child_actor.perform_affordance()` re-derives
+## the verb fresh on every call, so two calls this close together on Bunny
+## carried, then immediately placed, in one gesture nobody meant as two.
 func perform() -> bool:
 	build()
 	if _current.is_empty():
 		return false
+	if _press_clock >= 0.0 and _press_clock < PRESS_SEC:
+		return true
 	var verb: String = String(_current.get("verb", ""))
 	var target_id: String = String(_current.get("targetId", ""))
 	var target: Variant = _current.get("target", null)
@@ -1011,7 +1109,17 @@ func perform() -> bool:
 
 	if target is Object and is_instance_valid(target) and target.has_method("perform_affordance"):
 		if bool(target.call("perform_affordance", _actor)):
-			affordance_performed.emit(verb, target_id, true)
+			# The target may have derived a DIFFERENT verb internally than the
+			# one the badge was showing a moment ago (its own state can move
+			# between the layer's last `evaluate()` and this call): report
+			# what it says it actually did, when it says so, rather than the
+			# possibly-stale cached verb.
+			var reported_verb: String = verb
+			if target.has_method("get_last_performed_verb"):
+				var actual: String = AffordanceRules.normalize_verb(target.call("get_last_performed_verb"))
+				if not actual.is_empty():
+					reported_verb = actual
+			affordance_performed.emit(reported_verb, target_id, true)
 			return true
 
 	var routed: bool = false

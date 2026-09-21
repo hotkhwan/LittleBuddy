@@ -208,12 +208,21 @@ func carry(node: Node3D, socket_name: String = "") -> bool:
 
 ## Sets the carried thing down at `point` (world), or -- with no point -- at the
 ## first standable spot `find_put_down_spot()` offers. False when nothing is
-## carried, when already placing, or when there is nowhere to put it. `yaw`
-## (radians, the project's -Z-facing convention) turns the thing as it lands --
-## a child laid on the bed faces the pillow, not the way she happened to face;
-## null keeps her heading.
+## carried, when already placing, when the lift has not finished yet, or when
+## there is nowhere to put it. `yaw` (radians, the project's -Z-facing
+## convention) turns the thing as it lands -- a child laid on the bed faces the
+## pillow, not the way she happened to face; null keeps her heading.
+##
+## Refusing mid-`STATE_PICKING_UP` matters more than it looks: one tap on the
+## carry badge can reach `perform_affordance()` twice in the same instant (an
+## emulated touch/mouse twin, or a fast double tap) and `child_actor.gd`
+## re-derives CARRY-or-PLACE from `is_carried()` each time -- once he is
+## `set_carried_by()`'d the second call already reads "carrying" and asks to be
+## put straight back down before he has even reached the socket. Refusing here
+## is the state machine's own backstop for that, independent of whatever
+## caught (or missed) the twin upstream.
 func put_down(point: Variant = null, yaw: Variant = null) -> bool:
-	if _node == null or _state == STATE_PLACING or _state == STATE_IDLE:
+	if _node == null or _state == STATE_PLACING or _state == STATE_IDLE or _state == STATE_PICKING_UP:
 		return false
 	var target: Variant = point if point is Vector3 else find_put_down_spot()
 	if target == null:

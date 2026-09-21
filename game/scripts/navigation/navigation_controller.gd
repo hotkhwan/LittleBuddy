@@ -324,16 +324,38 @@ func _unhandled_input(event: InputEvent) -> void:
 ## True for the synthetic mouse press that follows a touch press at the same
 ## spot. Public so the latch can be asserted without a touchscreen.
 func is_emulated_twin(event: InputEvent) -> bool:
+	var state: Array = [_last_touch_position, _last_touch_msec]
+	var result: bool = check_emulated_twin(event, state)
+	_last_touch_position = state[0]
+	_last_touch_msec = state[1]
+	return result
+
+
+## The instance-free half of the latch above, shared with any other input
+## poller that faces the same iPad quirk (`affordance_layer.gd`'s badge:
+## `pointing/emulate_mouse_from_touch` delivers a touch AND a synthetic mouse
+## press to whichever `Control` the finger landed on, and each poller needs
+## its own memory of the last touch to catch its own twin).
+##
+## `state` is a two-element `[Vector2 position, int msec]` array the CALLER
+## owns and this mutates in place -- Arrays are references in GDScript, so a
+## `Control` with its own two fields can wrap this in one line (see
+## `is_emulated_twin()` above) without a shared singleton or a second node.
+static func check_emulated_twin(event: InputEvent, state: Array) -> bool:
+	if state.size() < 2:
+		state.resize(2)
+		state[0] = Vector2(INF, INF)
+		state[1] = -100000
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event as InputEventScreenTouch
 		if touch.pressed:
-			_last_touch_position = touch.position
-			_last_touch_msec = Time.get_ticks_msec()
+			state[0] = touch.position
+			state[1] = Time.get_ticks_msec()
 		return false
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 		var mouse: InputEventMouseButton = event as InputEventMouseButton
-		if Time.get_ticks_msec() - _last_touch_msec <= TOUCH_TWIN_WINDOW_MSEC \
-				and mouse.position.distance_to(_last_touch_position) <= TOUCH_TWIN_DISTANCE:
+		if Time.get_ticks_msec() - int(state[1]) <= TOUCH_TWIN_WINDOW_MSEC \
+				and mouse.position.distance_to(state[0] as Vector2) <= TOUCH_TWIN_DISTANCE:
 			return true
 	return false
 

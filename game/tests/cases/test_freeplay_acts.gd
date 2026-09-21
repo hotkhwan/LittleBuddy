@@ -145,6 +145,13 @@ func _test_decisions():
 		failures.append("acts: a bottle of milk at Bunny feeds him")
 	if f.call("littleBuddy", {"isCharacter": true, "kitchenHeld": "spoon", "canFeed": false}) != Acts.ACT_NONE:
 		failures.append("acts: a spoon at Bunny is not a meal")
+	# Owner bug: arriving at Bunny with truly empty hands used to be a dead end.
+	if f.call("littleBuddy", {"isCharacter": true}) != Acts.ACT_CARRY_CHILD:
+		failures.append("acts: empty hands at Bunny should offer to carry him")
+	if f.call("littleBuddy", {"isCharacter": true, "kitchenHeld": "spoon"}) != Acts.ACT_NONE:
+		failures.append("acts: a spoon in hand at Bunny should not also offer to carry him")
+	if f.call("littleBuddy", {"isCharacter": true, "carrying": "item"}) != Acts.ACT_NONE:
+		failures.append("acts: a prop already in her arms should not also offer to carry Bunny")
 
 	# Every id that has no pantomime action decides a real act somewhere.
 	for local_id: String in Words.HANDLED_BY_ACTS:
@@ -325,6 +332,25 @@ func _bed_and_bunny(world, director, aliz, bunny):
 	# Put him back on the floor for the next cases.
 	aliz.call("put_down_carried")
 	_step(aliz, 40)
+
+	# Owner bug regression: arriving at Bunny with empty hands used to be a dead
+	# end in Free Play (`house_freeplay_acts.gd` answered `ACT_NONE`) -- the one
+	# character in the house, and tapping him did nothing.
+	if bool(aliz.call("is_carrying_node")):
+		failures.append("precondition: her hands should be empty before the carry-on-arrival case")
+	var bunny_parent_before: Node = bunny.get_parent()
+	_arrive(aliz, "bedroom.littleBuddy")
+	if not bool(bunny.call("is_carried")) or not bool(aliz.call("is_carrying_node")):
+		failures.append("bed: arriving at Bunny with empty hands did not carry him")
+	if bunny.get_parent() != bunny_parent_before:
+		failures.append("bed: arriving at Bunny re-parented him instead of carrying the same node")
+	# Let the lift finish (put-down is refused mid-lift, by design) before
+	# putting him back down for the rooms that follow.
+	_step(aliz, 40)
+	aliz.call("put_down_carried")
+	_step(aliz, 40)
+	if bool(aliz.call("is_carrying_node")):
+		failures.append("bed: could not put Bunny back down after the carry-on-arrival case")
 	return failures
 
 

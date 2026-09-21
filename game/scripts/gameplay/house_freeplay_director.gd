@@ -1029,6 +1029,8 @@ func _act_at(target_id: String) -> Dictionary:
 			return _kitchen_act(act, local_id, decision)
 		HouseActs.ACT_FEED_CHILD:
 			return _feed_child(target_id)
+		HouseActs.ACT_CARRY_CHILD:
+			return {"handled": _carry_child_at(target_id), "say": "Up you come!"}
 		_:
 			return {"handled": false, "say": ""}
 
@@ -1299,6 +1301,25 @@ func _place_carried_on_table(target_id: String) -> bool:
 	_watch_landing()
 	_play_sfx(SFX_PLACE_SOFT)
 	return true
+
+
+## Picks Bunny up into her arms. Arriving at him with empty hands used to be a
+## dead end in Free Play (`house_freeplay_acts.gd` answered `ACT_NONE`): a
+## child taps the one character in the house and nothing happens is worse than
+## no badge at all. False when her hands are already full, or the target
+## cannot be resolved to an actual carryable child.
+func _carry_child_at(target_id: String) -> bool:
+	if _character == null or not _character.has_method("carry_node") \
+			or bool(_character.call("is_carrying_node")):
+		return false
+	var target: Node = _world.call("get_target_by_semantic_id", target_id) \
+			if _world != null and _world.has_method("get_target_by_semantic_id") else null
+	if target == null:
+		return false
+	var child: Node = (target as Node).get_parent() if target is Node else null
+	if child == null or not child.has_method("set_carried_by"):
+		return false
+	return bool(_character.call("carry_node", child, "carryFront"))
 
 
 ## Sets Bunny down on a SURFACE -- the bed, the sofa, the table's front -- and

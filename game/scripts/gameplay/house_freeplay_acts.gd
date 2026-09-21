@@ -47,6 +47,10 @@ const ACT_KITCHEN_CLOSE: String = "kitchenClose"
 const ACT_KITCHEN_TAKE: String = "kitchenTake"
 const ACT_KITCHEN_PLACE: String = "kitchenPlace"
 const ACT_FEED_CHILD: String = "feedChild"
+## Arriving at him with empty hands and nothing to feed him: pick him up. Free
+## Play used to answer `ACT_NONE` here (owner bug: arriving at Bunny with empty
+## hands was a dead end, not the carry a child would expect a tap on him to be).
+const ACT_CARRY_CHILD: String = "carryChild"
 
 ## What Bunny does once he is set down on each surface. The sofa uses the
 ## seated posture his `carried` clip already has (knees up, hands resting):
@@ -78,6 +82,11 @@ static func decide(situation: Dictionary) -> Dictionary:
 	if bool(situation.get("isCharacter", false)):
 		if not held.is_empty() and bool(situation.get("canFeed", false)):
 			return {"act": ACT_FEED_CHILD, "item": held}
+		# Truly empty hands only: something in the kitchen hand that is not a
+		# meal (a spoon) still means "not now" rather than "pick him up", and a
+		# prop already in her `carry_controller` arm is a hand that is full too.
+		if held.is_empty() and carrying.is_empty():
+			return {"act": ACT_CARRY_CHILD}
 		return {"act": ACT_NONE}
 
 	if carrying == "child":
