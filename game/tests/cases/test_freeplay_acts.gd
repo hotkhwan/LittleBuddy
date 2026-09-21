@@ -149,6 +149,12 @@ func _test_decisions():
 	var take: Dictionary = Acts.decide({"localId": "fridge", "actions": [], "station": open_fridge["station"]})
 	if String(take.get("act", "")) != Acts.ACT_KITCHEN_TAKE or String(take.get("item", "")) != "banana":
 		failures.append("acts: an open fridge with food hands over the first thing (got %s)" % str(take))
+	if (take.get("choices", []) as Array) != ["banana", "apple"]:
+		failures.append("acts: an open fridge should offer everything inside as choices (got %s)" % str(take.get("choices")))
+	var one_thing: Dictionary = Acts.decide({"localId": "fridge", "actions": [],
+			"station": {"role": "store", "opens": true, "open": true, "on": "", "inside": ["apple"]}})
+	if (one_thing.get("choices", []) as Array).size() != 1:
+		failures.append("acts: a fridge with one thing in it offers exactly that one")
 	var empty_open: Dictionary = {"station": {"role": "store", "opens": true, "open": true, "on": "", "inside": []}}
 	if f.call("fridge", empty_open) != Acts.ACT_KITCHEN_CLOSE:
 		failures.append("acts: an empty open fridge shuts again")
@@ -605,10 +611,42 @@ func _kitchen(world, director, aliz, bunny):
 	_arrive(aliz, "kitchen.fridge")
 	if not bool(kitchen.call("is_open", "fridge")):
 		failures.append("kitchen: arriving at the shut fridge did not open it")
+	# The second arrival ASKS which: a card per thing inside, big enough for a
+	# small finger, and the pick is what she takes.
 	_arrive(aliz, "kitchen.fridge")
+	if not bool(director.call("is_chooser_open")):
+		failures.append("kitchen: a second arrival at the open fridge did not ask which food")
+	else:
+		var chooser: Control = director.call("get_food_chooser")
+		var inside: Array = kitchen.call("inside", "fridge")
+		if int(chooser.call("get_card_count")) != inside.size() or inside.size() < 2:
+			failures.append("kitchen: the chooser shows %d cards for %s" % [chooser.call("get_card_count"), str(inside)])
+		var card: Vector2 = chooser.call("get_card_size")
+		if card.x < 240.0 or card.y < 240.0:
+			failures.append("kitchen: a chooser card is %s; a pre-reader needs 240 px" % str(card))
+		if String(aliz.call("get_state_name")) != "disabled":
+			failures.append("kitchen: the room's input is not held while the chooser is up")
+		if chooser.get_parent() == null or chooser.get_parent().name != "UI":
+			failures.append("kitchen: the chooser is not under the world's UI layer")
+		# Tapping the dark takes nothing and gives the room back.
+		chooser.call("dismiss")
+		if bool(director.call("is_chooser_open")) or String(aliz.call("get_state_name")) == "disabled":
+			failures.append("kitchen: dismissing the chooser did not give the room back")
+		if String(kitchen.call("held")) not in ["", "none"]:
+			failures.append("kitchen: dismissing the chooser took something (%s)" % kitchen.call("held"))
+		# Arrive again, and this time pick the apple -- not the first thing.
+		_arrive(aliz, "kitchen.fridge")
+		if not bool(chooser.call("pick", "apple")):
+			failures.append("kitchen: the apple card could not be picked (%s)" % str(chooser.call("get_item_ids")))
+		if String(kitchen.call("held")) != "apple":
+			failures.append("kitchen: picking the apple card left '%s' in her hand" % kitchen.call("held"))
+		if bool(director.call("is_chooser_open")) or String(aliz.call("get_state_name")) == "disabled":
+			failures.append("kitchen: the chooser did not close after the pick")
+		if String(director.get_hud().call("get_word_text")).to_lower() != "apple":
+			failures.append("kitchen: the pick did not show the word (card says '%s')" % director.get_hud().call("get_word_text"))
 	var held: String = String(kitchen.call("held"))
 	if held.is_empty() or held == "none":
-		failures.append("kitchen: a second arrival at the open fridge took nothing")
+		failures.append("kitchen: nothing in her hand after the fridge")
 	# Put it down on the counter, take the bowl, bring the bowl back: cook.
 	_arrive(aliz, "kitchen.counter")
 	if String(kitchen.call("on_station", "counter")) != held:
@@ -619,8 +657,8 @@ func _kitchen(world, director, aliz, bunny):
 		failures.append("kitchen: arriving at the counter with empty hands took nothing from it")
 	_arrive(aliz, "kitchen.counter")
 	var made: String = String(kitchen.call("on_station", "counter"))
-	if held == "banana" and second == "bowl" and made != "fruitBowl":
-		failures.append("kitchen: banana + bowl did not cook (on the counter: %s)" % made)
+	if held in ["banana", "apple"] and second == "bowl" and made != "fruitBowl":
+		failures.append("kitchen: %s + bowl did not cook (on the counter: %s)" % [held, made])
 	# Food preparation is a close-up too (owner: the counter combined silently).
 	if made == "fruitBowl" or made == "mashedBanana":
 		if not bool(director.call("is_care_open")):

@@ -163,7 +163,10 @@ static func decide(situation: Dictionary) -> Dictionary:
 		if not on_top.is_empty():
 			return {"act": ACT_KITCHEN_TAKE, "item": on_top}
 		if not inside.is_empty() and (is_open or not opens):
-			return {"act": ACT_KITCHEN_TAKE, "item": String(inside[0])}
+			# `choices` is everything inside: with two or more the director asks
+			# the child WHICH (owner playtest: the fridge always handed over the
+			# banana); `item` stays the first, for a store with one thing in it.
+			return {"act": ACT_KITCHEN_TAKE, "item": String(inside[0]), "choices": inside.duplicate()}
 		if opens and is_open:
 			return {"act": ACT_KITCHEN_CLOSE}
 		return {"act": ACT_NONE}

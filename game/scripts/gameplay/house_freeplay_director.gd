@@ -85,6 +85,8 @@ const PoseModifierScript := preload("res://scripts/interaction/pose_modifier.gd"
 const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
 const HouseActs := preload("res://scripts/gameplay/house_freeplay_acts.gd")
 const TidyPlanScript := preload("res://scripts/gameplay/tidy_plan.gd")
+const FoodChooserScript := preload("res://scripts/gameplay/food_chooser.gd")
+const KitchenItems := preload("res://scripts/kitchen/kitchen_items.gd")
 ## The break card's host (`break_host.gd`): holds the room, shows the card,
 ## gives the room back. See "The break card" below.
 const BreakHostScript := preload("res://scripts/session/break_host.gd")
@@ -1244,7 +1246,7 @@ func _step_break(delta: float) -> void:
 
 ## True when nothing is mid-way: a safe moment to put a card over the room.
 func is_calm() -> bool:
-	if is_care_open() or is_seated() or is_washing_hands() or not _pending_landing.is_empty():
+	if is_care_open() or is_chooser_open() or is_seated() or is_washing_hands() or not _pending_landing.is_empty():
 		return false
 	if _press_started_msec != 0:
 		return false
@@ -2003,6 +2005,94 @@ func get_tidy_count() -> int:
 	return _tidies_started
 
 
+## -- Which one? The fridge's food chooser ---------------------------------------------
+##
+## A store station with two or more things inside asks the child which to take:
+## big picture cards with the English word, under the HUD like the care
+## close-up, the room's input held while it is up. The pick is spoken, taken
+## and carried; a tap on the dark takes nothing.
+var _chooser: Control = null
+var _chooser_station: String = ""
+
+
+func _open_food_chooser(station: String, choices: Array) -> bool:
+	var chooser: Control = _ensure_food_chooser()
+	if chooser == null:
+		return false
+	var rows: Array = []
+	for choice: Variant in choices:
+		var item_id: String = String(choice)
+		if not KitchenItems.exists(item_id):
+			continue
+		rows.append({
+			"itemId": item_id,
+			"word": KitchenItems.word_for(item_id),
+			"color": KitchenItems.color_for(item_id),
+			"shape": KitchenItems.shape_for(item_id),
+		})
+	if rows.size() < 2:
+		return false
+	_chooser_station = station
+	_set_room_input(false)
+	chooser.call("open", rows)
+	_speak(String(chooser.get("TITLE")) if chooser.get("TITLE") != null else "Which one?", true)
+	return true
+
+
+func _ensure_food_chooser() -> Control:
+	if _chooser != null and is_instance_valid(_chooser):
+		return _chooser
+	var chooser: Control = FoodChooserScript.new()
+	var ui: Node = _world.get_node_or_null("UI")
+	if ui != null:
+		ui.add_child(chooser)
+		if _hud != null and is_instance_valid(_hud) and _hud.get_parent() == ui:
+			ui.move_child(_hud, ui.get_child_count() - 1)
+	else:
+		add_child(chooser)
+	chooser.call("build")
+	chooser.visible = false
+	chooser.connect("picked", _on_food_picked)
+	chooser.connect("dismissed", _on_food_dismissed)
+	_chooser = chooser
+	return chooser
+
+
+func _on_food_picked(item_id: String) -> void:
+	var station: String = _chooser_station
+	_chooser_station = ""
+	_set_room_input(true)
+	var kitchen: RefCounted = _kitchen()
+	if kitchen == null:
+		return
+	var report: Dictionary = kitchen.call("take", station, item_id)
+	var word: String = KitchenItems.word_for(item_id)
+	if _hud != null and not word.is_empty():
+		_hud.call("show_word", word, "")
+	_speak(word, true)
+	if bool(report.get("ok", false)):
+		_character.call("play_action", "pickUp")
+		_play_sfx(SFX_PLACE_SOFT)
+	var line: String = String(report.get("say", ""))
+	if not line.is_empty():
+		if _hud != null:
+			_hud.call("show_encouragement", line)
+		_speak(line, false)
+
+
+func _on_food_dismissed() -> void:
+	_chooser_station = ""
+	_set_room_input(true)
+
+
+func is_chooser_open() -> bool:
+	return _chooser != null and is_instance_valid(_chooser) and _chooser.visible
+
+
+func get_food_chooser() -> Control:
+	return _chooser
+
+
 ## -- The kitchen, in Free Play -----------------------------------------------------
 
 func _kitchen() -> RefCounted:
@@ -2026,6 +2116,9 @@ func _kitchen_act(act: String, station: String, decision: Dictionary) -> Diction
 		HouseActs.ACT_KITCHEN_CLOSE:
 			report = kitchen.call("set_open", station, false)
 		HouseActs.ACT_KITCHEN_TAKE:
+			var choices: Array = decision.get("choices", []) as Array
+			if choices.size() >= 2 and _open_food_chooser(station, choices):
+				return {"handled": true, "say": ""}
 			report = kitchen.call("take", station, String(decision.get("item", "")))
 			if bool(report.get("ok", false)):
 				_character.call("play_action", "pickUp")
