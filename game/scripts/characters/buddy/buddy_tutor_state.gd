@@ -20,8 +20,11 @@ extends Node
 ## ## The table
 ##
 ##   idle         neutral; not speaking; no gesture; straight ahead
-##   listening    listening; lean-in; look at the child; not speaking
-##   thinking     thinking; a half tilt on entry; not speaking
+##   listening    listening; lean-in (the held listening posture: spine lean,
+##                head tilted 8 degrees); look at the child; hands still (a
+##                running arm gesture fades out); not speaking
+##   thinking     thinking; the `thinking` gesture on entry (hand under the
+##                chin) with the `eyesUpLeft` overlay for its hold; not speaking
 ##   speaking     smile; speaking; talk head motion; every ~1.8 s a 250 ms brow
 ##                raise (the `browsUp` layer as an overlay); every ~4.5 s a 400 ms
 ##                glance (the `eyesUpLeft` overlay); every ~3 s a small hand beat
@@ -31,10 +34,16 @@ extends Node
 ##                stopped (0.2 s fade); listening face at once; head to the
 ##                attention target; lean-in. Then behaves as `listening`.
 ##   happy        happy; a half nod on entry
-##   encouraging  encouraging; a half nod on entry
+##   encouraging  encouraging; the `encourage` gesture on entry (open palm,
+##                small nod)
 ##   explaining   smile; speaking; `point` on entry, then a half nod every
 ##                ~2.5 s while `is_speaking()`; brow raises as in speaking
-##   celebrating  happy; `clap` on entry; emits `wants_sfx("laugh")` once
+##   celebrating  happy; `celebrate` on entry (arms up, a small bounce); emits
+##                `wants_sfx("laugh")` once
+##
+## The event-driven variety (thumbs up / clap / nod for a correct answer, and
+## so on) is not a state: `tutor_gesture_pool.gd` picks a gesture per event
+## and the scene plays it through `play_gesture()` over these states.
 ##
 ## Periods carry a little jitter (deterministic per entry) so two Alizes never
 ## nod in step and a child cannot count it. The schedule advances in
@@ -71,6 +80,10 @@ const BEAT_SCALE: float = 0.6
 
 const OVERLAY_BROWS: String = "browsUp"
 const OVERLAY_GLANCE: String = "eyesUpLeft"
+## `thinking`: the gaze goes up-left while the hand is under the chin -- from
+## a little after entry (the hand is on its way up) to the end of the hold.
+const THINKING_GAZE_FROM: float = 0.2
+const THINKING_GAZE_UNTIL: float = 1.3
 
 ## Relayed by the wrapper as `wants_sfx(name)`: a hook for the scene's SFX.
 signal wants_sfx(name: String)
@@ -149,6 +162,9 @@ func apply(name: String) -> bool:
 		STATE_LISTENING:
 			_buddy.call("set_speaking", false)
 			_talk(false)
+			# Hands still: an arm gesture in flight fades out (the head is free).
+			if GestureClips.ARM_GESTURES.has(String(_buddy.call("get_current_gesture"))):
+				_buddy.call("stop_gesture")
 			_buddy.call("set_expression", "listening")
 			_buddy.call("set_listening_pose", true)
 			_look(true)
@@ -158,7 +174,8 @@ func apply(name: String) -> bool:
 			_buddy.call("set_listening_pose", false)
 			_look(false)
 			_buddy.call("set_expression", "thinking")
-			_buddy.call("play_gesture", GestureClips.GESTURE_TILT, HALF)
+			_buddy.call("play_gesture", GestureClips.GESTURE_THINKING)
+			_glance_until = THINKING_GAZE_UNTIL
 		STATE_SPEAKING:
 			_buddy.call("set_listening_pose", false)
 			_look(false)
@@ -185,7 +202,7 @@ func apply(name: String) -> bool:
 			_look(false)
 			_talk(false)
 			_buddy.call("set_expression", "encouraging")
-			_buddy.call("play_gesture", GestureClips.GESTURE_NOD, HALF)
+			_buddy.call("play_gesture", GestureClips.GESTURE_ENCOURAGE)
 		STATE_EXPLAINING:
 			_buddy.call("set_listening_pose", false)
 			_look(false)
@@ -198,7 +215,7 @@ func apply(name: String) -> bool:
 			_look(false)
 			_talk(false)
 			_buddy.call("set_expression", "happy")
-			_buddy.call("play_gesture", GestureClips.GESTURE_CLAP)
+			_buddy.call("play_gesture", GestureClips.GESTURE_CELEBRATE)
 			wants_sfx.emit("laugh")
 	set_process(_is_periodic(_state))
 	state_changed.emit(previous, _state)
@@ -215,6 +232,10 @@ func step(seconds: float) -> void:
 	if _buddy == null or not _is_periodic(_state):
 		return
 	var speaking: bool = bool(_buddy.call("is_speaking"))
+	if _state == STATE_THINKING:
+		# Only the gaze: up-left for the hold of the hand under the chin.
+		_set_overlays([OVERLAY_GLANCE] if _time >= THINKING_GAZE_FROM and _time < _glance_until else [])
+		return
 	# Brows and glance: overlays over whatever the expression is.
 	if _time >= _next_brow:
 		_brow_until = _time + BROW_HOLD
@@ -248,7 +269,7 @@ func step(seconds: float) -> void:
 
 
 static func _is_periodic(name: String) -> bool:
-	return name == STATE_SPEAKING or name == STATE_EXPLAINING
+	return name == STATE_SPEAKING or name == STATE_EXPLAINING or name == STATE_THINKING
 
 
 ## -JITTER..+JITTER, deterministic in `k`, never the same two in a row.

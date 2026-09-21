@@ -15,7 +15,12 @@ extends SkeletonModifier3D
 ## 0.1 m/s and fades a running one out when she moves off.
 ##
 ## Blend: in over `FADE_IN_SEC`, out over `FADE_OUT_SEC` from the clip's end (or
-## from `stop()`), so a gesture never pops. `play(name, scale)` caps the blend
+## from `stop()`), so a gesture never pops. Two gestures never overlap: a
+## `play()` over a running gesture hands the old one to a single OUTGOING slot
+## that fades to 0 over `FADE_OUT_SEC` (its clock still running) while the new
+## one fades in -- a cross-fade, not a snap to rest and back up. A third call
+## inside that window drops the outgoing one on the spot; there is only ever
+## one current and one outgoing. `play(name, scale)` caps the blend
 ## at `scale`, which is how the tutor states get a half-size nod or a small
 ## hand beat out of the same clips. Three more held layers ride on the same
 ## node, each with its own eased weight, so a nod can play over all of them:
@@ -67,6 +72,11 @@ var _talk_time: float = 0.0
 var manual_clock: bool = false
 ## The bone poses this layer wrote last pass, so a test can read the delta.
 var _last_deltas: Dictionary = {}
+var _last_offsets: Dictionary = {}
+## The gesture a `play()` replaced, fading out under the new one.
+var _outgoing: String = ""
+var _outgoing_time: float = 0.0
+var _outgoing_weight: float = 0.0
 
 
 ## Builds the clips against the skeleton it sits under. Safe to call again.
@@ -93,8 +103,15 @@ func has_gesture(name: String) -> bool:
 func play(name: String, scale: float = 1.0) -> float:
 	if not _clips.has(name):
 		return 0.0
-	if not _current.is_empty() and _current != name:
-		gesture_finished.emit(_current)
+	if not _current.is_empty():
+		# Hand the running gesture to the outgoing slot so it fades out under
+		# the new one instead of snapping to rest. A restart of the same clip
+		# cross-fades from where it was too.
+		var replaced: String = _current
+		_outgoing = _current
+		_outgoing_time = _time
+		_outgoing_weight = _weight
+		gesture_finished.emit(replaced)
 	_current = name
 	_time = 0.0
 	_stopping = false
@@ -112,6 +129,15 @@ func stop() -> void:
 
 func is_playing() -> bool:
 	return not _current.is_empty()
+
+
+## The gesture fading out under the current one, or "" when none is.
+func outgoing_gesture() -> String:
+	return _outgoing
+
+
+func outgoing_weight() -> float:
+	return _outgoing_weight
 
 
 func current_gesture() -> String:
@@ -191,6 +217,12 @@ func last_delta(bone_name: String) -> Quaternion:
 	return _last_deltas.get(bone_name, Quaternion.IDENTITY)
 
 
+## The position offset this layer applied to `bone_name` in its last pass
+## (zero when it did not move it). For tests.
+func last_offset(bone_name: String) -> Vector3:
+	return _last_offsets.get(bone_name, Vector3.ZERO)
+
+
 func _process_modification_with_delta(delta: float) -> void:
 	if manual_clock:
 		apply()
@@ -221,8 +253,17 @@ func advance(seconds: float) -> void:
 	_talk_weight = move_toward(_talk_weight, _talk_target, seconds / TALK_BLEND_SEC)
 	if _talk_weight > 0.0:
 		_talk_time += seconds
+	if not _outgoing.is_empty():
+		_outgoing_time += seconds
+		_outgoing_weight = move_toward(_outgoing_weight, 0.0, seconds / FADE_OUT_SEC)
+		if _outgoing_weight <= 0.0 \
+				or _outgoing_time >= (_clips[_outgoing] as Animation).length:
+			_outgoing = ""
+			_outgoing_time = 0.0
+			_outgoing_weight = 0.0
 	if _current.is_empty():
-		if self.active and _posture_weight <= 0.0 and _posture_target <= 0.0 \
+		if self.active and _outgoing.is_empty() \
+				and _posture_weight <= 0.0 and _posture_target <= 0.0 \
 				and is_zero_approx(_look_deg) and is_zero_approx(_look_target_deg) \
 				and _talk_weight <= 0.0 and _talk_target <= 0.0:
 			self.active = false
@@ -242,6 +283,7 @@ func advance(seconds: float) -> void:
 		_weight = 0.0
 		_stopping = false
 		_last_deltas.clear()
+		_last_offsets.clear()
 		gesture_finished.emit(done)
 
 
@@ -254,6 +296,7 @@ func apply() -> void:
 	if skeleton == null:
 		return
 	_last_deltas.clear()
+	_last_offsets.clear()
 	if _posture_weight > 0.0:
 		for bone_name: String in _posture.keys():
 			var index: int = skeleton.find_bone(bone_name)
@@ -268,22 +311,39 @@ func apply() -> void:
 	if _talk_weight > 0.0:
 		_apply_turns(skeleton, GestureClips.HEAD,
 				[[GestureClips.NOD, talk_nod_at(_talk_time) * _talk_weight]])
+	# The outgoing gesture first (under), then the current one (over).
+	if not _outgoing.is_empty() and _outgoing_weight > 0.0:
+		_apply_clip(skeleton, _clips[_outgoing], _outgoing_time, _outgoing_weight)
 	if _current.is_empty() or _weight <= 0.0:
 		return
-	var animation: Animation = _clips[_current]
-	var at: float = clampf(_time, 0.0, animation.length)
+	_apply_clip(skeleton, _clips[_current], _time, _weight)
+
+
+## Samples `animation` at `time` and pre-multiplies each keyed bone's delta
+## from rest, scaled by `weight`, onto the bone's current pose. Rotation
+## tracks turn; a position track (the celebrate hop on the hips) offsets.
+func _apply_clip(skeleton: Skeleton3D, animation: Animation, time_sec: float, weight: float) -> void:
+	var at: float = clampf(time_sec, 0.0, animation.length)
 	for track: int in range(animation.get_track_count()):
-		if animation.track_get_type(track) != Animation.TYPE_ROTATION_3D:
-			continue
 		var bone_name: String = String(animation.track_get_path(track).get_concatenated_subnames())
 		var index: int = skeleton.find_bone(bone_name)
 		if index == -1:
 			continue
-		var sampled: Quaternion = animation.rotation_track_interpolate(track, at)
-		var rest: Quaternion = skeleton.get_bone_rest(index).basis.get_rotation_quaternion()
-		# The authored turn, in the parent's frame: sampled = turn * rest.
-		var turn: Quaternion = (sampled * rest.inverse()).normalized()
-		_apply_delta(skeleton, index, bone_name, Quaternion.IDENTITY.slerp(turn, _weight))
+		match animation.track_get_type(track):
+			Animation.TYPE_ROTATION_3D:
+				var sampled: Quaternion = animation.rotation_track_interpolate(track, at)
+				var rest: Quaternion = skeleton.get_bone_rest(index).basis.get_rotation_quaternion()
+				# The authored turn, in the parent's frame: sampled = turn * rest.
+				var turn: Quaternion = (sampled * rest.inverse()).normalized()
+				_apply_delta(skeleton, index, bone_name, Quaternion.IDENTITY.slerp(turn, weight))
+			Animation.TYPE_POSITION_3D:
+				var offset: Vector3 = animation.position_track_interpolate(track, at) \
+						- skeleton.get_bone_rest(index).origin
+				if offset.is_zero_approx():
+					continue
+				skeleton.set_bone_pose_position(index,
+						skeleton.get_bone_pose_position(index) + offset * weight)
+				_last_offsets[bone_name] = Vector3(_last_offsets.get(bone_name, Vector3.ZERO)) + offset * weight
 
 
 func _apply_turns(skeleton: Skeleton3D, bone_name: String, turns: Array) -> void:
