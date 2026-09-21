@@ -199,6 +199,7 @@ var _diag_write_left: float = 0.0
 const DIAG_PATH: String = "user://tutor_diag.json"
 const DIAG_WRITE_SECONDS: float = 3.0
 const PERMISSION_TEXT: String = "Can I listen to you? A grown-up can say yes."
+const NO_VOICE_NOTE: String = "Voice is not ready on this device. Tap the picture cards to answer."
 const MIC_OFF_NOTE: String = "The microphone is off for Little Days. A grown-up can turn it on in Settings > Little Days."
 ## Correct answers since the lesson began: the break card's stars (QA C3).
 var _correct_this_session: int = 0
@@ -859,7 +860,19 @@ func force_no_recogniser(forced: bool) -> void:
 ## otherwise.
 func _refresh_input_mode() -> void:
 	var live: bool = _hands_free_live() or _sim_enabled
+	# No recogniser at all (Android has none; iOS with the mic refused): a
+	# Tap-to-talk button would promise something the device cannot do. The
+	# cards carry the lesson and a grown-up is told why, in one line.
+	# The tap stays as the "say it together" beat even then; only the note
+	# changes, so nobody waits for a microphone that is not there.
+	var can_talk: bool = live or _recogniser_available() or _sim_enabled
 	_hud.call("set_tap_to_talk_visible", not live)
+	if _permission_denied:
+		return
+	if not can_talk and not _permission_pending:
+		_hud.call("show_parent_note", NO_VOICE_NOTE, false)
+	else:
+		_hud.call("hide_parent_note")
 
 
 func _start_listening() -> void:
