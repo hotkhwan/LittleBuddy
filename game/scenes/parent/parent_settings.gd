@@ -49,6 +49,7 @@ const ParentSettingsModelScript := preload("res://scripts/parent_settings/parent
 const SpeechDiagnosticsScript := preload("res://scripts/ui/speech_diagnostics_panel.gd")
 const ParentalGateScript := preload("res://scripts/parent_settings/parental_gate.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
 const FreeStarter := preload("res://scripts/entitlement/free_starter.gd")
 const EntitlementServiceScript := preload("res://scripts/entitlement/entitlement_service.gd")
 const Localization := preload("res://scripts/localization/localization.gd")
@@ -238,6 +239,7 @@ func _ready() -> void:
 	_build_qa_replay()
 	_build_learn_with_aliz()
 	_build_family_club()
+	_polish_sections()
 
 	if show_gate:
 		_show_locked()
@@ -253,6 +255,34 @@ func _ready() -> void:
 func _detect_standalone() -> bool:
 	var tree: SceneTree = _scene_tree()
 	return tree != null and tree.root != null and get_parent() == tree.root
+
+
+func _polish_sections() -> void:
+	var content: VBoxContainer = get_node("SafeArea/Center/Panel/Margin/Content")
+	content.add_theme_constant_override("separation", 22)
+	var sections: Dictionary = {
+		"MusicRow": "Sound & voices",
+		"VoiceRow": "Learning together",
+		"HelperRow": "Language helpers",
+		"SessionRow": "Time to play",
+	}
+	for row_name: String in sections:
+		var row: Node = content.get_node_or_null(row_name)
+		if row == null or content.has_node(row_name + "Heading"):
+			continue
+		var heading := Label.new()
+		heading.name = row_name + "Heading"
+		heading.text = sections[row_name]
+		Typography.apply(heading, Typography.SECTION)
+		heading.add_theme_color_override("font_color", Palette.INK)
+		heading.add_theme_stylebox_override("normal", preload("res://assets/ui/styles/panel_lilac.tres"))
+		content.add_child(heading)
+		content.move_child(heading, row.get_index())
+	var title: Label = content.get_node("Header/Title")
+	Typography.apply(title, Typography.DISPLAY)
+	# Keep multilingual helpers on their proven font chain and natural line height.
+	for node: Node in content.find_children("*Helper", "Label", true, false):
+		Typography.apply(node as Label, Typography.HELPER)
 
 
 func is_standalone() -> bool:

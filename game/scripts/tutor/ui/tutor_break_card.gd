@@ -15,6 +15,7 @@ extends Control
 ## ran out. Never traps: both exits always work, and it never pauses the tree.
 
 const Palette := preload("res://scripts/ui/palette.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
 
 signal continue_playing_pressed()
@@ -65,8 +66,11 @@ func build() -> void:
 	var style: StyleBoxFlat = StyleBoxFlat.new()
 	style.bg_color = Palette.CREAM
 	style.border_color = Palette.deep(Palette.MINT)
-	style.set_border_width_all(5)
+	style.set_border_width_all(3)
 	style.set_corner_radius_all(40)
+	style.shadow_color = Color(0.35, 0.26, 0.36, 0.16)
+	style.shadow_size = 18
+	style.shadow_offset = Vector2(0, 8)
 	style.content_margin_left = 44.0
 	style.content_margin_right = 44.0
 	style.content_margin_top = 26.0
@@ -98,11 +102,11 @@ func build() -> void:
 		star.set("tint", Palette.STAR_EARNED)
 		_stars.add_child(star)
 
-	_title = _label("Title", TITLE_TEXT, 48, Palette.INK)
+	_title = _label("Title", TITLE_TEXT, Typography.DISPLAY, Palette.INK)
 	column.add_child(_title)
-	_line_tomorrow = _label("LineTomorrow", LINE_TOMORROW, 28, Palette.INK_SOFT)
+	_line_tomorrow = _label("LineTomorrow", LINE_TOMORROW, Typography.BODY, Palette.INK_SOFT)
 	column.add_child(_line_tomorrow)
-	_line_bunny = _label("LineBunny", LINE_BUNNY, 28, Palette.INK_SOFT)
+	_line_bunny = _label("LineBunny", LINE_BUNNY, Typography.BODY, Palette.INK_SOFT)
 	column.add_child(_line_bunny)
 
 	var spacer: Control = Control.new()

@@ -80,6 +80,7 @@ enum Glyph {
 	MUSIC,
 	VOICE,
 	LANGUAGE,
+	PICTURE_BOOK,
 }
 
 const ICON_PATHS: Dictionary = {
@@ -102,6 +103,7 @@ const ICON_PATHS: Dictionary = {
 	Glyph.MUSIC: "res://assets/ui/icons/music.svg",
 	Glyph.VOICE: "res://assets/ui/icons/voice.svg",
 	Glyph.LANGUAGE: "res://assets/ui/icons/language.svg",
+	Glyph.PICTURE_BOOK: "res://assets/ui/icons/pictures/learning_book.png",
 }
 
 ## The glyphs that are pictures. Kept as a dictionary rather than "ordinal >=
@@ -112,6 +114,7 @@ const PICTURE_GLYPHS: Dictionary = {
 	Glyph.PICTURE_DRESS: true,
 	Glyph.PICTURE_HOUSE: true,
 	Glyph.PICTURE_PARENTS: true,
+	Glyph.PICTURE_BOOK: true,
 }
 
 

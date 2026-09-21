@@ -465,12 +465,14 @@ func _scroll_from_button() -> void:
 	var panel: Control = await _fresh_panel(FRAMES[0], true)
 	var scroll: ScrollContainer = panel.find_child("Center", true, false) as ScrollContainer
 	var button: Button = panel.find_child("VoiceOffButton", true, false) as Button
+	await _bring_into_view(panel, button)
+	var scroll_before: int = scroll.scroll_vertical
 	var presses: Array = [0]
 	button.pressed.connect(func() -> void: presses[0] += 1)
 	var was_pressed: bool = button.button_pressed
 	await _swipe(_center_of(button), Vector2(0.0, -260.0))
-	if scroll.scroll_vertical < 120:
-		_fail.append("button swipe: the panel scrolled only %d px" % scroll.scroll_vertical)
+	if scroll.scroll_vertical - scroll_before < 120:
+		_fail.append("button swipe: the panel scrolled only %d px" % (scroll.scroll_vertical - scroll_before))
 	if presses[0] != 0 or button.button_pressed != was_pressed:
 		_fail.append("button swipe: the finger scrolled away and Voice Off still fired (%d) / toggled (%s)" % [presses[0], str(button.button_pressed)])
 	if button.is_pressed() != was_pressed:
@@ -519,10 +521,11 @@ func _scroll_from_text_and_chrome() -> void:
 func _taps_still_work() -> void:
 	var panel: Control = await _fresh_panel(FRAMES[0], true)
 	var scroll: ScrollContainer = panel.find_child("Center", true, false) as ScrollContainer
-	# Voice practice: Off -- above the fold at every frame here, unselected by
-	# default, and never disabled (a helper-language button can be, when the
-	# machine has no font for it).
+	# Voice practice now follows the Sound section; scroll it into view just as
+	# a parent would. A tap must not move the scroll position it started with.
 	var off: Button = panel.find_child("VoiceOffButton", true, false) as Button
+	await _bring_into_view(panel, off)
+	var scroll_before: int = scroll.scroll_vertical
 	if not scroll.get_global_rect().encloses(off.get_global_rect()):
 		_fail.append("tap: VoiceOffButton %s is not fully inside the scroll area %s; pick another target" % [str(off.get_global_rect()), str(scroll.get_global_rect())])
 	var presses: Array = [0]
@@ -530,10 +533,11 @@ func _taps_still_work() -> void:
 	await _tap(_center_of(off))
 	if presses[0] != 1 or not off.button_pressed:
 		_fail.append("tap: Voice Off fired %d time(s), selected=%s; a tap must still press a button" % [presses[0], str(off.button_pressed)])
-	if scroll.scroll_vertical != 0:
-		_fail.append("tap: a tap scrolled the panel by %d" % scroll.scroll_vertical)
+	if scroll.scroll_vertical != scroll_before:
+		_fail.append("tap: a tap scrolled the panel by %d" % (scroll.scroll_vertical - scroll_before))
 
 	var slider: HSlider = panel.find_child("MusicSlider", true, false) as HSlider
+	await _bring_into_view(panel, slider)
 	var rect: Rect2 = slider.get_global_rect()
 	await _tap(Vector2(rect.position.x + rect.size.x * 0.25, rect.get_center().y))
 	if absf(slider.value - 0.25) > 0.1:
