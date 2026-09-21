@@ -213,6 +213,12 @@ func bind_character(character: Node, search_root: Node = null) -> int:
 	if character != null and character.has_signal("arrived") \
 			and not character.is_connected("arrived", _on_character_arrived):
 		character.connect("arrived", _on_character_arrived)
+	# And when a walk is given up rather than finished -- the body stopped
+	# making progress and the controller called it `blocked` -- the disc on the
+	# floor is a promise nobody is keeping any more. Same release, same fade.
+	if character != null and character.has_signal("move_failed") \
+			and not character.is_connected("move_failed", _on_character_move_failed):
+		character.connect("move_failed", _on_character_move_failed)
 	var root: Node = search_root
 	if root == null:
 		root = get_parent() if get_parent() != null else self
@@ -220,6 +226,11 @@ func bind_character(character: Node, search_root: Node = null) -> int:
 
 
 func _on_character_arrived(_target_id: String) -> void:
+	if _ripple != null:
+		_ripple.call("release")
+
+
+func _on_character_move_failed(_target_id: String, _reason: String) -> void:
 	if _ripple != null:
 		_ripple.call("release")
 

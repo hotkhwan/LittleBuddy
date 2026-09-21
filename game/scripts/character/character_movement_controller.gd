@@ -166,12 +166,24 @@ const TURN_SPEED: float = 7.0
 const ARRIVAL_RADIUS: float = 0.18
 ## How close counts as "this waypoint is done". Smaller than ARRIVAL_RADIUS so
 ## corners are still cut cleanly.
+##
+## It also has to be LARGER than the distance the body can be held short of a
+## waypoint by a collider, or a corner waypoint pins her: string-pulled paths put
+## their corners exactly on the eroded edge of the mesh, `NAV_AGENT_RADIUS` in
+## from the furniture, and the capsule (0.22 m) can get within
+## `NAV_AGENT_RADIUS - 0.22` of that edge. With the mesh eroded by 0.25 m that
+## is 0.03 m, a quarter of this radius. `test_interaction_anchors.gd` holds the
+## erosion above the body radius so the inequality cannot quietly flip.
 const WAYPOINT_RADIUS: float = 0.12
 ## Facing is "done" within ~7 degrees. Tighter than this and a character can
 ## chase the last fraction of a degree forever on a moving target.
 const FACING_TOLERANCE: float = 0.12
 ## How far the path's real endpoint may sit from the requested point and still
-## count as having reached it.
+## count as ACCEPTED rather than SNAPPED. It is deliberately wider than
+## `ARRIVAL_RADIUS`, which is exactly why the character is always walked to the
+## path's real END rather than to the requested point (see `request_move()`): a
+## tap 0.23 m inside a wall used to be "reached" by the path and never "arrived"
+## at by the body, and she stood at the last waypoint in WALKING for good.
 const REACH_TOLERANCE: float = 0.25
 ## How far off the navigation mesh a tap may land and still be forgiven by
 ## walking to the nearest standable point. Beyond this we assume the child meant
@@ -191,6 +203,27 @@ const MIN_NEAREST_TRAVEL: float = 0.15
 ## stays UNREACHABLE, so the child is never marched into a wall towards a room
 ## she cannot see.
 const NEAREST_RADIUS: float = 6.0
+
+## -- The no-progress guard -----------------------------------------------------
+##
+## A path can be perfectly legal on the mesh and the body still not follow it:
+## a collider the bake did not know about, a corner the capsule catches, a
+## wall met head-on (a `CharacterBody3D` pushed straight into a wall does not
+## slide, it stops). Before this the controller kept steering at the same
+## waypoint with zero displacement for as long as the child cared to watch,
+## walk clip playing into a wardrobe -- the owner's "gets stuck" report.
+##
+## So progress is measured, not assumed: while a path is active and a speed was
+## applied last frame, the body must have moved at least
+## `STALL_PROGRESS_FRACTION` of what that speed promised. Anything less for
+## `STALL_REPATH_SEC` re-asks the provider for a path from where she really is
+## (once); anything less for `STALL_GIVE_UP_SEC` after that ends the walk with
+## `blocked` and she rests. Sliding along a wall at a glancing angle keeps more
+## than a quarter of its speed and never trips this; a head-on push trips it in
+## well under a second.
+const STALL_PROGRESS_FRACTION: float = 0.25
+const STALL_REPATH_SEC: float = 0.35
+const STALL_GIVE_UP_SEC: float = 0.5
 
 ## -- Direct drive (the virtual thumbstick) ------------------------------------
 
@@ -232,6 +265,13 @@ var _target_id: String = ""
 ## (a plain floor tap).
 var _facing_point: Variant = null
 var _arrival_radius: float = ARRIVAL_RADIUS
+
+## Where the body was on the previous advance, for the no-progress guard.
+var _progress_position: Vector3 = Vector3.ZERO
+## Seconds of a walk spent not getting anywhere.
+var _stall_time: float = 0.0
+## The one re-path a stalled walk is allowed has been spent.
+var _repathed: bool = false
 
 var _arrived_emitted: bool = false
 var _interaction_ready_emitted: bool = false
@@ -306,25 +346,35 @@ func request_move(destination: Vector3, options: Dictionary = {}) -> int:
 		set_provider(null)
 
 	var from: Vector3 = _last_known_position
-	var path: PackedVector3Array = _provider.call("query_path", from, destination)
+	var nearest: bool = bool(options.get("nearest", false))
+	# Project FIRST, then path. A tap inside a wardrobe's footprint, in the
+	# eroded margin round a bed, or on the skirting board becomes the nearest
+	# point on the mesh before the path is asked for, so the provider is always
+	# asked for a path between two standable points and its answer ends exactly
+	# where she will stand. `map_get_path()` would snap the goal itself, but
+	# silently; doing it here keeps the goal and the reachability test honest.
+	var goal: Vector3 = _project_destination(destination, nearest)
+	var path: PackedVector3Array = _provider.call("query_path", from, goal)
 	var endpoint: Vector3 = NavMath.path_endpoint(path, from)
 
+	# `map_get_path()` never says "no" -- it silently returns a path that stops
+	# short. The distance between what was asked for and where the path really
+	# ends IS the reachability signal.
 	var result: int = MoveResult.ACCEPTED
-	var effective: Vector3 = destination
-	if not NavMath.path_reaches(path, destination, REACH_TOLERANCE):
-		# `map_get_path()` never says "no" -- it silently returns a path that stops
-		# short. The distance between what was asked for and where the path really
-		# ends IS the reachability signal.
-		if NavMath.flat_distance(endpoint, destination) <= SNAP_RADIUS:
+	var short_by: float = NavMath.flat_distance(endpoint, destination)
+	if short_by > REACH_TOLERANCE:
+		if short_by <= SNAP_RADIUS:
 			result = MoveResult.SNAPPED
-			effective = endpoint
-		elif bool(options.get("nearest", false)) \
-				and NavMath.flat_distance(endpoint, destination) <= NEAREST_RADIUS \
+		elif nearest and short_by <= NEAREST_RADIUS \
 				and NavMath.flat_distance(endpoint, from) >= MIN_NEAREST_TRAVEL:
 			result = MoveResult.SNAPPED
-			effective = endpoint
 		else:
 			return MoveResult.UNREACHABLE
+	# She is walked to where the path really ENDS, never to the raw request. The
+	# two can differ by up to REACH_TOLERANCE on an ACCEPTED move, which is more
+	# than ARRIVAL_RADIUS; steering at a point the mesh cannot reach is how she
+	# used to stand at the last waypoint in WALKING with zero velocity, forever.
+	var effective: Vector3 = endpoint if not path.is_empty() else destination
 
 	# Anti-jitter: a second tap essentially on top of the current destination is
 	# honoured by doing nothing at all, rather than by rebuilding the path and
@@ -345,6 +395,21 @@ func request_move(destination: Vector3, options: Dictionary = {}) -> int:
 	_drive_velocity = Vector3.ZERO
 	_adopt_path(path, effective, options)
 	return result
+
+
+## The nearest standable point to `destination`, or `destination` itself when
+## the provider has no opinion or the nearest point is further than the request
+## is allowed to snap (`SNAP_RADIUS`; `NEAREST_RADIUS` for a floor tap). Y is
+## kept from the request: the mesh's own height is not the floor's.
+func _project_destination(destination: Vector3, nearest: bool) -> Vector3:
+	if _provider == null or not _provider.has_method("snap_to_navigable"):
+		return destination
+	var snapped: Vector3 = _provider.call("snap_to_navigable", destination)
+	snapped.y = destination.y
+	var radius: float = NEAREST_RADIUS if nearest else SNAP_RADIUS
+	if NavMath.flat_distance(snapped, destination) > radius:
+		return destination
+	return snapped
 
 
 ## -- Direct drive --------------------------------------------------------------
@@ -546,6 +611,9 @@ func is_disabled() -> bool:
 ##   `interactionReady` bool         -- true on exactly ONE frame per request,
 ##                                      after the turn-to-face completes
 ##   `actionFinished`   bool
+##   `blocked`          bool         -- true on exactly ONE frame: the walk was
+##                                      given up because the body stopped making
+##                                      progress (see the no-progress guard)
 ##   `targetId`         String
 ##   `actionName`       String
 ##   `heldAction`       String       -- the posture being held, or ""
@@ -560,6 +628,7 @@ func advance(position: Vector3, yaw: float, delta: float) -> Dictionary:
 		"arrived": false,
 		"interactionReady": false,
 		"actionFinished": false,
+		"blocked": false,
 		"targetId": _target_id,
 		"actionName": _action_name,
 		"heldAction": _held_action,
@@ -599,13 +668,40 @@ func _advance_walking(position: Vector3, yaw: float, delta: float, step: Diction
 		_finish_walk(step)
 		return
 
+	if _stalled(position, delta):
+		if not _repathed:
+			# Once: ask again from where she really is. A body nudged off the
+			# path by a corner gets a fresh route round it.
+			_repathed = true
+			_stall_time = 0.0
+			var fresh: PackedVector3Array = _provider.call("query_path", position, _destination)
+			if not fresh.is_empty():
+				_path = fresh
+				_path_index = 0
+		else:
+			# Twice: she is not getting there. End the walk cleanly -- no arrival
+			# (she did not arrive), latches closed so none can fire later, and the
+			# caller told so it can let the destination marker go.
+			step["blocked"] = true
+			_arrived_emitted = true
+			_interaction_ready_emitted = true
+			_finish_walk(step)
+			return
+
 	_path_index = NavMath.advance_path_index(_path, position, _path_index, WAYPOINT_RADIUS)
-	var at_destination: bool = NavMath.is_within(position, _destination, _arrival_radius)
+	var last: int = _path.size() - 1
+	# Arrived when within the arrival radius of the destination -- OR standing on
+	# the path's final waypoint, which IS the destination as far as the mesh is
+	# concerned. The second clause is what makes a destination the body can only
+	# get near (the last centimetres against a wall) still count as reached.
+	var at_destination: bool = NavMath.is_within(position, _destination, _arrival_radius) \
+			or (_path_index >= last and NavMath.is_within(position, _path[last], WAYPOINT_RADIUS))
 
 	if not at_destination:
 		var waypoint: Vector3 = _path[_path_index]
 		var velocity: Vector3 = NavMath.steer_velocity(position, waypoint, WALK_SPEED, delta)
 		step["velocity"] = velocity
+		_last_speed = velocity.length()
 		if velocity.length_squared() > 0.0:
 			var heading: float = NavMath.yaw_towards(position, position + velocity, yaw)
 			step["yaw"] = NavMath.step_yaw(yaw, heading, TURN_SPEED * delta)
@@ -629,6 +725,26 @@ func _advance_walking(position: Vector3, yaw: float, delta: float, step: Diction
 			_interaction_ready_emitted = true
 			step["interactionReady"] = true
 		_finish_walk(step)
+
+
+## The no-progress guard's one measurement: did the body move at least
+## `STALL_PROGRESS_FRACTION` of what last frame's speed promised? Only counts
+## frames that FOLLOW a frame with a speed applied, so the first step of a walk,
+## the turn-to-face after arrival and a teleport between frames never register.
+## Returns true once the stall has lasted long enough to act on -- the re-path
+## threshold before the one re-path, the give-up threshold after it.
+func _stalled(position: Vector3, delta: float) -> bool:
+	var promised: float = _last_speed * maxf(delta, 0.0)
+	var moved: float = NavMath.flat_distance(position, _progress_position)
+	_progress_position = position
+	if promised <= 0.0:
+		return false
+	if moved < promised * STALL_PROGRESS_FRACTION:
+		_stall_time += delta
+	else:
+		_stall_time = 0.0
+	var limit: float = STALL_GIVE_UP_SEC if _repathed else STALL_REPATH_SEC
+	return _stall_time >= limit
 
 
 ## One frame of thumbstick control.
@@ -776,6 +892,9 @@ var _last_speed: float = 0.0
 
 func set_position(position: Vector3) -> void:
 	_last_known_position = position
+	# A teleport is not a stall.
+	_progress_position = position
+	_stall_time = 0.0
 
 
 func get_position() -> Vector3:
@@ -794,6 +913,11 @@ func _adopt_path(path: PackedVector3Array, destination: Vector3, options: Dictio
 	_facing_point = face if face is Vector3 else null
 	_arrived_emitted = false
 	_interaction_ready_emitted = false
+	# A fresh walk starts with a clean progress record and its one re-path unspent.
+	_progress_position = _last_known_position
+	_last_speed = 0.0
+	_stall_time = 0.0
+	_repathed = false
 	_action_name = ""
 	_action_remaining = 0.0
 	_action_holds = false

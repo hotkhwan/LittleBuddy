@@ -147,9 +147,21 @@ const HOUSE_GEOMETRY_LAYER: int = 4
 
 ## Navigation bake parameters. `agent_radius` is an exact multiple of `cell_size`
 ## because Godot ceils it to whole voxels and warns when it has to round.
+##
+## `NAV_AGENT_RADIUS` is how far the walkable area is eroded from every collider,
+## and it must be MORE than the character's capsule radius (0.22 m in
+## `house_world.tscn`) or a path can be legal and the body still scrape: a
+## string-pulled path puts its corners exactly on the eroded edge, and a capsule
+## fatter than the erosion meets the furniture there and stops. It was 0.20 --
+## 2 cm less than the body -- which is the margin the owner's "walks into the
+## obstacle and gets stuck" report was made against. 0.25 is the next whole
+## voxel above the body, leaves 3 cm of clearance at every corner, and closes
+## the two slivers the 0.20 bake left where a prop stood 0.42 m from a wall
+## (the bath) -- corridors one cell wide that no 0.44 m body could ever use.
+## `test_interaction_anchors.gd` holds this above the body radius.
 const NAV_CELL_SIZE: float = 0.05
 const NAV_CELL_HEIGHT: float = 0.05
-const NAV_AGENT_RADIUS: float = 0.20
+const NAV_AGENT_RADIUS: float = 0.25
 const NAV_AGENT_HEIGHT: float = 0.85
 const NAV_AGENT_MAX_CLIMB: float = 0.05
 const NAV_AGENT_MAX_SLOPE: float = 10.0
@@ -238,7 +250,7 @@ const DOOR_COLOR: Color = WOOD_COLOR
 const BED_SIZE: Vector3 = Vector3(0.92, 0.45, 1.34)
 const BED_POSITION: Vector3 = Vector3(-1.30, 0.225, -1.25)
 ## Where the child stands to use the bed: 0.9 m out along +X from its centre,
-## which leaves 0.44 m of clear floor beside it -- more than the 0.20 m agent
+## which leaves 0.44 m of clear floor beside it -- more than the 0.25 m agent
 ## radius, so the navigation mesh really reaches it.
 const BED_STAND_X: float = -0.40
 ## Stand point to the middle of the mattress, perpendicular to the bed.
@@ -413,7 +425,11 @@ static func storages(room_id: String) -> Array:
 				"capacity": 4,
 				"size": Vector3(0.74, 0.44, 0.54),
 				"position": Vector3(-1.32, 0.22, 1.12),
-				"stand": Vector3(-0.78, FLOOR_Y, 1.12),
+				# 0.35 m off the box's +X face (-0.95), like every other stand
+				# point in the house. It was -0.78: 0.17 m from the face, INSIDE
+				# the eroded margin and off the mesh, so the walk snapped to the
+				# edge and the body stopped pressed against the box.
+				"stand": Vector3(-0.60, FLOOR_Y, 1.12),
 				"openDegrees": 104.0,
 				"color": Palette.MINT,
 			}]
@@ -425,7 +441,9 @@ static func storages(room_id: String) -> Array:
 				"capacity": 5,
 				"size": Vector3(0.80, 0.46, 0.50),
 				"position": Vector3(-1.30, 0.23, 1.10),
-				"stand": Vector3(-0.76, FLOOR_Y, 1.10),
+				# Same correction as the toy box: was 0.14 m off the +X face
+				# (-0.90), now 0.35.
+				"stand": Vector3(-0.55, FLOOR_Y, 1.10),
 				"openDegrees": 100.0,
 				"color": Palette.SOFT_PINK,
 			}]
@@ -496,8 +514,10 @@ static func furniture(room_id: String) -> Array:
 			]
 		LIVING_ROOM:
 			return [
+				# Stand 0.35 m off the seat's front face (z -1.10), not 0.25: at
+				# 0.25 the stand point sat ON the eroded edge of the mesh.
 				_prop("sofa", "sofa", Vector3(1.8, 0.75, 0.8), Vector3(-0.7, 0.375, -1.5),
-						Vector3(-0.7, FLOOR_Y, -0.85), ["sit", "hug"], Palette.SOFT_PINK),
+						Vector3(-0.7, FLOOR_Y, -0.75), ["sit", "hug"], Palette.SOFT_PINK),
 				# No `open`: this box has no lid and no storage model behind it
 				# (the bedroom's has both). It is the room's landing pad -- toys are
 				# dragged or carried INTO it -- and a badge that said OPEN on it did

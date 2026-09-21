@@ -119,7 +119,9 @@ func _bake_room(room_id: String) -> AABB:
 
 	NavigationServer3D.bake_from_source_geometry_data(navigation_mesh, source)
 	var baked_polygons: int = navigation_mesh.get_polygon_count()
-	var floor_mesh := _keep_floor_polygons(navigation_mesh)
+	var floor_level := _keep_floor_polygons(navigation_mesh)
+	var at_floor: int = floor_level.get_polygon_count()
+	var floor_mesh := _keep_main_island(floor_level)
 	var kept: int = floor_mesh.get_polygon_count()
 
 	var path: String = HouseLayout.navmesh_path(room_id)
@@ -131,7 +133,8 @@ func _bake_room(room_id: String) -> AABB:
 	print("")
 	print("  %s" % room_id)
 	print("    source faces        : %d" % (source.get_indices().size() / 3))
-	print("    polygons baked      : %d  (kept at floor level: %d)" % [baked_polygons, kept])
+	print("    polygons baked      : %d  (at floor level: %d, on the main island: %d)"
+			% [baked_polygons, at_floor, kept])
 	print("    mesh bounds (local) : pos %s size %s" % [
 		_round(bounds.position), _round(bounds.size)
 	])
@@ -204,6 +207,89 @@ func _keep_floor_polygons(source_mesh: NavigationMesh) -> NavigationMesh:
 	return result
 
 
+## Keeps only the largest connected island of floor polygons.
+##
+## Recast rasterises SURFACES, not volumes, so a tall closed box -- the
+## wardrobe, the fridge, the kitchen counter -- is hollow to it: the floor
+## under the box has the box's top for a ceiling, 1.7 m up, and with the walls
+## of the box eroded by the agent radius a small walkable island is left INSIDE
+## the furniture. Short furniture escapes only because its "ceiling" is lower
+## than the agent height. Those islands are unreachable, so a path never used
+## them, but `map_get_closest_point()` did: a tap on the wardrobe projected to
+## the island inside it rather than to the floor in front of it, and every
+## reachability test that snapped a point first was asking about the wrong
+## place. One room is one floor; anything not connected to it is not floor.
+func _keep_main_island(source_mesh: NavigationMesh) -> NavigationMesh:
+	var count: int = source_mesh.get_polygon_count()
+	if count == 0:
+		return source_mesh
+	# Union-find over polygons that share a vertex index. Recast shares vertices
+	# between neighbouring polygons, so an edge in common is a vertex in common.
+	var parent: PackedInt32Array = PackedInt32Array()
+	parent.resize(count)
+	for index: int in range(count):
+		parent[index] = index
+	var owner_of_vertex: Dictionary = {}
+	for index: int in range(count):
+		for vertex_index: int in source_mesh.get_polygon(index):
+			if owner_of_vertex.has(vertex_index):
+				_union(parent, index, int(owner_of_vertex[vertex_index]))
+			else:
+				owner_of_vertex[vertex_index] = index
+	var sizes: Dictionary = {}
+	for index: int in range(count):
+		var island: int = _find(parent, index)
+		sizes[island] = int(sizes.get(island, 0)) + 1
+	var main_island: int = -1
+	for island: int in sizes.keys():
+		if main_island < 0 or int(sizes[island]) > int(sizes[main_island]):
+			main_island = island
+
+	var vertices: PackedVector3Array = source_mesh.get_vertices()
+	var result := NavigationMesh.new()
+	result.cell_size = source_mesh.cell_size
+	result.cell_height = source_mesh.cell_height
+	result.agent_radius = source_mesh.agent_radius
+	result.agent_height = source_mesh.agent_height
+	result.agent_max_climb = source_mesh.agent_max_climb
+	result.agent_max_slope = source_mesh.agent_max_slope
+	var kept_vertices := PackedVector3Array()
+	var remap: Dictionary = {}
+	var polygons: Array = []
+	for index: int in range(count):
+		if _find(parent, index) != main_island:
+			continue
+		var rebuilt := PackedInt32Array()
+		for vertex_index: int in source_mesh.get_polygon(index):
+			if not remap.has(vertex_index):
+				remap[vertex_index] = kept_vertices.size()
+				kept_vertices.append(vertices[vertex_index])
+			rebuilt.append(int(remap[vertex_index]))
+		polygons.append(rebuilt)
+	result.vertices = kept_vertices
+	for polygon: PackedInt32Array in polygons:
+		result.add_polygon(polygon)
+	return result
+
+
+static func _find(parent: PackedInt32Array, index: int) -> int:
+	var root: int = index
+	while parent[root] != root:
+		root = parent[root]
+	while parent[index] != root:
+		var next: int = parent[index]
+		parent[index] = root
+		index = next
+	return root
+
+
+static func _union(parent: PackedInt32Array, a: int, b: int) -> void:
+	var root_a: int = _find(parent, a)
+	var root_b: int = _find(parent, b)
+	if root_a != root_b:
+		parent[root_b] = root_a
+
+
 ## Puts the mesh on a real navigation map and asks it real questions: can the
 ## child cross the room, and is the inside of the wardrobe correctly unreachable?
 ##
@@ -239,13 +325,27 @@ func _probe_reachability(room_id: String, navigation_mesh: NavigationMesh) -> vo
 	if not NavMath.path_reaches(crossing, to, 0.25):
 		_fail("%s: the child cannot walk from %s to %s" % [room_id, from, to])
 
-	# Every authored stand position must be somewhere the child can actually get to.
+	# Every authored stand position -- furniture, storage and doors -- must be ON
+	# the mesh (not merely near it: a stand point in the eroded margin is a walk
+	# that ends pressed against the furniture) and reachable from the crossing.
+	var stands: Array = []
 	for entry: Dictionary in HouseLayout.furniture(room_id) + HouseLayout.doors(room_id):
-		var stand: Vector3 = entry["stand"]
+		stands.append([String(entry["targetId"]), entry["stand"] as Vector3])
+	for row: Dictionary in HouseLayout.storages(room_id):
+		stands.append([String(row["storageId"]), row["stand"] as Vector3])
+	var spawns: Dictionary = HouseLayout.spawn_points(room_id)
+	for spawn_id: String in spawns.keys():
+		stands.append(["spawn '%s'" % spawn_id, spawns[spawn_id] as Vector3])
+	for pair: Array in stands:
+		var stand: Vector3 = pair[1]
+		var snapped: Vector3 = provider.call("snap_to_navigable", stand)
+		if NavMath.flat_distance(snapped, stand) > 0.04:
+			_fail("%s: the interaction point for '%s' at %s is %.2f m off the mesh"
+					% [room_id, String(pair[0]), _round(stand), NavMath.flat_distance(snapped, stand)])
 		var path: PackedVector3Array = provider.call("query_path", from, stand)
-		if not NavMath.path_reaches(path, stand, 0.3):
+		if not NavMath.path_reaches(path, stand, 0.05):
 			_fail("%s: the interaction point for '%s' at %s is not reachable"
-					% [room_id, String(entry["targetId"]), _round(stand)])
+					% [room_id, String(pair[0]), _round(stand)])
 
 	# And the inside of a solid object must NOT be reachable, or the obstacle is
 	# not really cutting the mesh.
@@ -255,8 +355,8 @@ func _probe_reachability(room_id: String, navigation_mesh: NavigationMesh) -> vo
 	if NavMath.path_reaches(into_solid, solid, 0.05):
 		_fail("%s: the child can walk inside '%s'; its collider is not cutting the mesh"
 				% [room_id, String(HouseLayout.furniture(room_id)[0]["targetId"])])
-	print("    reachability        : crossing ok, %d stand points ok, obstacles solid"
-			% (HouseLayout.furniture(room_id).size() + HouseLayout.doors(room_id).size()))
+	print("    reachability        : crossing ok, %d stand/spawn points ok, obstacles solid"
+			% stands.size())
 
 	region.queue_free()
 	NavigationServer3D.free_rid(map)

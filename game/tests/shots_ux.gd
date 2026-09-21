@@ -99,6 +99,9 @@ func _run() -> void:
 	if args.size() > 3 and String(args[3]) == "badge":
 		await _run_badges()
 		return
+	if args.size() > 3 and String(args[3]) == "nav":
+		await _run_nav_corner()
+		return
 	# Free Play: the objective-free house, which is where a child meets the
 	# fridge without a mission steering the camera.
 	_world.call("set_progression_mode", 1)
@@ -260,6 +263,48 @@ func _run_bedroom() -> void:
 	_expect_any(["CARRY", "HUG"], "bedroom.littleBuddy", "bedroom_bunny")
 	_expect_off_bubble("bedroom_bunny")
 	await _shot("%s_bedroom_bunny" % _prefix)
+	_finish()
+
+
+## THE STUCK CORNER, photographed (2026-09-21). Owner report from the device:
+## "clicking near furniture makes Aliz walk into the obstacle and get stuck".
+##
+## One floor tap in the 20 cm gap between the wardrobe and the side wall -- a
+## point no navigation mesh can reach -- and five seconds of real frames. The
+## frame is what she is doing at the end of them, and the numbers printed with
+## it are the verdict: her state (must be at rest, not `walking`), where she
+## stopped, and whether the destination disc has been let go. Before the fix
+## she stood at the mesh corner in WALKING with the walk clip playing into the
+## wardrobe, forever.
+func _run_nav_corner() -> void:
+	_world.call("set_progression_mode", 1)
+	_viewport.add_child(_world)
+	await _settle(0.8)
+	_director = _world.call("get_free_play_director")
+	_world.call("place_in_room", "bedroom", "")
+	await _settle(0.6)
+	_quiet()
+	var aliz: Node3D = _world.call("get_character")
+	var nav: Node = _world.get_node("NavigationController")
+	var origin: Vector3 = HouseLayout.room_origin("bedroom")
+	# Beside the wardrobe, in the gap against the +X wall.
+	var tap: Vector3 = origin + Vector3(1.90, HouseLayout.FLOOR_Y, -1.20)
+	var accepted: bool = bool(nav.call("apply_tap",
+			{"kind": 2, "targetId": "", "x": tap.x, "z": tap.z, "reason": ""}))
+	print("  tap %s accepted %s" % [str(tap), str(accepted)])
+	await _settle(5.0)
+	_quiet()
+	var here: Vector3 = SpatialUtil.world_position(aliz)
+	var ripple: Node = nav.call("get_tap_ripple")
+	var holding: bool = ripple != null and bool(ripple.call("is_holding"))
+	print("  after 5 s: state %s at (%.2f, %.2f), busy %s, destination disc held %s"
+			% [aliz.call("get_state_name"), here.x, here.z, str(aliz.call("is_busy")), str(holding)])
+	if bool(aliz.call("is_busy")):
+		_fail.append("nav_corner: still %s five seconds after a tap into the wardrobe gap"
+				% aliz.call("get_state_name"))
+	if holding:
+		_fail.append("nav_corner: the destination disc is still held after the walk should have ended")
+	await _shot("%s_nav_corner" % _prefix)
 	_finish()
 
 

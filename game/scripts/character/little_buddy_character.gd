@@ -68,7 +68,10 @@ signal arrived(target_id: String)
 signal interaction_ready(target_id: String)
 
 ## The request could not be honoured. `reason` is one of:
-## "disabled", "unknownTarget", "targetDisabled", "unreachable".
+## "disabled", "unknownTarget", "targetDisabled", "unreachable" -- or, later
+## than the request, "blocked": the walk was accepted and the body then stopped
+## making progress against something the path did not know about, so the walk
+## was given up (`CharacterMovementController`'s no-progress guard).
 ## Never an error, never a crash -- the character simply carries on as it was.
 signal move_failed(target_id: String, reason: String)
 
@@ -533,6 +536,12 @@ func step_movement(delta: float) -> void:
 		arrived.emit(String(step.get("targetId", "")))
 	if bool(step.get("interactionReady", false)):
 		interaction_ready.emit(String(step.get("targetId", "")))
+	if bool(step.get("blocked", false)):
+		# The walk was given up mid-way: she stands where she is, the walk clip
+		# stops, and whoever asked is told with the same signal a refused
+		# request uses -- no new failure vocabulary for a child to see.
+		_rest_driver()
+		move_failed.emit(String(step.get("targetId", "")), "blocked")
 	# The carried thing rides the body: pinned AFTER the body has moved this
 	# step, so it never trails by a frame.
 	if _carry != null:
@@ -716,6 +725,15 @@ func _ensure_wired() -> void:
 		# synchronised map and its own server process step, and buys nothing here.
 		_agent.avoidance_enabled = false
 		add_child(_agent)
+
+	# Slide, never stop dead. `CharacterBody3D.wall_min_slide_angle` defaults to
+	# 15 degrees: a body meeting a wall within that cone of head-on is halted
+	# rather than slid along it, and in floating mode that applies to every
+	# collider in the house. A path that grazes a corner at 10 degrees was
+	# therefore a full stop against the furniture, which the no-progress guard
+	# would end but which should never happen at all. At zero she slides along
+	# anything she touches at any angle and only a true head-on push holds her.
+	wall_min_slide_angle = 0.0
 
 	_controller = MovementControllerScript.create(NavMapProviderScript.create(_agent))
 	_controller.call("set_position", _world_position())
