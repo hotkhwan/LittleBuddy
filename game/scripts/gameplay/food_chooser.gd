@@ -20,6 +20,7 @@ signal dismissed()
 
 const CARD_SIZE := Vector2(260.0, 300.0)
 const CARD_GAP: float = 40.0
+const ROW_LIFT: float = 70.0
 const PICTURE_RADIUS: float = 78.0
 const WORD_FONT_SIZE: int = 40
 const TITLE: String = "Which one?"
@@ -102,8 +103,11 @@ func open(rows: Array) -> void:
 	var total: float = CARD_SIZE.x * float(_cards.size()) + CARD_GAP * float(maxi(_cards.size() - 1, 0))
 	_row.offset_left = -total * 0.5
 	_row.offset_right = total * 0.5
-	_row.offset_top = -CARD_SIZE.y * 0.5
-	_row.offset_bottom = CARD_SIZE.y * 0.5
+	# Lifted off centre: the HUD's subtitle pill sits just below the middle
+	# of the screen and was covering the middle card's word (seen in
+	# docs/shots/freeplay_chooser_ipad.png).
+	_row.offset_top = -CARD_SIZE.y * 0.5 - ROW_LIFT
+	_row.offset_bottom = CARD_SIZE.y * 0.5 - ROW_LIFT
 	visible = true
 
 
