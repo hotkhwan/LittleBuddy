@@ -124,6 +124,10 @@ var _built: bool = false
 ## True only while `build_world()` is part-way through. See the guard there.
 var _building: bool = false
 var _progression_mode: int = ProgressionMode.STORY
+## The mission the title screen's activity picker asked for, or "". Set by
+## `main.gd::build_scene()` before the world enters the tree and CONSUMED by
+## `begin_session()`, which hands it to the level director exactly once.
+var _requested_mission_id: String = ""
 ## Room ids Free Play may start in. Empty means "every room in the house", which
 ## is what an unplayed profile (`unlockedRooms: []`) must mean -- a child locked
 ## out of all four rooms would be a dead end, and the fallback room is always
@@ -221,14 +225,21 @@ func _process(_delta: float) -> void:
 ## so the only way to assert what a real first frame does is to be able to ask
 ## for it by name.
 func begin_session() -> void:
-	if is_free_play():
+	# Consumed here, once: a second `begin_session()` (there is none today, but
+	# first run's `finished` and a test calling it by hand are both plausible)
+	# must not restart the requested mission over a running one.
+	var requested: String = _requested_mission_id
+	_requested_mission_id = ""
+	# A requested mission is Story by definition -- it names a level -- so it
+	# takes the level-director branch even if the mode was left on Free Play.
+	if is_free_play() and requested.is_empty():
 		var free_play: Node = ensure_free_play_director()
 		if free_play != null and free_play.has_method("start"):
 			free_play.call("start")
 		return
 	var director: Node = ensure_level_director()
 	if director != null and director.has_method("start"):
-		director.call("start")
+		director.call("start", requested)
 
 
 ## Builds and starts first run, or returns false when it is not wanted. See
@@ -702,6 +713,20 @@ func set_progression_mode(mode: int) -> void:
 
 func get_progression_mode() -> int:
 	return _progression_mode
+
+
+## The mission "Play with Bunny" should open the house on. Set BEFORE the world
+## enters the tree, like `set_progression_mode()`; `begin_session()` consumes it
+## and `HouseLevelDirector.start(mission_id)` decides whether it is playable.
+## An empty id means "whatever the journey picks", which is what Story always
+## did.
+func set_requested_mission_id(mission_id: String) -> void:
+	_requested_mission_id = mission_id.strip_edges()
+
+
+## The pending request, or "" once `begin_session()` has consumed it.
+func get_requested_mission_id() -> String:
+	return _requested_mission_id
 
 
 func is_free_play() -> bool:

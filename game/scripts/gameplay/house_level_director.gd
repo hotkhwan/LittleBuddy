@@ -142,6 +142,11 @@ var _mission_id: String = ""
 var _level_id: String = ""
 var _last_mission_id: String = ""
 var _forced_next_mission_id: String = ""
+## True while the level being played was ALREADY in `levelCompleted` when it
+## started -- a replay from the activity picker (or from Play Again after the
+## day is done). Latched once per `_start_level`, before this run can record
+## its own completion, and read at the one reward seam below.
+var _replaying_completed: bool = false
 var _new_stickers: Array = []
 var _speech_binder: RefCounted = null
 var _care_overlay: Control = null
@@ -345,12 +350,33 @@ func step(delta: float = 0.0) -> void:
 ## -- Session -------------------------------------------------------------------
 
 ## Starts (or resumes) the Chapter 3 journey. Safe to call twice.
-func start() -> bool:
+##
+## `mission_id` is a REQUEST, not a command: the title screen's activity picker
+## ("Play with Bunny", 2026-09-21) hands the mission the child tapped, and it is
+## honoured when it is a house mission this build can actually play. Anything
+## else -- an empty id, a Chapter 2 mission, a mission whose tasks are all
+## unplayable here -- falls back to `_pick_story_mission_id()`, exactly what
+## `start()` always did, so a stale or mistyped request can never leave the
+## house with nothing to do. A fresh profile that requests nothing still opens
+## on `imHungry` (`smoke_mission01.gd` pins that).
+func start(mission_id: String = "") -> bool:
 	if _world == null:
 		return false
 	if _running:
 		return true
+	var requested: String = mission_id.strip_edges()
+	if not requested.is_empty() and _is_requestable_mission(requested):
+		return _start_level(requested)
 	return _start_level(_pick_story_mission_id())
+
+
+## A mission the picker may ask for: authored under the house chapter and with
+## at least one task a child can finish here. Completion is deliberately NOT a
+## condition -- replaying a finished level is the whole point of the request.
+func _is_requestable_mission(mission_id: String) -> bool:
+	if _playable_task_count(mission_id) <= 0:
+		return false
+	return _is_house_level(_level_id_for_mission(mission_id))
 
 
 func is_running() -> bool:
@@ -417,6 +443,7 @@ func _start_level(mission_id: String) -> bool:
 	_mission_id = mission_id
 	_last_mission_id = mission_id
 	_level_id = _level_id_for_mission(mission_id)
+	_replaying_completed = _is_replay_of_completed_level(_level_id)
 	_new_stickers = []
 	_task_done = false
 	_beat_reached = false
@@ -992,7 +1019,17 @@ func _on_task_completed(task_id: String, stars: int) -> void:
 	_cancel_assist()
 	_stage.call("show_beat_marker", null)
 	_hud.call("mark_current_done")
-	_rewards.call("award", task_id, stars)
+	# THE replay reward policy, and the only place it lives. A level the child
+	# has already finished is played again for the joy of it -- from the
+	# activity picker, after the day is done -- and pays 0 lifetime stars, so a
+	# child tapping "I'm Hungry!" ten times does not mint thirty stars. The
+	# ledger refuses a 0-star award (`REASON_INVALID`) without writing anything,
+	# so nothing else changes: `MissionRunner` still records the completion for
+	# the 0..3 rating, `apply_completion` still keeps the best `starsByLevel`,
+	# and the summary still opens. Neither `RewardManager` nor the ledger knows
+	# about replays, on purpose -- `begin_round()` giving a fresh ledger key per
+	# level is what lets a NEW level pay, and that stays untouched.
+	_rewards.call("award", task_id, 0 if _replaying_completed else stars)
 	# Recorded BEFORE the action plays, while the handler's spawns are still
 	# alive -- the exposure is "which objects were on screen", and after the
 	# reaction they are gone.
@@ -1682,6 +1719,22 @@ static func _is_completed(completed: Dictionary, level_id: String) -> bool:
 			return float(value) >= 1.0
 		_:
 			return false
+
+
+## Was `level_id` already finished before this run began? Read from the same
+## completion map `_pick_story_mission_id()` uses, through the same truthiness
+## rule (`true`, or a v2-era star count). False without a level system or a
+## save, which is every headless case -- and the safe way to be wrong, since it
+## means paying rather than withholding.
+func _is_replay_of_completed_level(level_id: String) -> bool:
+	if _system == null or level_id.is_empty():
+		return false
+	return _is_completed(_system.call("load_completed_levels"), level_id)
+
+
+## For tests: whether the running level is a replay of a finished one.
+func is_replaying_completed_level() -> bool:
+	return _replaying_completed
 
 
 func _playable_mission_for_level(level_id: String) -> String:

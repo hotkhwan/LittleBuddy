@@ -66,6 +66,7 @@ func run():
 	failures.append_array(_test_free_play_route())
 	failures.append_array(_test_chapter_is_recomputed_when_the_pointer_is_stale())
 	failures.append_array(_test_scene_hand_off_configures_the_world())
+	failures.append_array(_test_play_with_bunny_never_routes_to_the_baby_room())
 	failures.append_array(_test_menu_is_child_facing())
 	return failures
 
@@ -290,6 +291,50 @@ func _test_scene_hand_off_configures_the_world():
 			failures.append("build_scene('%s') returned a node" % missing)
 			nothing.free()
 
+	return failures
+
+
+## Play with Bunny (2026-09-21). The button promises the house; its route has
+## no Baby Room fallback, unlike Story's chapter routing, and the mission the
+## child picked reaches the house through `build_scene()`.
+func _test_play_with_bunny_never_routes_to_the_baby_room():
+	var failures: Array = []
+	var path: String = MainScript.bunny_scene_path()
+	if path == MainScript.BABY_ROOM_PATH:
+		failures.append("bunny_scene_path() is the Baby Room; Play with Bunny must never open it")
+	if path != MainScript.HOUSE_WORLD_PATH:
+		failures.append("bunny_scene_path() is '%s'; with the house in the build it is the house" % path)
+	if MainScript.CHAPTER_ROUTES.get("ch2", -1) != MainScript.Route.BABY_ROOM:
+		failures.append("Chapter 2 is no longer the Baby Room; the chapter table is documentation and must stay true")
+
+	var house: Node = MainScript.build_scene(
+		MainScript.HOUSE_WORLD_PATH, MainScript.ProgressionMode.STORY, [], null, "imHungry"
+	)
+	if house == null:
+		failures.append("the house did not build with a requested mission")
+	else:
+		if String(house.call("get_requested_mission_id")) != "imHungry":
+			failures.append("build_scene(..., 'imHungry') left the house with request '%s'"
+					% String(house.call("get_requested_mission_id")))
+		if bool(house.call("is_free_play")):
+			failures.append("a requested mission came up as Free Play")
+		house.free()
+	var plain: Node = MainScript.build_scene(
+		MainScript.HOUSE_WORLD_PATH, MainScript.ProgressionMode.STORY, [], null
+	)
+	if plain != null:
+		if String(plain.call("get_requested_mission_id")) != "":
+			failures.append("build_scene() with no mission still requested '%s'"
+					% String(plain.call("get_requested_mission_id")))
+		plain.free()
+	# The Baby Room answers no such method and must still build -- duck typing.
+	var room: Node = MainScript.build_scene(
+		MainScript.BABY_ROOM_PATH, MainScript.ProgressionMode.STORY, [], null, "imHungry"
+	)
+	if room == null:
+		failures.append("the Baby Room did not build when a mission id was passed")
+	else:
+		room.free()
 	return failures
 
 
