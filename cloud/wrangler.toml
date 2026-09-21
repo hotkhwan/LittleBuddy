@@ -1,0 +1,236 @@
+# Little Days cloud backend (Cloudflare Workers + D1 + Durable Objects).
+#
+# Three environments: dev / staging / production. Each has its OWN D1 database
+# and, because Durable Object namespaces belong to the Worker deployment, its
+# own DO namespaces (`--env` isolates them). Wrangler does not inherit `vars`
+# into environments, so the shared block is repeated verbatim under each env
+# (keep the four copies identical except DEV_MODE).
+#
+# Secrets (OPENAI_API_KEY, PARENT_TOKEN_SECRET, store keys) are never in this
+# file: `wrangler secret put <NAME> --env <env>`; locally `.dev.vars`
+# (gitignored, template in `.dev.vars.example`).
+#
+# Production has NO route and `workers_dev = false`: it is unreachable until
+# the owner fills the route in, and it is never deployed by automation
+# (README "Safe deployment").
+#
+# R2: not used. Nothing here stores files (no audio, no receipts, no exports);
+# every record is a row in D1 or Durable Object storage.
+#
+# compatibility_date is pinned to what the test pool's workerd supports; bump
+# it together with @cloudflare/vitest-pool-workers.
+
+name = "little-days-cloud"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+workers_dev = false
+
+[vars]
+DEV_MODE = "0"
+APP_NAME = "Little Days"
+BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
+FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
+FREE_DAILY_TURNS = "60"
+FAMILY_CLUB_DAILY_TURNS = "360"
+TUTOR_TURN_CAP_SECONDS = "45"
+SESSION_IDLE_SECONDS = "120"
+REALTIME_GRACE_SECONDS = "30"
+RETENTION_DAYS = "30"
+MONTHLY_BUDGET_USD = "25"
+MAX_BODY_BYTES = "32768"
+RATE_LIMIT_IP_PER_MINUTE = "120"
+RATE_LIMIT_SESSION_TURNS_PER_MINUTE = "30"
+PARENT_TOKEN_TTL_SECONDS = "2592000"
+CONSENT_VERSION = "1"
+FAMILY_CLUB_PRODUCT_IDS = "little_days.family_club.monthly,little_days.family_club.yearly"
+FAMILY_CLUB_PRICE_CURRENCY = "THB"   # price hypothesis; config, never hard-coded in clients
+FAMILY_CLUB_PRICE_MONTHLY = "99"
+FAMILY_CLUB_PRICE_STATUS = "proposed"
+TUTOR_MODEL = "gpt-4o-mini"
+REALTIME_MODEL = "gpt-realtime-mini"
+REALTIME_VOICE = "marin"
+REALTIME_TURN_DETECTION = "semantic_vad"
+
+[triggers]
+crons = ["17 3 * * *"]               # daily retention purge (UTC)
+
+[[durable_objects.bindings]]
+name = "TUTOR_SESSION"
+class_name = "TutorSessionDO"
+
+[[durable_objects.bindings]]
+name = "QUOTA"
+class_name = "QuotaDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TutorSessionDO", "QuotaDO"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "little-days-local"
+database_id = "00000000-0000-0000-0000-000000000000"   # top level = local only (wrangler dev / tests use env.dev)
+migrations_dir = "migrations"
+
+# ---------------------------------------------------------------- dev
+[env.dev]
+name = "little-days-cloud-dev"
+workers_dev = true
+
+[env.dev.vars]
+DEV_MODE = "1"                       # dev sign-in, dev literal approval token, /v1/dev/* routes, X-Debug-Now
+APP_NAME = "Little Days"
+BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
+FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
+FREE_DAILY_TURNS = "60"
+FAMILY_CLUB_DAILY_TURNS = "360"
+TUTOR_TURN_CAP_SECONDS = "45"
+SESSION_IDLE_SECONDS = "120"
+REALTIME_GRACE_SECONDS = "30"
+RETENTION_DAYS = "30"
+MONTHLY_BUDGET_USD = "25"
+MAX_BODY_BYTES = "32768"
+RATE_LIMIT_IP_PER_MINUTE = "120"
+RATE_LIMIT_SESSION_TURNS_PER_MINUTE = "30"
+PARENT_TOKEN_TTL_SECONDS = "2592000"
+CONSENT_VERSION = "1"
+FAMILY_CLUB_PRODUCT_IDS = "little_days.family_club.monthly,little_days.family_club.yearly"
+FAMILY_CLUB_PRICE_CURRENCY = "THB"   # price hypothesis; config, never hard-coded in clients
+FAMILY_CLUB_PRICE_MONTHLY = "99"
+FAMILY_CLUB_PRICE_STATUS = "proposed"
+TUTOR_MODEL = "gpt-4o-mini"
+REALTIME_MODEL = "gpt-realtime-mini"
+REALTIME_VOICE = "marin"
+REALTIME_TURN_DETECTION = "semantic_vad"
+
+[env.dev.triggers]
+crons = ["17 3 * * *"]
+
+[[env.dev.durable_objects.bindings]]
+name = "TUTOR_SESSION"
+class_name = "TutorSessionDO"
+
+[[env.dev.durable_objects.bindings]]
+name = "QUOTA"
+class_name = "QuotaDO"
+
+[[env.dev.migrations]]
+tag = "v1"
+new_sqlite_classes = ["TutorSessionDO", "QuotaDO"]
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "little-days-dev"
+database_id = "REPLACE_WITH_DEV_DATABASE_ID"          # `wrangler d1 create little-days-dev`
+migrations_dir = "migrations"
+
+# ------------------------------------------------------------ staging
+[env.staging]
+name = "little-days-cloud-staging"
+workers_dev = true
+
+[env.staging.vars]
+DEV_MODE = "0"
+APP_NAME = "Little Days"
+BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
+FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
+FREE_DAILY_TURNS = "60"
+FAMILY_CLUB_DAILY_TURNS = "360"
+TUTOR_TURN_CAP_SECONDS = "45"
+SESSION_IDLE_SECONDS = "120"
+REALTIME_GRACE_SECONDS = "30"
+RETENTION_DAYS = "30"
+MONTHLY_BUDGET_USD = "25"
+MAX_BODY_BYTES = "32768"
+RATE_LIMIT_IP_PER_MINUTE = "120"
+RATE_LIMIT_SESSION_TURNS_PER_MINUTE = "30"
+PARENT_TOKEN_TTL_SECONDS = "2592000"
+CONSENT_VERSION = "1"
+FAMILY_CLUB_PRODUCT_IDS = "little_days.family_club.monthly,little_days.family_club.yearly"
+FAMILY_CLUB_PRICE_CURRENCY = "THB"   # price hypothesis; config, never hard-coded in clients
+FAMILY_CLUB_PRICE_MONTHLY = "99"
+FAMILY_CLUB_PRICE_STATUS = "proposed"
+TUTOR_MODEL = "gpt-4o-mini"
+REALTIME_MODEL = "gpt-realtime-mini"
+REALTIME_VOICE = "marin"
+REALTIME_TURN_DETECTION = "semantic_vad"
+
+[env.staging.triggers]
+crons = ["17 3 * * *"]
+
+[[env.staging.durable_objects.bindings]]
+name = "TUTOR_SESSION"
+class_name = "TutorSessionDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "QUOTA"
+class_name = "QuotaDO"
+
+[[env.staging.migrations]]
+tag = "v1"
+new_sqlite_classes = ["TutorSessionDO", "QuotaDO"]
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "little-days-staging"
+database_id = "REPLACE_WITH_STAGING_DATABASE_ID"      # `wrangler d1 create little-days-staging`
+migrations_dir = "migrations"
+
+# --------------------------------------------------------- production
+# No route, no workers.dev subdomain: unreachable until the owner adds
+#   routes = [{ pattern = "api.<owner-domain>/*", zone_name = "<owner-domain>" }]
+# and deploys BY HAND after staging sign-off. Never deployed by automation.
+[env.production]
+name = "little-days-cloud"
+workers_dev = false
+
+[env.production.vars]
+DEV_MODE = "0"
+APP_NAME = "Little Days"
+BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
+FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
+FREE_DAILY_TURNS = "60"
+FAMILY_CLUB_DAILY_TURNS = "360"
+TUTOR_TURN_CAP_SECONDS = "45"
+SESSION_IDLE_SECONDS = "120"
+REALTIME_GRACE_SECONDS = "30"
+RETENTION_DAYS = "30"
+MONTHLY_BUDGET_USD = "25"
+MAX_BODY_BYTES = "32768"
+RATE_LIMIT_IP_PER_MINUTE = "120"
+RATE_LIMIT_SESSION_TURNS_PER_MINUTE = "30"
+PARENT_TOKEN_TTL_SECONDS = "2592000"
+CONSENT_VERSION = "1"
+FAMILY_CLUB_PRODUCT_IDS = "little_days.family_club.monthly,little_days.family_club.yearly"
+FAMILY_CLUB_PRICE_CURRENCY = "THB"   # price hypothesis; config, never hard-coded in clients
+FAMILY_CLUB_PRICE_MONTHLY = "99"
+FAMILY_CLUB_PRICE_STATUS = "proposed"
+TUTOR_MODEL = "gpt-4o-mini"
+REALTIME_MODEL = "gpt-realtime-mini"
+REALTIME_VOICE = "marin"
+REALTIME_TURN_DETECTION = "semantic_vad"
+
+[env.production.triggers]
+crons = ["17 3 * * *"]
+
+[[env.production.durable_objects.bindings]]
+name = "TUTOR_SESSION"
+class_name = "TutorSessionDO"
+
+[[env.production.durable_objects.bindings]]
+name = "QUOTA"
+class_name = "QuotaDO"
+
+[[env.production.migrations]]
+tag = "v1"
+new_sqlite_classes = ["TutorSessionDO", "QuotaDO"]
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "little-days-production"
+database_id = "REPLACE_WITH_PRODUCTION_DATABASE_ID"   # `wrangler d1 create little-days-production`
+migrations_dir = "migrations"

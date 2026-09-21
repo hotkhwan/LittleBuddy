@@ -1,0 +1,27 @@
+{
+  "name": "little-days-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Little Days cloud backend: Cloudflare Workers + D1 + Durable Objects for the Aliz AI Tutor (sessions, quota, entitlements, consent, progress).",
+  "scripts": {
+    "dev": "wrangler dev --local --env dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "migrate:local": "wrangler d1 migrations apply little-days-dev --local --env dev",
+    "deploy:dev": "wrangler deploy --env dev",
+    "deploy:staging": "wrangler deploy --env staging"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^4.20250620.0",
+    "@types/node": "^26.6.2",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.124.0"
+  },
+  "dependencies": {
+    "hono": "^4.13.8"
+  }
+}

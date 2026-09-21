@@ -1,0 +1,144 @@
+// Bindings and configuration. No secret has a default; every number is
+// parsed defensively so a typo in wrangler.toml can never mean "unlimited".
+import type { TutorSessionDO } from './do/tutor_session_do';
+import type { QuotaDO } from './do/quota_do';
+
+export interface Env {
+  DB: D1Database;
+  TUTOR_SESSION: DurableObjectNamespace<TutorSessionDO>;
+  QUOTA: DurableObjectNamespace<QuotaDO>;
+  // vars (wrangler.toml)
+  APP_NAME?: string;
+  DEV_MODE?: string;
+  BILLING_ENABLED?: string;
+  FREE_DAILY_SECONDS?: string;
+  FAMILY_CLUB_DAILY_SECONDS?: string;
+  FREE_DAILY_TURNS?: string;
+  FAMILY_CLUB_DAILY_TURNS?: string;
+  TUTOR_TURN_CAP_SECONDS?: string;
+  SESSION_IDLE_SECONDS?: string;
+  REALTIME_GRACE_SECONDS?: string;
+  RETENTION_DAYS?: string;
+  MONTHLY_BUDGET_USD?: string;
+  MAX_BODY_BYTES?: string;
+  RATE_LIMIT_IP_PER_MINUTE?: string;
+  RATE_LIMIT_SESSION_TURNS_PER_MINUTE?: string;
+  PARENT_TOKEN_TTL_SECONDS?: string;
+  FAMILY_CLUB_PRODUCT_IDS?: string;
+  FAMILY_CLUB_PRICE_CURRENCY?: string;
+  FAMILY_CLUB_PRICE_MONTHLY?: string;
+  FAMILY_CLUB_PRICE_STATUS?: string;
+  CONSENT_VERSION?: string;
+  TUTOR_PROVIDER?: string;
+  TUTOR_MODEL?: string;
+  REALTIME_MODEL?: string;
+  REALTIME_VOICE?: string;
+  REALTIME_TURN_DETECTION?: string;
+  REALTIME_WS_URL?: string;
+  PROVIDER_TIMEOUT_MS?: string;
+  // secrets (.dev.vars locally, `wrangler secret put` remotely)
+  PARENT_TOKEN_SECRET?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+  APPLE_ISSUER_ID?: string;
+  APPLE_KEY_ID?: string;
+  APPLE_PRIVATE_KEY?: string;
+  APPLE_BUNDLE_ID?: string;
+  GOOGLE_PLAY_PACKAGE?: string;
+  GOOGLE_SERVICE_ACCOUNT_JSON?: string;
+  GOOGLE_RTDN_PUBSUB_TOKEN?: string;
+  // tests only
+  TEST_MIGRATIONS?: unknown;
+}
+
+export const DEFAULT_MONTHLY_BUDGET_USD = 25;
+export const DEV_PARENT_APPROVAL_LITERAL = 'dev-parent-approval';
+export const DEV_PARENT_ID = 'dev-parent';
+
+export type Entitlement = 'free' | 'family_club';
+export const ENTITLEMENTS: readonly Entitlement[] = ['free', 'family_club'];
+
+export interface Config {
+  devMode: boolean;
+  appName: string;
+  billingEnabled: boolean;
+  freeDailySeconds: number;
+  familyClubDailySeconds: number;
+  freeDailyTurns: number;
+  familyClubDailyTurns: number;
+  turnCapSeconds: number;
+  sessionIdleSeconds: number;
+  realtimeGraceSeconds: number;
+  retentionDays: number;
+  monthlyBudgetUsd: number;
+  maxBodyBytes: number;
+  ipPerMinute: number;
+  sessionTurnsPerMinute: number;
+  parentTokenTtlSeconds: number;
+  familyClubProductIds: string[];
+  priceHint: { currency: string; monthly: number; status: string };
+  consentVersion: number;
+  providerName: 'mock' | 'faulty' | 'openai';
+  model: string;
+  realtimeModel: string;
+  realtimeVoice: string;
+  realtimeTurnDetection: 'semantic_vad' | 'server_vad';
+  realtimeWsUrl: string;
+  providerTimeoutMs: number;
+  hasOpenAiKey: boolean;
+}
+
+function num(env: Env, key: keyof Env, fallback: number): number {
+  const raw = env[key];
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function positiveOr(n: number, fallback: number): number {
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** Pure: no I/O. Safe to call per request. */
+export function loadConfig(env: Env): Config {
+  const devMode = env.DEV_MODE === '1' || env.DEV_MODE === 'true';
+  const hasOpenAiKey = typeof env.OPENAI_API_KEY === 'string' && env.OPENAI_API_KEY.length > 0;
+  const requested = (env.TUTOR_PROVIDER || '').toLowerCase();
+  // `faulty` exists for chaos tests of the fallback path and is honoured in DEV_MODE only.
+  const providerName: Config['providerName'] = requested === 'faulty' && devMode ? 'faulty' : hasOpenAiKey && requested !== 'mock' ? 'openai' : 'mock';
+  return {
+    devMode,
+    appName: env.APP_NAME || 'Little Days',
+    billingEnabled: env.BILLING_ENABLED === 'true' || env.BILLING_ENABLED === '1',
+    freeDailySeconds: Math.max(0, Math.min(num(env, 'FREE_DAILY_SECONDS', 300), 86_400)),
+    familyClubDailySeconds: Math.max(0, Math.min(num(env, 'FAMILY_CLUB_DAILY_SECONDS', 1800), 86_400)),
+    freeDailyTurns: Math.max(1, num(env, 'FREE_DAILY_TURNS', 60)),
+    familyClubDailyTurns: Math.max(1, num(env, 'FAMILY_CLUB_DAILY_TURNS', 360)),
+    turnCapSeconds: Math.max(1, num(env, 'TUTOR_TURN_CAP_SECONDS', 45)),
+    sessionIdleSeconds: Math.max(10, num(env, 'SESSION_IDLE_SECONDS', 120)),
+    realtimeGraceSeconds: Math.max(0, num(env, 'REALTIME_GRACE_SECONDS', 30)),
+    retentionDays: Math.max(1, num(env, 'RETENTION_DAYS', 30)),
+    monthlyBudgetUsd: positiveOr(num(env, 'MONTHLY_BUDGET_USD', DEFAULT_MONTHLY_BUDGET_USD), DEFAULT_MONTHLY_BUDGET_USD),
+    maxBodyBytes: Math.max(1024, num(env, 'MAX_BODY_BYTES', 32 * 1024)),
+    ipPerMinute: Math.max(1, num(env, 'RATE_LIMIT_IP_PER_MINUTE', 120)),
+    sessionTurnsPerMinute: Math.max(1, num(env, 'RATE_LIMIT_SESSION_TURNS_PER_MINUTE', 30)),
+    parentTokenTtlSeconds: Math.max(60, num(env, 'PARENT_TOKEN_TTL_SECONDS', 30 * 24 * 3600)),
+    familyClubProductIds: (env.FAMILY_CLUB_PRODUCT_IDS || 'little_days.family_club.monthly,little_days.family_club.yearly').split(',').map((s) => s.trim()).filter(Boolean),
+    priceHint: { currency: env.FAMILY_CLUB_PRICE_CURRENCY || 'THB', monthly: num(env, 'FAMILY_CLUB_PRICE_MONTHLY', 99), status: env.FAMILY_CLUB_PRICE_STATUS || 'proposed' },
+    consentVersion: Math.max(1, Math.floor(num(env, 'CONSENT_VERSION', 1))),
+    providerName,
+    model: env.TUTOR_MODEL || 'gpt-4o-mini',
+    realtimeModel: env.REALTIME_MODEL || 'gpt-realtime-mini',
+    realtimeVoice: env.REALTIME_VOICE || 'marin',
+    realtimeTurnDetection: env.REALTIME_TURN_DETECTION === 'server_vad' ? 'server_vad' : 'semantic_vad',
+    realtimeWsUrl: env.REALTIME_WS_URL || 'wss://api.openai.com/v1/realtime',
+    providerTimeoutMs: Math.max(500, num(env, 'PROVIDER_TIMEOUT_MS', 6000)),
+    hasOpenAiKey,
+  };
+}
+
+export function allowanceFor(config: Config, entitlement: Entitlement): { seconds: number; turns: number } {
+  return entitlement === 'family_club'
+    ? { seconds: config.familyClubDailySeconds, turns: config.familyClubDailyTurns }
+    : { seconds: config.freeDailySeconds, turns: config.freeDailyTurns };
+}

@@ -1,0 +1,22 @@
+# Copy to cloud/.dev.vars (gitignored) for `wrangler dev --local` and the tests.
+# Names only: NEVER put a real value in this example file or in git.
+#
+# In dev/staging/production these are Cloudflare secrets:
+#   wrangler secret put PARENT_TOKEN_SECRET --env dev
+#
+# HMAC key for parent tokens (pt1.*) and parental-approval tokens (pa1.*).
+# Generate one: openssl rand -hex 32
+PARENT_TOKEN_SECRET=
+# OpenAI: only when set does POST /v1/tutor/realtime/token mint a token and does
+# the turn provider leave the deterministic mock (Agent E's module). Absent on this machine.
+OPENAI_API_KEY=
+OPENAI_BASE_URL=
+# App Store Server API (Agent F, cloud/src/billing) - names reserved, not read yet.
+APPLE_ISSUER_ID=
+APPLE_KEY_ID=
+APPLE_PRIVATE_KEY=
+APPLE_BUNDLE_ID=
+# Google Play (Agent F) - names reserved, not read yet.
+GOOGLE_PLAY_PACKAGE=
+GOOGLE_SERVICE_ACCOUNT_JSON=
+GOOGLE_RTDN_PUBSUB_TOKEN=
