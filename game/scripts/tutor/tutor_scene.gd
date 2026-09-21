@@ -163,6 +163,11 @@ var _pending_phase: String = ""
 var _pending_transcript: String = ""
 var _timer: float = 0.0
 var _nudged: bool = false
+## QA 71dd184 B1: how many times the SAME question was repeated into silence.
+## The repeat restarts the listening clock, so without this count a mic that
+## opens but never decodes anything would hear the same question forever.
+var _silent_repeats: int = 0
+const MAX_SILENT_REPEATS: int = 2
 var _child_talking: bool = false
 var _push_to_talk_live: bool = false
 var _choosing: bool = false
@@ -721,6 +726,7 @@ func _after_turn() -> void:
 
 
 func _advance_step() -> void:
+	_silent_repeats = 0
 	_engine.call("advance")
 	if _engine.has_method("save_progress"):
 		_engine.call("save_progress", _save_service())
@@ -887,7 +893,7 @@ func _start_listening() -> void:
 		_set_state(STATE_LISTENING)
 		_hud.call("set_banner", HudScript.BANNER_LISTENING)
 		_hud.call("set_tap_to_talk_enabled", false)
-		if not _hands_free_live():
+		if not _hands_free_live() or _silent_repeats >= MAX_SILENT_REPEATS:
 			_offer_answer_cards()
 		return
 	# No hands-free: the tap is the way in, and the cards are the way out.
@@ -1021,7 +1027,9 @@ func _on_child_speech_ended(transcript: String) -> void:
 func _on_long_pause() -> void:
 	if _state != STATE_LISTENING or _closing:
 		return
-	repeat_prompt()
+	if _silent_repeats >= MAX_SILENT_REPEATS:
+		return  # the listening clock takes the timeout path instead
+	repeat_prompt(true)
 
 
 ## The child interrupted Aliz: stop at once, turn, listen.
@@ -1051,9 +1059,10 @@ func _on_barge_in() -> void:
 func _on_session_ended(reason: String) -> void:
 	if reason == "background" or _leaving or _state in [STATE_BREAK, STATE_DONE, STATE_BACKGROUND]:
 		return
-	# The session dropped under us (device failure): fall back to the tap.
+	# The session dropped under us (device failure): fall back to the tap,
+	# banner and indicator included (QA 71dd184 B4: "Listening" stayed up).
 	if _state == STATE_LISTENING:
-		_refresh_input_mode()
+		_start_listening()
 
 
 ## A transcript arrived, from whichever path. Blank (a cough) keeps listening.
@@ -1061,6 +1070,8 @@ func _heard(transcript: String) -> void:
 	var text: String = transcript.strip_edges()
 	_heard_count += 1
 	_last_heard_chars = text.length()
+	if not text.is_empty():
+		_silent_repeats = 0
 	if text.is_empty():
 		_child_talking = false
 		_timer = 0.0
@@ -1182,6 +1193,7 @@ func _choose_subject(subject_id: String) -> void:
 		title = ""
 	_lesson_id = lesson_id
 	_choosing = false
+	_silent_repeats = 0
 	_pending_phase = PHASE_CHOSEN
 	var line: String = "Great! Let's learn %s!" % title if not title.is_empty() else "Great! Let's learn together!"
 	_speak_turn(TurnValidator.make(line, "happy", "clap", "next_question"))
@@ -1228,10 +1240,14 @@ func advance(delta: float) -> void:
 			if _child_talking:
 				return
 			_timer += delta
-			if not _nudged and _timer >= NO_SPEECH_PROMPT_SECONDS and _hands_free_live():
+			var may_repeat: bool = _silent_repeats < MAX_SILENT_REPEATS
+			if not _nudged and _timer >= NO_SPEECH_PROMPT_SECONDS and _hands_free_live() and may_repeat:
 				_nudged = true
-				repeat_prompt()
-			elif _timer >= LISTEN_SECONDS:
+				repeat_prompt(true)
+			elif _timer >= LISTEN_SECONDS or (not may_repeat and _timer >= NO_SPEECH_PROMPT_SECONDS):
+				# Asked twice more and still nothing: say it together and move
+				# on, with the cards up -- never the same question a fourth time.
+				_silent_repeats = 0
 				if _choosing:
 					_choose_subject("")
 				else:
@@ -1331,12 +1347,14 @@ func _is_active_state() -> bool:
 # ---------------------------------------------------------------------------
 
 ## Aliz says the current prompt again; the mic reopens after it.
-func repeat_prompt() -> void:
+func repeat_prompt(from_silence: bool = false) -> void:
 	if _state in [STATE_BREAK, STATE_PAUSED, STATE_BACKGROUND, STATE_DONE, STATE_IDLE] or _closing:
 		return
 	var turn: Dictionary = _last_question if not _last_question.is_empty() else _current_turn
 	if turn.is_empty():
 		return
+	if from_silence:
+		_silent_repeats += 1
 	_synth.call("cancel")
 	_pending_phase = PHASE_WELCOME if _choosing else ScriptedProviderScript.PHASE_OPEN
 	_speak_turn(turn)

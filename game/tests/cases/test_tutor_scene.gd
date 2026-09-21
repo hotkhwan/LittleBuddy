@@ -74,6 +74,7 @@ func run():
 	failures.append_array(_test_device_microphone_opens_without_a_level())
 	failures.append_array(_test_permission_is_asked_before_the_first_lesson())
 	failures.append_array(_test_diagnostics_overlay_is_dev_only())
+	failures.append_array(_test_a_silent_recogniser_never_loops_forever())
 	return failures
 
 
@@ -964,4 +965,77 @@ func _test_diagnostics_overlay_is_dev_only():
 		if shown or hud.find_child("TutorDiagnostics", true, false) != null or hud.find_child("DiagCatcher", true, false) != null:
 			failures.append("a release build must have no diagnostic overlay at all")
 	_free(scene)
+	return failures
+
+
+## QA 71dd184 B1/B2/B4: a recogniser that opens but never decodes must not
+## make Aliz ask the same question forever; mute then unmute must reopen the
+## mic; a recogniser that drops mid-lesson must not leave "Listening" up.
+func _test_a_silent_recogniser_never_loops_forever():
+	var failures: Array = []
+	var speech := DeviceLikeSpeech.new()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(speech)
+	var packed: PackedScene = load(SCENE_PATH)
+	var scene: Node = packed.instantiate()
+	tree.root.add_child(scene)
+	scene.build()
+	scene.set_save_service(FakeSave.new())
+	scene.enable_simulation(false)
+	scene.set_speech_service(speech)
+	scene.begin_lesson()
+	if not scene.using_real_session():
+		_free(scene)
+		speech.free()
+		return failures
+	if _until(scene, func() -> bool: return scene.state() == "listening" and speech.live, 400) < 0:
+		failures.append("never listening with the mic open")
+	# 30 s of an open mic that decodes nothing (the cap fires every 4 s).
+	var question: String = String(scene.current_turn().get("speech", ""))
+	var repeats: int = 0
+	var moved_on: bool = false
+	var elapsed: float = 0.0
+	var last_turn: Dictionary = scene.current_turn()
+	while elapsed < 30.0 and not moved_on:
+		scene.advance(STEP)
+		elapsed += STEP
+		if speech.live and int(elapsed * 1000.0) % 4000 < int(STEP * 1000.0):
+			speech.stop_listening()  # the recogniser's own no-speech cap
+		var turn: Dictionary = scene.current_turn()
+		if turn != last_turn:
+			last_turn = turn
+			var said: String = String(turn.get("speech", ""))
+			if said == question:
+				repeats += 1
+			else:
+				moved_on = true
+	if not moved_on:
+		failures.append("B1: after %d repeats in 30 s Aliz still had not moved on (cards or together)" % repeats)
+	elif repeats > 3:
+		failures.append("B1: the same question was repeated %d times before moving on" % repeats)
+	if not scene.is_choosing_subject() and scene.hud().answer_cards_shown().is_empty() and scene.state() == "listening":
+		failures.append("B1: once the repeats are spent the cards must be up")
+	# B2: mute then unmute reopens the mic.
+	if _until(scene, func() -> bool: return scene.state() == "listening", 600) >= 0:
+		scene.set_muted(true)
+		for i: int in range(10):
+			scene.advance(STEP)
+		if speech.live:
+			failures.append("B2: muting must close the recogniser")
+		scene.set_muted(false)
+		if _until(scene, func() -> bool: return speech.live, 40) < 0:
+			failures.append("B2: unmuting must reopen the recogniser")
+	# B4: the recogniser reports unavailable mid-lesson.
+	if speech.live:
+		speech.live = false
+		speech.recognition_failed.emit("unavailable")
+		speech.session_ended.emit("failed")
+		for i: int in range(5):
+			scene.advance(STEP)
+		if scene.hud().banner_kind() == Hud.BANNER_LISTENING or scene.hud().indicator_state() == Indicator.STATE_LISTENING:
+			failures.append("B4: after the recogniser went unavailable nothing may still say Listening (banner %s, indicator %s)" % [scene.hud().banner_kind(), scene.hud().indicator_state()])
+		if scene.state() == "listening":
+			failures.append("B4: the scene must fall back to tap/cards, still '%s'" % scene.state())
+	_free(scene)
+	speech.free()
 	return failures

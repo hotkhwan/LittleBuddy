@@ -498,7 +498,7 @@ func mute(muted: bool) -> void:
 		if _state == STATE_CHILD_SPEAKING:
 			_set_state(STATE_LISTENING)
 	elif _state == STATE_LISTENING:
-		_arm_recognizer_if_driven()
+		_arm_recognizer()  # QA 71dd184 B2: unmute reopens the mic on a device too
 	_update_capture()
 
 
