@@ -392,6 +392,7 @@ func start() -> bool:
 
 func _reset_for_start() -> void:
 	_session_id = ""
+	_server_quota = {}  # the previous session's last block must not pre-judge this one
 	_reconnects = 0
 	_rate_limit_retries = 0
 	_turn_failures = 0

@@ -869,7 +869,8 @@ func _test_session_turns_path():
 			FakeApi.ok({"turn": turn, "quota": quota_block, "endAtBoundary": false, "turnIndex": 1, "chargedSeconds": 2.5, "provider": "mock", "fallback": null}),
 			FakeApi.err(503, "provider_unavailable"),
 			FakeApi.ok({"turn": turn, "quota": quota_block, "endAtBoundary": false, "turnIndex": 2, "chargedSeconds": 1.0}, true),
-			FakeApi.ok({"turn": turn, "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0, "usedTurns": 3}, "endAtBoundary": true, "turnIndex": 3}),
+			FakeApi.ok({"turn": turn, "quota": quota_block, "endAtBoundary": false, "turnIndex": 3}),  # consumed by the barged-in request
+			FakeApi.ok({"turn": turn, "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0, "usedTurns": 4}, "endAtBoundary": true, "turnIndex": 4}),
 		],
 		"end": [FakeApi.ok({"sessionId": "s-t", "endedAt": "2026-09-21T10:00:00.000Z", "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 300, "remainingSeconds": 0}, "usage": {"turns": 3}})],
 	}
@@ -892,8 +893,8 @@ func _test_session_turns_path():
 	if not session.send_transcript("red", {"stepId": "s02_red", "outcome": "correct", "phase": "answer"}):
 		failures.append("turns: send_transcript while ready")
 	var sent: Dictionary = api.calls_of("turn")[0]["body"]
-	if String(sent["key"]) != "s-t:t1" or sent["lessonContext"].has("phase") or String(sent["lessonContext"]["outcome"]) != "correct":
-		failures.append("turns: Idempotency-Key per turn, sanitized lessonContext: %s" % str(sent))
+	if String(sent["key"]) != "s-t:t1" or String(sent["lessonContext"]["stepId"]) != "s02_red" or String(sent["lessonContext"]["outcome"]) != "correct":
+		failures.append("turns: Idempotency-Key per turn + the lesson context: %s" % str(sent))
 	session.advance(0.05)
 	if events["turns"].size() != 1 or events["turns"][0] != TurnValidator.coerce(turn) or events["tools"] != [["show_card", {"assetId": "color_red"}]]:
 		failures.append("turns: the server turn + its card reach the classroom: %s / %s" % [str(events["turns"]), str(events["tools"])])
@@ -935,7 +936,7 @@ func _test_session_turns_path():
 	if float(session.last_summary()["quota"]["usedSeconds"]) != 300.0 or int(session.last_summary()["serverUsage"]["turns"]) != 3:
 		failures.append("turns: the end reply's quota + usage kept for the break card: %s" % str(session.last_summary()))
 	# A lesson switch: start() again after end; the old session's late ack is ignored.
-	api.replies["session"] = [FakeApi.ok({"sessionId": "s-u", "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 0, "remainingSeconds": 0}})]
+	api.replies["session"] = [FakeApi.ok({"sessionId": "s-u", "quota": {"dailyAllowanceSeconds": 300, "usedSeconds": 0, "remainingSeconds": 300}})]
 	api.replies["token"] = [FakeApi.err(503, "provider_unavailable")]
 	(h["quota"] as FakeQuota).exhausted = false
 	session.configure("colors_red_blue")

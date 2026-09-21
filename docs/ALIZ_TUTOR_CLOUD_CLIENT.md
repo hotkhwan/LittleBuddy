@@ -1,7 +1,11 @@
 # Aliz Tutor — cloud client contract and behaviour (Agent E)
 
-Date: 2026-09-21. Branch `wt6/tutorcloud`. Status: **implemented, flag-gated,
-OFF in every build** (`little_days/ai_tutor/cloud_enabled=false`). Tested
+Date: 2026-09-21. Branch `wt6/tutorcloud`, reconciled on `wt7/tutor2` (Agent C).
+Status: **implemented, flag-gated, OFF in every build**
+(`little_days/ai_tutor/cloud_enabled=false`). **§1 below is the contract as
+first written; where it disagrees with the deployed Worker, the section
+"Reconciled against the deployed Worker 2026-09-21" at the end is what the
+client now does.** Tested
 against recorded event fixtures and the deterministic mock server under
 `tools/tutor_mock_server/`. **No OpenAI (or any provider) call was made**: this
 machine holds no key, the game holds no key, and nothing in `game/` names a
@@ -282,3 +286,110 @@ Integration run 2026-09-21 (verbatim excerpt):
    keeps the engine's action already applied to the early turn.
 4. **Untested live:** the vendor endpoint. Nothing here was run against
    OpenAI; the first live run needs a Worker with a key, G1–G17, and a device.
+
+
+## Reconciled against the deployed Worker 2026-09-21 (Agent C, `wt7/tutor2`)
+
+The development Worker (`DEV_MODE=1`, mock provider, no OpenAI key; address
+supplied at run time only, never committed) was used as the reference. Every
+mismatch between §1 and `docs/ALIZ_TUTOR_API.md` §1 was fixed on the CLIENT.
+Verified live: `tests/smoke_tutor_cloud_classroom.gd` (real classroom, 11
+server-authored turns, `SMOKE: PASS`) and `tests/cases/test_tutor_cloud_dev_api.gd`
+(`[PASS]`, see §R.5). No OpenAI call was made; the realtime path was not
+exercised against any provider.
+
+### R.1 Mismatches found and how the client changed
+
+| # | §1 said (client, before) | Deployed Worker | Client now (`cloud_tutor_api.gd` unless noted) |
+| --- | --- | --- | --- |
+| 1 | Every request carries `Authorization: Bearer <parentToken>` AND `X-Parent-Approval` | One credential per request. A `Bearer` header wins and carries NO approval, so a tutor route with both answers `403 not_approved` (verified) | Tutor routes send `X-Parent-Approval` ONLY (`build_headers`); the sign-in header goes only to account routes (`build_account_headers`, `PUT /v1/consent`). The fixture test asserts a tutor route never carries the sign-in header. |
+| 2 | Credentials are the literals `dev-parent-token` / `dev-parent-approval` | DEV_MODE sign-in: `POST /v1/parents {provider:"dev", subject, clientId}` -> `parentToken` (pt1.*) + `parentApprovalToken` (pa1.*); then `PUT /v1/consent {kind:"ai_tutor", granted:true}` with the sign-in token, else `403 consent_required` | New session states `signing_in -> consenting` before `quota`, run once per process when no approval token is held (`sign_in_dev`, `grant_consent`); tokens stay in memory. `consent_required` is treated like `not_approved`. |
+| 3 | `X-Device-Id` header, `childId` in bodies | Neither exists. The device is `clientId` (body) and the approval token is bound to it; the child is resolved server-side | `configure(client_id, approval_token?, parent_token?)`; no device header; the pseudonymous install id is `clientId` (and the DEV subject). `childId` from replies is ignored. |
+| 4 | `POST /v1/tutor/sessions {childId, lessonId, mode}` -> `{sessionId, quota:{allowanceSeconds, usedSeconds}, entitlement}` | `{lessonId, clientId}` -> `201 {sessionId, childId, entitlement, quota:{entitlement, dailyAllowanceSeconds, usedSeconds, remainingSeconds, resetAtUtc, dailyTurnAllowance, usedTurns}, lessonId, lessonKnown}` | Body `{lessonId, clientId}`; the quota reader accepts `dailyAllowanceSeconds` (preferred) or `allowanceSeconds`, keeps `remainingSeconds`, `usedTurns`, `dailyTurnAllowance`. |
+| 5 | `GET /v1/tutor/quota?childId=` | `GET /v1/tutor/entitlement?clientId=` (a `childId` that is not a real child profile id answers `404 not_found`) | `fetch_quota()` -> `/v1/tutor/entitlement?clientId=<clientId>`. |
+| 6 | `POST /realtime/token` -> `{token, expiresAt, model, url}` | `503 provider_unavailable` on this deployment (no provider). With a provider: BOTH shapes, `clientSecret:{value, expiresAt(unix s)}`, `wsUrl`, `subprotocols`, `headers`, `sessionUpdate`, `token:{value, expiresAt(ISO)}`, `realtime:{model}` | `normalise_token` reads `token` as a string OR `{value, expiresAt}`, `clientSecret`, `wsUrl`/`url`, `realtime.model`. **A 503 (or timeout / 5xx) from the token endpoint no longer fails the session: it becomes READY on the TURNS path** (`transport_mode() == "turns"`), so the classroom is never dead. |
+| 7 | `POST /sessions/:id/turns {idempotencyKey, phase, transcript, step}` | `{transcript, lessonContext:{stepId, outcome, matched?, lessonAction?, ...}}` + header `Idempotency-Key`; replay answers with header `idempotent-replayed: true`; `422 idempotency_mismatch` for the same key with another body; `400 invalid_turn` for a `stepId` outside the SESSION'S lesson | `submit_turn(session_id, key, transcript, lesson_context)` sends the header and only the Worker's `lessonContext` keys (`sanitize_lesson_context`; `outcome` forced into `correct|incorrect|unclear`); `result.replayed` mirrors the header. Key = `<sessionId>:t<n>`; a transient failure re-sends the SAME key once. The cloud session follows the ENGINE's lesson (`CloudTutorProvider._sync_cloud_lesson`): the chooser opens no session; a lesson switch ends the old session (`lesson_switch`) and starts a new one (`CloudTutorSession.start()` is now restartable and swallows the superseded `/end` ack). Found live: the first smoke sent `english_colors_fruits` step ids to a session created for `animals_cat_dog` and every turn was `invalid_turn`. |
+| 8 | `POST /sessions/:id/end {reason, secondsUsed, usage}` -> `{ok, quota?}` | `{reason}` only (`reason` <= 40 chars, else `400 bad_request`; the client's `provider_failed:<code>` reasons overflowed) -> `{sessionId, endedAt, quota, usage:{turns, llmInputTokens, llmOutputTokens, audioSeconds, costUsd}}`; idempotent | `end_session(session_id, reason)` sends `{reason}` truncated to 40; the server clock is the quota authority (no `secondsUsed`); `/end` is posted exactly once per session (`_end_posted`); the reply's `quota` and `usage` are kept in `last_summary()` for the break card. |
+| 9 | Errors `{error: "<code>"}`; `402` quota, `410` session ended | `{error:{code, message, ...}}`; quota exhaustion is `429 quota_exhausted` with `reason` and the `quota` block INSIDE `error`; `409 session_ended`; `404 not_found`; `403 consent_required`; `Retry-After` header on `rate_limited` | `error_code_for` prefers `error.code`, still accepts the string form; `quota_of()` reads the block at the top level or inside `error`; status map gained 404 -> `not_found`, 409/410 -> `session_ended`, 422 -> `idempotency_mismatch`; `retryAfterSeconds` also from the header. Session mapping: `not_found` -> `session_ended`; `invalid_turn` / `bad_request` / `idempotency_mismatch` on a turn -> that turn is answered by the scripted line, the session stays. |
+| 10 | (no server clock hook) | `X-Debug-Now: <unix ms>` moves the server clock in DEV_MODE only | `set_debug_now_ms()` (tests only) so the daily allowance can be driven to the boundary in seconds. |
+| 11 | `endAtBoundary` unused by the realtime client | A turn's `endAtBoundary: true` means the day's last seconds/turns were just used | Handed to the mirror as `exhausted`; the reply finishes, the session ends `quota_expired`, `send_transcript()` refuses afterwards. |
+
+`backend_conversation_provider.gd` and `cloud_quota_client.gd` (the prototype
+clients, `/api/v1/...`, `X-Parent-Approval`, `parentApprovalToken`) already
+matched the Worker and are unchanged; the Worker serves `/v1` and `/api/v1`
+alike, and the mock now does too.
+
+### R.2 How the classroom runs on the turns path
+
+`CloudTutorSession.send_transcript()` posts the answer; the Worker's validated
+`TutorTurn` arrives whole. The session emits `subtitle_changed`, `tool_applied
+("show_card", {assetId})` for a flashcard visual, then `turn_ready(turn)`;
+`CloudTutorProvider` passes the server's words, emotion, gesture and card to
+the scene's `_speak_turn()` (voiced by the local synthesis; `lessonAction`
+stays the engine's local verdict), so cards, gestures and subtitles are the
+server's. `CloudSynthesisProvider.words_source()` reports `"cloud"` for such a
+turn. Patience for the first reply on this path is `FIRST_REPLY_SECONDS_TURNS`
+(10 s: one round trip plus one idempotent retry); a turn lost twice in a row
+falls back to the scripted tutor. Microphone frames never stream on this path
+(`is_streaming_allowed()` is false).
+
+### R.3 Running it
+
+```
+# developer arg: the address is honoured ONLY together with --ai-tutor-cloud, never from project.godot
+godot --headless --path game --script res://tests/smoke_tutor_cloud_classroom.gd -- --ai-tutor-cloud --tutor-backend-url=<https url of the dev Worker>
+
+# the suite case against the dev Worker (skips cleanly when the variable is unset)
+LD_TUTOR_DEV_URL=<https url> godot --headless --path game --script res://tests/run_tests.gd
+# the mock (now the Worker's shapes; scenarios keyed on the clientId prefix: norealtime, shortday, exhausted, deny, drop, banned, noaudio, toolsinline, rate)
+node tools/tutor_mock_server/server.mjs
+```
+
+`CloudTutorApi.enable_dev_api_for_tests(url)` is the only way a flag-off
+build dials a non-loopback host: refused on mobile/release builds, and only
+for the exact https address in `LD_TUTOR_DEV_URL`. `test_tutor_privacy_guards`
+and `test_tutor_flags` still pass; `project.godot` and the export presets
+carry neither the flag, the arg nor any address.
+
+### R.4 Microphone release (evidence)
+
+`tests/cases/test_tutor_cloud_mic_release.gd` (flag off, real classroom):
+leaving the scene, backgrounding, the quota closing and a grown-up's End
+lesson -> Stop each leave `voice_session().is_capturing() == false`,
+`is_active() == false` and the recogniser with no active session, and nothing
+reopens it. The live smoke prints the same after the break card
+(`is_capturing=false is_active=false cloud_streaming_allowed=false`); the
+cloud session refuses frames and transcripts after `end()`
+(`test_tutor_cloud_fixtures`).
+
+### R.5 Live evidence (2026-09-21, dev Worker, synthetic data only)
+
+Smoke (real classroom, `english_colors_fruits` via the chooser): session
+`f3dc09ce-...` ready on `transport=turns` (`realtimeFallback=provider_unavailable`),
+11 server-authored turns with cards and gestures, `endAtBoundary=false`
+throughout, `chargedSeconds` 7-8 s each, ended `lesson_complete`,
+`serverAck=true`, server quota `usedSeconds 90.8 / 300, usedTurns 11`,
+`serverUsage {turns: 11}`, `SMOKE: PASS`. Dev API case: sign-in -> consent ->
+quota -> session -> token 503 -> turns; turn 1 with the `apple_red` card;
+replay `replayed=true`, `usedTurns` unchanged; `X-Debug-Now` +45 s per turn ->
+boundary at turn 8 (`usedSeconds 300.0`, `endAtBoundary=true`), ended
+`quota_expired`, mirror exhausted, `/end` posted once, `remainingSeconds 0`;
+a turn after the end -> `409 session_ended`; a bogus approval -> `403 not_approved`.
+
+### R.6 For the lead / the Worker (nothing changed in `cloud/`)
+
+1. `POST /v1/parents` is DEV_MODE only. The production client needs the
+   Parent Corner sign-in and `POST /v1/parents/approval`; the bridge's
+   `sign_in_dev` stage is the placeholder for it (one method to swap).
+2. A session created at the chooser and ended without a turn is still charged
+   the capped gap at `/end` (observed 45 s for zero turns). The client now
+   avoids opening a session until a scored step exists; a Worker-side
+   "no charge for zero-turn sessions" rule would make this robust.
+3. A `stepId` from another lesson is `400 invalid_turn` with no hint which
+   lesson the session holds; `lessonId` in the error `extra` would help
+   diagnosis. The client compensates by following the engine's lesson.
+4. `reason` on `/end` is capped at 40 chars; the client truncates. If the
+   Worker wants the full `provider_failed:<code>` reasons, raise the cap.
+5. The turns path has no server VAD and no audio; hands-free barge-in on a
+   REST reply is local only (the request is dropped, nothing is charged
+   twice; the served turn was already charged once, by design).

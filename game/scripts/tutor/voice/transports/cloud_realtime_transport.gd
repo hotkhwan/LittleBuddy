@@ -587,12 +587,27 @@ static func build_turn(transcript: String, lesson_context: Dictionary, tool_visu
 ## `{token, url, expiresUnix, model, subprotocols, headers, sessionUpdate}`
 ## from either token shape the backend has used.
 static func normalise_token(raw: Dictionary) -> Dictionary:
+	# The Worker answers with BOTH shapes at once: `clientSecret: {value,
+	# expiresAt (unix s)}` + `wsUrl` (what this transport reads) and the
+	# prototype's `token: {value, expiresAt (ISO)}` + `realtime: {model}`; the
+	# older mock sent a flat `token` string with `url`, `expiresAt`, `model`.
+	var token_field: Variant = raw.get("token", "")
+	var token_value: String = ""
+	var token_expires: Variant = null
+	if typeof(token_field) == TYPE_DICTIONARY:
+		token_value = str((token_field as Dictionary).get("value", ""))
+		token_expires = (token_field as Dictionary).get("expiresAt", null)
+	elif typeof(token_field) == TYPE_STRING:
+		token_value = token_field
+	var model: String = str(raw.get("model", ""))
+	if model.is_empty() and typeof(raw.get("realtime", null)) == TYPE_DICTIONARY:
+		model = str((raw["realtime"] as Dictionary).get("model", ""))
 	var out: Dictionary = {
-		"token": String(raw.get("token", "")), "url": String(raw.get("url", raw.get("wsUrl", ""))).strip_edges(),
-		"model": String(raw.get("model", "")), "subprotocols": [], "headers": [], "expiresUnix": 0,
+		"token": token_value, "url": str(raw.get("url", raw.get("wsUrl", ""))).strip_edges(),
+		"model": model, "subprotocols": [], "headers": [], "expiresUnix": 0,
 	}
-	if String(out["token"]).is_empty() and typeof(raw.get("clientSecret", null)) == TYPE_DICTIONARY:
-		out["token"] = String((raw["clientSecret"] as Dictionary).get("value", ""))
+	if token_value.is_empty() and typeof(raw.get("clientSecret", null)) == TYPE_DICTIONARY:
+		out["token"] = str((raw["clientSecret"] as Dictionary).get("value", ""))
 	for key: String in ["subprotocols", "headers"]:
 		if typeof(raw.get(key, null)) == TYPE_ARRAY:
 			out[key] = (raw[key] as Array).duplicate()
@@ -601,6 +616,8 @@ static func normalise_token(raw: Dictionary) -> Dictionary:
 	var expires: Variant = raw.get("expiresAt", null)
 	if expires == null and typeof(raw.get("clientSecret", null)) == TYPE_DICTIONARY:
 		expires = (raw["clientSecret"] as Dictionary).get("expiresAt", null)
+	if expires == null:
+		expires = token_expires
 	out["expiresUnix"] = expires_unix(expires)
 	return out
 

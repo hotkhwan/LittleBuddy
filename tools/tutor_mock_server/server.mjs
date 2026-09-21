@@ -273,13 +273,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && path === '/v1/tutor/realtime/token') {
-    if (scenario.norealtime) { log(`503 token (norealtime scenario)`); return fail(res, 503, 'provider_unavailable', 'Realtime tutoring is not configured on this server.'); }
     const session = sessions.get(String(body.sessionId || ''));
     if (!session) return fail(res, 404, 'not_found', 'Session not found.');
+    if (session.scenario.norealtime) { log(`503 token (norealtime scenario)`); return fail(res, 503, 'provider_unavailable', 'Realtime tutoring is not configured on this server.'); }
     if (session.approval !== auth.approval) return fail(res, 403, 'not_approved', 'This session belongs to another approval.');
     if (session.endedAt) return fail(res, 409, 'session_ended', 'This lesson session has already ended.');
     settle(session, now);
-    const q = quotaBlock(childId, scenario, now);
+    const q = quotaBlock(childId, session.scenario, now);
     if (q.remainingSeconds <= 0) { log(`429 token quota_exhausted`); return fail(res, 429, 'quota_exhausted', 'Great job today!', { reason: 'daily_quota', quota: q }); }
     const value = `mock-rt-${crypto.randomBytes(12).toString('hex')}`;
     const seconds = Math.max(10, Math.min(600, Math.floor(q.remainingSeconds + GRACE)));
@@ -299,7 +299,7 @@ const server = http.createServer(async (req, res) => {
       headers: [],
       sessionUpdate: { type: 'session.update', session: { type: 'realtime', output_modalities: ['audio'], instructions: 'mock lesson' } },
       realtime: { model: 'mock-realtime', turnDetection: 'semantic_vad', mock: true, transport: 'websocket' },
-      quota: quotaBlock(childId, scenario, now), lessonKnown: true,
+      quota: quotaBlock(childId, session.scenario, now), lessonKnown: true,
     });
   }
 
@@ -324,17 +324,17 @@ const server = http.createServer(async (req, res) => {
     if (!lc || typeof lc !== 'object' || Array.isArray(lc)) return fail(res, 400, 'invalid_turn', 'lessonContext is required');
     if (!OUTCOMES.has(lc.outcome)) return fail(res, 400, 'invalid_turn', 'lessonContext.outcome must be correct, incorrect or unclear');
     if (typeof lc.stepId !== 'string' || !lc.stepId) return fail(res, 400, 'invalid_turn', 'lessonContext.stepId is required');
-    const before = quotaBlock(childId, scenario, now);
+    const before = quotaBlock(childId, session.scenario, now);
     if (before.remainingSeconds <= 0) { endSession(session, 'quota_exhausted', now); return fail(res, 429, 'quota_exhausted', 'Great job today!', { reason: 'daily_quota', quota: before }); }
     if (before.usedTurns >= TURN_ALLOWANCE) { endSession(session, 'daily_turns', now); return fail(res, 429, 'quota_exhausted', 'Aliz needs a little rest.', { reason: 'daily_turns', quota: before }); }
     const gap = Math.min(Math.max(0, (now - session.lastEventAt) / 1000), TURN_CAP);
     const chargedSeconds = Math.max(gap, TURN_FLOOR);
     const line = scriptFor(body.transcript || '', session.scenario);
-    charge(childId, chargedSeconds, allowanceFor(scenario) + GRACE);
+    charge(childId, chargedSeconds, allowanceFor(session.scenario) + GRACE);
     countTurn(childId);
     session.turns += 1;
     session.lastEventAt = now;
-    const q = quotaBlock(childId, scenario, now);
+    const q = quotaBlock(childId, session.scenario, now);
     const endAtBoundary = q.remainingSeconds <= 0 || q.usedTurns >= TURN_ALLOWANCE || lc.lessonAction === 'end_session';
     const reply = {
       turn: { speech: line.speech, subtitle: line.speech, emotion: line.emotion, gesture: line.gesture,
@@ -357,12 +357,12 @@ const server = http.createServer(async (req, res) => {
     if (reason.length > MAX_END_REASON) return fail(res, 400, 'bad_request', `reason is too long (max ${MAX_END_REASON})`);
     const wasOpen = !session.endedAt;
     if (wasOpen) {
-      if (!session.realtimeStartedAt) charge(childId, Math.min(Math.max(0, (now - session.lastEventAt) / 1000), TURN_CAP), allowanceFor(scenario) + GRACE);
+      if (!session.realtimeStartedAt) charge(childId, Math.min(Math.max(0, (now - session.lastEventAt) / 1000), TURN_CAP), allowanceFor(session.scenario) + GRACE);
       endSession(session, reason, now);
     }
     log(`200 end ${session.sessionId} reason=${reason} first=${wasOpen} turns=${session.turns} responses=${session.responses}`);
     return send(res, 200, {
-      sessionId: session.sessionId, endedAt: new Date(session.endedAt).toISOString(), quota: quotaBlock(childId, scenario, now),
+      sessionId: session.sessionId, endedAt: new Date(session.endedAt).toISOString(), quota: quotaBlock(childId, session.scenario, now),
       usage: { turns: session.turns, llmInputTokens: 0, llmOutputTokens: 0, audioSeconds: 0, costUsd: 0 },
     });
   }
