@@ -506,6 +506,11 @@ func _load_subjects() -> Array:
 ## to when the child does not name a subject.
 func begin_lesson(lesson_id: String = DEFAULT_LESSON_ID) -> void:
 	build()
+	if _is_active_state() or _permission_pending:
+		# Already in a lesson (a harness that began one before `_ready()` ran,
+		# a second tap): a second welcome over the first is exactly the doubled
+		# line the owner heard. One entry per lesson.
+		return
 	_lesson_id = lesson_id if not lesson_id.is_empty() else DEFAULT_LESSON_ID
 	_lesson_complete = false
 	_closing = false

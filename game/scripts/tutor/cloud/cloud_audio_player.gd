@@ -208,8 +208,14 @@ func advance(delta: float) -> void:
 	_played_frames += count
 	_diag["framesPlayed"] = int(_diag["framesPlayed"]) + count
 	level_changed.emit(_level)
-	if _cursor >= _queue.size() and _complete and not _drained_emitted:
-		_try_drain()
+	if _cursor >= _queue.size():
+		if _complete and not _drained_emitted:
+			_try_drain()
+		elif not _complete and not _starved:
+			# Consumed the last queued frame mid-reply: the next chunk is late.
+			# Noted now, not a frame later, so the resume waits for a lead.
+			_starved = true
+			_diag["underruns"] = int(_diag["underruns"]) + 1
 
 
 ## `drained` only once the DEVICE has sounded the tail: stopping the player

@@ -520,6 +520,43 @@ func _test_player_clock():
 	player.advance(1.0)
 	if drained.size() != 1:
 		failures.append("a truncated reply does not drain again")
+	var diag: Dictionary = player.diagnostics()
+	if int(diag.get("chunksReceived", 0)) != 3 or int(diag.get("truncations", 0)) != 1 or int(diag.get("drains", 0)) != 1 \
+			or int(diag.get("replies", 0)) != 2 or int(diag.get("framesPlayed", 0)) != 480 + 48:
+		failures.append("player counters: %s" % str(diag))
+	# The start lead (2026-09-21, "cut" replies): with a device the clock does
+	# not start on the first 10 ms chunk; it starts at MIN_LEAD_SECONDS queued
+	# or when the reply is complete, and never counts frames it did not play.
+	var lead: Node = PlayerScript.new()
+	lead.set_device_enabled(false)
+	lead.force_lead_for_tests(true)
+	var lead_drained: Array = []
+	lead.drained.connect(func() -> void: lead_drained.append(true))
+	lead.begin_reply()
+	lead.push_pcm16(tone)  # 10 ms
+	lead.advance(0.05)
+	if lead.played_ms() != 0.0 or not lead.is_playing_audio():
+		failures.append("lead: 10 ms queued does not start playback (played %f)" % lead.played_ms())
+	for _i: int in range(11):
+		lead.push_pcm16(tone)  # 120 ms queued
+	lead.advance(0.05)
+	if absf(lead.played_ms() - 50.0) > 0.05:
+		failures.append("lead: playback starts once 120 ms is queued (played %f)" % lead.played_ms())
+	lead.advance(0.5)  # starve: the network is behind
+	var d2: Dictionary = lead.diagnostics()
+	if absf(lead.played_ms() - 120.0) > 0.05 or int(d2.get("underruns", 0)) != 1 or not bool(d2.get("starved", false)):
+		failures.append("lead: an empty queue mid-reply is one underrun, nothing skipped: %s played %f" % [str(d2), lead.played_ms()])
+	lead.push_pcm16(tone)
+	lead.advance(0.05)
+	if absf(lead.played_ms() - 120.0) > 0.05:
+		failures.append("lead: after a starve playback resumes only with a lead again (played %f)" % lead.played_ms())
+	lead.mark_complete()  # the last chunk: played whole, never truncated
+	lead.advance(0.05)
+	if absf(lead.played_ms() - 130.0) > 0.05 or lead_drained.size() != 1 or lead.is_playing_audio():
+		failures.append("lead: a complete reply plays its last chunk and drains once (played %f drained %d)" % [lead.played_ms(), lead_drained.size()])
+	if float(lead.diagnostics().get("waitedForLeadMs", 0.0)) <= 0.0:
+		failures.append("lead: the wait is counted: %s" % str(lead.diagnostics()))
+	lead.free()
 	player.free()
 	return failures
 
@@ -910,7 +947,12 @@ func _test_session_turns_path():
 	if turn_calls.size() != 3 or String(turn_calls[1]["body"]["key"]) != "s-t:t2" or String(turn_calls[2]["body"]["key"]) != "s-t:t2":
 		failures.append("turns: one retry with the SAME Idempotency-Key: %s" % str(turn_calls))
 	if events["turns"].size() != 2 or not events["failed"].is_empty() or not bool(session.turn_log()[1]["replayed"]):
-		failures.append("turns: the replayed reply counts once, no turn lost: turns=%d failed=%s log=%s" % [events["turns"].size(), str(events["failed"]), str(session.turn_log())])
+		failures.append("turns: the replayed reply counts once, no turn lost: turns=%d failed=%s log=%s" % [events["turns"].size(), str(session.turn_log()), str(session.turn_log())])
+	# The first attempt's reply landing late (same Idempotency-Key, no request
+	# in flight, or attributed to a later one): dropped, never a second utterance.
+	api.completed.emit("turn", FakeApi.ok({"turn": turn, "quota": quota_block, "turnIndex": 2}, true))
+	if events["turns"].size() != 2:
+		failures.append("turns: a late twin reply for a served key is dropped, got %d turns" % events["turns"].size())
 	# Barge-in mid-request: the request is dropped, nothing is charged twice.
 	session.send_transcript("red", {"stepId": "s02_red", "outcome": "correct"})
 	session.barge_in()
@@ -1016,6 +1058,12 @@ func _test_provider_one_turn_per_submit():
 		failures.append("exactly one turn_ready per submit, got %d" % turns.size())
 	if metas.size() != 1 or String(metas[0]["final"]["speech"]) != "Great! It's a cat!":
 		failures.append("the final validated turn arrives as turn_meta: %s" % str(metas))
+	# Repeated server events for the same response (a replayed done, a late
+	# transcript.done, a duplicate created): nothing is voiced twice.
+	var session_turns_before: int = (h["events"]["turns"] as Array).size()
+	_feed(h["transport"], [(scenario["events"] as Array)[-1], (scenario["events"] as Array)[-1], (scenario["events"] as Array)[-3], (scenario["events"] as Array)[-2]])
+	if turns.size() != 3 or metas.size() != 1 or (h["events"]["turns"] as Array).size() != session_turns_before:
+		failures.append("repeated server events for one response never add a turn: provider %d metas %d session %d" % [turns.size(), metas.size(), (h["events"]["turns"] as Array).size()])
 	if provider.has_pending_turn():
 		failures.append("nothing pending after the final")
 	provider.advance(0.05)
@@ -1084,6 +1132,8 @@ func _test_synthesis_wrapper():
 	synth.advance(0.05)
 	if finished.size() != 3 or inner.spoken.size() != 2:
 		failures.append("finished once when the cloud audio drained, nothing spoken twice: %s / %s" % [str(finished), str(inner.spoken)])
+	if inner.spoken.has("Great! It's a cat!") or inner.spoken.has("Great!"):
+		failures.append("the early words and the final turn are ONE cloud utterance; the local voice never repeats them: %s" % str(inner.spoken))
 	# Barge-in: cancel -> response.cancel + finished once.
 	session.send_transcript("dog", scenario["lessonContext"])
 	(h["transport"] as RefCounted).handle_event({"type": "response.output_item.added", "item": {"id": "m", "type": "message"}})
