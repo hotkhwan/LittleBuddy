@@ -80,7 +80,8 @@ name = "little-days-api-dev"
 workers_dev = true
 
 [env.dev.vars]
-DEV_MODE = "1"                       # dev sign-in, dev literal approval token, /v1/dev/* routes, X-Debug-Now
+DEV_MODE = "1"
+FREE_CHAT_ENABLED = "1"              # dev only: chat mode (mock provider until OPENAI_API_KEY is set); refused outside DEV_MODE regardless                       # dev sign-in, dev literal approval token, /v1/dev/* routes, X-Debug-Now
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
