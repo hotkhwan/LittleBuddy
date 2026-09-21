@@ -22,10 +22,23 @@ signal unlocked()
 signal hold_started()
 signal hold_canceled()
 signal progress_changed(progress: float)
+## A press that ended well before the hold could complete: a tap. The gate does
+## nothing with it itself; a host may use it to SHOW what a hold would do (the
+## Baby Room's corner gear opens the gate card, which explains the 3 s hold).
+signal tapped()
 
 enum Style { RING, BAR }
 
 const DEFAULT_HOLD_SECONDS := 3.0
+## A press released within this long counts as a tap (`tapped`), not as an
+## abandoned hold. Well under any hold duration, so it can never race `unlocked`.
+const TAP_MAX_SECONDS := 0.45
+## How far a finger may wander outside the control before the hold is
+## cancelled. Under `emulate_mouse_from_touch` a held finger jitters by a few
+## pixels every frame; on an 84 px gear that used to reach `mouse_exited` and
+## reset the ring part-way through. The hold now survives a wobble and cancels
+## only when the pointer has clearly slid off.
+const SLIDE_OFF_MARGIN: float = 40.0
 
 @export var hold_duration: float = DEFAULT_HOLD_SECONDS
 @export var style: Style = Style.RING
@@ -95,6 +108,21 @@ func cancel_hold() -> void:
 	_refresh()
 
 
+## The pointer came up. A hold that had barely started is reported as a tap
+## (after the cancel, so a `tapped` handler sees a clean gate); anything longer
+## is an abandoned hold and cancels quietly. Returns true when it was a tap.
+## No-op when nothing was being held, so the second release a touch produces
+## (the emulated mouse button, then the touch itself) cannot tap twice.
+func end_hold() -> bool:
+	if not _holding:
+		return false
+	var was_tap: bool = _elapsed < TAP_MAX_SECONDS
+	cancel_hold()
+	if was_tap:
+		tapped.emit()
+	return was_tap
+
+
 ## Clears the "already unlocked" latch so the gate can be used again.
 func reset() -> void:
 	_holding = false
@@ -125,8 +153,10 @@ func _ready() -> void:
 	focus_mode = Control.FOCUS_NONE
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	set_process(false)
-	if not mouse_exited.is_connected(cancel_hold):
-		mouse_exited.connect(cancel_hold)
+	# Deliberately NOT `mouse_exited -> cancel_hold`: with the mouse emulated from
+	# touch that signal fires on finger jitter. Sliding off is judged from the
+	# pointer position instead, with `SLIDE_OFF_MARGIN` of tolerance (see
+	# `_gui_input`).
 	if style == Style.BAR:
 		_build_bar_fill()
 	queue_redraw()
@@ -148,7 +178,7 @@ func _gui_input(event: InputEvent) -> void:
 		if touch.pressed:
 			begin_hold()
 		else:
-			cancel_hold()
+			end_hold()
 		accept_event()
 		return
 
@@ -158,15 +188,22 @@ func _gui_input(event: InputEvent) -> void:
 			if button.pressed:
 				begin_hold()
 			else:
-				cancel_hold()
+				end_hold()
 			accept_event()
 		return
 
-	# A finger that slides off the control cancels, matching the mouse behaviour.
-	if event is InputEventScreenDrag:
-		var drag := event as InputEventScreenDrag
-		if not Rect2(Vector2.ZERO, size).has_point(drag.position):
+	# A finger (or the mouse it is emulated as) that clearly slides off the
+	# control cancels. A wobble inside the margin does not.
+	if _holding and (event is InputEventScreenDrag or event is InputEventMouseMotion):
+		var pointer: Vector2 = event.get("position")
+		if not _tolerant_rect().has_point(pointer):
 			cancel_hold()
+
+
+## The control's own rect grown by `SLIDE_OFF_MARGIN` on every side, in local
+## coordinates (the space `_gui_input` positions arrive in).
+func _tolerant_rect() -> Rect2:
+	return Rect2(Vector2.ZERO, size).grow(SLIDE_OFF_MARGIN)
 
 
 func _refresh() -> void:

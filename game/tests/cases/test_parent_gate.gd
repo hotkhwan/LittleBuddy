@@ -18,6 +18,7 @@ func run():
 	failures += _test_unlocks_once()
 	failures += _test_reset_allows_reuse()
 	failures += _test_custom_duration()
+	failures += _test_tap_versus_hold()
 	return failures
 
 
@@ -171,4 +172,61 @@ func _test_custom_duration():
 		failures.append("a zero duration should report full progress, got %f" % degenerate.get_progress())
 	degenerate.free()
 
+	return failures
+
+
+## A press let go almost at once is a TAP (`tapped`), reported after the cancel
+## so a handler sees a clean gate; a press let go after a while is an abandoned
+## hold and says nothing; a second release with nothing held (the touch that
+## follows its emulated mouse button) cannot tap again; and a tap can never race
+## the unlock. Added for the 2026-09-21 playtest: the Baby Room gear's tap now
+## opens the gate card.
+func _test_tap_versus_hold():
+	var failures: Array = []
+	var gate: Object = _make_gate(3.0)
+	var unlocks: Array = _count_unlocks(gate)
+	var taps: Array = [0]
+	var progress_at_tap: Array = [-1.0]
+	gate.tapped.connect(func() -> void:
+		taps[0] += 1
+		progress_at_tap[0] = gate.get_progress())
+
+	if gate.end_hold():
+		failures.append("releasing with nothing held must not be a tap")
+	if taps[0] != 0:
+		failures.append("tapped fired with nothing held")
+
+	gate.begin_hold()
+	gate.advance(0.1)
+	if not gate.end_hold():
+		failures.append("a 0.1 s press must be a tap")
+	if taps[0] != 1:
+		failures.append("tapped fired %d time(s) for one tap" % taps[0])
+	if not is_zero_approx(progress_at_tap[0]):
+		failures.append("the gate must be reset before tapped is emitted (progress %.2f)" % progress_at_tap[0])
+	if gate.is_holding() or not is_zero_approx(gate.get_progress()):
+		failures.append("a tap must leave the gate idle at zero")
+	# The second release a touch produces.
+	if gate.end_hold() or taps[0] != 1:
+		failures.append("a second release must not tap again (%d)" % taps[0])
+
+	gate.begin_hold()
+	gate.advance(GateScript.TAP_MAX_SECONDS + 0.05)
+	if gate.end_hold():
+		failures.append("a press longer than TAP_MAX_SECONDS is an abandoned hold, not a tap")
+	if taps[0] != 1:
+		failures.append("an abandoned hold emitted tapped")
+	if unlocks[0] != 0:
+		failures.append("nothing has unlocked yet, got %d" % unlocks[0])
+
+	# A full hold unlocks and a release afterwards is neither a tap nor a cancel.
+	gate.begin_hold()
+	gate.advance(3.1)
+	if unlocks[0] != 1:
+		failures.append("a full hold must unlock once, got %d" % unlocks[0])
+	if gate.end_hold() or taps[0] != 1:
+		failures.append("the release after an unlock must not be a tap")
+	if GateScript.TAP_MAX_SECONDS >= 1.0:
+		failures.append("TAP_MAX_SECONDS is %.2f; a tap must be well under any hold" % GateScript.TAP_MAX_SECONDS)
+	gate.free()
 	return failures
