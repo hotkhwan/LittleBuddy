@@ -244,6 +244,10 @@ const NO_VOICE_NOTE: String = "Voice is not ready on this device. Tap the pictur
 const MIC_OFF_NOTE: String = "The microphone is off for Little Days. A grown-up can turn it on in Settings > Little Days."
 ## Correct answers since the lesson began: the break card's stars (QA C3).
 var _correct_this_session: int = 0
+## Consecutive correct answers (resets on a miss): every third one is an
+## "excellent" beat -- celebrate instead of the rotating praise gesture.
+var _correct_streak: int = 0
+const TutorGesturePool := preload("res://scripts/tutor/tutor_gesture_pool.gd")
 var _using_real_engine: bool = false
 var _using_real_session: bool = false
 var _turn_log: Array = []
@@ -516,6 +520,7 @@ func begin_lesson(lesson_id: String = DEFAULT_LESSON_ID) -> void:
 	_closing = false
 	_choosing = true
 	_correct_this_session = 0
+	_correct_streak = 0
 	_welcomed_twice = false
 	_turn_log.clear()
 	_current_step = {}
@@ -722,8 +727,27 @@ func _speak_turn(turn: Dictionary) -> void:
 		_hud.call("set_banner", HudScript.BANNER_TOGETHER)
 	_hud.call("set_subtitle", String(turn.get("subtitle", turn.get("speech", ""))))
 	_hud.call("set_tap_to_talk_enabled", false)
-	_face(String(turn.get("emotion", "neutral")))
-	_gesture(String(turn.get("gesture", "none")))
+	var expression: String = String(turn.get("emotion", "neutral"))
+	var gesture: String = String(turn.get("gesture", "none"))
+	var step_index: int = int(_engine.call("progress").get("stepIndex", _turn_log.size())) if _engine != null and _engine.has_method("progress") else _turn_log.size()
+	if phase == ScriptedProviderScript.PHASE_ANSWER:
+		# Answer feedback: a small deterministic pool so consecutive praise
+		# never looks identical; every third correct in a row celebrates.
+		var event: String = ""
+		if _outcome_was_correct:
+			_correct_streak += 1
+			var complete: bool = String(turn.get("lessonAction", "")) == "complete"
+			event = TutorGesturePool.positive_event(_correct_streak, complete)
+		elif String(turn.get("lessonAction", "")) in ["retry", "give_hint"]:
+			_correct_streak = 0
+			event = "encourage"
+		if not event.is_empty():
+			expression = TutorGesturePool.expression_for(event)
+			gesture = TutorGesturePool.pick(event, step_index)
+	elif phase == PHASE_WELCOME:
+		gesture = TutorGesturePool.pick("greeting", 0)
+	_face(expression)
+	_gesture(gesture)
 	if bool(_synth.call("is_speaking")):
 		# A new line supersedes the old one, never plays over it: cut it
 		# without its boundary (the provider's own speak() would cut it too,
@@ -1273,8 +1297,8 @@ func _think(transcript: String, phase: String) -> void:
 	if _session != null and _session.has_method("hold_capture"):
 		_session.call("hold_capture", "thinking")
 	_hud.call("set_banner", HudScript.BANNER_THINKING)
-	_face("thinking")
-	_gesture("nod")
+	_face(TutorGesturePool.expression_for("thinking"))
+	_gesture(TutorGesturePool.pick("thinking", _turn_log.size()))
 	_timer = THINK_SECONDS
 
 
