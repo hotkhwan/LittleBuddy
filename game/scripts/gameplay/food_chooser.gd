@@ -14,6 +14,9 @@ extends Control
 ## comfortably over the 240 px the touch rules ask for a pre-reader.
 
 const Palette := preload("res://scripts/ui/palette.gd")
+const ItemPreview := preload("res://scripts/ui/kitchen_item_preview.gd")
+const Items := preload("res://scripts/kitchen/kitchen_items.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
 
 signal picked(item_id: String)
 signal dismissed()
@@ -205,12 +208,24 @@ func _make_card(data: Dictionary) -> Button:
 	picture.set_meta("color", tint if tint is Color else Palette.PEACH)
 	picture.draw.connect(_draw_picture.bind(picture))
 	card.add_child(picture)
+	var item_id: String = String(data.get("itemId", ""))
+	if Items.exists(item_id):
+		picture.visible = false
+		var preview := ItemPreview.new()
+		preview.name = "ObjectPreview"
+		preview.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+		preview.offset_left = 26.0
+		preview.offset_right = -26.0
+		preview.offset_top = 20.0
+		preview.offset_bottom = 204.0
+		card.add_child(preview)
+		preview.setup(item_id)
 
 	var word := Label.new()
 	word.name = "Word"
 	word.text = String(data.get("word", ""))
 	word.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	word.add_theme_font_size_override("font_size", WORD_FONT_SIZE)
+	Typography.apply(word, Typography.SECTION)
 	word.add_theme_color_override("font_color", Palette.INK)
 	word.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	word.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)

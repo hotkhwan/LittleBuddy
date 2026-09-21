@@ -5,10 +5,10 @@ extends Control
 ## microphone per turn, so the middle of the bottom edge is an INDICATOR, not
 ## a button:
 ##
-##   * **Mic indicator** -- bottom-centre, `tutor_mic_indicator.gd`: a live
+##   * **Mic indicator** -- bottom-centre learning shelf: a compact live
 ##     level ring and a word (Listening / I hear you! / Aliz is talking /
 ##     Muted / Mic off). Mandatory under the addendum's microphone-scope rule.
-##   * **Mute** -- bottom-left, LARGE (120 px), lavender, speaker glyph with the
+##   * **Mute** -- bottom-left, 96 px, lavender, speaker glyph with the
 ##     waves off when muted (never a slash, never an X) and a word under it.
 ##   * **Home** -- top-right, round, peach, the title screen's own house.
 ##   * **End lesson** -- top-left, small lavender pill; opens "Stop the lesson?".
@@ -43,6 +43,7 @@ extends Control
 ## refuses simulated audio unless simulation was explicitly enabled.
 
 const Palette := preload("res://scripts/ui/palette.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
 const SafeAreaScript := preload("res://scripts/ui/safe_area.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
 const IconGlyphScript := preload("res://scripts/progression/icon_glyph.gd")
@@ -50,6 +51,7 @@ const GlyphsScript := preload("res://scripts/tutor/ui/tutor_glyphs.gd")
 const IndicatorScript := preload("res://scripts/tutor/ui/tutor_mic_indicator.gd")
 const FlashcardArtScript := preload("res://scripts/tutor/classroom/flashcard_art.gd")
 const ExitConfirmScript := preload("res://scripts/tutor/ui/tutor_exit_confirm.gd")
+const TouchButtonScript := preload("res://scripts/tutor/ui/tutor_touch_button.gd")
 
 signal open_settings_pressed()
 signal home_pressed()
@@ -74,44 +76,47 @@ const END_LEFT: float = 32.0
 const END_TOP: float = 44.0
 
 const BANNER_HALF_WIDTH: float = 300.0
-const BANNER_TOP: float = 28.0
-const BANNER_HEIGHT: float = 78.0
+const BANNER_TOP: float = 44.0
+const BANNER_HEIGHT: float = 68.0
 const SUBTITLE_HALF_WIDTH: float = 380.0
 const SUBTITLE_HEIGHT: float = 84.0
-const SUBTITLE_TOP: float = 22.0
+const SUBTITLE_TOP: float = 44.0
 
-const INDICATOR_WIDTH: float = 210.0
-const INDICATOR_HEIGHT: float = 214.0
-const INDICATOR_BOTTOM: float = -22.0
-const TALK_SIZE: float = 200.0
-const TALK_BOTTOM: float = -36.0
-const SIDE_SIZE: float = 110.0
+const INDICATOR_WIDTH: float = 250.0
+const INDICATOR_HEIGHT: float = 104.0
+const INDICATOR_BOTTOM: float = -48.0
+const TALK_SIZE: float = 124.0
+const TALK_BOTTOM: float = -38.0
+const SIDE_SIZE: float = 88.0
 const SIDE_OFFSET: float = 230.0
-const SIDE_BOTTOM: float = -60.0
+const SIDE_BOTTOM: float = -74.0
 
-const MUTE_SIZE: float = 120.0
+const MUTE_SIZE: float = 96.0
 const MUTE_LEFT: float = 32.0
 const MUTE_BOTTOM: float = -60.0
+const TALK_TOUCH_SIZE: float = 200.0
+const SIDE_TOUCH_SIZE: float = 110.0
+const MUTE_TOUCH_SIZE: float = 120.0
 
 ## The answer cards sit at the RIGHT, under the board and above the pets:
 ## centred they would sit on Aliz's chin at 16:9 and on the Tap-to-talk button.
-## 100 px cards: four of them (the subject choice, QA C4) end 60 px clear of
+## 112 px cards: four of them (the subject choice, QA C4) stay clear of
 ## Aliz's hair at 1334 wide; secondary controls, the primary is Tap-to-talk.
-const ANSWER_CARD_SIZE: Vector2 = Vector2(100.0, 106.0)
-const ANSWER_CARD_GAP: float = 14.0
+const ANSWER_CARD_SIZE: Vector2 = Vector2(112.0, 136.0)
+const ANSWER_CARD_GAP: float = 12.0
 ## Three answers on a question, four subjects on the choice; the row grows
 ## leftwards from its bottom-right corner.
 const MAX_ANSWER_CARDS: int = 4
 const ANSWER_CARDS_RIGHT: float = -60.0
-const ANSWER_CARDS_BOTTOM: float = -290.0
+const ANSWER_CARDS_BOTTOM: float = -200.0
 
 const CARD_WIDTH: float = 330.0
 const CARD_HEIGHT: float = 390.0
 const CARD_RIGHT: float = -48.0
 const CARD_TOP: float = 156.0
 
-const BANNER_FONT_SIZE: int = 34
-const SUBTITLE_FONT_SIZE: int = 32
+const BANNER_FONT_SIZE: int = Typography.SECTION
+const SUBTITLE_FONT_SIZE: int = Typography.SECTION
 const LONG_PRESS_SECONDS: float = 1.2
 
 const SIM_KINDS: Array = [
@@ -194,15 +199,17 @@ static func layout_rects(viewport_size: Vector2) -> Dictionary:
 	var h: float = viewport_size.y
 	var answers_width: float = ANSWER_CARD_SIZE.x * MAX_ANSWER_CARDS + ANSWER_CARD_GAP * (MAX_ANSWER_CARDS - 1)
 	return {
+		"heading": Rect2(w * 0.5 - 220.0, 6.0, 440.0, 30.0),
+		"learningShelf": Rect2(w * 0.5 - 350.0, h - 180.0, 700.0, 156.0),
 		"home": Rect2(w + HOME_RIGHT - HOME_SIZE, HOME_TOP, HOME_SIZE, HOME_SIZE),
 		"end": Rect2(END_LEFT, END_TOP, END_WIDTH, END_HEIGHT),
 		"banner": Rect2(w * 0.5 - BANNER_HALF_WIDTH, BANNER_TOP, BANNER_HALF_WIDTH * 2.0, BANNER_HEIGHT),
 		"subtitle": Rect2(w * 0.5 - SUBTITLE_HALF_WIDTH, SUBTITLE_TOP, SUBTITLE_HALF_WIDTH * 2.0, SUBTITLE_HEIGHT),
 		"indicator": Rect2(w * 0.5 - INDICATOR_WIDTH * 0.5, h + INDICATOR_BOTTOM - INDICATOR_HEIGHT, INDICATOR_WIDTH, INDICATOR_HEIGHT),
-		"tapToTalk": Rect2(w * 0.5 - TALK_SIZE * 0.5, h + TALK_BOTTOM - TALK_SIZE, TALK_SIZE, TALK_SIZE),
-		"repeat": Rect2(w * 0.5 - SIDE_OFFSET - SIDE_SIZE * 0.5, h + SIDE_BOTTOM - SIDE_SIZE, SIDE_SIZE, SIDE_SIZE),
-		"card": Rect2(w * 0.5 + SIDE_OFFSET - SIDE_SIZE * 0.5, h + SIDE_BOTTOM - SIDE_SIZE, SIDE_SIZE, SIDE_SIZE),
-		"mute": Rect2(MUTE_LEFT, h + MUTE_BOTTOM - MUTE_SIZE - 30.0, MUTE_SIZE, MUTE_SIZE + 30.0),
+		"tapToTalk": Rect2(w * 0.5 - TALK_SIZE * 0.5, h + TALK_BOTTOM - TALK_SIZE, TALK_SIZE, TALK_SIZE).grow((TALK_TOUCH_SIZE - TALK_SIZE) * 0.5),
+		"repeat": Rect2(w * 0.5 - SIDE_OFFSET - SIDE_SIZE * 0.5, h + SIDE_BOTTOM - SIDE_SIZE, SIDE_SIZE, SIDE_SIZE).grow((SIDE_TOUCH_SIZE - SIDE_SIZE) * 0.5),
+		"card": Rect2(w * 0.5 + SIDE_OFFSET - SIDE_SIZE * 0.5, h + SIDE_BOTTOM - SIDE_SIZE, SIDE_SIZE, SIDE_SIZE).grow((SIDE_TOUCH_SIZE - SIDE_SIZE) * 0.5),
+		"mute": Rect2(MUTE_LEFT, h + MUTE_BOTTOM - MUTE_SIZE, MUTE_SIZE, MUTE_SIZE).grow((MUTE_TOUCH_SIZE - MUTE_SIZE) * 0.5),
 		"answerCards": Rect2(w + ANSWER_CARDS_RIGHT - answers_width, h + ANSWER_CARDS_BOTTOM - ANSWER_CARD_SIZE.y, answers_width, ANSWER_CARD_SIZE.y),
 		"flashcard": Rect2(w + CARD_RIGHT - CARD_WIDTH, CARD_TOP, CARD_WIDTH, CARD_HEIGHT),
 	}
@@ -235,6 +242,23 @@ func build() -> void:
 	_safe = SafeAreaScript.new()
 	_safe.name = "SafeArea"
 	add_child(_safe)
+	# A stable lesson heading gives the changing question a clear parent.
+	var heading := _label("LessonHeading", 22, Palette.INK_SOFT)
+	heading.text = "Learn with Aliz"
+	_place(heading, Control.PRESET_CENTER_TOP, -220.0, 6.0, 220.0, 36.0)
+	_safe.add_child(heading)
+	# Keep controls on one low shelf, below Aliz's hands, instead of floating
+	# a giant microphone over her teaching table.
+	var shelf := Panel.new()
+	shelf.name = "LearningShelf"
+	shelf.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shelf_style := _pill(Palette.CREAM, 38, Color.WHITE)
+	shelf_style.shadow_size = 14
+	shelf_style.shadow_offset = Vector2(0, 6)
+	shelf_style.shadow_color = Color(0.35, 0.26, 0.36, 0.14)
+	shelf.add_theme_stylebox_override("panel", shelf_style)
+	_place(shelf, Control.PRESET_CENTER_BOTTOM, -350.0, -180.0, 350.0, -24.0)
+	_safe.add_child(shelf)
 
 	# -- Top slot: banner and subtitle ---------------------------------------
 	_banner = PanelContainer.new()
@@ -244,6 +268,7 @@ func build() -> void:
 	_banner.gui_input.connect(_on_banner_input)
 	_safe.add_child(_banner)
 	_banner_label = _label("BannerLabel", BANNER_FONT_SIZE, Palette.INK)
+	_banner_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_banner.add_child(_banner_label)
 	_banner.visible = false
 
@@ -313,6 +338,7 @@ func build() -> void:
 
 	# -- Mute (bottom-left, large) --------------------------------------------
 	_mute = _round_button("MuteButton", Palette.LAVENDER, MUTE_SIZE)
+	_mute.set("touch_size", MUTE_TOUCH_SIZE)
 	_place(_mute, Control.PRESET_BOTTOM_LEFT, MUTE_LEFT, MUTE_BOTTOM - MUTE_SIZE, MUTE_LEFT + MUTE_SIZE, MUTE_BOTTOM)
 	_mute_glyph = GlyphsScript.new()
 	_mute_glyph.name = "SpeakerGlyph"
@@ -344,22 +370,24 @@ func build() -> void:
 		_safe.add_child(catcher)
 
 	_talk = _round_button("TapToTalkButton", Palette.MINT, TALK_SIZE)
+	_talk.set("touch_size", TALK_TOUCH_SIZE)
 	_place(_talk, Control.PRESET_CENTER_BOTTOM, -TALK_SIZE * 0.5, TALK_BOTTOM - TALK_SIZE, TALK_SIZE * 0.5, TALK_BOTTOM)
 	var talk_glyph: Control = IconGlyphScript.new()
 	talk_glyph.name = "MicGlyph"
 	talk_glyph.set("glyph", 4)
 	talk_glyph.set("tint", Palette.INK)
-	_place(talk_glyph, Control.PRESET_FULL_RECT, 58.0, 22.0, -58.0, -74.0)
+	_place(talk_glyph, Control.PRESET_FULL_RECT, 42.0, 12.0, -42.0, -54.0)
 	_talk.add_child(talk_glyph)
-	var talk_caption: Label = _label("TalkCaption", 24, Palette.INK)
+	var talk_caption: Label = _label("TalkCaption", 22, Palette.INK)
 	talk_caption.text = "Tap to talk"
-	_place(talk_caption, Control.PRESET_BOTTOM_WIDE, 0.0, -58.0, 0.0, -22.0)
+	_place(talk_caption, Control.PRESET_BOTTOM_WIDE, -12.0, -44.0, 12.0, -10.0)
 	_talk.add_child(talk_caption)
 	_talk.pressed.connect(func() -> void: tap_to_talk_pressed.emit())
 	_talk.visible = false
 	_safe.add_child(_talk)
 
 	_repeat = _round_button("RepeatButton", Palette.PEACH, SIDE_SIZE)
+	_repeat.set("touch_size", SIDE_TOUCH_SIZE)
 	_place(_repeat, Control.PRESET_CENTER_BOTTOM, -SIDE_OFFSET - SIDE_SIZE * 0.5, SIDE_BOTTOM - SIDE_SIZE, -SIDE_OFFSET + SIDE_SIZE * 0.5, SIDE_BOTTOM)
 	var play_glyph: Control = IconGlyphScript.new()
 	play_glyph.name = "PlayGlyph"
@@ -369,16 +397,19 @@ func build() -> void:
 	_repeat.add_child(play_glyph)
 	_repeat.pressed.connect(func() -> void: repeat_pressed.emit())
 	_safe.add_child(_repeat)
+	_add_control_caption("RepeatCaption", "Hear again", -SIDE_OFFSET)
 
 	_card_button = _round_button("CardButton", Palette.SOFT_PINK, SIDE_SIZE)
+	_card_button.set("touch_size", SIDE_TOUCH_SIZE)
 	_place(_card_button, Control.PRESET_CENTER_BOTTOM, SIDE_OFFSET - SIDE_SIZE * 0.5, SIDE_BOTTOM - SIDE_SIZE, SIDE_OFFSET + SIDE_SIZE * 0.5, SIDE_BOTTOM)
 	_card_thumb = FlashcardArtScript.new()
 	_card_thumb.name = "Thumb"
 	_card_thumb.set("show_word", false)
-	_place(_card_thumb, Control.PRESET_FULL_RECT, 26.0, 18.0, -26.0, -22.0)
+	_place(_card_thumb, Control.PRESET_FULL_RECT, 20.0, 14.0, -20.0, -18.0)
 	_card_button.add_child(_card_thumb)
 	_card_button.pressed.connect(toggle_card)
 	_safe.add_child(_card_button)
+	_add_control_caption("CardCaption", "Picture", SIDE_OFFSET)
 
 	# -- Answer cards (touch fallback) ---------------------------------------
 	_answer_row = HBoxContainer.new()
@@ -625,11 +656,14 @@ func show_answer_cards(asset_ids: Array) -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		button.custom_minimum_size = ANSWER_CARD_SIZE
 		for state: String in ["normal", "hover", "pressed", "focus"]:
-			button.add_theme_stylebox_override(state, _pill(Palette.CREAM.darkened(0.06) if state == "pressed" else Palette.CREAM, 22, Palette.deep(Palette.PEACH)))
+			var tint: Color = Palette.MINT if state == "pressed" else Palette.CREAM
+			var style := _pill(tint, 22, Palette.deep(Palette.MINT) if state == "pressed" else Color.WHITE)
+			style.shadow_size = 7 if state != "pressed" else 2
+			button.add_theme_stylebox_override(state, style)
 		var art: Control = FlashcardArtScript.new()
 		art.name = "Art"
 		art.set("asset_id", id)
-		_place(art, Control.PRESET_FULL_RECT, 8.0, 8.0, -8.0, -8.0)
+		_place(art, Control.PRESET_FULL_RECT, 6.0, 6.0, -6.0, -6.0)
 		button.add_child(art)
 		button.pressed.connect(func() -> void: answer_card_tapped.emit(id))
 		_answer_row.add_child(button)
@@ -656,6 +690,7 @@ func set_card(asset_id: String) -> void:
 	_card_art.set("asset_id", asset_id)
 	_card_thumb.set("asset_id", asset_id)
 	_card_button.visible = not asset_id.is_empty()
+	_safe.get_node("CardCaption").visible = not asset_id.is_empty()
 	if asset_id.is_empty():
 		show_card(false)
 
@@ -668,6 +703,9 @@ func show_card(shown: bool) -> void:
 	build()
 	_card_shown = shown and not _asset_id.is_empty()
 	_card.visible = _card_shown
+	var tint: Color = Palette.MINT if _card_shown else Palette.SOFT_PINK
+	for state: String in ["normal", "hover", "pressed", "focus"]:
+		_card_button.add_theme_stylebox_override(state, _pill(tint.darkened(0.08) if state == "pressed" else tint, int(SIDE_SIZE * 0.5), Palette.CREAM))
 
 
 func is_card_shown() -> bool:
@@ -838,14 +876,21 @@ func _label(node_name: String, font_size: int, colour: Color) -> Label:
 	label.name = node_name
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", font_size)
+	Typography.apply(label, font_size, false)
 	label.add_theme_color_override("font_color", colour)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
 
 
+func _add_control_caption(node_name: String, text: String, centre_x: float) -> void:
+	var caption := _label(node_name, 22, Palette.INK_SOFT)
+	caption.text = text
+	_place(caption, Control.PRESET_CENTER_BOTTOM, centre_x - 80.0, -68.0, centre_x + 80.0, -36.0)
+	_safe.add_child(caption)
+
+
 func _round_button(node_name: String, tint: Color, diameter: float) -> Button:
-	var button: Button = Button.new()
+	var button: Button = TouchButtonScript.new()
 	button.name = node_name
 	button.focus_mode = Control.FOCUS_NONE
 	for state: String in ["normal", "hover", "pressed", "focus"]:
@@ -864,4 +909,7 @@ static func _pill(fill: Color, radius: int, rim: Color) -> StyleBoxFlat:
 	style.set_corner_radius_all(radius)
 	style.set_border_width_all(3)
 	style.border_color = rim
+	style.shadow_color = Color(0.35, 0.26, 0.36, 0.12)
+	style.shadow_size = 6
+	style.shadow_offset = Vector2(0.0, 4.0)
 	return style

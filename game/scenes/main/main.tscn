@@ -386,14 +386,14 @@ layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -36.0
-offset_top = 24.0
-offset_right = 36.0
-offset_bottom = 96.0
+offset_left = -48.0
+offset_top = 12.0
+offset_right = 48.0
+offset_bottom = 108.0
 grow_horizontal = 2
 mouse_filter = 2
 script = ExtResource("3")
-glyph = 7
+glyph = 19
 tint = Color(0.349, 0.259, 0.169, 1)
 
 [node name="ComingSoonLabel" type="Label" parent="UI/SafeArea"]

@@ -86,12 +86,12 @@ redact() { sed -e 's/Bearer [A-Za-z0-9._-]*/Bearer <redacted>/g' -e 's#https://[
 
 # -- HTTP --------------------------------------------------------------------
 
-STATUS_FILE="$(mktemp)"
+STATUS_FILE="$(mktemp "${TMPDIR:-/tmp}/meshy-status.XXXXXX")"
 trap 'rm -f "$STATUS_FILE"' EXIT
 
 api() {  # api <METHOD> <URL> [json-body] -> body on stdout; status via http_code
   local method="$1" url="$2" body="${3:-}"
-  local tmp; tmp="$(mktemp)"
+  local tmp; tmp="$(mktemp "${TMPDIR:-/tmp}/meshy-response.XXXXXX")"
   local -a extra=()
   [[ -n "$body" ]] && extra=(-H 'Content-Type: application/json' -d "$body")
   # ${extra[@]+"${extra[@]}"}: bash 3.2 (macOS) treats an EMPTY array as unset
@@ -295,7 +295,7 @@ cmd_install() {
       *) die "unknown arg $1";;
     esac
   done
-  local work; work="$(mktemp -d)"
+  local work; work="$(mktemp -d "${TMPDIR:-/tmp}/meshy-install.XXXXXX")"
   (( dry )) && dest="${work}/install" && note "DRY RUN: installing into ${dest}; game/ is not touched"
   mkdir -p "$dest"
 

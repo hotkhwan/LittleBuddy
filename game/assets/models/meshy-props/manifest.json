@@ -147,6 +147,32 @@
         "pivot": "hingeBack: back (hinge) edge on Z=0, underside on Y=0, spans +Z toward the front; the peach pull bar overhangs the front rim by ~2 cm",
         "posing": "Meshy generated the box open; the lid was closed locally (rotate-x 100.5 deg) and lengthened 1.25x along its depth so it covers the opening -- see derivedFrom.args"
       }
+    },
+    {
+      "propId": "babyBottle",
+      "word": "bottle",
+      "file": "res://assets/models/meshy-props/babyBottle.glb",
+      "longestAxisMetres": 0.25,
+      "yawDegrees": 0.0,
+      "triangles": 2552,
+      "maxTriangles": 3000,
+      "textureSize": 512,
+      "derivedFrom": {
+        "file": "babyBottle_v01.glb",
+        "tool": "tools/meshy_batch.sh install",
+        "args": "--parts babyBottle --scale 0.25 --max-tris 3000"
+      },
+      "meshyTaskIds": [
+        "01a0c4b7-a4d7-7122-ae7d-df89a4193e09",
+        "01a0c4b8-729d-70c9-84b2-808fb844173c"
+      ],
+      "creditsSpent": 15,
+      "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids",
+      "usedBy": [
+        "scripts/kitchen/kitchen_items.gd (bottle and bottleOfMilk)",
+        "scripts/kitchen/kitchen_view.gd (_make_item, fill variant)",
+        "scripts/gameplay/food_chooser.gd (live-model selection cards)"
+      ]
     }
   ]
 }

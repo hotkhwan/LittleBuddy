@@ -483,6 +483,8 @@ func _make_item(item_id: String, at: Vector3, draw_scale: float = 1.0) -> MeshIn
 	if not model_id.is_empty():
 		var swapped: MeshInstance3D = PropRegistry.instance(model_id, Items.model_size_for(item_id))
 		if swapped != null:
+			if item_id == "bottleOfMilk":
+				_add_milk_fill(swapped)
 			swapped.name = "Item_%s" % item_id
 			swapped.position = at
 			swapped.scale = Vector3.ONE * draw_scale
@@ -529,6 +531,46 @@ func _make_item(item_id: String, at: Vector3, draw_scale: float = 1.0) -> MeshIn
 	node.position = at
 	node.scale = Vector3.ONE * draw_scale
 	return node
+
+
+func _add_milk_fill(bottle: MeshInstance3D) -> void:
+	# Copy the cached prop mesh before adding the opaque milk column. The empty
+	# bottle keeps its powder-blue body; preparing milk changes visible geometry
+	# as well as colour. All carry/surface/socket code keeps the same base pivot.
+	var bounds: AABB = bottle.mesh.get_aabb()
+	var level: float = bounds.size.y * 0.53
+	var tool: SurfaceTool = Kit.begin()
+	var arrays: Array = bottle.mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	# Clip the actual curved shell at the fill line, preserving its soft normals.
+	# A tiny radial lift prevents z-fighting without turning milk into a sleeve.
+	for start: int in range(0, indices.size(), 3):
+		var polygon: Array = []
+		for corner: int in range(3):
+			var a: int = indices[start + corner]
+			var b: int = indices[start + (corner + 1) % 3]
+			var inside_a: bool = vertices[a].y <= level
+			var inside_b: bool = vertices[b].y <= level
+			if inside_a:
+				polygon.append([vertices[a], normals[a]])
+			if inside_a != inside_b:
+				var fraction: float = (level - vertices[a].y) / (vertices[b].y - vertices[a].y)
+				polygon.append([vertices[a].lerp(vertices[b], fraction), normals[a].lerp(normals[b], fraction).normalized()])
+		for corner: int in range(1, polygon.size() - 1):
+			for point: Array in [polygon[0], polygon[corner], polygon[corner + 1]]:
+				var position: Vector3 = point[0]
+				position.x *= 1.012
+				position.z *= 1.012
+				tool.set_color(Palette.CREAM)
+				tool.set_normal(point[1])
+				tool.add_vertex(position)
+	var fill: ArrayMesh = Kit.commit(tool)
+	var combined: ArrayMesh = bottle.mesh.duplicate()
+	combined.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, fill.surface_get_arrays(0))
+	combined.surface_set_material(combined.get_surface_count() - 1, Kit.material())
+	bottle.mesh = combined
 
 
 ## -- The forms ----------------------------------------------------------------

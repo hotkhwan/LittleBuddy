@@ -32,7 +32,7 @@ const WORDS: Dictionary = {
 }
 
 const CARD_RADIUS_FRACTION: float = 0.09
-const RIM_PX: float = 6.0
+const RIM_PX: float = 3.0
 
 var asset_id: String = "apple_red":
 	set(value):
@@ -72,8 +72,11 @@ func _draw() -> void:
 	# The card.
 	var radius: float = minf(w, h) * CARD_RADIUS_FRACTION
 	var rim: StyleBoxFlat = StyleBoxFlat.new()
-	rim.bg_color = Palette.deep(Palette.PEACH)
+	rim.bg_color = Palette.PEACH
 	rim.set_corner_radius_all(int(radius))
+	rim.shadow_color = Color(0.35, 0.26, 0.36, 0.12)
+	rim.shadow_size = 5
+	rim.shadow_offset = Vector2(0, 3)
 	draw_style_box(rim, Rect2(Vector2.ZERO, size))
 	var face: StyleBoxFlat = StyleBoxFlat.new()
 	face.bg_color = Palette.CREAM
@@ -85,11 +88,12 @@ func _draw() -> void:
 	var area: Rect2 = Rect2(Vector2(w * 0.1, h * 0.08), Vector2(w * 0.8, h - strip - h * 0.14))
 	var side: float = minf(area.size.x, area.size.y)
 	var centre: Vector2 = area.get_center()
+	draw_circle(centre, side * 0.48, Palette.light(Palette.PEACH))
 	_draw_picture(asset_id, centre, side)
 
 	if show_word:
 		var font: Font = ThemeDB.fallback_font
-		var font_size: int = word_font_size if word_font_size > 0 else int(h * 0.13)
+		var font_size: int = word_font_size if word_font_size > 0 else maxi(22, int(h * 0.12))
 		var text: String = word_for(asset_id)
 		var text_size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size)
 		var baseline: Vector2 = Vector2((w - text_size.x) * 0.5, h - strip * 0.5 + text_size.y * 0.32)

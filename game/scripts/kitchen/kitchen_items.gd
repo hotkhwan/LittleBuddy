@@ -42,10 +42,12 @@ const ITEMS: Dictionary = {
 	"bottle": {
 		"word": "bottle", "thai": "ขวดนม", "color": Palette.CREAM,
 		"shape": "cup", "size": 0.11, "held": true,
+		"model": "babyBottle", "modelSize": 0.25,
 	},
 	"bottleOfMilk": {
 		"word": "milk", "thai": "นม", "color": Color(1.0, 0.988, 0.949),
 		"shape": "cup", "size": 0.11, "held": true,
+		"model": "babyBottle", "modelSize": 0.25,
 	},
 	"banana": {
 		"word": "banana", "thai": "กล้วย", "color": Color(0.98, 0.85, 0.42),

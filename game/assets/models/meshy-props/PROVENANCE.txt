@@ -35,3 +35,13 @@ opening, and given a hingeBack origin. Scale 0.7028 (body 0.700 m wide).
 Body 1,820 tris, lid 162 tris, shared 512x512 JPEG. Zero extra credits.
 Master: game/assets_source/meshy/props/toyBox_v01.glb (gitignored); the free
 preview GLB toyBoxPreview_v01.glb sits beside it (identical geometry, untextured).
+
+babyBottle.glb — V3 bottle replacement, 2026-09-21, Smart Topology meshy-t2.
+Preview 01a0c4b7-a4d7-7122-ae7d-df89a4193e09 (5 credits), refine
+01a0c4b8-729d-70c9-84b2-808fb844173c (10 credits), text prompt only.
+Pastel frosted-blue bottle, lavender collar, ivory teat. Accepted after preview
+and texture review. Runtime 2552 triangles, one material, 512x512 JPEG,
+139444 bytes. Installed at 0.25m height, base Y=0, footprint centered on X/Z.
+Source: game/assets_source/meshy/props/babyBottle_v01.glb (gitignored).
+Shared by empty bottle and milk variants; runtime fill treatment preserves
+the existing gameplay distinction without a second paid generation.

@@ -16,6 +16,7 @@ extends Control
 ## the HUD pushes each frame.
 
 const Palette := preload("res://scripts/ui/palette.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
 const IconGlyphScript := preload("res://scripts/progression/icon_glyph.gd")
 const GlyphsScript := preload("res://scripts/tutor/ui/tutor_glyphs.gd")
 
@@ -75,10 +76,11 @@ func build() -> void:
 	_caption = Label.new()
 	_caption.name = "Caption"
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_caption.add_theme_font_size_override("font_size", 22)
+	Typography.apply(_caption, Typography.HELPER)
 	_caption.add_theme_color_override("font_color", Palette.INK)
 	_caption.add_theme_color_override("font_outline_color", Palette.CREAM)
-	_caption.add_theme_constant_override("outline_size", 8)
+	_caption.add_theme_constant_override("outline_size", 0)
+	_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_caption)
 	_layout()
@@ -105,16 +107,17 @@ func _layout() -> void:
 	_mic_glyph.size = glyph_rect.size
 	_speaker_glyph.position = centre - Vector2(d * 0.24, d * 0.24)
 	_speaker_glyph.size = Vector2(d * 0.48, d * 0.48)
-	_caption.position = Vector2(0.0, size.y - 34.0)
-	_caption.size = Vector2(size.x, 34.0)
+	_caption.position = Vector2(100.0, 10.0)
+	_caption.size = Vector2(size.x - 108.0, size.y - 20.0)
+	_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
 func _disc_diameter() -> float:
-	return minf(size.x, size.y - 34.0) * 0.72
+	return minf(64.0, size.y * 0.62)
 
 
 func _disc_centre() -> Vector2:
-	return Vector2(size.x * 0.5, (size.y - 34.0) * 0.5)
+	return Vector2(49.0, size.y * 0.5)
 
 
 func _apply() -> void:
@@ -134,16 +137,20 @@ func _draw() -> void:
 	var c: Vector2 = _disc_centre()
 	var radius: float = d * 0.5
 	var disc: Color = DISC_COLOURS.get(state, Palette.STAR_GHOST)
+	var status_panel := StyleBoxFlat.new()
+	status_panel.bg_color = disc.lerp(Palette.CREAM, 0.45)
+	status_panel.set_corner_radius_all(26)
+	draw_style_box(status_panel, Rect2(Vector2.ZERO, size))
 	# The level ring: a ghost track and, while listening, an arc that grows
 	# with the level from the top clockwise.
 	var track: Color = Palette.CREAM
 	track.a = 0.9
-	draw_arc(c, radius + 16.0, 0.0, TAU, 64, track, 11.0)
+	draw_arc(c, radius + 8.0, 0.0, TAU, 64, track, 5.0)
 	if state == STATE_LISTENING or state == STATE_HEARING:
 		# Ink-leaning mint, because the ring sits over a mint rug.
 		var arc: Color = Palette.MINT.lerp(Palette.INK, 0.45)
 		var sweep: float = TAU * clampf(0.08 + level * 0.92, 0.0, 1.0)
-		draw_arc(c, radius + 16.0, -PI * 0.5, -PI * 0.5 + sweep, 64, arc, 11.0)
+		draw_arc(c, radius + 8.0, -PI * 0.5, -PI * 0.5 + sweep, 64, arc, 5.0)
 	# The disc, with a cream rim and the house's soft shine.
 	draw_circle(c, radius + 3.0, Palette.CREAM)
 	draw_circle(c, radius, disc)

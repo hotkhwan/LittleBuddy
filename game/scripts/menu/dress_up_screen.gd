@@ -9,9 +9,9 @@ extends Node3D
 ## must never do (contract §6: no dead ends).
 ##
 ## This is what it opens now: the real Aliz, through her production wrapper,
-## on a pastel stage; four big colour swatches down the right that recolour
-## her OUTFIT ACCENTS at once; a friendly "More outfits soon!" line; and one
-## big Back button that returns to the title screen.
+## on a pastel stage; four named bow cards in a colour studio that recolour
+## her OUTFIT ACCENTS at once; a friendly "More outfits soon!" line; and a
+## Back button that returns to the title screen.
 ##
 ## ## What the swatches recolour, and why not the dress itself
 ##
@@ -35,6 +35,7 @@ extends Node3D
 ## One `DirectionalLight3D`, shadows off, no post-processing, primitives.
 
 const Palette := preload("res://scripts/ui/palette.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
 
 const MENU_SCENE_PATH: String = "res://scenes/main/main.tscn"
 const BUDDY_AVATAR_SCENE_PATH: String = "res://scenes/characters/buddy/PinkGirlBuddy.tscn"
@@ -52,8 +53,6 @@ const SWATCHES: Dictionary = {
 	"sunny": Palette.STAR_EARNED,
 }
 const DEFAULT_SWATCH: String = "pink"
-const SWATCH_SIDE: float = 150.0
-const SWATCH_CORNER: int = 40
 const TINT_SETTING_KEY: String = "dressUpTint"
 
 const PRESS_SCALE: Vector2 = Vector2(0.92, 0.92)
@@ -68,7 +67,7 @@ const TUTU_OFFSET := Vector3(0.0, -0.34, 0.0)
 const SHOE_BOW_HEIGHT: float = 0.05
 
 @onready var _back_button: Button = %BackButton
-@onready var _swatch_row: BoxContainer = %SwatchRow
+@onready var _swatch_row: GridContainer = %SwatchRow
 @onready var _hint_label: Label = %HintLabel
 
 var _aliz: Node3D = null
@@ -81,6 +80,26 @@ var _swatch_buttons: Dictionary = {}
 var _current_swatch: String = ""
 var _leaving: bool = false
 var _built: bool = false
+var _wardrobe_panel: Panel = null
+var _selection_label: Label = null
+
+
+## Soft bow artwork describes the real accessories, without promising outfits
+## that this wardrobe cannot yet equip.
+class BowPreview extends Control:
+	var colour: Color = Color.WHITE
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var r: float = minf(size.x * 0.2, size.y * 0.32)
+		draw_circle(c + Vector2(-r * 0.8, 5), r, colour.darkened(0.14), true, -1, true)
+		draw_circle(c + Vector2(r * 0.8, 5), r, colour.darkened(0.14), true, -1, true)
+		draw_circle(c + Vector2(-r * 0.8, 0), r, colour, true, -1, true)
+		draw_circle(c + Vector2(r * 0.8, 0), r, colour, true, -1, true)
+		draw_circle(c + Vector2(-r * 1.05, -r * 0.35), r * 0.35, colour.lightened(0.35), true, -1, true)
+		draw_circle(c + Vector2(r * 0.65, -r * 0.35), r * 0.35, colour.lightened(0.35), true, -1, true)
+		draw_circle(c, r * 0.43, colour.darkened(0.10), true, -1, true)
+		draw_circle(c + Vector2(0, -3), r * 0.34, colour.lightened(0.12), true, -1, true)
 
 
 func _ready() -> void:
@@ -92,9 +111,12 @@ func _ready() -> void:
 	_back_button.pressed.connect(_on_back_pressed)
 	_back_button.button_down.connect(_on_button_down.bind(_back_button))
 	_back_button.button_up.connect(_on_button_up.bind(_back_button))
+	_build_wardrobe_panel()
 	_build_swatches()
 	# Restored, not re-saved: opening the screen writes nothing.
 	apply_swatch(_remembered_swatch(), false)
+	get_node("UI/SafeArea").resized.connect(_layout_wardrobe)
+	_layout_wardrobe()
 
 
 func _process(_delta: float) -> void:
@@ -134,6 +156,8 @@ func apply_swatch(swatch_name: String, remember: bool = true) -> bool:
 		_accent_material.albedo_color = colour
 	for name: String in _swatch_buttons.keys():
 		_style_swatch(_swatch_buttons[name] as Button, name, name == swatch_name)
+	if _selection_label != null:
+		_selection_label.text = "%s looks lovely!" % swatch_name.capitalize()
 	if remember:
 		_remember_swatch(swatch_name)
 	return true
@@ -159,32 +183,125 @@ func _build_swatches() -> void:
 		var button := Button.new()
 		button.name = "Swatch_" + name
 		button.focus_mode = Control.FOCUS_NONE
-		button.custom_minimum_size = Vector2(SWATCH_SIDE, SWATCH_SIDE)
-		button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		_style_swatch(button, name, false)
+		button.custom_minimum_size = Vector2(200, 220)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_on_swatch_pressed.bind(name))
 		button.button_down.connect(_on_button_down.bind(button))
 		button.button_up.connect(_on_button_up.bind(button))
 		_swatch_row.add_child(button)
+		var bow := BowPreview.new()
+		bow.name = "BowPreview"
+		bow.colour = SWATCHES[name]
+		bow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		bow.offset_left = 24
+		bow.offset_right = -24
+		bow.offset_top = 16
+		bow.offset_bottom = -60
+		button.add_child(bow)
+		var caption := Label.new()
+		caption.name = "Caption"
+		caption.text = name.capitalize()
+		caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+		caption.offset_top = -60
+		caption.offset_bottom = -18
+		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		caption.add_theme_font_size_override("font_size", Typography.BUTTON)
+		caption.add_theme_color_override("font_color", Palette.INK)
+		button.add_child(caption)
+		var check := TextureRect.new()
+		check.name = "Selected"
+		check.texture = preload("res://assets/ui/icons/done.svg")
+		check.modulate = Palette.INK
+		check.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		check.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		check.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		check.position = Vector2(-44, 12)
+		check.size = Vector2(30, 30)
+		button.add_child(check)
+		_style_swatch(button, name, false)
 		_swatch_buttons[name] = button
 
 
-## A round pastel tile with a soft shadow; the chosen one wears a cream ring.
+## Each named card has a colour-matched frame; selection adds fill and a check.
 func _style_swatch(button: Button, name: String, chosen: bool) -> void:
 	if button == null:
 		return
 	var colour: Color = SWATCHES[name]
 	for state: String in ["normal", "hover", "pressed", "disabled", "focus"]:
 		var style := StyleBoxFlat.new()
-		style.bg_color = Palette.deep(colour) if state == "pressed" else colour
-		style.set_corner_radius_all(SWATCH_CORNER)
-		style.border_color = Palette.CREAM if chosen else Color(Palette.INK, 0.10)
-		style.set_border_width_all(10 if chosen else 4)
-		style.shadow_color = Color(Palette.INK, 0.18)
-		style.shadow_size = 14
-		style.shadow_offset = Vector2(0.0, 8.0)
+		style.bg_color = Palette.light(colour) if chosen or state == "pressed" else Palette.CREAM
+		style.set_corner_radius_all(28)
+		style.border_color = Palette.deep(colour) if chosen else colour
+		style.set_border_width_all(5 if chosen else 2)
+		style.shadow_color = Color(Palette.INK, 0.10)
+		style.shadow_size = 8
+		style.shadow_offset = Vector2(0.0, 3.0 if state == "pressed" else 6.0)
 		button.add_theme_stylebox_override(state, style)
+	var selected: Control = button.get_node_or_null("Selected") as Control
+	if selected != null:
+		selected.visible = chosen
+
+
+func _build_wardrobe_panel() -> void:
+	var safe: Control = get_node("UI/SafeArea")
+	_wardrobe_panel = Panel.new()
+	_wardrobe_panel.name = "WardrobePanel"
+	_wardrobe_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Palette.light(Palette.LAVENDER)
+	style.set_corner_radius_all(36)
+	style.border_color = Palette.CREAM
+	style.set_border_width_all(4)
+	style.shadow_color = Color(Palette.INK, 0.12)
+	style.shadow_size = 16
+	style.shadow_offset = Vector2(0, 10)
+	_wardrobe_panel.add_theme_stylebox_override("panel", style)
+	safe.add_child(_wardrobe_panel)
+	safe.move_child(_wardrobe_panel, 0)
+	var title := Label.new()
+	title.text = "Colour studio"
+	title.position = Vector2(32, 24)
+	title.add_theme_font_size_override("font_size", Typography.SECTION)
+	title.add_theme_color_override("font_color", Palette.INK)
+	_wardrobe_panel.add_child(title)
+	var helper := Label.new()
+	helper.text = "Bows, frills & little shoes"
+	helper.position = Vector2(32, 74)
+	helper.add_theme_font_size_override("font_size", Typography.HELPER)
+	helper.add_theme_color_override("font_color", Palette.INK_SOFT)
+	_wardrobe_panel.add_child(helper)
+	_selection_label = Label.new()
+	_selection_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_selection_label.add_theme_font_size_override("font_size", Typography.BODY)
+	_selection_label.add_theme_color_override("font_color", Palette.INK)
+	_wardrobe_panel.add_child(_selection_label)
+	get_node("UI/SafeArea/TitlePanel/TitleLabel").add_theme_font_size_override("font_size", Typography.DISPLAY)
+	_hint_label.add_theme_font_size_override("font_size", Typography.HELPER)
+	_hint_label.add_theme_constant_override("outline_size", 0)
+
+
+func _layout_wardrobe() -> void:
+	if _wardrobe_panel == null:
+		return
+	var safe: Control = get_node("UI/SafeArea")
+	var panel_width: float = clampf(safe.size.x * 0.36, 490, 600)
+	_wardrobe_panel.position = Vector2(safe.size.x - panel_width - 40, 218)
+	_wardrobe_panel.size = Vector2(panel_width, 670)
+	_swatch_row.position = _wardrobe_panel.position + Vector2(32, 132)
+	_swatch_row.size = Vector2(panel_width - 64, 464)
+	_selection_label.position = Vector2(24, 608)
+	_selection_label.size = Vector2(panel_width - 48, 46)
+	var camera: Camera3D = get_node("Camera3D")
+	var viewport: Viewport = get_viewport()
+	var aspect: float = 4.0 / 3.0
+	if viewport != null:
+		aspect = viewport.get_visible_rect().size.aspect()
+	if viewport is SubViewport:
+		aspect = Vector2((viewport as SubViewport).size).aspect()
+	camera.h_offset = 2.0 * CAMERA_POSITION.distance_to(CAMERA_TARGET) * tan(deg_to_rad(camera.fov * 0.5)) * aspect * 0.18
 
 
 func _on_swatch_pressed(name: String) -> void:
@@ -255,8 +372,8 @@ func _build_stage() -> void:
 	var floor_mesh := PlaneMesh.new()
 	floor_mesh.size = Vector2(40.0, 40.0)
 	_place(stage, "Floor", floor_mesh, Palette.light(Palette.LAVENDER), Vector3.ZERO)
-	_place(stage, "Podium", _disc(1.45, 0.12), Palette.CREAM, Vector3(-0.2, 0.0, 0.0))
-	_place(stage, "PodiumRim", _disc(1.55, 0.06), Palette.PEACH, Vector3(-0.2, -0.03, 0.0))
+	_place(stage, "Podium", _disc(1.15, 0.12), Palette.CREAM, Vector3(-0.2, 0.0, 0.0))
+	_place(stage, "PodiumRim", _disc(1.23, 0.06), Palette.PEACH, Vector3(-0.2, -0.03, 0.0))
 	# A soft backdrop: a big pink wall well behind her, and two pastel curtain
 	# columns either side, so she is framed rather than floating.
 	var wall := BoxMesh.new()
