@@ -1,0 +1,15 @@
+{
+  "name": "@little-days/billing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Family Club billing module for the Little Days Cloudflare Worker: store verification (Apple App Store Server API v2 / Google Play Developer API), notifications (App Store Server Notifications V2 / Google RTDN), idempotent purchase events, entitlement decisions. Zero runtime dependencies; tests run on Node 22 with type stripping.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "license": "UNLICENSED"
+}
