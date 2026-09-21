@@ -123,6 +123,8 @@ func _test_one_material_and_it_obeys_section_7():
 	for child: Node in room.get_node("Geometry").get_children():
 		if not (child is MeshInstance3D):
 			continue
+		if child.has_meta("meshyProp"):
+			continue  # an owner-approved Meshy prop: its own 512 px texture, one draw call (docs/MESHY_PRODUCTION_PLAN.md)
 		if (child as MeshInstance3D).material_override != material:
 			failures.append("%s does not use the shared house material" % child.name)
 	room.free()

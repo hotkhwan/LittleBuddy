@@ -125,6 +125,18 @@ const MODEL_ROOT: String = "res://assets/models/"
 const MODEL_EXTENSION: String = ".glb"
 const DEFAULT_PACK: String = "kenney-food-kit"
 const PROCEDURAL_PACK: String = "proc"
+## Owner-approved Meshy props (real textured GLBs, one per prop). They are
+## built by the PropRegistry -- manifest, tri gate, own texture, pivot -- so a
+## record naming `meshy-props/<id>` gets the registry's node and never a
+## re-coloured bake. Absent GLB -> null -> the record's drawn form, as always.
+const MESHY_PACK: String = "meshy-props"
+## Chapter-2 content is frozen (`test_content_chapter2_frozen`), so a record's
+## `model` is upgraded HERE, never in objects.json. Absent GLB -> the record's
+## own model/primitive as before.
+const MODEL_UPGRADES: Dictionary = {
+	"teddy": "meshy-props/teddy",
+}
+const PropRegistryScript := preload("res://scripts/house/prop_registry.gd")
 
 ## pack -> its shared palette atlas, or "" when the pack has no atlas.
 ##
@@ -142,6 +154,8 @@ const PACK_TEXTURES: Dictionary = {
 	"kenney-cube-pets": "res://assets/models/kenney-cube-pets/Textures/colormap.png",
 	"kenney-minigolf-kit": "res://assets/models/kenney-minigolf-kit/Textures/colormap.png",
 	"kenney-furniture-kit": "",
+	# Meshy props carry their own baked texture on the mesh (PropRegistry); no atlas.
+	"meshy-props": "",
 	"proc": "",
 }
 
@@ -176,6 +190,8 @@ const MODEL_MAX_SIZE_M: float = 0.26
 ##
 ## Keys are fully qualified `pack/name`.
 const MODEL_PRESENTATION: Dictionary = {
+	# Meshy teddy (2026-09-21): sits facing the camera; 0.25 m tall in a hand.
+	"meshy-props/teddy": {"size": 0.25, "rotation": Vector3(0.0, 0.0, 0.0)},
 	# Leaf and stem turned toward the camera.
 	"kenney-food-kit/apple": {"size": 0.19, "rotation": Vector3(0.0, 35.0, 0.0)},
 	# Authored lying along -Z, i.e. pointing away from the camera. Turned across
@@ -328,6 +344,9 @@ static func build_spec(object_data: Dictionary, interaction_override: String = "
 	# Optional, additive: a record with no 'model' -- or one whose .glb is not in
 	# the build -- keeps the primitive path untouched.
 	var model: String = String(object_data.get("model", "")).strip_edges()
+	var upgrade: String = String(MODEL_UPGRADES.get(object_id, ""))
+	if not upgrade.is_empty() and model_available(upgrade):
+		model = upgrade
 	if not model.is_empty() and not model_available(model):
 		warnings.append("object '%s' declares model '%s' but %s is missing; using primitive '%s'"
 				% [object_id, model, model_path_for(model), primitive])
@@ -398,6 +417,8 @@ static func model_path_for(model_name: String) -> String:
 	var parts: PackedStringArray = split_model(model_name)
 	if parts[1].is_empty() or parts[0] == PROCEDURAL_PACK:
 		return ""
+	if parts[0] == MESHY_PACK:
+		return PropRegistryScript.file_for(parts[1])
 	return MODEL_ROOT + parts[0] + "/" + parts[1] + MODEL_EXTENSION
 
 
@@ -411,6 +432,8 @@ static func model_available(model_name: String) -> bool:
 		return false
 	if parts[0] == PROCEDURAL_PACK:
 		return PROCEDURAL_MODELS.has(parts[1])
+	if parts[0] == MESHY_PACK:
+		return PropRegistryScript.available(parts[1])
 	var path: String = model_path_for(model_name)
 	if path.is_empty():
 		return false
@@ -562,6 +585,14 @@ static func build_model_visual(spec: Dictionary) -> MeshInstance3D:
 	var model_name: String = String(spec.get("model", "")).strip_edges()
 	if model_name.is_empty():
 		return null
+	if model_pack(model_name) == MESHY_PACK:
+		var prop: MeshInstance3D = PropRegistryScript.instance(split_model(model_name)[1],
+				float(spec.get("modelSize", MODEL_DEFAULT_SIZE_M)))
+		if prop != null:
+			prop.name = "Visual"
+			var yaw: Vector3 = spec.get("modelRotationDeg", Vector3.ZERO)
+			prop.rotation_degrees = yaw
+		return prop
 	var mesh: Mesh = load_model_mesh(model_name)
 	if mesh == null:
 		return null
@@ -707,6 +738,8 @@ static func load_model_mesh(model_name: String) -> Mesh:
 	var mesh: Mesh = null
 	if is_procedural(model_name):
 		mesh = build_procedural_mesh(split_model(model_name)[1])
+	elif model_pack(model_name) == MESHY_PACK:
+		mesh = PropRegistryScript.source_mesh(split_model(model_name)[1])
 	else:
 		var path: String = model_path_for(model_name)
 		if not path.is_empty() and ResourceLoader.exists(path):

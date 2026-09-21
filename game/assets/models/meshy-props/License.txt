@@ -1,0 +1,9 @@
+Little Days — Meshy-generated props (meshy-props pack)
+
+These GLB files were generated for Little Days with the project owner's own
+Meshy account (text-to-3D, 2026-09-20 and 2026-09-21) and edited locally
+(split, trimmed, re-pivoted). Per Meshy's terms for paid plans, generated
+assets are owned by the account holder and may be used commercially.
+Task ids, credits and derivation commands: manifest.json, PROVENANCE.txt and
+docs/MESHY_CREDIT_LEDGER.md. Textures: 512x512 JPEG base colour only.
+Not third-party art; not CC0.

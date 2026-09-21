@@ -501,9 +501,12 @@ func _test_mesh_budget(spawner: GDScript):
 		var triangles: int = _triangles(mesh)
 		if triangles <= 0:
 			failures.append("model '%s' baked to an empty mesh" % model_name)
-		if triangles > MAX_TRIANGLES_PER_MODEL:
+		# Owner-approved Meshy props are gated by their manifest (<= 3,000) and
+		# arrive as one textured surface; the 600 cap is for the flat-colour packs.
+		var budget: int = 3000 if model_name.begins_with("meshy-props/") else MAX_TRIANGLES_PER_MODEL
+		if triangles > budget:
 			failures.append("model '%s' is %d tris, over the %d budget"
-					% [model_name, triangles, MAX_TRIANGLES_PER_MODEL])
+					% [model_name, triangles, budget])
 		if mesh.get_aabb().get_volume() <= 0.0:
 			failures.append("model '%s' has a degenerate bounding box" % model_name)
 	return failures

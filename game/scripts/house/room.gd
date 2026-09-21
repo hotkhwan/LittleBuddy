@@ -37,6 +37,7 @@ const HouseLayout := preload("res://scripts/house/house_layout.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 const Kit := preload("res://scripts/house/prop_kit.gd")
 const RoomProps := preload("res://scripts/house/room_props.gd")
+const PropRegistry := preload("res://scripts/house/prop_registry.gd")
 const ActivityTargetScript := preload("res://scripts/navigation/activity_target.gd")
 const InteractionPointScript := preload("res://scripts/navigation/interaction_point.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
@@ -1686,9 +1687,21 @@ func _build_storages() -> void:
 			Kit.box(body_tool, Kit.at(Vector3(0.0, 0.0, float(sz) * (size.z - wall) * 0.5)),
 					Vector3(size.x - wall * 2.0, size.y, wall), color)
 		_storage_front(body_tool, size, color)
-		var body: MeshInstance3D = _add_mesh("Storage_%s" % storage_id, Kit.commit(body_tool))
-		if body != null:
-			body.position = centre
+		# Meshy toy box (2026-09-21): the real GLB body when the registry has
+		# it, sized to the layout width and stood on the layout base so the
+		# collider, target and lid hinge below stay exactly where they were.
+		var prop_body: MeshInstance3D = PropRegistry.instance("%sBody" % storage_id, size.x)
+		var body: MeshInstance3D = null
+		if prop_body != null:
+			prop_body.name = "Storage_%s" % storage_id
+			prop_body.set_meta("meshyProp", true)  # own baked texture: one draw call, not the shared material
+			_geometry.add_child(prop_body)
+			prop_body.position = centre - Vector3(0.0, size.y * 0.5, 0.0)
+			body = prop_body
+		else:
+			body = _add_mesh("Storage_%s" % storage_id, Kit.commit(body_tool))
+			if body != null:
+				body.position = centre
 
 		# Lid, hinged along the BACK edge so it opens away from the camera and
 		# never covers the opening the child is aiming at.
@@ -1697,18 +1710,35 @@ func _build_storages() -> void:
 			var hinge := Node3D.new()
 			hinge.name = "StorageLid_%s" % storage_id
 			hinge.position = centre + Vector3(0.0, size.y * 0.5, -size.z * 0.5)
+			if prop_body != null:
+				# The generated body is shorter than the layout box: hang the lid
+				# on the body's real top-back line (manifest `attach.hingeOffsetMetres`,
+				# measured at the manifest size, scaled with the body).
+				var attach: Dictionary = PropRegistry.entry("%sBody" % storage_id).get("attach", {})
+				var offset: Variant = attach.get("hingeOffsetMetres", null)
+				var authored: float = float(PropRegistry.entry("%sBody" % storage_id).get("longestAxisMetres", size.x))
+				if offset is Array and (offset as Array).size() == 3 and authored > 0.0:
+					var k: float = size.x / authored
+					hinge.position = prop_body.position + Vector3(float(offset[0]), float(offset[1]), float(offset[2])) * k
 			_geometry.add_child(hinge)
 
-			var lid_tool: SurfaceTool = Kit.begin()
-			Kit.box(lid_tool, Kit.at(Vector3(0.0, LID_THICKNESS * 0.5, size.z * 0.5)),
-					Vector3(size.x, LID_THICKNESS, size.z), Palette.light(color))
-			Kit.box(lid_tool, Kit.at(Vector3(0.0, LID_THICKNESS + 0.018, size.z * 0.5)),
-					Vector3(size.x * 0.30, 0.036, 0.09), Palette.deep(color))
-			var lid := MeshInstance3D.new()
-			lid.name = "Lid"
-			lid.mesh = Kit.commit(lid_tool)
-			lid.material_override = Kit.material()
-			hinge.add_child(lid)
+			# The Meshy lid hangs on the SAME hinge (manifest pivot `hingeBack`:
+			# back edge at Z=0, base at Y=0), so the swing maths is untouched.
+			var prop_lid: MeshInstance3D = PropRegistry.instance("%sLid" % storage_id)
+			if prop_lid != null:
+				prop_lid.name = "Lid"
+				hinge.add_child(prop_lid)
+			else:
+				var lid_tool: SurfaceTool = Kit.begin()
+				Kit.box(lid_tool, Kit.at(Vector3(0.0, LID_THICKNESS * 0.5, size.z * 0.5)),
+						Vector3(size.x, LID_THICKNESS, size.z), Palette.light(color))
+				Kit.box(lid_tool, Kit.at(Vector3(0.0, LID_THICKNESS + 0.018, size.z * 0.5)),
+						Vector3(size.x * 0.30, 0.036, 0.09), Palette.deep(color))
+				var lid := MeshInstance3D.new()
+				lid.name = "Lid"
+				lid.mesh = Kit.commit(lid_tool)
+				lid.material_override = Kit.material()
+				hinge.add_child(lid)
 			_storage_lids[storage_id] = hinge
 
 		var model: RefCounted = StorageModel.from_dict({
