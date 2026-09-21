@@ -173,6 +173,11 @@ var _built: bool = false
 var _leaving: bool = false
 var _last_departure: String = ""
 var _outcome_was_correct: bool = false
+## DEV: photographed from an unfocused desktop window, the scene must not
+## treat focus loss as a mobile background (the harnesses set this).
+var ignore_desktop_focus: bool = false
+## Correct answers since the lesson began: the break card's stars (QA C3).
+var _correct_this_session: int = 0
 var _using_real_engine: bool = false
 var _using_real_session: bool = false
 var _turn_log: Array = []
@@ -200,9 +205,20 @@ func _process(delta: float) -> void:
 
 func _notification(what: int) -> void:
 	match what:
-		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT:
+		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_IN:
+			# Desktop focus is not a mobile background. With simulated child
+			# audio (dev harnesses, no real mic) an unfocused window must not
+			# end the lesson; the background rule itself is still exercised
+			# through go_background() and the PAUSED/RESUMED pair.
+			if _sim_enabled or ignore_desktop_focus:
+				return
+			if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+				go_background()
+			else:
+				return_from_background()
+		NOTIFICATION_APPLICATION_PAUSED:
 			go_background()
-		NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN:
+		NOTIFICATION_APPLICATION_RESUMED:
 			return_from_background()
 
 
@@ -401,6 +417,7 @@ func begin_lesson(lesson_id: String = DEFAULT_LESSON_ID) -> void:
 	_lesson_complete = false
 	_closing = false
 	_choosing = true
+	_correct_this_session = 0
 	_welcomed_twice = false
 	_turn_log.clear()
 	_current_step = {}
@@ -522,6 +539,8 @@ func _speak_turn(turn: Dictionary) -> void:
 	_outcome_was_correct = phase == ScriptedProviderScript.PHASE_ANSWER \
 			and String(turn.get("emotion", "")) == "happy" \
 			and String(turn.get("lessonAction", "")) in ["next_question", "complete"]
+	if _outcome_was_correct:
+		_correct_this_session += 1
 	var visual: Dictionary = turn.get("visual", {})
 	if String(visual.get("type", "none")) != "none":
 		_show_card(String(visual.get("assetId", "")))
@@ -598,6 +617,10 @@ func _after_turn() -> void:
 				_face("happy")
 				_set_state(STATE_CELEBRATE)
 				_timer = CELEBRATE_SECONDS
+				# Nothing heard in this beat is judged, so do not listen (QA C7):
+				# the session stays gated until the next question opens the mic.
+				if _session != null and _session.has_method("set_aliz_speaking"):
+					_session.call("set_aliz_speaking", true)
 				return
 			_advance_step()
 		_:
@@ -669,7 +692,7 @@ func _show_break(time_left: bool) -> void:
 		_quota.call("end_session", "lesson_complete" if time_left else "quota")
 	_set_state(STATE_BREAK)
 	_hud.visible = false
-	_break_card.call("open", time_left)
+	_break_card.call("open", time_left, mini(3, _correct_this_session))
 
 
 func _on_quota_expired() -> void:
@@ -799,16 +822,18 @@ func _on_recognition_failed(reason: String) -> void:
 	_last_failure_reason = reason
 
 
-## The touch fallback for a question: the right card and two others.
+## The touch fallback: on the choice, one card per subject that has a
+## flashcard (Everyday Things has none yet); on a question, the right card
+## and two others.
 func _offer_answer_cards() -> void:
 	if _choosing:
 		var ids: Array = []
 		for subject in _subjects:
 			var card: String = String(SUBJECT_CARDS.get(String((subject as Dictionary).get("subjectId", "")), ""))
-			if not card.is_empty() and ids.size() < 3:
+			if not card.is_empty() and ids.size() < HudScript.MAX_ANSWER_CARDS:
 				ids.append(card)
 		if ids.is_empty():
-			ids = ["apple_red", "number_1", "cat"]
+			ids = ["apple_red", "number_1", "color_blue", "cat"]
 		_hud.call("show_answer_cards", ids)
 		return
 	if String(_current_step.get("kind", "")) != "ask":
@@ -1109,6 +1134,8 @@ func _update_indicator() -> void:
 			state = IndicatorScript.STATE_MUTED
 		elif _state == STATE_SPEAKING:
 			state = IndicatorScript.STATE_ALIZ
+		elif _state == STATE_CELEBRATE:
+			state = IndicatorScript.STATE_OFF
 		elif _state == STATE_LISTENING and (_hands_free_live() or _sim_enabled or _push_to_talk_live):
 			state = IndicatorScript.STATE_HEARING if _child_talking else IndicatorScript.STATE_LISTENING
 		elif _hands_free_live():

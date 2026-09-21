@@ -391,7 +391,7 @@ offset_bottom = 106.0
 grow_horizontal = 2
 mouse_filter = 2
 script = ExtResource("3")
-glyph = 4
+glyph = 7
 tint = Color(0.349, 0.259, 0.169, 1)
 
 [node name="ComingSoonLabel" type="Label" parent="UI/SafeArea"]

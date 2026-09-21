@@ -801,8 +801,11 @@ func _test_delete_history_clears_only_tutor_keys():
 	var ledger_after: Dictionary = save.settings.get("tutorQuota", {})
 	if float(ledger_after.get("usedSeconds", 1.0)) != 0.0:
 		failures.append("tutorQuota usage was not cleared: %s" % str(ledger_after))
-	if String(ledger_after.get("dayUtc", "")) != "2026-09-20":
-		failures.append("the delete lost the ledger's day")
+	# The model's ledger runs on the real clock: it keeps the stored day, or has
+	# legitimately rolled over to today's UTC day when the fixture day is past.
+	var today_utc: String = Time.get_date_string_from_system(true)
+	if String(ledger_after.get("dayUtc", "")) not in ["2026-09-20", today_utc]:
+		failures.append("the delete lost the ledger's day (got %s)" % str(ledger_after.get("dayUtc")))
 	for key: String in ["musicVolume", "helperLanguage", "aiTutorEnabled", "entitlements"]:
 		if save.settings.get(key) != before.get(key):
 			failures.append("delete_learning_history() changed %s" % key)

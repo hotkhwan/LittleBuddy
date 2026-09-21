@@ -94,8 +94,13 @@ const MUTE_BOTTOM: float = -60.0
 
 ## The answer cards sit at the RIGHT, under the board and above the pets:
 ## centred they would sit on Aliz's chin at 16:9 and on the Tap-to-talk button.
-const ANSWER_CARD_SIZE: Vector2 = Vector2(112.0, 118.0)
-const ANSWER_CARD_GAP: float = 18.0
+## 100 px cards: four of them (the subject choice, QA C4) end 60 px clear of
+## Aliz's hair at 1334 wide; secondary controls, the primary is Tap-to-talk.
+const ANSWER_CARD_SIZE: Vector2 = Vector2(100.0, 106.0)
+const ANSWER_CARD_GAP: float = 14.0
+## Three answers on a question, four subjects on the choice; the row grows
+## leftwards from its bottom-right corner.
+const MAX_ANSWER_CARDS: int = 4
 const ANSWER_CARDS_RIGHT: float = -60.0
 const ANSWER_CARDS_BOTTOM: float = -290.0
 
@@ -179,7 +184,7 @@ var _answer_ids: Array = []
 static func layout_rects(viewport_size: Vector2) -> Dictionary:
 	var w: float = viewport_size.x
 	var h: float = viewport_size.y
-	var answers_width: float = ANSWER_CARD_SIZE.x * 3.0 + ANSWER_CARD_GAP * 2.0
+	var answers_width: float = ANSWER_CARD_SIZE.x * MAX_ANSWER_CARDS + ANSWER_CARD_GAP * (MAX_ANSWER_CARDS - 1)
 	return {
 		"home": Rect2(w + HOME_RIGHT - HOME_SIZE, HOME_TOP, HOME_SIZE, HOME_SIZE),
 		"end": Rect2(END_LEFT, END_TOP, END_WIDTH, END_HEIGHT),
@@ -363,8 +368,10 @@ func build() -> void:
 	_answer_row.name = "AnswerCards"
 	_answer_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_answer_row.add_theme_constant_override("separation", int(ANSWER_CARD_GAP))
-	var answers_width: float = ANSWER_CARD_SIZE.x * 3.0 + ANSWER_CARD_GAP * 2.0
+	var answers_width: float = ANSWER_CARD_SIZE.x * MAX_ANSWER_CARDS + ANSWER_CARD_GAP * (MAX_ANSWER_CARDS - 1)
 	_place(_answer_row, Control.PRESET_BOTTOM_RIGHT, ANSWER_CARDS_RIGHT - answers_width, ANSWER_CARDS_BOTTOM - ANSWER_CARD_SIZE.y, ANSWER_CARDS_RIGHT, ANSWER_CARDS_BOTTOM)
+	_answer_row.alignment = BoxContainer.ALIGNMENT_END
+	_answer_row.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_answer_row.visible = false
 	_safe.add_child(_answer_row)
 
@@ -506,8 +513,8 @@ func show_answer_cards(asset_ids: Array) -> void:
 	for child: Node in _answer_row.get_children():
 		_answer_row.remove_child(child)
 		child.queue_free()
-	_answer_ids = asset_ids.duplicate()
-	for asset_id in asset_ids:
+	_answer_ids = asset_ids.slice(0, MAX_ANSWER_CARDS)
+	for asset_id in _answer_ids:
 		var id: String = String(asset_id)
 		var button: Button = Button.new()
 		button.name = "Answer_%s" % id

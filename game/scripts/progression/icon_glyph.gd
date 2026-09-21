@@ -38,6 +38,9 @@ enum Glyph {
 	## spine still knows a chest is where the things they collected live.
 	STICKERS,
 	SETTINGS,
+	## Learn with Aliz: an open book. The title screen has no microphone open,
+	## so it does not show one (QA C8).
+	BOOK,
 }
 
 const ICON_PATHS: Dictionary = {
@@ -48,6 +51,7 @@ const ICON_PATHS: Dictionary = {
 	Glyph.MIC: "res://assets/ui/icons/mic.svg",
 	Glyph.STICKERS: "res://assets/ui/icons/stickers.svg",
 	Glyph.SETTINGS: "res://assets/ui/icons/settings.svg",
+	Glyph.BOOK: "res://assets/ui/icons/book.svg",
 }
 
 @export var glyph: Glyph = Glyph.STAR:

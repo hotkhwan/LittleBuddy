@@ -91,9 +91,19 @@ Feed Bunny → Mission Complete → **Snack Time**.
 | 18 | Touch fallback | Parent Corner (Grown-ups) → Voice off. Every task still finishable by touch | ☐ |
 | 19 | Save, soft | Swipe the app away, relaunch. Stars and progress return | ☐ |
 | 20 | Save, cold | Reboot the iPad, relaunch. Same | ☐ |
+| 21 | **Learn with Aliz** | Menu top-left book card → the classroom (Aliz at a round table, cards, board, cat and dog). She says hello and asks what to learn; say "animals" (or tap the cat card). No mic prompt anywhere before this screen | ☐ |
+| 22 | Hands-free | Aliz asks "What is this?" with the cat on the board. Say "cat" without touching anything: "I hear you!", then Great! and the next question. A cough or "um" must not be judged; a 3 s silence makes her ask again | ☐ |
+| 23 | Barge-in | While Aliz is still talking, say "Wait! I want the dog!". She stops mid-sentence within a beat, the board shows the dog and she asks about the dog. If she talks over you, write it down | ☐ |
+| 24 | Wrong answer | Say "dog" to the cat. A kind "Try again", a hint, then she says it together with you. No red, no score | ☐ |
+| 25 | Echo | With the speaker loud, Aliz's own voice must never count as your answer or interrupt her. If she interrupts herself, that is a hard FAIL | ☐ |
+| 26 | Background | Press the Home button mid-lesson, come back. The lesson resumes on the same question and the mic indicator is off until she asks again | ☐ |
+| 27 | Mic denied | Settings → Little Days → Microphone off → relaunch → Learn with Aliz. A Tap-to-talk button and answer cards appear; the whole lesson is finishable by tap; nothing says "error" | ☐ |
+| 28 | Five minutes | After about five minutes of lessons in one day: "Great job today!" card at the end of a question, never mid-sentence. Continue Playing returns to Free Play; Home returns to the menu. Nothing is locked, nothing is sold | ☐ |
+| 29 | Grown-ups → Aliz | Hands-free off makes the classroom tap-to-talk; Delete learning history clears Aliz's progress and today's minutes but not the stars; the privacy text says the online tutor is switched off | ☐ |
 
 Stop and write it down if: it crashes, Aliz gets stuck, anything is unreadable,
-the iPad gets hot, a reward is granted twice, or progress is lost.
+the iPad gets hot, a reward is granted twice, progress is lost, or the classroom
+mic is ever on outside a lesson (the indicator at the bottom says so).
 
 ## Speech evidence to send back
 

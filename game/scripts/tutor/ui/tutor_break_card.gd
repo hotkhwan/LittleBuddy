@@ -144,9 +144,14 @@ func build() -> void:
 
 ## Shows the card. `time_left` true offers "Learn again" and softens the
 ## tomorrow line, because the day is not actually over.
-func open(time_left: bool = false) -> void:
+func open(time_left: bool = false, stars_earned: int = 3) -> void:
 	build()
 	_again.visible = time_left
+	# Stars are the ones this session earned. None earned: no empty row, no
+	# grey stars -- the card still says "Great job today!" and means it.
+	_stars.visible = stars_earned > 0
+	for i: int in range(_stars.get_child_count()):
+		_stars.get_child(i).visible = i < stars_earned
 	_line_tomorrow.text = "Want to learn more, or go and play?" if time_left else LINE_TOMORROW
 	visible = true
 
@@ -157,6 +162,16 @@ func close() -> void:
 
 func is_open() -> bool:
 	return visible
+
+
+func stars_shown() -> int:
+	if _stars == null or not _stars.visible:
+		return 0
+	var n: int = 0
+	for child: Node in _stars.get_children():
+		if (child as CanvasItem).visible:
+			n += 1
+	return n
 
 
 func offers_learn_again() -> bool:

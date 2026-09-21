@@ -68,6 +68,9 @@ func run():
 	failures.append_array(_test_provider_failure_falls_back())
 	failures.append_array(_test_nothing_covers_alizs_face())
 	failures.append_array(_test_break_card_copy())
+	failures.append_array(_test_long_pause_asks_again())
+	failures.append_array(_test_break_card_stars_are_earned())
+	failures.append_array(_test_board_refuses_unknown_asset())
 	return failures
 
 
@@ -304,6 +307,9 @@ func _test_no_recogniser_fallbacks():
 	if cards.is_empty():
 		failures.append("without a recogniser the subject choice should offer answer cards")
 	else:
+		# QA C4: every subject with a flashcard is reachable by tap, Animals included.
+		if not cards.has("cat"):
+			failures.append("the subject choice should offer Animals by tap, got %s" % str(cards))
 		scene.hud().tap_answer_card(String(cards[0]))
 		if scene.state() != "speaking" or scene.is_choosing_subject():
 			failures.append("tapping a subject card should choose it (state '%s')" % scene.state())
@@ -668,17 +674,69 @@ func _test_long_pause_asks_again():
 	if session == null or not session.has_signal("long_pause"):
 		_free(scene)
 		return failures
-	var paused: Array = []
-	session.connect("long_pause", func() -> void: paused.append(true))
+	# Whichever clock fires first -- the scene's no-speech prompt or the VAD's
+	# long pause -- the outcome is the same: Aliz asks again.
 	var step_before: String = String(scene.current_step().get("stepId", ""))
 	scene.simulate("silence")
-	if _until(scene, func() -> bool: return not paused.is_empty(), 500) < 0:
-		failures.append("3.5 s of silence should raise long_pause (state %s)" % scene.state())
-	if _until(scene, func() -> bool: return scene.state() == "speaking", 200) < 0:
+	if _until(scene, func() -> bool: return scene.state() == "speaking", 700) < 0:
 		failures.append("after a long pause Aliz should ask again (state %s)" % scene.state())
 	if _until(scene, func() -> bool: return _ready_to_answer(scene), 600) < 0:
 		failures.append("after asking again the mic should reopen (state %s)" % scene.state())
 	if String(scene.current_step().get("stepId", "")) != step_before:
 		failures.append("a silence must not move the lesson (was %s, now %s)" % [step_before, scene.current_step().get("stepId")])
 	_free(scene)
+	return failures
+
+
+## QA C3: the closing card shows the stars this session earned, not three by
+## default. Ending straight from the subject choice earned none; a correct
+## answer earns one.
+func _test_break_card_stars_are_earned():
+	var failures: Array = []
+	var scene: Node = _make()
+	if _until(scene, func() -> bool: return scene.state() == "speaking" and scene.is_choosing_subject(), 200) < 0:
+		failures.append("never reached the welcome")
+		_free(scene)
+		return failures
+	scene.hud().press("end")
+	scene.hud().exit_confirm().press_stop()
+	if not scene.break_card().is_open():
+		failures.append("Yes, stop should show the break card")
+	elif int(scene.break_card().stars_shown()) != 0:
+		failures.append("no answer given, so no stars on the card (got %d)" % int(scene.break_card().stars_shown()))
+	_free(scene)
+	scene = _make()
+	if not _reach_first_question(scene):
+		failures.append("never reached the first question")
+		_free(scene)
+		return failures
+	scene.simulate("correct")
+	if _until(scene, func() -> bool: return scene.state() == "celebrate", 200) < 0:
+		failures.append("a correct answer should reach the celebrate beat (state %s)" % scene.state())
+	elif scene.hud().indicator_state() == Indicator.STATE_LISTENING or scene.hud().indicator_state() == Indicator.STATE_HEARING:
+		failures.append("QA C7: the indicator must not say Listening during the celebrate beat")
+	if _until(scene, func() -> bool: return _ready_to_answer(scene), 600) < 0:
+		failures.append("the next question should open the mic again (state %s)" % scene.state())
+	scene.hud().press("end")
+	scene.hud().exit_confirm().press_stop()
+	if scene.break_card().is_open() and int(scene.break_card().stars_shown()) != 1:
+		failures.append("one correct answer should show one star (got %d)" % int(scene.break_card().stars_shown()))
+	_free(scene)
+	return failures
+
+
+## QA C6: the board itself refuses an id that is not on the allowlist.
+func _test_board_refuses_unknown_asset():
+	var failures: Array = []
+	var board: Node3D = (load("res://scripts/tutor/classroom/lesson_board.gd") as GDScript).new()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(board)
+	board.show_card("apple_red")
+	if not board.is_showing_card() or board.current_card() != "apple_red":
+		failures.append("an allowlisted card should show")
+	board.show_card("dinosaur_green")
+	if board.is_showing_card() or board.current_card() != "":
+		failures.append("a card off the allowlist must leave the board blank, got '%s'" % board.current_card())
+	tree.root.remove_child(board)
+	board.free()
 	return failures

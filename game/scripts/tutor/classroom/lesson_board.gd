@@ -10,6 +10,7 @@ extends Node3D
 
 const FlashcardArtScript := preload("res://scripts/tutor/classroom/flashcard_art.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
+const TutorTurnScript := preload("res://scripts/tutor/turn/tutor_turn.gd")
 
 const CARD_PIXELS: int = 512
 const BOARD_WIDTH: float = 1.16
@@ -85,7 +86,10 @@ func build() -> void:
 func show_card(asset_id: String) -> void:
 	build()
 	_asset_id = asset_id
-	if asset_id.is_empty():
+	if asset_id.is_empty() or not TutorTurnScript.allowed_asset_ids().has(asset_id):
+		# Not on the allowlist: the board's own guard (QA C6), behind the
+		# validators upstream. A blank board, never a placeholder disc.
+		_asset_id = ""
 		_card_mesh.visible = false
 		return
 	_card.set("asset_id", asset_id)

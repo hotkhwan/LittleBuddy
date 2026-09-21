@@ -99,12 +99,14 @@ claimed.
 
 ## 9. Known limitations and cosmetic items
 
-QA's cosmetic list (`docs/QA_TUTOR_a8a2e1f.md`): the 3 s long-pause script error
-is fixed in `e569f5e` (Aliz now asks again and the mic stays open; covered by a
-test), the quota-closing card shows three
-stars with no completed lesson, the tap fallback offers no Animals card, the
-parent privacy copy still says "taps the microphone", the board accepts
-non-allowlisted ids (the validator guards upstream), the indicator says
-Listening during the celebrate beat, the title card glyph is a microphone.
-Engine: cup/spoon have no flashcards; voice-pack ids are placeholders until
-recordings exist.
+QA's cosmetic list (`docs/QA_TUTOR_a8a2e1f.md`) is closed as of the commit
+after `e569f5e`: C1 a long silence makes Aliz ask again with no script error;
+C3 the closing card shows only the stars earned this session (none when no
+answer was given); C4 the tap fallback offers all four subjects with a
+flashcard (Animals included; Everyday Things still has no cup/spoon card);
+C5 the parent privacy text describes hands-free listening in English and Thai;
+C6 the lesson board refuses ids off the allowlist; C7 the mic is gated and the
+indicator says off during the celebrate beat; C8 the title card carries an
+original book glyph, not a microphone. Each has a test or a frame. Engine:
+cup/spoon have no flashcards; voice-pack ids are placeholders until recordings
+exist.

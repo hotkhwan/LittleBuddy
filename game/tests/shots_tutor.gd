@@ -159,6 +159,7 @@ func _open_scene(sim: bool) -> void:
 		_die("classroom.tscn will not load")
 		return
 	_scene = packed.instantiate()
+	_scene.ignore_desktop_focus = true  # the window behind the terminal is not a backgrounded phone
 	_scene.build()
 	# The harness owns the profile: a memory-only save keeps the real one clean.
 	_scene.set_save_service(MemorySave.new())

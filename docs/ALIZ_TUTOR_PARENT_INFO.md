@@ -12,9 +12,10 @@ gate condition G13).
 ## English (show as-is)
 
 Learn with Aliz runs on this device. Lessons, pictures and Aliz's voice are
-built into the app. When your child taps the microphone, the device's own
-speech recognition listens for the practice word. Nothing is recorded, saved
-or sent anywhere: no audio, no words your child says, no name, no location.
+built into the app. During a lesson the device's own speech recognition
+listens for your child's answers and stops when the lesson ends. Nothing is
+recorded, saved or sent anywhere: no audio, no words your child says, no name,
+no location.
 
 The app keeps only stars, lesson progress and today's tutor minutes, stored on
 this device. You can erase them from Parent Corner at any time.
@@ -26,7 +27,7 @@ exactly what would be shared.
 ## Thai helper (แสดงใต้ข้อความภาษาอังกฤษ)
 
 เรียนกับอลิซทำงานบนเครื่องนี้ทั้งหมด บทเรียน รูปภาพ และเสียงของอลิซถูกบรรจุมาในแอป
-เมื่อลูกแตะปุ่มไมโครโฟน ระบบรู้จำเสียงของตัวเครื่องจะฟังคำศัพท์ที่ฝึก
+ระหว่างบทเรียน ระบบรู้จำเสียงของตัวเครื่องจะฟังคำตอบของลูก และหยุดฟังเมื่อจบบทเรียน
 ไม่มีการบันทึกเสียง ไม่เก็บคำที่ลูกพูด ไม่ส่งข้อมูลใด ๆ ออกไป ไม่มีชื่อ ไม่มีตำแหน่งที่อยู่
 
 แอปเก็บเพียงดาว ความคืบหน้าของบทเรียน และเวลาเรียนของวันนี้ไว้ในเครื่องนี้เท่านั้น
