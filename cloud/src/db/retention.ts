@@ -1,10 +1,14 @@
 // Retention purge (scheduled cron + DEV_MODE route). Nothing about a child is
 // kept longer than RETENTION_DAYS; idempotency rows go after 24 h.
 import { IDEMPOTENCY_TTL_MS } from '../util/time';
+import { expireTombstones } from './parents';
 
 export interface PurgeCounts { sessions: number; usageEvents: number; dailyQuota: number; idempotency: number }
 
 export async function purgeExpired(db: D1Database, now: number, retentionDays: number): Promise<PurgeCounts> {
+  // Deleted parent accounts keep only a (provider, subject_hash) tombstone for
+  // 30 days; the nightly purge drops the ones whose window has passed.
+  await expireTombstones(db, now);
   const cutoff = now - Math.max(1, retentionDays) * 24 * 3600 * 1000;
   const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
   const results = await db.batch([
