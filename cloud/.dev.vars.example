@@ -15,7 +15,15 @@ OPENAI_BASE_URL=
 APPLE_ISSUER_ID=
 APPLE_KEY_ID=
 APPLE_PRIVATE_KEY=
+# Sign in with Apple (cloud/src/auth/identity/apple.ts): accepted `aud` values of the
+# identity token. APPLE_BUNDLE_ID = the app (native flow), APPLE_SERVICE_ID = the
+# Services ID used by the web flow on littledays.joinanny.com. Plain vars, not secrets.
+# Both empty -> POST /v1/parents {provider:"apple"} answers 501.
 APPLE_BUNDLE_ID=
+APPLE_SERVICE_ID=
+# Google Sign-In (cloud/src/auth/identity/google.ts): comma-separated OAuth client ids
+# (iOS client id, web client id) accepted as the ID token `aud`. Empty -> 501.
+GOOGLE_CLIENT_IDS=
 # Google Play (Agent F) - names reserved, not read yet.
 GOOGLE_PLAY_PACKAGE=
 GOOGLE_SERVICE_ACCOUNT_JSON=

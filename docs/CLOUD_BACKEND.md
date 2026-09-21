@@ -85,8 +85,10 @@ Both DOs use the SQLite-backed storage class (`new_sqlite_classes`).
 ## Credentials
 
 - `pt1.<b64url json>.<hex hmac>`: parent bearer, claims `{pid, iat, exp}`,
-  30-day TTL, issued by `POST /v1/parents` (dev sign-in now; Apple / Google
-  identity-token verification is the follow-up and answers 501).
+  30-day TTL, issued by `POST /v1/parents` after sign-in verification (see
+  "Parent accounts" below). Every account route also checks that the parent
+  row still exists and is not a deletion tombstone (403 `not_approved`
+  otherwise), so a bearer outlives `DELETE /v1/parents/me` only as a string.
 - `pa1.<b64url json>.<hex hmac>`: parental approval, claims
   `{sub: clientId, pid, cid?, iat, exp}`. Same wire format as the prototype
   (`backend/src/parental_approval.js`), which is why `cloud_quota_client.gd`,
@@ -97,10 +99,86 @@ Both DOs use the SQLite-backed storage class (`new_sqlite_classes`).
 - DEV_MODE only: the literal `dev-parent-approval` maps to the synthetic
   parent `dev-parent` with all consents granted.
 
+## Parent accounts (sign-in, ownership, privacy controls)
+
+Code: `cloud/src/auth/identity/**` (verifiers), `cloud/src/routes/accounts.ts`
+(routes), `cloud/src/db/parents.ts` + `cloud/src/db/accounts_privacy.ts`
+(rows), `cloud/migrations/0005_account_privacy.sql`. Portal contract with
+examples: `docs/PARENT_PORTAL_API.md`.
+
+**Sign-in verification.** `POST /v1/parents {provider, identityToken |
+subject, clientId?, nonce?}` picks an `IdentityVerifier`
+(`verify(credential) -> {provider, subject, emailHash?, emailVerified}`):
+
+| Provider | Credential | Checks |
+| --- | --- | --- |
+| `apple` | Sign in with Apple identity token (compact JWS) | RS256 against Apple's JWKS (`https://appleid.apple.com/auth/keys`), `iss` = `https://appleid.apple.com`, `aud` in {`APPLE_BUNDLE_ID` (app), `APPLE_SERVICE_ID` (web)}, `exp` (60 s leeway), `nonce` when the client sends one |
+| `google` | Google ID token | RS256 against `https://www.googleapis.com/oauth2/v3/certs`, `iss` in {`accounts.google.com`, `https://accounts.google.com`}, `aud` in `GOOGLE_CLIENT_IDS` (comma list), `exp`, `nonce` optional |
+| `dev` | literal `subject` | DEV_MODE only; refused (501) everywhere else |
+
+`alg` other than RS256 (including `none`) is refused before any key is
+touched; an unknown `kid` refetches the JWKS once (key rotation) but never
+more than once a minute; a JWKS outage is 503 `provider_unavailable`, an
+unconfigured provider 501 `not_implemented`, a bad token 403 `not_approved`
+with `reason` (`wrong_audience`, `expired`, `wrong_issuer`, `unknown_key`,
+`bad_signature`, `wrong_nonce`), a malformed one 400. Fetch and clock are
+injectable; the tests sign with a generated RSA key and a fake JWKS.
+
+**What is stored.** The parent is found or created by `(provider,
+subject_hash)` where `subject_hash = HMAC(PARENT_TOKEN_SECRET, "subject",
+"<provider>\n<subject>")` and `email_hash = HMAC(PARENT_TOKEN_SECRET,
+"email", lower(email))` only when the provider marked the e-mail verified
+(Apple sends it on the first authorization only, so an existing row keeps
+its hash). The raw subject and e-mail never reach a row or a log; tests
+assert the columns are 64-hex.
+
+**Ownership.** A parent owns: child profiles (nickname, avatar id, optional
+birth-year bucket, locale; never a legal name; max 6; `GET/POST /v1/children`,
+`GET/PATCH/DELETE /v1/children/:id`), devices, consent (`privacy`,
+`ai_tutor`, `voice`, versioned), learning progress (keyed by child), and a
+read-only view of the entitlement rows the billing module writes
+(`GET /v1/entitlements` for the app, `GET /v1/parents/me/subscription` for
+the portal). `GET /v1/parents/me` adds `hasEmailHash`, `childCount`,
+`maxChildren`, `tutorEntitlement`.
+
+**Privacy controls** (parent bearer only; a device approval token gets 403):
+
+- `GET /v1/parents/me/export`: JSON (`little-days-family-export/1`) of every
+  row of the family: parent (ids, versions, `hasEmailHash`), children with
+  progress / tutor sessions / daily quota numbers, devices, consent,
+  entitlements, purchase events. Ids and numbers only; the hashes are not
+  exported and there are no transcripts anywhere to export.
+- `DELETE /v1/children/:id`: the child and everything keyed by it (progress,
+  sessions, their usage + idempotency rows, `daily_quota`) and its `QuotaDO`.
+- `DELETE /v1/parents/me`: children (as above), devices, consent,
+  `purchase_events.parent_id -> NULL` (kept, unlinked), entitlements set to
+  `revoked` with `revoked_reason = 'account_deleted'` (kept for refund / tax
+  audit), and the parent row turned into a **tombstone**: `email_hash` NULL,
+  `consent_version` 0, `deleted_at`, `tombstone_until = +30 days`, the
+  `(provider, subject_hash)` pair retained. Within the window the same store
+  identity signing in again gets 409 `conflict` `{reason: "account_deleted",
+  availableAt}` (the app shows "account deleted" instead of silently
+  re-creating it). At the first sign-in after the window the pair's tombstone
+  is dropped (no entitlement rows) or anonymised (`subject_hash =
+  'deleted:<id>'`) and a brand-new account is created with no old data.
+  `expireTombstones(db, now)` without a scope is the sweep the retention
+  purge should call so tombstones of parents who never return expire too
+  (one line in `purgeExpired`; not wired by the accounts agent).
+
+Vars: `APPLE_BUNDLE_ID`, `APPLE_SERVICE_ID`, `GOOGLE_CLIENT_IDS` (names in
+`cloud/.dev.vars.example`; plain `[vars]` or secrets per environment). Before
+real Apple / Google sign-in can be switched on: the App ID's bundle id and a
+Services ID (with `littledays.joinanny.com` as a return domain) from the
+Apple developer account; the iOS and web OAuth client ids from the Google
+Cloud project; the game client must send the identity token in
+`identityToken` (and the `nonce` it generated, if any); and the portal site
+must run the web flows. The Worker needs outbound HTTPS to the two JWKS
+endpoints only.
+
 ## Data minimisation (what the tables hold)
 
-- `parent_accounts`: provider + `subject_hash` (HMAC), optional `email_hash`.
-  No e-mail, no name.
+- `parent_accounts`: provider + `subject_hash` (HMAC), optional `email_hash`,
+  plus `deleted_at` / `tombstone_until` after deletion. No e-mail, no name.
 - `child_profiles`: nickname (24 chars, no `@`/URLs), avatar id, locale,
   optional `birth_year_bucket` ("2020-2021"). **No real name, no birth date.**
 - `devices`: the app's pseudonymous `clientId`, platform, app version. No
@@ -116,8 +194,10 @@ Both DOs use the SQLite-backed storage class (`new_sqlite_classes`).
 Retention: `tutor_sessions`, `usage_events`, `daily_quota` after
 `RETENTION_DAYS` (30); `api_idempotency` after 24 h; run by the cron trigger
 and `POST /v1/dev/retention/purge`. `DELETE /v1/tutor/clients/:clientId`
-deletes a device's learning history on demand. Profiles and entitlements live
-with the account (account deletion is a follow-up route).
+deletes a device's learning history on demand; `DELETE /v1/children/:id` and
+`DELETE /v1/parents/me` delete a child or the whole family (see "Parent
+accounts"). Entitlement rows survive account deletion as `revoked` /
+`account_deleted` (audit), linked to an anonymised tombstone.
 
 ## Security controls
 
@@ -159,8 +239,10 @@ route, never by automation.
 
 ## Open items
 
-- Apple / Google sign-in verification in `POST /v1/parents` (501 today).
-- Account deletion route (`DELETE /v1/parents/me`) cascading everything.
+- Apple / Google sign-in: verifiers are in place; switching them on needs
+  `APPLE_BUNDLE_ID` / `APPLE_SERVICE_ID` / `GOOGLE_CLIENT_IDS` per environment
+  (see "Parent accounts") and the clients sending `identityToken`.
+- Wire `expireTombstones(db, now)` into the retention purge (`purgeExpired`).
 - Agent E: provider module + registry wiring; Agent F: billing.
 - The Godot clients still call the prototype's `/api/v1/...` paths and send
   no `Authorization`; that works, but once accounts exist in the app the
