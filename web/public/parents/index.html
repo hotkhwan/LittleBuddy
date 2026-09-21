@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parent portal preview - Little Days</title>
+<meta name="description" content="Development preview of the Little Days parent portal: children, consent switches, tutor minutes and subscription status against sample or local development data.">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="icon" href="/assets/little-days-logo.png" type="image/png">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="dev-banner" role="status">
+  Development data. This preview shows sample data or a development server on this computer. No real family is shown here.
+  <p class="th" lang="th">ข้อมูลสำหรับการพัฒนา หน้านี้แสดงข้อมูลตัวอย่างหรือข้อมูลจากเซิร์ฟเวอร์ทดสอบบนเครื่องนี้เท่านั้น ไม่ใช่ข้อมูลครอบครัวจริง</p>
+</div>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/assets/little-days-logo.png" alt="Little Days" width="160" height="96"></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/">Home</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/support">Support</a>
+    <a href="/parents" aria-current="page">Parents</a>
+  </nav>
+</header>
+
+<main id="main" class="page">
+  <h1>Parent portal <span class="pill">preview</span></h1>
+  <p class="th" lang="th">พอร์ทัลผู้ปกครอง (ตัวอย่างสำหรับการพัฒนา)</p>
+  <p class="lead">A shell of the parent portal that is planned to accompany the AI Tutor. It signs in with the development provider and reads the same JSON the app's cloud API will serve.</p>
+
+  <noscript><p class="note">This preview needs JavaScript to fetch data. The rest of the site works without it.</p></noscript>
+
+  <section id="signin-section" aria-labelledby="signin-title">
+    <h2 id="signin-title">Sign in</h2>
+    <p class="th" lang="th">ลงชื่อเข้าใช้</p>
+    <div class="card lavender">
+      <form id="signin-form" novalidate>
+        <fieldset>
+          <legend>Data source</legend>
+          <label class="choice"><input type="radio" name="source" value="mock" checked> Sample data (no server needed)</label>
+          <label class="choice"><input type="radio" name="source" value="dev"> Local development server at <code id="api-base"></code></label>
+          <p class="hint" id="source-hint">The development server must run with <code>DEV_MODE=1</code> and allow this page's origin (CORS). Otherwise use sample data.</p>
+        </fieldset>
+        <div class="field">
+          <label for="subject">Development subject</label>
+          <input type="text" id="subject" name="subject" autocomplete="off" spellcheck="false" inputmode="text" maxlength="128" required>
+          <p class="hint">Any short id. Letters, digits, <code>_ . : -</code>. Provider is fixed to <code>dev</code>.</p>
+        </div>
+        <div class="actions">
+          <button class="button" type="submit" id="signin-button">Sign in with the dev provider</button>
+        </div>
+        <p class="status" id="signin-status" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </section>
+
+  <section id="portal" aria-labelledby="portal-title" hidden>
+    <h2 id="portal-title">Family</h2>
+    <p class="th" lang="th">ครอบครัว</p>
+    <p id="session-line" class="hint"></p>
+    <p><button class="button quiet" type="button" id="signout-button">Sign out</button></p>
+
+    <div class="portal-grid">
+      <article class="card pink" aria-labelledby="children-title">
+        <h3 id="children-title">Children</h3>
+        <p class="th" lang="th">เด็ก ๆ</p>
+        <ul class="child-list" id="child-list" aria-live="polite"></ul>
+        <p class="hint" id="children-empty" hidden>No child profiles yet. Add one below. A nickname is enough; no real name or birth date is asked for.</p>
+        <form id="add-child-form" class="inline-form" novalidate>
+          <div class="field">
+            <label for="nickname">New child's nickname</label>
+            <input type="text" id="nickname" name="nickname" maxlength="24" autocomplete="off" required>
+          </div>
+          <button class="button secondary" type="submit">Add child</button>
+        </form>
+        <p class="status" id="children-status" role="status" aria-live="polite"></p>
+      </article>
+
+      <article class="card lavender" aria-labelledby="consent-title">
+        <h3 id="consent-title">Permissions</h3>
+        <p class="th" lang="th">การอนุญาต</p>
+        <p class="hint">Switching a permission off ends any running tutor session. Changes are saved straight away.</p>
+        <div id="consent-list"></div>
+        <p class="status" id="consent-status" role="status" aria-live="polite"></p>
+      </article>
+
+      <article class="card" aria-labelledby="minutes-title">
+        <h3 id="minutes-title">Tutor minutes today</h3>
+        <p class="th" lang="th">เวลาเรียนกับครูสอน AI วันนี้</p>
+        <p class="hint">Counted per child on the server. The day resets at midnight UTC.</p>
+        <div id="minutes-list" aria-live="polite"></div>
+      </article>
+
+      <article class="card mint" aria-labelledby="subscription-title">
+        <h3 id="subscription-title">Subscription</h3>
+        <p class="th" lang="th">การสมัครสมาชิก</p>
+        <p><span class="pill ghost" id="subscription-status">not available</span></p>
+        <p id="subscription-line">Subscriptions are not available yet.</p>
+        <p class="hint">Family Club is planned for later. Nothing can be bought here or in the app today.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="about-title">
+    <h2 id="about-title">About this preview</h2>
+    <p class="th" lang="th">เกี่ยวกับตัวอย่างนี้</p>
+    <ul>
+      <li>The only server this page can talk to is the loopback address shown above, which is also enforced by the page's Content-Security-Policy. It never contacts a production server.</li>
+      <li>The development sign-in token is kept in this browser tab's session storage and is forgotten when the tab closes.</li>
+      <li>Requests and JSON shapes follow <code>docs/ALIZ_TUTOR_API.md</code> section 1.2 and <code>docs/CLOUD_BACKEND.md</code>.</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <p>Little Days is made for young children and their families. Game version 0.1.0.</p>
+  <p><a href="/privacy">Privacy</a> · <a href="/support">Support</a> · <a href="/parents">Parents</a></p>
+</footer>
+<script type="module" src="/parents/portal.js"></script>
+</body>
+</html>

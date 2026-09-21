@@ -1,0 +1,14 @@
+{
+  "name": "littledays-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Little Days static site: home, privacy, support and a development-only parent portal shell.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/site.test.mjs",
+    "serve": "node tools/serve.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

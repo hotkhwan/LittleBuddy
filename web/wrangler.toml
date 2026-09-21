@@ -1,0 +1,24 @@
+# Little Days marketing + parent-portal site: static assets served by a
+# Cloudflare Worker (no Worker script, assets only).
+#
+# READ web/README.md BEFORE DEPLOYING. The owner already has a Worker named
+# `littledays-web` on this account serving littledays.joinanny.com; deploying
+# this file REPLACES that Worker's code. Only the owner runs the deploy, by hand.
+#
+# Deliberately NOT filled in:
+#   - no `routes` / `[[routes]]` / custom domains: the owner attaches the
+#     hostname in the dashboard or adds a route below AFTER reviewing a
+#     `wrangler deploy --dry-run`. Never add `api.littledays.joinanny.com`
+#     here: that hostname belongs to the separate API Worker (cloud/).
+#   - `workers_dev = false`: no *.workers.dev preview URL is created by a deploy.
+
+name = "littledays-web"
+account_id = "8d67bfb5b60f8e54544e4aac74a98cc9"
+compatibility_date = "2026-08-01"
+workers_dev = false
+
+[assets]
+directory = "./public"
+# `/privacy` serves `public/privacy/index.html`; `/404.html` is the not-found page.
+html_handling = "auto-trailing-slash"
+not_found_handling = "404-page"

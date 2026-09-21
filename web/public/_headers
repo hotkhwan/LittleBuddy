@@ -1,0 +1,9 @@
+# Served by Cloudflare Workers static assets; tools/serve.mjs applies the same
+# headers locally. The connect-src list is the whole reason the parent portal
+# cannot talk to anything but a loopback development server.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: microphone=(), camera=(), geolocation=(), payment=()
+  X-Frame-Options: DENY

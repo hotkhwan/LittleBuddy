@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy - Little Days</title>
+<meta name="description" content="What the Little Days game does with data today: it plays offline, needs no account, shows no ads, and keeps children's voices on the device.">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="icon" href="/assets/little-days-logo.png" type="image/png">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/assets/little-days-logo.png" alt="Little Days" width="160" height="96"></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/">Home</a>
+    <a href="/privacy" aria-current="page">Privacy</a>
+    <a href="/support">Support</a>
+    <a href="/parents">Parents</a>
+  </nav>
+</header>
+
+<main id="main" class="page narrow">
+  <h1>Privacy</h1>
+  <p class="th" lang="th">ความเป็นส่วนตัว</p>
+  <p class="lead">This page describes what the Little Days app and this website do with data <em>today</em>. It is written from the app's code, not from intentions. Anything that does not exist yet is marked <span class="pill ghost">planned</span>.</p>
+  <p class="th" lang="th">หน้านี้อธิบายสิ่งที่แอป Little Days และเว็บไซต์นี้ทำกับข้อมูล "ในปัจจุบัน" โดยอ้างอิงจากโค้ดของแอป สิ่งที่ยังไม่มีจริงจะระบุว่า "planned" (แผนในอนาคต)</p>
+  <p>Last reviewed: 21 September 2026, for game version 0.1.0.</p>
+
+  <nav class="toc" aria-label="On this page">
+    <ul>
+      <li><a href="#summary">The short version</a></li>
+      <li><a href="#game">The game</a></li>
+      <li><a href="#speech">Your child's voice</a></li>
+      <li><a href="#on-device">What is stored on the device</a></li>
+      <li><a href="#aliz">Learn with Aliz and the AI Tutor</a></li>
+      <li><a href="#planned">Planned, not built</a></li>
+      <li><a href="#website">This website</a></li>
+      <li><a href="#contact">Questions</a></li>
+      <li><a href="#sources">Where these statements come from</a></li>
+    </ul>
+  </nav>
+
+  <section id="summary" aria-labelledby="summary-title">
+    <h2 id="summary-title">The short version</h2>
+    <p class="th" lang="th">สรุปสั้น ๆ</p>
+    <ul>
+      <li>The game plays fully offline. It does not need an internet connection.</li>
+      <li>No account is needed to play. The game has no sign-in.</li>
+      <li>No ads. No third-party analytics. No third-party software kits in the app.</li>
+      <li>No purchases in the app.</li>
+      <li>Speech recognition for the game happens on the device. No audio and no words your child says are stored or uploaded.</li>
+      <li>The online AI tutor is switched off in this build.</li>
+    </ul>
+    <ul lang="th" class="th">
+      <li>ตัวเกมเล่นได้โดยไม่ต้องต่ออินเทอร์เน็ต</li>
+      <li>ไม่ต้องสมัครบัญชีเพื่อเล่น</li>
+      <li>ไม่มีโฆษณา ไม่มีเครื่องมือวิเคราะห์ของบุคคลที่สาม</li>
+      <li>ไม่มีการซื้อในแอป</li>
+      <li>การรู้จำเสียงทำงานบนเครื่อง ไม่มีการเก็บหรืออัปโหลดเสียงหรือคำพูดของลูก</li>
+      <li>ครูสอนออนไลน์ (AI) ปิดอยู่ในเวอร์ชันนี้</li>
+    </ul>
+  </section>
+
+  <section id="game" aria-labelledby="game-title">
+    <h2 id="game-title">The game</h2>
+    <p class="th" lang="th">ตัวเกม</p>
+    <p>Little Days is made for young children. Everything a child plays with, the rooms, words, pictures and voices, is bundled inside the app.</p>
+    <ul>
+      <li><strong>Offline.</strong> The game contains no networking code. The Android build declares no internet permission at all, so the operating system itself prevents it from connecting.</li>
+      <li><strong>No account.</strong> Nothing asks for a name, an e-mail address, a birth date or a photo. There is no sign-in and no way to create an account from the game.</li>
+      <li><strong>No ads, no analytics, no third-party kits.</strong> The app contains no advertising, analytics, crash-reporting, attribution or social software. Automated tests in the project fail if any is added.</li>
+      <li><strong>No purchases.</strong> The app contains no store, no billing library and no purchase button. Grown-up settings sit behind a press-and-hold parental gate.</li>
+      <li><strong>No links out.</strong> The app opens no web pages. The one external reference it mentions (a video channel) is shown as plain text behind the parental gate and is never opened by the app.</li>
+    </ul>
+  </section>
+
+  <section id="speech" aria-labelledby="speech-title">
+    <h2 id="speech-title">Your child's voice</h2>
+    <p class="th" lang="th">เสียงของลูก</p>
+    <p>Saying a word out loud is optional. Every activity can also be played by touch, and a parent can switch speech off in Parent Corner.</p>
+    <ul>
+      <li><strong>On iPad and iPhone</strong>, the app uses Apple's speech recognition with on-device recognition required. Audio is handled by the device and is not sent to Little Days.</li>
+      <li><strong>Nothing is recorded, saved or uploaded.</strong> The app writes no audio files and keeps no transcript of what your child said. A test in the project fails if a transcript field is ever added to the app's saved data.</li>
+      <li><strong>On Android</strong>, the current build has no microphone permission and no speech feature. Activities are played by touch, and the speech option shows as unavailable.</li>
+    </ul>
+    <p class="th" lang="th">การพูดเป็นทางเลือก ทุกกิจกรรมเล่นด้วยการแตะได้เสมอ บน iPad/iPhone การรู้จำเสียงทำงานบนเครื่อง ไม่มีการบันทึกหรือส่งเสียงและคำพูดของลูก ส่วนเวอร์ชัน Android ปัจจุบันไม่มีฟีเจอร์ไมโครโฟน</p>
+  </section>
+
+  <section id="on-device" aria-labelledby="on-device-title">
+    <h2 id="on-device-title">What is stored on the device</h2>
+    <p class="th" lang="th">ข้อมูลที่เก็บไว้ในเครื่อง</p>
+    <p>The app keeps a small local save file. It stays on the device and is not backed up to any cloud by the app.</p>
+    <table>
+      <thead><tr><th scope="col">Stored locally</th><th scope="col">What it is</th></tr></thead>
+      <tbody>
+        <tr><td>Stars and progress</td><td>Which activities and levels are done, stars earned, the current room.</td></tr>
+        <tr><td>Settings</td><td>Thai hints on or off, speech on or off, sound, speech speed, speech language (English).</td></tr>
+        <tr><td>Speech diagnostic counters</td><td>Whether speech is available, how many times listening started, succeeded or failed, and the last failure reason. Counts only, never words.</td></tr>
+        <tr><td>Lesson progress with Aliz</td><td>Step counts and today's tutor minutes. Counts only, never words.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Erasing it:</strong> Parent Corner has a <em>Reset progress</em> action that deletes the save file. Deleting the app removes everything.</p>
+    <p class="th" lang="th">แอปเก็บเพียงดาว ความคืบหน้า และการตั้งค่าไว้ในเครื่อง ผู้ปกครองลบได้จากมุมผู้ปกครอง (รีเซ็ตความคืบหน้า) หรือถอนการติดตั้งแอป</p>
+  </section>
+
+  <section id="aliz" aria-labelledby="aliz-title">
+    <h2 id="aliz-title">Learn with Aliz and the AI Tutor</h2>
+    <p class="th" lang="th">เรียนกับอลิซ และครูสอน AI</p>
+    <p>Learn with Aliz runs on this device. Lessons, pictures and Aliz's voice are built into the app. During a lesson the device's own speech recognition listens for your child's answers and stops when the lesson ends. Nothing is recorded, saved or sent anywhere: no audio, no words your child says, no name, no location.</p>
+    <p><strong>The online AI tutor is switched off in this build.</strong> It cannot be turned on from the app. If a future version offers it, we will ask a parent first and explain exactly what would be shared.</p>
+    <p class="th" lang="th">เรียนกับอลิซทำงานบนเครื่องนี้ทั้งหมด ครูสอนออนไลน์ (AI) ปิดอยู่ในเวอร์ชันนี้ และเปิดจากในแอปไม่ได้ หากเวอร์ชันในอนาคตมีฟีเจอร์นี้ เราจะขออนุญาตผู้ปกครองก่อน และอธิบายให้ชัดเจนว่าจะแบ่งปันข้อมูลอะไรบ้าง</p>
+  </section>
+
+  <section id="planned" aria-labelledby="planned-title">
+    <h2 id="planned-title">Planned, not built <span class="pill ghost">planned</span></h2>
+    <p class="th" lang="th">แผนในอนาคต (ยังไม่มีในแอป)</p>
+    <p>The following are being designed. None of it is in the current app, and this page will change before any of it ships.</p>
+    <ul>
+      <li><span class="pill ghost">planned</span> An online AI Tutor that would send the text of a child's answer (never audio) to a language-model provider during a lesson, only after a parent has agreed, with a daily time allowance.</li>
+      <li><span class="pill ghost">planned</span> A parent account, so a parent can give or withdraw that permission, see today's tutor minutes and erase a device's learning history. The design stores a child's nickname and a birth-year range only, never a real name or birth date.</li>
+      <li><span class="pill ghost">planned</span> A Family Club membership. There is no price to pay today and nothing to buy in the app.</li>
+    </ul>
+    <p>Until each of these exists, the rest of this page is the whole story.</p>
+  </section>
+
+  <section id="website" aria-labelledby="website-title">
+    <h2 id="website-title">This website</h2>
+    <p class="th" lang="th">เว็บไซต์นี้</p>
+    <ul>
+      <li>These pages are static files. They set no cookies and include no analytics, trackers, embedded videos, or fonts from other companies. Nothing on these pages is loaded from a third party.</li>
+      <li>The site is hosted on Cloudflare. As with any web host, Cloudflare handles the network connection needed to deliver the page to your browser.</li>
+      <li>The <a href="/parents">Parents</a> page is a development preview. It works with sample data or with a development server running on the same computer as your browser, and it is built so that it cannot contact any other server. It remembers a development sign-in only for the current browser tab.</li>
+    </ul>
+  </section>
+
+  <section id="contact" aria-labelledby="contact-title">
+    <h2 id="contact-title">Questions</h2>
+    <p class="th" lang="th">คำถาม</p>
+    <p>Contact details for the developer are on the <a href="/support">Support</a> page.</p>
+  </section>
+
+  <section id="sources" aria-labelledby="sources-title">
+    <h2 id="sources-title">Where these statements come from</h2>
+    <p class="th" lang="th">ที่มาของข้อความในหน้านี้</p>
+    <p>Every sentence above is backed by the project's own review documents, which cite the source files and the automated tests that keep them true:</p>
+    <ul>
+      <li><code>docs/ALIZ_TUTOR_PRIVACY_REVIEW.md</code>, the privacy and child-safety gate for the tutor (data inventory, provider terms, what may ship now).</li>
+      <li><code>docs/GOOGLE_PLAY_RELEASE_READINESS.md</code>, the Android permission audit and Data Safety inputs derived from the build.</li>
+      <li><code>docs/ALIZ_TUTOR_PARENT_INFO.md</code>, the in-app privacy text shown in Parent Corner, reproduced above word for word.</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <p>Little Days is made for young children and their families. Game version 0.1.0.</p>
+  <p><a href="/privacy">Privacy</a> · <a href="/support">Support</a> · <a href="/parents">Parents</a></p>
+</footer>
+</body>
+</html>
