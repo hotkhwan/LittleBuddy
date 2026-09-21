@@ -68,12 +68,6 @@ const DRY: String = "dryFace"
 ## close-up the whole mission has been walking towards.
 const MIX: String = "prepareMilk"
 const FEED: String = "giveBottle"
-## Prepared for Free Play's feeding close-up (2026-09-21): mashing soft food in
-## a bowl with a spoon. In COPY and drawable so a later pass in the free-play
-## director can `begin(MASH)` it beside `FEED` and `DRY`; nothing opens it yet.
-## The gesture is `WASH`'s -- rub anywhere over the bowl until enough ground is
-## covered -- because mashing rewards working the whole bowl, not one spot.
-const MASH: String = "mashFood"
 ## Free Play's spoon-fed meal (a mashed banana, a fruit bowl): the same hold at
 ## Bunny's real mouth as `FEED`, with food words instead of milk words, so a
 ## fruit bowl is never introduced as a drink.
@@ -110,11 +104,6 @@ const COPY: Dictionary = {
 		"title": "Time to drink!", "word": "drink", "thai": "ดื่มนม",
 		"hint": "Hold the bottle at Bunny's mouth.",
 		"childLine": "Milk, please, Aliz!", "doneLine": "Thank you, Aliz!",
-	},
-	MASH: {
-		"title": "Mash the food!", "word": "mash", "thai": "บดอาหาร",
-		"hint": "Rub the spoon all around the bowl.",
-		"childLine": "Yum, food!", "doneLine": "All mashed!",
 	},
 	GIVE_FOOD: {
 		"title": "Time to eat!", "word": "eat", "thai": "กินข้าว",
@@ -512,8 +501,8 @@ func apply_stroke(to: Vector2) -> void:
 					_add_foam(to)
 				_last_dir = dir
 			_progress = clampf(float(_strokes) / float(BRUSH_STROKES_NEEDED), 0.0, 1.0)
-		WASH, MASH:
-			# Rewards covering ground anywhere on the face (or, for MASH, the bowl).
+		WASH:
+			# Rewards covering ground anywhere on the face.
 			if to.distance_to(centre) > FACE_RADIUS * 1.15:
 				return
 			_distance += moved
@@ -658,13 +647,14 @@ func _redraw() -> void:
 func _draw_face(_unused: Variant = null) -> void:
 	var c: Control = _face
 	var o := Vector2.ZERO
-	if _kind == MIX or _kind == MASH:
+	if _kind == MIX:
 		_draw_bottle(c, o)
 		return
 	if _is_feed():
 		_draw_feed_target(c)
 		return
 	if _kind == MASH:
+		# The MIX gesture (hold, then stir) over a bowl of food, not a bottle.
 		_draw_bowl(c, o)
 		return
 	c.draw_circle(o, FACE_RADIUS, Color(1.0, 0.886, 0.839))
@@ -818,7 +808,7 @@ func _draw_tool(_unused: Variant = null) -> void:
 					Palette.SOFT_PINK, true)
 			c.draw_rect(Rect2(o + Vector2(-38.0, -8.0), Vector2(76.0, 8.0)),
 					Palette.CREAM, true)
-		MIX, MASH:
+		MIX:
 			# A little jug, tipped, with a spout that points where the milk lands.
 			c.draw_rect(Rect2(o + Vector2(-34.0, -30.0), Vector2(60.0, 56.0)),
 					Palette.DUSTY_BLUE, true)
