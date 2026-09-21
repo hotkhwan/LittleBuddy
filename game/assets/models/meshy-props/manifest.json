@@ -1,0 +1,47 @@
+{
+  "manifestVersion": 1,
+  "pack": "meshy-props",
+  "source": "Meshy text-to-3D, Smart Topology tier (ai_model meshy-t2), preview + refine, owner's account; split and sized locally by tools/meshy_split.py (0 credits)",
+  "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids",
+  "notes": "Every file is in METRES with its base on Y=0 and its footprint centred (ART_BIBLE §6 pivot). longestAxisMetres is the size a consumer gets when it asks for none; a consumer may pass its own. maxTriangles is the per-prop gate asserted by test_assets_models.gd. derivedFrom records the exact local command so a part can be regenerated from its master without credits.",
+  "props": [
+    {
+      "propId": "apple",
+      "word": "apple",
+      "file": "res://assets/models/meshy-props/apple.glb",
+      "longestAxisMetres": 0.223,
+      "yawDegrees": 0,
+      "triangles": 1120,
+      "maxTriangles": 1200,
+      "textureSize": 512,
+      "derivedFrom": {
+        "file": "res://assets/tutor/props/fruit_set.glb",
+        "tool": "tools/meshy_split.py",
+        "args": "--parts banana,apple --drop-inner-shells --scale 0.26 --origin bottom"
+      },
+      "meshyTaskIds": ["01a0bf62-ee3f-76db-84c7-3ae636d45f97", "01a0bf63-9030-7760-adcc-5e5d31b43d5d"],
+      "creditsSpent": 0,
+      "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids",
+      "usedBy": ["scripts/kitchen/kitchen_items.gd (apple)"]
+    },
+    {
+      "propId": "banana",
+      "word": "banana",
+      "file": "res://assets/models/meshy-props/banana.glb",
+      "longestAxisMetres": 0.249,
+      "yawDegrees": 0,
+      "triangles": 1134,
+      "maxTriangles": 1200,
+      "textureSize": 512,
+      "derivedFrom": {
+        "file": "res://assets/tutor/props/fruit_set.glb",
+        "tool": "tools/meshy_split.py",
+        "args": "--parts banana,apple --drop-inner-shells --scale 0.26 --origin bottom"
+      },
+      "meshyTaskIds": ["01a0bf62-ee3f-76db-84c7-3ae636d45f97", "01a0bf63-9030-7760-adcc-5e5d31b43d5d"],
+      "creditsSpent": 0,
+      "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids",
+      "usedBy": ["scripts/kitchen/kitchen_items.gd (banana)"]
+    }
+  ]
+}

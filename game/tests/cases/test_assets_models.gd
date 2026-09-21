@@ -28,6 +28,17 @@ const SPAWNER_PATH: String = "res://scripts/gameplay/object_spawner.gd"
 const OBJECTS_JSON: String = "res://content/objects.json"
 const MODEL_ROOT: String = "res://assets/models"
 
+## The house's generated props (Meshy), behind `prop_registry.gd`. See
+## `_test_meshy_props` for what is held; `docs/MESHY_PRODUCTION_PLAN.md` for why.
+const REGISTRY_PATH: String = "res://scripts/house/prop_registry.gd"
+const MESHY_MANIFEST: String = "res://assets/models/meshy-props/manifest.json"
+const MESHY_PROVENANCE: String = "res://assets/models/meshy-props/PROVENANCE.txt"
+const KITCHEN_ITEMS_PATH: String = "res://scripts/kitchen/kitchen_items.gd"
+## The tutor props' gate (`test_tutor_props.gd`); no house prop may exceed it
+## whatever its manifest says.
+const MESHY_MAX_TRIANGLES: int = 3000
+const MESHY_MAX_TEXTURE: int = 512
+
 ## Kenney props measure 44-576 tris and the generated meshes 36-588 (the heaviest
 ## are the pillow at 588 and the blocks at 576; the clothing cut-outs are 40-92).
 ## A ceiling that leaves headroom but would still catch someone dropping a
@@ -53,6 +64,176 @@ func run():
 	failures.append_array(_test_mesh_budget(spawner))
 	failures.append_array(_test_every_object_has_a_model(spawner))
 	failures.append_array(_test_every_procedural_model_is_presented(spawner))
+	failures.append_array(_test_meshy_props())
+	failures.append_array(_test_kitchen_models_resolve())
+	return failures
+
+
+## -- Meshy props (the house's generated GLBs) -----------------------------------
+##
+## What is easy to get silently wrong here, and invisible headlessly:
+##
+##   1. **Provenance.** These are the project's own generations, not CC0 packs,
+##      so the evidence is the Meshy task id list per prop and the licence
+##      statement, and `PROVENANCE.txt` must ship beside the files.
+##   2. **The gate.** `maxTriangles` per prop, never above the tutor gate; the
+##      manifest's `triangles` must match the file, so a re-split or re-trim
+##      cannot leave the manifest describing a different mesh.
+##   3. **The pivot.** Every consumer assumes metres, base on Y = 0, footprint
+##      centred (ART_BIBLE section 6). A part written with `--origin keep`
+##      would float or sink in the kitchen and nothing else would fail.
+##   4. **One texture, 512.** Section 7's atlas budget, per prop.
+##   5. **Materials survive the bake.** A Meshy prop with its texture lost is a
+##      flat grey blob -- exactly what the registry exists to avoid.
+func _test_meshy_props():
+	var failures: Array = []
+	var registry: GDScript = load(REGISTRY_PATH) as GDScript
+	if registry == null:
+		return ["could not load %s" % REGISTRY_PATH]
+	if not FileAccess.file_exists(MESHY_MANIFEST):
+		# A legitimate state on a fresh clone before any prop was generated.
+		return failures
+	if not FileAccess.file_exists(MESHY_PROVENANCE):
+		failures.append("%s is missing -- provenance must ship beside the generated props" % MESHY_PROVENANCE)
+
+	var props: Dictionary = registry.props()
+	if props.is_empty():
+		failures.append("%s exists but names no props" % MESHY_MANIFEST)
+	for prop_id: String in props.keys():
+		var row: Dictionary = props[prop_id]
+		var path: String = String(row.get("file", ""))
+		if not path.begins_with("res://assets/models/meshy-props/"):
+			failures.append("meshy prop '%s' points outside its pack: %s" % [prop_id, path])
+		if not FileAccess.file_exists(path):
+			failures.append("meshy prop '%s': source file %s is not in the repo" % [prop_id, path])
+			continue
+		if not registry.available(prop_id):
+			failures.append("meshy prop '%s' does not import in this build" % prop_id)
+			continue
+
+		# Provenance.
+		var task_ids: Array = row.get("meshyTaskIds", [])
+		if task_ids.is_empty():
+			failures.append("meshy prop '%s' has no meshyTaskIds -- provenance is the task id" % prop_id)
+		for task_id: Variant in task_ids:
+			if not _is_uuid(String(task_id)) or String(task_id).begins_with("00000000-"):
+				failures.append("meshy prop '%s' task id '%s' is not a real UUID" % [prop_id, String(task_id)])
+		if String(row.get("license", "")).strip_edges().is_empty():
+			failures.append("meshy prop '%s' has no licence statement" % prop_id)
+
+		# The mesh, as a consumer gets it.
+		var mesh: Mesh = registry.sized_mesh(prop_id)
+		if mesh == null:
+			failures.append("meshy prop '%s' baked to nothing" % prop_id)
+			continue
+		var triangles: int = int(registry.triangles(mesh))
+		var gate: int = int(registry.max_triangles(prop_id))
+		if gate > MESHY_MAX_TRIANGLES:
+			failures.append("meshy prop '%s' claims a %d-triangle gate; the ceiling is %d"
+					% [prop_id, gate, MESHY_MAX_TRIANGLES])
+		if triangles > gate:
+			failures.append("meshy prop '%s' is %d tris, over its %d gate" % [prop_id, triangles, gate])
+		if triangles != int(row.get("triangles", -1)):
+			failures.append("meshy prop '%s' manifest says %d triangles, the file has %d -- re-run the split/trim and update the manifest"
+					% [prop_id, int(row.get("triangles", -1)), triangles])
+		if mesh.get_surface_count() != 1:
+			failures.append("meshy prop '%s' baked to %d surfaces; one draw call per prop is the budget"
+					% [prop_id, mesh.get_surface_count()])
+		var texture: int = int(registry.texture_long_side(mesh))
+		if texture <= 0:
+			failures.append("meshy prop '%s' lost its texture in the bake" % prop_id)
+		elif texture > MESHY_MAX_TEXTURE:
+			failures.append("meshy prop '%s' texture is %d px, over %d" % [prop_id, texture, MESHY_MAX_TEXTURE])
+		for surface: int in range(mesh.get_surface_count()):
+			var material: StandardMaterial3D = mesh.surface_get_material(surface) as StandardMaterial3D
+			if material == null:
+				failures.append("meshy prop '%s' surface %d has no StandardMaterial3D" % [prop_id, surface])
+				continue
+			if material.metallic > 0.001 or material.roughness < 0.85 or material.emission_enabled:
+				failures.append("meshy prop '%s' breaks the section 7 material policy (metallic %.2f, roughness %.2f, emission %s)"
+						% [prop_id, material.metallic, material.roughness, str(material.emission_enabled)])
+
+		# The pivot: metres, base on the floor, footprint centred.
+		var bounds: AABB = mesh.get_aabb()
+		var longest: float = maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z))
+		var wanted: float = float(row.get("longestAxisMetres", 0.0))
+		if wanted <= 0.0:
+			failures.append("meshy prop '%s' has no longestAxisMetres" % prop_id)
+		elif absf(longest - wanted) > 0.002:
+			failures.append("meshy prop '%s' is %.3f m on its longest axis; manifest says %.3f"
+					% [prop_id, longest, wanted])
+		if longest > 2.5 or longest < 0.03:
+			failures.append("meshy prop '%s' is %.3f m -- not metres" % [prop_id, longest])
+		var centre_x: float = bounds.position.x + bounds.size.x * 0.5
+		var centre_y: float = bounds.position.y + bounds.size.y * 0.5
+		var centre_z: float = bounds.position.z + bounds.size.z * 0.5
+		match String(registry.pivot_for(prop_id)):
+			"hingeLeft":
+				if absf(bounds.position.x) > 0.003 or absf(centre_y) > 0.003 or absf(centre_z) > 0.003:
+					failures.append("meshy prop '%s' (hingeLeft) is not hung on its -X edge" % prop_id)
+			"hingeRight":
+				if absf(bounds.end.x) > 0.003 or absf(centre_y) > 0.003 or absf(centre_z) > 0.003:
+					failures.append("meshy prop '%s' (hingeRight) is not hung on its +X edge" % prop_id)
+			"hingeBack":
+				if absf(centre_x) > 0.003 or absf(bounds.position.y) > 0.003 or absf(bounds.position.z) > 0.003:
+					failures.append("meshy prop '%s' (hingeBack) is not hung on its back edge" % prop_id)
+			_:
+				if absf(bounds.position.y) > 0.003:
+					failures.append("meshy prop '%s' base is at y=%.3f, not on its origin (section 6 pivot)"
+							% [prop_id, bounds.position.y])
+				if absf(centre_x) > 0.003 or absf(centre_z) > 0.003:
+					failures.append("meshy prop '%s' footprint is centred at (%.3f, %.3f), not on its origin"
+							% [prop_id, centre_x, centre_z])
+
+		# A caller's own size is honoured and still grounded.
+		var resized: Mesh = registry.sized_mesh(prop_id, 0.10)
+		if resized == null:
+			failures.append("meshy prop '%s' could not be resized" % prop_id)
+		else:
+			var small: AABB = resized.get_aabb()
+			var small_longest: float = maxf(small.size.x, maxf(small.size.y, small.size.z))
+			var grounded: bool = String(registry.pivot_for(prop_id)) != "baseCentre" or absf(small.position.y) <= 0.002
+			if absf(small_longest - 0.10) > 0.001 or not grounded:
+				failures.append("meshy prop '%s' resized to %.3f m with base at %.3f -- sizing broke the pivot"
+						% [prop_id, small_longest, small.position.y])
+
+	# Asking for a prop nobody generated must be a clean null, never a crash or
+	# a stand-in: that null is what keeps the drawn form on screen.
+	if registry.available("no-such-meshy-prop"):
+		failures.append("an unknown meshy prop reported itself as available")
+	if registry.instance("no-such-meshy-prop") != null:
+		failures.append("an unknown meshy prop produced a node")
+	return failures
+
+
+func _is_uuid(text: String) -> bool:
+	var regex := RegEx.new()
+	regex.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+	return regex.search(text) != null
+
+
+## Every `model` a kitchen item names must be a prop this build can produce.
+## The swap is deliberately silent to the child (the drawn form stays), which
+## is exactly why a typo here needs a test to be seen at all.
+func _test_kitchen_models_resolve():
+	var failures: Array = []
+	var items: GDScript = load(KITCHEN_ITEMS_PATH) as GDScript
+	var registry: GDScript = load(REGISTRY_PATH) as GDScript
+	if items == null or registry == null:
+		return ["could not load %s or %s" % [KITCHEN_ITEMS_PATH, REGISTRY_PATH]]
+	var swapped: int = 0
+	for item_id: String in items.ids():
+		var model_id: String = String(items.model_for(item_id))
+		if model_id.is_empty():
+			continue
+		swapped += 1
+		if not registry.available(model_id):
+			failures.append("kitchen item '%s' names meshy prop '%s', which this build cannot produce -- it would silently fall back to the drawn form"
+					% [item_id, model_id])
+		if float(items.model_size_for(item_id)) <= 0.0:
+			failures.append("kitchen item '%s' names a model but no modelSize" % item_id)
+	if swapped == 0 and FileAccess.file_exists(MESHY_MANIFEST):
+		failures.append("the meshy-props pack ships but no kitchen item uses it")
 	return failures
 
 

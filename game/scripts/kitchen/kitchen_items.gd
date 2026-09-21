@@ -32,6 +32,12 @@ const NONE: String = ""
 ##   `shape`     how `kitchen_prop.gd` builds it: box | ball | cup | bowl | flat
 ##   `size`      metres, so a child can tell a banana from a bowl at a glance
 ##   `held`      true if Aliz can carry it (a station is not carryable)
+##   `model`     optional: a prop id in `assets/models/meshy-props/manifest.json`
+##               (`prop_registry.gd`). When it is named AND its GLB imports,
+##               `kitchen_view.gd` stands that mesh in for the drawn form;
+##               otherwise the drawn form stays. A string, not a mesh -- this
+##               file stays pure. `modelSize` is the longest axis in metres the
+##               prop is drawn at, so the swap keeps the drawn item's scale.
 const ITEMS: Dictionary = {
 	"bottle": {
 		"word": "bottle", "thai": "ขวดนม", "color": Palette.CREAM,
@@ -44,10 +50,12 @@ const ITEMS: Dictionary = {
 	"banana": {
 		"word": "banana", "thai": "กล้วย", "color": Color(0.98, 0.85, 0.42),
 		"shape": "flat", "size": 0.14, "held": true,
+		"model": "banana", "modelSize": 0.26,
 	},
 	"apple": {
 		"word": "apple", "thai": "แอปเปิ้ล", "color": Palette.SOFT_PINK,
 		"shape": "ball", "size": 0.09, "held": true,
+		"model": "apple", "modelSize": 0.20,
 	},
 	"bowl": {
 		"word": "bowl", "thai": "ชาม", "color": Palette.MINT,
@@ -99,6 +107,17 @@ static func shape_for(item_id: String) -> String:
 
 static func size_for(item_id: String) -> float:
 	return float(data(item_id).get("size", 0.10))
+
+
+## The Meshy prop that stands in for this item's drawn form, or "" for none.
+static func model_for(item_id: String) -> String:
+	return String(data(item_id).get("model", "")).strip_edges()
+
+
+## Longest axis, in metres, the prop is drawn at. 0 lets the prop keep the
+## manifest's own size.
+static func model_size_for(item_id: String) -> float:
+	return float(data(item_id).get("modelSize", 0.0))
 
 
 ## Can Aliz pick this up and walk with it?

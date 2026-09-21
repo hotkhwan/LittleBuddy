@@ -1,0 +1,16 @@
+meshy-props — generated props for the house (Little Days)
+
+Source: Meshy text-to-3D (Smart Topology tier, ai_model meshy-t2), generated on
+the owner's paid Meshy account from prompts written for this project, with no
+reference images. Commercial use per the plan's terms. Provenance evidence is
+the task id list per prop in manifest.json, which resolves on the owner's
+account via GET /openapi/v2/text-to-3d/<id>. Not CC0, not third-party: these
+are the project's own generations. Ledger: docs/MESHY_CREDIT_LEDGER.md.
+
+apple.glb, banana.glb — split from assets/tutor/props/fruit_set.glb (task
+01a0bf63-9030-7760-adcc-5e5d31b43d5d, 2026-09-20) by tools/meshy_split.py on
+2026-09-21 at zero credits; the apple's inner duplicate shell (744 tris) was
+dropped. Each part keeps the master's 512x512 base-colour JPEG.
+
+Every file: metres, base on Y=0, footprint centred, one material, one texture,
+metallic 0, roughness 0.9, single-sided, no emission, no PBR maps.

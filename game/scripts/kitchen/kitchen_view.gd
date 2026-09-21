@@ -31,6 +31,7 @@ const Kit := preload("res://scripts/house/prop_kit.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
 const Items := preload("res://scripts/kitchen/kitchen_items.gd")
 const Rules := preload("res://scripts/kitchen/kitchen_rules.gd")
+const PropRegistry := preload("res://scripts/house/prop_registry.gd")
 const StateScript := preload("res://scripts/kitchen/kitchen_state.gd")
 const HouseLayout := preload("res://scripts/house/house_layout.gd")
 
@@ -472,6 +473,21 @@ const BANANA_STEPS: int = 7
 ## cannot tell the bowl from the apple cannot be asked for either by name, so the
 ## forms are deliberately unalike rather than eight tinted blobs.
 func _make_item(item_id: String, at: Vector3, draw_scale: float = 1.0) -> MeshInstance3D:
+	# A generated prop stands in for the drawn form when `kitchen_items.gd`
+	# names one AND `prop_registry.gd` can build it (manifest entry, GLB
+	# imported). Anything short of that keeps the drawn form below, so a
+	# missing file can only ever cost a nicer apple, never the apple. Same
+	# contract as the drawn forms: metres, standing on its own origin, one
+	# `MeshInstance3D` named `Item_<id>`.
+	var model_id: String = Items.model_for(item_id)
+	if not model_id.is_empty():
+		var swapped: MeshInstance3D = PropRegistry.instance(model_id, Items.model_size_for(item_id))
+		if swapped != null:
+			swapped.name = "Item_%s" % item_id
+			swapped.position = at
+			swapped.scale = Vector3.ONE * draw_scale
+			return swapped
+
 	var size: float = Items.size_for(item_id)
 	var color: Color = Items.color_for(item_id)
 	var tool: SurfaceTool = Kit.begin()
