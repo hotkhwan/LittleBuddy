@@ -110,6 +110,7 @@ const COPY: Dictionary = {
 		"title": "Mash the food!", "word": "mash", "thai": "บดอาหาร",
 		"hint": "Rub the spoon all around the bowl.",
 		"childLine": "Yum, food!", "doneLine": "All mashed!",
+	},
 	GIVE_FOOD: {
 		"title": "Time to eat!", "word": "eat", "thai": "กินข้าว",
 		"hint": "Hold the spoon at Bunny's mouth.",
