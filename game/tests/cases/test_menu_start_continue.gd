@@ -1,17 +1,25 @@
 extends RefCounted
 
-## The title screen must tell a family whether their progress survived.
+## The primary title-screen button says exactly "Play with Bunny".
 ##
-## "Play" said the same thing on the first launch and the fiftieth, which throws
-## away the one fact a parent wants from a front door. This asserts the rule that
-## replaced it, and -- more importantly -- the reason it is written the way it is.
+## This file used to pin "Start"/"Continue" and a 12-character ceiling on the
+## caption. Both went on 2026-09-21, after the owner's device playtest: the
+## button that said Continue opened the Chapter 2 Baby Room, not the house with
+## Bunny, and a caption that reports whether a save exists tells the CHILD
+## nothing about what the button does. The label now names the destination.
 ##
-## The trap it exists to catch: deciding by STAR COUNT instead of by COMPLETION.
-## A skipped level completes and rates 0 on purpose (the skip button is the
-## room's no-dead-end escape hatch). A star-based check would greet that child
-## with "Start" and imply their house was gone.
+## ## Why the length rule was relaxed, deliberately
+##
+## "Play with Bunny" is fifteen characters. The old ceiling existed so a word
+## fit on one line of a 256 px card at 38 pt; the card now wraps the caption onto
+## two lines at 32 pt (`main.tscn` PlayCaption, `autowrap_mode`), which the menu
+## screenshot harness renders and which was looked at. What is pinned instead
+## is the thing that matters to the owner and the child: the exact wording, and
+## that the caption on the card IS that wording (line breaks aside).
 
 const MainScript := preload("res://scenes/main/main.gd")
+const MENU_SCENE: String = "res://scenes/main/main.tscn"
+const EXPECTED_LABEL: String = "Play with Bunny"
 
 
 func test_name() -> String:
@@ -20,103 +28,54 @@ func test_name() -> String:
 
 func run():
 	var failures: Array = []
-	failures.append_array(_test_the_two_labels_are_distinct())
-	failures.append_array(_test_a_fresh_family_is_invited_to_start())
-	failures.append_array(_test_a_returning_family_continues())
-	failures.append_array(_test_a_skipped_level_still_counts_as_progress())
-	failures.append_array(_test_a_half_finished_level_counts())
+	failures.append_array(_test_the_label_is_exact())
+	failures.append_array(_test_the_card_carries_the_label())
 	failures.append_array(_test_no_save_service_is_safe())
 	return failures
 
 
-## A tiny stand-in for the autoload, so this stays a pure content test with no
-## scene, no `/root` and no file on disk.
-class FakeSave extends Node:
-	var completed: Dictionary = {}
-	var current: String = ""
-
-	func get_level_completed() -> Dictionary:
-		return completed
-
-	func get_current_level() -> String:
-		return current
-
-
-## Runs the menu's own rule against a given save. Mirrors `_has_progress()` by
-## calling it on a real instance rather than by copying the logic, so a change
-## there fails here rather than quietly diverging.
-func _progress_for(save: Node) -> bool:
-	var menu: Node = MainScript.new()
-	# `_has_progress()` reaches for `/root/SaveService`; give it one by name.
-	var root: Node = Node.new()
-	save.name = "SaveService"
-	root.add_child(save)
-	root.add_child(menu)
-	var answer: bool = _ask(menu, save)
-	root.free()
-	return answer
-
-
-## The rule, evaluated against the injected save. Kept in one place so the four
-## cases below read as cases rather than as plumbing.
-func _ask(_menu: Node, save: Node) -> bool:
-	var completed: Variant = save.call("get_level_completed")
-	if typeof(completed) == TYPE_DICTIONARY and not (completed as Dictionary).is_empty():
-		return true
-	return not String(save.call("get_current_level")).strip_edges().is_empty()
-
-
-func _test_the_two_labels_are_distinct():
+func _test_the_label_is_exact():
 	var failures: Array = []
-	if MainScript.LABEL_START == MainScript.LABEL_CONTINUE:
-		failures.append("Start and Continue read the same, so the button says nothing")
-	for label: String in [MainScript.LABEL_START, MainScript.LABEL_CONTINUE]:
-		if label.strip_edges().is_empty():
-			failures.append("a menu label is empty")
-		# A pre-reader is shown these words every launch; long ones do not fit
-		# the button and do not get learned.
-		if label.length() > 12:
-			failures.append("'%s' is too long for the primary button" % label)
+	if MainScript.LABEL_PLAY_WITH_BUNNY != EXPECTED_LABEL:
+		failures.append("the primary button's label is '%s'; the owner asked for exactly '%s'"
+				% [MainScript.LABEL_PLAY_WITH_BUNNY, EXPECTED_LABEL])
+	# The old words must not come back under another name: a child is never
+	# shown "Continue" again, because it led somewhere other than Bunny.
+	var script: GDScript = MainScript
+	for constant: String in script.get_script_constant_map().keys():
+		if constant.begins_with("LABEL_") and constant != "LABEL_PLAY_WITH_BUNNY":
+			failures.append("main.gd grew a second primary-button label, %s; there is one caption"
+					% constant)
 	return failures
 
 
-func _test_a_fresh_family_is_invited_to_start():
+## The caption on the readied menu is the label -- not "Play", not the .tscn
+## placeholder, not a caption that depends on the save.
+func _test_the_card_carries_the_label():
 	var failures: Array = []
-	var save := FakeSave.new()
-	if _progress_for(save):
-		failures.append("a profile with nothing in it reports progress, so a new child "
-				+ "would be told to Continue something they have never played")
-	return failures
-
-
-func _test_a_returning_family_continues():
-	var failures: Array = []
-	var save := FakeSave.new()
-	save.completed = {"imHungry": true}
-	if not _progress_for(save):
-		failures.append("a finished level does not count as progress")
-	return failures
-
-
-## The important one.
-func _test_a_skipped_level_still_counts_as_progress():
-	var failures: Array = []
-	var save := FakeSave.new()
-	# Completed, rated zero -- exactly what the skip button produces.
-	save.completed = {"imHungry": true}
-	if not _progress_for(save):
-		failures.append("a level completed with 0 stars is not recognised as progress. "
-				+ "A child who used the skip button would be greeted with 'Start' and "
-				+ "would reasonably think their house was gone.")
-	return failures
-
-
-func _test_a_half_finished_level_counts():
-	var failures: Array = []
-	var save := FakeSave.new()
-	save.current = "snackTime"   # stopped part way through, nothing completed
-	if not _progress_for(save):
-		failures.append("a child who stopped half way through a mission is told to Start")
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return ["no SceneTree"]
+	var packed: PackedScene = load(MENU_SCENE) as PackedScene
+	if packed == null:
+		return ["%s cannot be loaded" % MENU_SCENE]
+	var menu: Node = packed.instantiate()
+	tree.root.add_child(menu)
+	if not menu.is_node_ready():
+		menu.notification(Node.NOTIFICATION_READY)
+	var caption: Label = menu.get_node_or_null("UI/SafeArea/PlayButton/PlayCaption") as Label
+	if caption == null:
+		failures.append("the Play button has no PlayCaption to carry the words")
+	else:
+		var shown: String = caption.text.replace("\n", " ").strip_edges()
+		if shown != EXPECTED_LABEL:
+			failures.append("the card says '%s', not '%s'" % [shown, EXPECTED_LABEL])
+		if caption.get_theme_font_size("font_size") < 27:
+			failures.append("the caption is under ART_BIBLE §8's 27 pt floor")
+		if caption.autowrap_mode == TextServer.AUTOWRAP_OFF:
+			failures.append("fifteen characters do not fit one line of a 256 px card; the caption must wrap")
+	tree.root.remove_child(menu)
+	menu.free()
 	return failures
 
 

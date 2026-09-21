@@ -54,8 +54,10 @@ const BUTTON_ROW_TOP: float = DESIGN_HEIGHT - 292.0
 const NARROWEST_ASPECT: float = 4.0 / 3.0
 const MIN_TOUCH_SIDE: float = 240.0
 
+## Play with Bunny goes to the HOUSE (via the activity picker, 2026-09-21);
+## it used to promise the Chapter 2 Baby Room, which was the owner's bug.
 const BUTTONS: Dictionary = {
-	"PlayButton": "res://scenes/baby_room/baby_room.tscn",
+	"PlayButton": "res://scenes/house/house_world.tscn",
 	"FreePlayButton": "res://scenes/house/house_world.tscn",
 	"DressUpButton": "res://scenes/dress_up/dress_up.tscn",
 	"ParentButton": "res://scenes/parent/parent_settings.tscn",
@@ -323,7 +325,7 @@ func _test_four_buttons_dressed():
 	# entry, agentB_tutor_entry patch). The banner is not part of the row maths.
 	var expected_buttons: int = BUTTONS.size() + (1 if host != null and host.get_node_or_null("LearnWithAlizButton") != null else 0)
 	if buttons.size() != expected_buttons:
-		failures.append("the title screen has %d buttons; it has four in the row (Start, Free Play, Dress Up, Grown-ups) plus Learn with Aliz"
+		failures.append("the title screen has %d buttons; it has four in the row (Play with Bunny, Free Play, Dress Up, Grown-ups) plus Learn with Aliz"
 				% buttons.size())
 	var learn: Button = (host.get_node_or_null("LearnWithAlizButton") if host != null else null) as Button
 	if learn == null:
@@ -398,6 +400,11 @@ func _test_four_buttons_dressed():
 	var parent_caption: Label = host.get_node_or_null("ParentButton/ParentCaption") as Label
 	if parent_caption != null and parent_caption.text != "Grown-ups":
 		failures.append("the parent button says '%s', not 'Grown-ups'" % parent_caption.text)
+	# And the primary button says what it does, in the owner's exact words.
+	var play_caption: Label = host.get_node_or_null("PlayButton/PlayCaption") as Label
+	if play_caption == null or play_caption.text.replace("\n", " ").strip_edges() != "Play with Bunny":
+		failures.append("the primary button says '%s', not 'Play with Bunny'"
+				% (play_caption.text if play_caption != null else ""))
 
 	tree.root.remove_child(menu)
 	menu.free()
@@ -430,8 +437,23 @@ func _test_each_button_opens_its_scene():
 			failures.append("no %s to press" % button_name)
 		else:
 			button.pressed.emit()
-			# Start and Free Play walk home first; nothing must have opened yet,
-			# and a tap (skip) must open it at once. The other two go straight.
+			if button_name == "PlayButton":
+				# Play with Bunny opens the activity picker first; the walk home
+				# starts when a CARD is tapped. Nothing has opened yet.
+				if bool(menu.call("is_departing")):
+					failures.append("Play with Bunny walked home before a card was chosen")
+				var picker: Control = menu.call("get_activity_picker")
+				if picker == null:
+					failures.append("Play with Bunny opened no activity picker")
+				else:
+					var ids: Array = picker.call("get_mission_ids")
+					if ids.is_empty():
+						failures.append("the activity picker has no cards")
+					else:
+						picker.call("choose", String(ids[0]))
+			# Play with Bunny (once a card is tapped) and Free Play walk home
+			# first; nothing must have opened yet, and a tap (skip) must open it
+			# at once. The other two go straight.
 			var departing: bool = bool(menu.call("is_departing"))
 			var walks: bool = button_name in ["PlayButton", "FreePlayButton"]
 			if walks and not departing:
@@ -541,10 +563,19 @@ func _test_departure_completes():
 
 	var play: Button = menu.get_node_or_null("UI/SafeArea/PlayButton") as Button
 	play.pressed.emit()
+	# Through the picker: the first card is the walk home's real trigger.
+	var picker: Control = menu.call("get_activity_picker")
+	if picker == null:
+		_cleanup(tree, menu, previous_scene, before)
+		return ["pressing Play with Bunny opened no activity picker"]
+	var ids: Array = picker.call("get_mission_ids")
+	if ids.is_empty() or not bool(picker.call("choose", String(ids[0]))):
+		_cleanup(tree, menu, previous_scene, before)
+		return ["the activity picker has no card to tap"]
 	var departure: Node = menu.call("get_departure")
 	if departure == null:
 		_cleanup(tree, menu, previous_scene, before)
-		return ["pressing Start started no walk home"]
+		return ["tapping a card started no walk home"]
 	var phases: Array = []
 	departure.phase_changed.connect(func(p: String) -> void: phases.append(p))
 	phases.append(String(departure.call("get_phase")))
@@ -601,7 +632,7 @@ func _test_departure_completes():
 		failures.append("the walk home finished and no scene was opened")
 	else:
 		if opened.scene_file_path != BUTTONS["PlayButton"]:
-			failures.append("the walk home opened %s; Start promises %s" % [opened.scene_file_path, BUTTONS["PlayButton"]])
+			failures.append("the walk home opened %s; Play with Bunny promises %s" % [opened.scene_file_path, BUTTONS["PlayButton"]])
 		if tree.current_scene != opened:
 			failures.append("the opened scene was not made current")
 	_cleanup(tree, menu, previous_scene, before)

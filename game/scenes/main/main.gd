@@ -5,10 +5,38 @@ extends Node3D
 ##
 ## ```
 ## Main menu
-## ├── Play (Story) → ch2 → baby_room.tscn    (caregiver, no locomotion)
-## │                → ch3 → house_world.tscn  (toddler, locomotion)
-## └── Free Play    → house_world.tscn, unlocked rooms, no objective
+## ├── Play with Bunny → activity picker → house_world.tscn, STORY, that mission
+## │                     (every Bunny-care level, always, with its 0..3 stars)
+## ├── Learn with Aliz → classroom.tscn
+## ├── Free Play       → house_world.tscn, unlocked rooms, no objective
+## ├── Dress Up        → dress_up.tscn
+## └── Grown-ups       → parent_settings.tscn
 ## ```
+##
+## ## Play with Bunny (owner playtest, 2026-09-21)
+##
+## The primary button used to say Start/Continue and route on the saved chapter,
+## which for almost every real profile meant the Chapter 2 Baby Room -- not the
+## house with Bunny the button implied -- and once a house level was finished
+## there was no way back to it. Now the button says exactly "Play with Bunny",
+## opens `scenes/activities_menu/activity_picker.gd` over this screen, and the
+## card the child taps becomes `build_scene(house, STORY, mission_id)`. The
+## picker is built from content (`ActivityPicker.entries_for()`), lists finished
+## levels like any other, and shows their rating. Play with Bunny NEVER opens
+## the Baby Room: `bunny_scene_path()` has no Baby Room fallback.
+##
+## First launch is unchanged: a profile that has never been shown the game still
+## goes to the house tutorial (below). After that, Play with Bunny always shows
+## the picker -- a brand-new family sees seven cards with "I'm Hungry!" first
+## and its next star breathing, rather than being dropped into a level with no
+## way to choose. One behaviour, no hidden rule. If the picker has nothing to
+## list (a build with no house content) the button goes straight into the house
+## and the director picks, so it is never a dead end.
+##
+## The chapter routing below (`CHAPTER_ROUTES`, `story_scene_path()`,
+## `resolve_story_chapter_id()`) is kept as the pure, tested description of
+## which world each chapter is -- the Baby Room remains Chapter 2's world -- but
+## no title-screen button routes through it any more.
 ##
 ## ## Why the route is decided here and nowhere else
 ##
@@ -76,6 +104,10 @@ const HOUSE_WORLD_PATH: String = "res://scenes/house/house_world.tscn"
 ## Where first run is decided. `load()`ed rather than `preload()`ed, like the
 ## content scripts below: a build with no onboarding simply has no first launch.
 const ONBOARDING_PLAN_SCRIPT_PATH: String = "res://scripts/onboarding/onboarding_plan.gd"
+## The activity picker. `load()`ed like every optional script here: a build
+## without it sends Play with Bunny straight into the house.
+const ACTIVITY_PICKER_SCRIPT_PATH: String = "res://scenes/activities_menu/activity_picker.gd"
+
 ## Mirrors `onboarding_plan.gd::SETTING_KEY`. Duplicated rather than loaded so the
 ## title screen never depends on that script parsing; `test_routing_first_run.gd`
 ## pins the two together.
@@ -236,6 +268,8 @@ const SubtitleStripScript := preload("res://scripts/voice/subtitle_strip.gd")
 ## up; the button row ends at 292).
 const SUBTITLE_BOTTOM_MARGIN: float = 420.0
 var _skip_catcher: Control = null
+## The activity picker while it is open over the menu, or null.
+var _picker: Control = null
 
 
 func _ready() -> void:
@@ -273,59 +307,29 @@ func _process(delta: float) -> void:
 
 
 # ---------------------------------------------------------------------------
-# Start, or Continue
+# Play with Bunny
 # ---------------------------------------------------------------------------
 
-## The two words a returning family looks for.
-##
-## The button used to say "Play" whether this was the first launch or the
-## fiftieth, which loses the one piece of information a parent actually wants
-## from a title screen: *is our progress still here?* A child who has played
-## before is not starting; they are carrying on, and saying so is the difference
-## between a menu and a front door.
-##
-## The choice is made from COMPLETION, not from a star count. Stars can be zero
-## after a genuinely finished level -- the skip button is the room's no-dead-end
-## escape hatch and rates 0 on purpose -- so a child who skipped their way
-## through Monday would be greeted with "Start" on Tuesday and reasonably wonder
-## where their house went.
-const LABEL_START: String = "Start"
-const LABEL_CONTINUE: String = "Continue"
+## The primary button's caption, exactly. It names what the button does -- the
+## house, with Bunny -- rather than whether a save exists ("Start"/"Continue"
+## told a parent that, and told the child nothing). Fifteen characters: the card
+## wraps it onto two lines, which is fine; what may not change is the wording,
+## because the owner reads it aloud and `test_menu_start_continue.gd` pins it.
+const LABEL_PLAY_WITH_BUNNY: String = "Play with Bunny"
 
 
 func _label_play_button() -> void:
 	if _play_button == null:
 		return
-	var label: String = LABEL_CONTINUE if _has_progress() else LABEL_START
 	# The word lives in a CHILD `Label` ("PlayCaption"), not in the button's own
 	# `text` -- the button carries an icon above a caption, and setting `text`
 	# draws a second, smaller word behind the icon instead of replacing the
-	# visible one. Found by rendering the menu and looking at it; the first
-	# version of this function set `text` and changed nothing on screen.
+	# visible one. Found by rendering the menu and looking at it.
 	var caption: Label = _play_button.get_node_or_null("PlayCaption") as Label
 	if caption != null:
-		caption.text = label
+		caption.text = LABEL_PLAY_WITH_BUNNY
 	else:
-		_play_button.text = label
-
-
-## Has this family played before? Asked of SaveService, defensively -- a build
-## without one, or an older one, answers "no" and gets "Start", which is the safe
-## way to be wrong.
-func _has_progress() -> bool:
-	var save_service: Node = _autoload("SaveService")
-	if save_service == null:
-		return false
-	if save_service.has_method("get_level_completed"):
-		var completed: Variant = save_service.call("get_level_completed")
-		if typeof(completed) == TYPE_DICTIONARY and not (completed as Dictionary).is_empty():
-			return true
-	# Mid-level counts too: a child who stopped half way through Tuesday's
-	# mission has progress even though nothing is finished yet.
-	if save_service.has_method("get_current_level"):
-		if not String(save_service.call("get_current_level")).strip_edges().is_empty():
-			return true
-	return false
+		_play_button.text = LABEL_PLAY_WITH_BUNNY
 
 
 # ---------------------------------------------------------------------------
@@ -674,10 +678,22 @@ static func _first_existing(paths: Array) -> String:
 # Buttons
 # ---------------------------------------------------------------------------
 
+## Play with Bunny. First launch still walks straight home to the tutorial;
+## every later press opens the picker over this screen. The walk home and Aliz's
+## "Let's go home!" happen when a CARD is tapped, not here -- the child has not
+## chosen anything yet.
 func _on_play_pressed() -> void:
-	if _departure == null:
+	if _departure != null:
+		skip_departure()
+		return
+	if is_first_launch():
 		VoiceBridge.cue(self, VoiceCues.EVENT_START_PRESSED, "", {"interrupt": true})
-	_depart(_route_play)
+		_depart(_route_first_run)
+		return
+	if not _open_activity_picker():
+		# No picker in this build, or nothing to list: never a dead button.
+		VoiceBridge.cue(self, VoiceCues.EVENT_START_PRESSED, "", {"interrupt": true})
+		_depart(_route_bunny.bind(""))
 
 
 func _on_free_play_pressed() -> void:
@@ -720,15 +736,114 @@ func get_subtitle_strip() -> Control:
 	return host.get_node_or_null("SubtitleStrip") as Control if host != null else null
 
 
-## Story Mode's routing, byte-for-byte what pressing Play always did.
-func _route_play() -> bool:
-	# A child who beats the first-launch timer to the button still gets taught.
-	# Pressing Play the very first time therefore opens the house rather than
-	# Chapter 2 -- once, for one launch, and only for a profile that has never
-	# been shown the game.
-	if is_first_launch() and _enter_first_run():
+## A child who beats the first-launch timer to the button still gets taught:
+## pressing Play with Bunny the very first time opens the house tutorial -- once,
+## for one launch, and only for a profile that has never been shown the game.
+## Should first run be impossible (no house), fall through to Bunny's house in
+## Story, which is the same building.
+func _route_first_run() -> bool:
+	if _enter_first_run():
 		return true
-	return _enter_scene(story_scene_path(resolve_story_chapter_id()), ProgressionMode.STORY)
+	return _route_bunny("")
+
+
+## Play with Bunny's hand-off: the house, in Story, on the mission the child
+## picked (or the journey's own pick for ""). Never the Baby Room.
+func _route_bunny(mission_id: String) -> bool:
+	return _enter_scene(bunny_scene_path(), ProgressionMode.STORY, mission_id)
+
+
+## The scene Play with Bunny opens, or "" when this build has no house.
+##
+## **Deliberately no Baby Room fallback**, unlike `story_scene_path()`. The
+## button promises Bunny's house; opening the Chapter 2 nursery instead is the
+## exact bug the owner reported. A house-less build gets the warm "Back in a
+## moment!" line rather than the wrong game.
+static func bunny_scene_path() -> String:
+	return _first_existing([scene_path_for_route(Route.HOUSE_WORLD)])
+
+
+# ---------------------------------------------------------------------------
+# The activity picker
+# ---------------------------------------------------------------------------
+
+## Opens the card grid over the menu. False when there is no picker script in
+## the build, it will not construct, or content gives it nothing to list -- the
+## caller then goes straight into the house.
+func _open_activity_picker() -> bool:
+	if _picker != null and is_instance_valid(_picker):
+		return true
+	var host: Control = get_node_or_null("UI/SafeArea") as Control
+	if host == null or not ResourceLoader.exists(ACTIVITY_PICKER_SCRIPT_PATH):
+		return false
+	var script: Resource = load(ACTIVITY_PICKER_SCRIPT_PATH)
+	if not (script is GDScript):
+		return false
+	var entries: Array = activity_entries()
+	if entries.is_empty():
+		return false
+	var built: Object = (script as GDScript).new()
+	if not (built is Control) or not built.has_method("build"):
+		if built != null:
+			built.free()
+		return false
+	var picker := built as Control
+	picker.call("build", entries)
+	if picker.has_signal("activity_chosen"):
+		picker.connect("activity_chosen", _on_activity_chosen)
+	if picker.has_signal("back_pressed"):
+		picker.connect("back_pressed", _close_activity_picker)
+	host.add_child(picker)
+	_picker = picker
+	return true
+
+
+func _close_activity_picker() -> void:
+	if _picker != null and is_instance_valid(_picker):
+		_picker.queue_free()
+	_picker = null
+
+
+func _on_activity_chosen(mission_id: String) -> void:
+	_close_activity_picker()
+	if _departure == null:
+		VoiceBridge.cue(self, VoiceCues.EVENT_START_PRESSED, "", {"interrupt": true})
+	_depart(_route_bunny.bind(mission_id))
+
+
+## The picker's cards, from content and the profile: every playable house
+## level with its saved rating. `[]` without a level system or a library.
+func activity_entries() -> Array:
+	if not ResourceLoader.exists(ACTIVITY_PICKER_SCRIPT_PATH):
+		return []
+	var script: Resource = load(ACTIVITY_PICKER_SCRIPT_PATH)
+	if not (script is GDScript) or not (script as GDScript).has_method("entries_for"):
+		return []
+	var library_script: Resource = load(CONTENT_LIBRARY_SCRIPT_PATH)
+	if not (library_script is GDScript):
+		return []
+	var library: Object = (library_script as GDScript).call("create")
+	var system: Variant = _level_system()
+	return (script as GDScript).call("entries_for", system, library, _stars_by_level())
+
+
+func _stars_by_level() -> Dictionary:
+	var save_service: Node = _autoload("SaveService")
+	if save_service == null or not save_service.has_method("get_stars_by_level"):
+		return {}
+	var stored: Variant = save_service.call("get_stars_by_level")
+	if typeof(stored) != TYPE_DICTIONARY:
+		return {}
+	return (stored as Dictionary).duplicate(true)
+
+
+## The open picker, or null. For tests and the screenshot harness.
+func get_activity_picker() -> Control:
+	return _picker if _picker != null and is_instance_valid(_picker) else null
+
+
+func is_activity_picker_open() -> bool:
+	return get_activity_picker() != null
 
 
 func _route_free_play() -> bool:
@@ -1036,8 +1151,9 @@ func get_unlocked_room_ids() -> Array:
 ## Instantiates `path`, configures it for `mode`, and swaps it in for the menu.
 ## Returns false only when there is nothing loadable to swap to, in which case
 ## the menu stays up with a friendly message rather than a black screen.
-func _enter_scene(path: String, mode: int) -> bool:
-	var instance: Node = build_scene(path, mode, get_unlocked_room_ids(), _saved_profile())
+func _enter_scene(path: String, mode: int, mission_id: String = "") -> bool:
+	var instance: Node = build_scene(
+		path, mode, get_unlocked_room_ids(), _saved_profile(), mission_id)
 	if instance == null:
 		_show_unavailable()
 		return false
@@ -1060,10 +1176,16 @@ func _enter_scene(path: String, mode: int) -> bool:
 ## can be asserted headlessly. Returns null when `path` holds no scene.
 ##
 ## Configuration is duck-typed throughout: both worlds answer
-## `set_progression_mode()`, only the house answers the other two, and a world
+## `set_progression_mode()`, only the house answers the other three, and a world
 ## that answers none of them still loads and plays.
+##
+## `mission_id` is the activity picker's request ("Play with Bunny" -> a card).
+## It is handed to `set_requested_mission_id()` when the world has one, and the
+## world's own director decides whether it is playable; an empty id is Story as
+## it always was.
 static func build_scene(
-	path: String, mode: int, unlocked_room_ids: Array = [], profile: Variant = null
+	path: String, mode: int, unlocked_room_ids: Array = [], profile: Variant = null,
+	mission_id: String = ""
 ) -> Node:
 	if path.is_empty() or not ResourceLoader.exists(path):
 		return null
@@ -1076,6 +1198,8 @@ static func build_scene(
 
 	if instance.has_method("set_progression_mode"):
 		instance.call("set_progression_mode", mode)
+	if not mission_id.strip_edges().is_empty() and instance.has_method("set_requested_mission_id"):
+		instance.call("set_requested_mission_id", mission_id)
 	if mode == ProgressionMode.FREE_PLAY and instance.has_method("set_unlocked_room_ids"):
 		instance.call("set_unlocked_room_ids", unlocked_room_ids)
 	# Put the child back where they were. An invalid, stale or corrupt saved

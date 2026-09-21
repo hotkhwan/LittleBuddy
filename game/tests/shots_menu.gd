@@ -9,11 +9,14 @@ extends SceneTree
 ##   Godot --path game --script res://tests/shots_menu.gd -- menu_depart_carry 1334x750 depart 1.0
 ##   Godot --path game --script res://tests/shots_menu.gd -- menu_depart_door 1334x750 depart 2.05
 ##   Godot --path game --script res://tests/shots_menu.gd -- dress_up_mint 1334x750 dressup mint
+##   Godot --path game --script res://tests/shots_menu.gd -- menu_picker_ipad 1334x750 picker
 ##
-## `depart <seconds>` presses Start and then drives the walk home by hand to
-## that moment (`menu_departure.gd::advance()`), so the frame is the same one
-## a child sees at that second. `dressup <swatch>` photographs the Dress Up
-## screen with that swatch applied.
+## `depart <seconds>` presses Play with Bunny, taps the first card of the
+## activity picker, and then drives the walk home by hand to that moment
+## (`menu_departure.gd::advance()`), so the frame is the same one a child sees
+## at that second. `picker` photographs the activity picker itself, open over
+## the menu. `dressup <swatch>` photographs the Dress Up screen with that
+## swatch applied.
 ##
 ## ## Why a SubViewport, and why `size_2d_override`
 ##
@@ -100,15 +103,38 @@ func _run() -> void:
 		_finish()
 		return
 
+	if _mode == "picker":
+		var play_pick: Button = _menu.get_node_or_null("UI/SafeArea/PlayButton") as Button
+		if play_pick == null:
+			_fail.append("no PlayButton to press")
+		else:
+			play_pick.pressed.emit()
+			await _settle(0.4)
+			var picker: Control = _menu.call("get_activity_picker") if _menu.has_method("get_activity_picker") else null
+			if picker == null:
+				_fail.append("Play with Bunny opened no activity picker")
+			else:
+				var cards: Array = picker.call("get_cards")
+				print("  picker: %d cards %s" % [cards.size(), str(picker.call("get_mission_ids"))])
+				for card: Button in cards:
+					print("    %-22s %s" % [String(card.get_meta("missionId", "")), str(card.size)])
+			await _shot(_name)
+			if save != null:
+				root.add_child(save)
+			_finish()
+			return
+
 	if _mode == "departlive":
-		# The REAL thing: press Start and let `_process()` drive the walk for
-		# the asked-for seconds, so the fade, the hand-off and the reveal are
-		# the ones a child gets, not the hand-stepped ones.
+		# The REAL thing: press Play with Bunny, tap the first card, and let
+		# `_process()` drive the walk for the asked-for seconds, so the fade,
+		# the hand-off and the reveal are the ones a child gets, not the
+		# hand-stepped ones.
 		var play_live: Button = _menu.get_node_or_null("UI/SafeArea/PlayButton") as Button
 		if play_live == null:
 			_fail.append("no PlayButton to press")
 		else:
 			play_live.pressed.emit()
+			_choose_first_card()
 			var seconds: float = float(_mode_arg) if _mode_arg.is_valid_float() else 1.0
 			await _settle(seconds)
 			var scenes: Array = []
@@ -140,13 +166,15 @@ func _run() -> void:
 		if play == null:
 			_fail.append("no PlayButton to press")
 		else:
-			# The real press, then the walk driven by hand to the asked-for
-			# second. `_process` is switched off so it does not ALSO advance it.
+			# The real press, the first card, then the walk driven by hand to
+			# the asked-for second. `_process` is switched off so it does not
+			# ALSO advance it.
 			_menu.set_process(false)
 			play.pressed.emit()
+			_choose_first_card()
 			var departure: Node = _menu.call("get_departure") if _menu.has_method("get_departure") else null
 			if departure == null:
-				_fail.append("pressing Start started no departure")
+				_fail.append("pressing Play with Bunny and a card started no departure")
 			else:
 				var at: float = float(_mode_arg) if _mode_arg.is_valid_float() else 1.0
 				var stepped: float = 0.0
@@ -180,6 +208,22 @@ func _run() -> void:
 	if save != null:
 		root.add_child(save)
 	_finish()
+
+
+## Play with Bunny opens the activity picker; the first card is what walks
+## home. A build without the picker has already started walking.
+func _choose_first_card() -> void:
+	if not _menu.has_method("get_activity_picker"):
+		return
+	var picker: Control = _menu.call("get_activity_picker")
+	if picker == null:
+		return
+	var ids: Array = picker.call("get_mission_ids")
+	if ids.is_empty():
+		_fail.append("the activity picker has no cards")
+		return
+	print("  picker: tapping '%s'" % String(ids[0]))
+	picker.call("choose", String(ids[0]))
 
 
 func _finish() -> void:

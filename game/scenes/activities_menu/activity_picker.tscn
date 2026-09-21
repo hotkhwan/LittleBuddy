@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/activities_menu/activity_picker.gd" id="1"]
+
+; The whole screen is built in code by `activity_picker.gd::build(entries)` from
+; the house chapter's levels: the title screen instantiates it as an overlay on
+; the menu and hands it the entries. This scene exists so the picker can be
+; opened and photographed on its own.
+[node name="ActivityPicker" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
