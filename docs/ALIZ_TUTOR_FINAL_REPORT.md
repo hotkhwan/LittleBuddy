@@ -1,8 +1,8 @@
 # Aliz Tutor Mode V1 — final report, 2026-09-21
 
-Branch `feature/overnight-production-candidate`. **Final code commit `e569f5e`**
-(builds below were made from `94e5821`; the two commits after it add a harness
-frame, this report, the QA C1 fix and a settings null guard, all suite-verified), pushed to `origin`,
+Branch `feature/overnight-production-candidate`. **Final code commit: the one
+carrying this paragraph** (the QA C3-C8 closure and the iOS microphone usage
+string follow `e569f5e`); all three artefacts below were rebuilt from it., pushed to `origin`,
 fast-forward, no force. Sprint base: `7110046`. 45 commits, 432 files, seven
 workstream agents plus an independent QA pass, merged one wave at a time by the
 lead and re-gated after every wave.
@@ -65,9 +65,9 @@ modular pipeline for V1 and Realtime as a later flag-gated experiment.
 | Audio shipping smoke | SMOKE PASS |
 | Backend | 126 passing |
 | Privacy guards, flag test | PASS |
-| iOS export | exit 0, pck 14,998,884 B, tutor scene in, concept art out |
+| iOS export | exit 0, pck 15,005,012 B, tutor scene in, concept art out; NSMicrophoneUsageDescription now names the Learn with Aliz lesson |
 | arm64 Xcode build | `** BUILD SUCCEEDED **` (voice-processing symbol present) |
-| Android debug APK | `build/android/LittleDays-debug.apk`, 43,909,805 B, SHA-256 `f3f0f53fd41199625dddec6cd890f10a933cfc839943c50c0d57100aa4574ec7`, signed v2+v3, zero permissions |
+| Android debug APK | `build/android/LittleDays-debug.apk`, 43,918,196 B, SHA-256 `707f0fab923c03897dd130f64e99378c33e0a2dabe263b263415e5cf24194172`, signed, zero permissions |
 
 ## 6. Quota test results (verbatim from QA on a8a2e1f, unchanged since)
 
@@ -99,8 +99,7 @@ claimed.
 
 ## 9. Known limitations and cosmetic items
 
-QA's cosmetic list (`docs/QA_TUTOR_a8a2e1f.md`) is closed as of the commit
-after `e569f5e`: C1 a long silence makes Aliz ask again with no script error;
+QA's cosmetic list (`docs/QA_TUTOR_a8a2e1f.md`) is closed as of `d2f718d`: C1 a long silence makes Aliz ask again with no script error;
 C3 the closing card shows only the stars earned this session (none when no
 answer was given); C4 the tap fallback offers all four subjects with a
 flashcard (Animals included; Everyday Things still has no cup/spoon card);
