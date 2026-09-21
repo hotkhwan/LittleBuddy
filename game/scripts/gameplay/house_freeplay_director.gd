@@ -544,6 +544,9 @@ func _toggle_storage_if_container(target_id: String) -> bool:
 func _on_room_entered(room_id: String, _spawn_id: String) -> void:
 	# A new room is a new set of things: offer a hand again, but not instantly.
 	_quieten_nudge()
+	# The one light is the whole house's: a bedtime left behind in the bedroom
+	# must not darken the kitchen.
+	_end_bedtime()
 	if _hud != null:
 		_hud.call("hide_word")
 	# And a new set of things to pick up. Carrying the bedroom's teddy into the
@@ -708,6 +711,13 @@ func _on_object_chosen(object_id: String) -> void:
 		_character.call("play_action", action)
 
 	var reaction: String = Words.drop_reaction_for(_drops)
+	if not _bedtime.is_empty() and object_id == BEDTIME_TEDDY_ID and not bool(_bedtime.get("teddy", false)):
+		# His teddy, at bedtime: the one thing he asked for.
+		_bedtime["teddy"] = true
+		var sleeper: Node = _bedtime.get("child", null)
+		if sleeper != null and is_instance_valid(sleeper) and sleeper.has_method("satisfy"):
+			sleeper.call("satisfy", "needsComfort", 30.0)
+		reaction = BEDTIME_TEDDY_THANKS
 	if _hud != null:
 		_hud.call("show_encouragement", reaction)
 	# Queued, not interrupting: chopping the word off with the reaction would
@@ -1075,6 +1085,7 @@ func _step_acts(delta: float) -> void:
 		_care_elapsed += dt
 		if _care_elapsed >= CARE_FALLBACK_SEC and _care.has_method("complete_by_touch"):
 			_care.call("complete_by_touch")
+	_step_bedtime(dt)
 	if not _sparkles.is_empty():
 		var alive: Array = []
 		for entry: Dictionary in _sparkles:
@@ -1411,6 +1422,8 @@ func _on_landed(node: Node) -> void:
 		node.call("set_activity", String(landing.get("activity", "idle")))
 		_child_at = String(landing.get("surface", ""))
 		_child_at_node = node
+		if String(landing.get("activity", "")) == "bedtime":
+			_start_bedtime(node)
 	elif String(landing.get("kind", "")) == "dropIn":
 		# Landed in the pad's prop: the same reward a drag there earns, and the
 		# same slide home afterwards. Its home stays on the floor.
@@ -1451,6 +1464,7 @@ func _on_object_taken(node: Node) -> void:
 	if node == _child_at_node:
 		_child_at = ""
 		_child_at_node = null
+		_end_bedtime()
 	var id: int = node.get_instance_id()
 	if not _stored.has(id):
 		return
@@ -2003,6 +2017,114 @@ func get_tidy_nodes() -> Array:
 
 func get_tidy_count() -> int:
 	return _tidies_started
+
+
+## -- Bedtime (Bunny on the bed) ------------------------------------------------------
+##
+## Laying Bunny on the bed used to be a pose and a "There you go!". Now it is a
+## small routine: the house's one light and the ambient dim to a night glow
+## over a second, Aliz says goodnight, Bunny's tiredness is answered (his
+## REAL energy stat moves) and he sleeps; then Aliz asks for his teddy, and
+## the bedroom's staged teddy dragged (or tapped) to him is "Night night!".
+## Picking him up, or leaving the room, brings the light back up, so it can
+## be done again and again. Nothing is awarded: Free Play has no objective.
+##
+## The teddy beat's words come from `content/bedtime/tasks.json`
+## (`bedtimeTeddy`), so the story and Free Play ask for the teddy in the same
+## voice; a build without that file simply skips the request.
+const BEDTIME_TASKS_PATH: String = "res://content/bedtime/tasks.json"
+const BEDTIME_TEDDY_TASK_ID: String = "bedtimeTeddy"
+const BEDTIME_TEDDY_ID: String = "teddy"
+const BEDTIME_GOODNIGHT: String = "Goodnight, Bunny! Sleep tight."
+const BEDTIME_TEDDY_THANKS: String = "Night night!"
+const BEDTIME_DIM_SEC: float = 1.0
+## How dark the night glow is: the key light and the ambient, as fractions of
+## their daytime energy. Never black -- a child must still see the room.
+const BEDTIME_KEY_FRACTION: float = 0.38
+const BEDTIME_AMBIENT_FRACTION: float = 0.55
+
+var _bedtime: Dictionary = {}
+## 0 = day, 1 = night glow; eased toward its target in `_step_bedtime()`.
+var _bedtime_dim: float = 0.0
+var _bedtime_light: Dictionary = {}
+
+
+func _start_bedtime(child: Node) -> void:
+	_bedtime = {"child": child, "teddy": false}
+	if child.has_method("satisfy"):
+		child.call("satisfy", "sleepy", 60.0)
+	_speak(BEDTIME_GOODNIGHT, false)
+	var ask: String = _bedtime_teddy_line()
+	if not ask.is_empty():
+		if _hud != null:
+			_hud.call("show_encouragement", ask)
+		_speak(ask, false)
+
+
+func _end_bedtime() -> void:
+	_bedtime = {}
+
+
+func is_bedtime_active() -> bool:
+	return not _bedtime.is_empty()
+
+
+func get_bedtime_dim() -> float:
+	return _bedtime_dim
+
+
+func _step_bedtime(dt: float) -> void:
+	var target: float = 1.0 if is_bedtime_active() else 0.0
+	if is_equal_approx(_bedtime_dim, target):
+		return
+	_bedtime_dim = move_toward(_bedtime_dim, target, dt / BEDTIME_DIM_SEC)
+	_apply_bedtime_light()
+
+
+## The house's one `DirectionalLight3D` and its environment, found once.
+func _bedtime_lighting() -> Dictionary:
+	if not _bedtime_light.is_empty() or _world == null:
+		return _bedtime_light
+	var light: Node = null
+	var environment: Environment = null
+	for node: Node in _world.get_children():
+		if node is DirectionalLight3D and light == null:
+			light = node
+		elif node is WorldEnvironment and environment == null:
+			environment = (node as WorldEnvironment).environment
+	_bedtime_light = {
+		"light": light,
+		"environment": environment,
+		"keyBase": float((light as DirectionalLight3D).light_energy) if light != null else 0.0,
+		"ambientBase": float(environment.ambient_light_energy) if environment != null else 0.0,
+	}
+	return _bedtime_light
+
+
+func _apply_bedtime_light() -> void:
+	var lighting: Dictionary = _bedtime_lighting()
+	var light: Variant = lighting.get("light", null)
+	if light is DirectionalLight3D and is_instance_valid(light):
+		(light as DirectionalLight3D).light_energy = float(lighting["keyBase"]) * lerpf(1.0, BEDTIME_KEY_FRACTION, _bedtime_dim)
+	var environment: Variant = lighting.get("environment", null)
+	if environment is Environment:
+		(environment as Environment).ambient_light_energy = float(lighting["ambientBase"]) * lerpf(1.0, BEDTIME_AMBIENT_FRACTION, _bedtime_dim)
+
+
+## `bedtimeTeddy`'s instruction from the bedtime content, or "" without it.
+func _bedtime_teddy_line() -> String:
+	if not FileAccess.file_exists(BEDTIME_TASKS_PATH):
+		return ""
+	var file: FileAccess = FileAccess.open(BEDTIME_TASKS_PATH, FileAccess.READ)
+	if file == null:
+		return ""
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if not (parsed is Dictionary):
+		return ""
+	for task: Variant in (parsed as Dictionary).get("tasks", []):
+		if task is Dictionary and String((task as Dictionary).get("taskId", "")) == BEDTIME_TEDDY_TASK_ID:
+			return String((task as Dictionary).get("instruction", ""))
+	return ""
 
 
 ## -- Which one? The fridge's food chooser ---------------------------------------------

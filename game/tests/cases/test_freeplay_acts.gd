@@ -238,6 +238,7 @@ func _test_acts_on_the_real_house():
 	failures.append_array(_toy_box(world, director, aliz))
 	failures.append_array(_tidy_loop(world, director, aliz))
 	failures.append_array(_bed_and_bunny(world, director, aliz, bunny))
+	failures.append_array(_bedtime(world, director, aliz, bunny, tts))
 	failures.append_array(_every_room_opens(world, director, aliz, tts))
 	failures.append_array(_gate_seam_when_switched_on(world, director, aliz, tts))
 	failures.append_array(_kitchen(world, director, aliz, bunny))
@@ -527,6 +528,92 @@ func _bed_and_bunny(world, director, aliz, bunny):
 	_step(aliz, 40)
 	if bool(aliz.call("is_carrying_node")):
 		failures.append("bed: could not put Bunny back down after the carry-on-arrival case")
+	return failures
+
+
+## Bedtime: Bunny laid on the bed sleeps -- the light dims to a night glow, Aliz
+## says goodnight and asks for his teddy, his tiredness is answered, the teddy
+## dragged to him is "Night night!" -- and picking him up brings the day back,
+## so it can be played again.
+func _bedtime(world, director, aliz, bunny, tts):
+	var failures: Array = []
+	if bunny == null:
+		return ["bedtime: no Bunny"]
+	world.call("place_in_room", "bedroom", "")
+	var light: DirectionalLight3D = null
+	for node: Node in world.get_children():
+		if node is DirectionalLight3D:
+			light = node
+	if light == null:
+		return ["bedtime: the house has no DirectionalLight3D to dim"]
+	var day: float = light.light_energy
+	var stats: RefCounted = bunny.call("get_stats")
+	stats.call("adjust", "energy", -60.0)
+	var tired: float = float((stats.call("describe") as Dictionary).get("energy", 0.0))
+	if bool(aliz.call("is_carrying_node")):
+		aliz.call("put_down_carried")
+		_step(aliz, 40)
+	SpatialUtil.set_world_position(aliz, SpatialUtil.world_position(bunny) + Vector3(0.0, 0.0, 0.62))
+	if not bool(bunny.call("perform_affordance", aliz)):
+		return ["bedtime: could not pick Bunny up"]
+	_step(aliz, 40)
+	tts.lines.clear()
+	_arrive(aliz, "bedroom.bed")
+	_step(aliz, 40)
+	if not bool(director.call("is_bedtime_active")):
+		return failures + ["bedtime: laying Bunny on the bed did not start bedtime"]
+	if String(bunny.call("get_activity")) != "bedtime":
+		failures.append("bedtime: Bunny is '%s', not asleep (bedtime)" % bunny.call("get_activity"))
+	var rested: float = float((stats.call("describe") as Dictionary).get("energy", 0.0))
+	if rested <= tired:
+		failures.append("bedtime: his energy did not rise (%.0f -> %.0f); bedtime must answer sleepy for real" % [tired, rested])
+	var said: String = " ".join(tts.lines)
+	if not said.contains("Goodnight"):
+		failures.append("bedtime: Aliz did not say goodnight (%s)" % str(tts.lines))
+	if not said.contains("teddy"):
+		failures.append("bedtime: Aliz did not ask for his teddy (%s)" % str(tts.lines))
+	for _i: int in range(int(1.5 / DT)):
+		director.call("step", DT)
+	if light.light_energy > day * 0.6:
+		failures.append("bedtime: the light did not dim (%.2f of %.2f)" % [light.light_energy, day])
+	if light.light_energy < day * 0.2:
+		failures.append("bedtime: the room went too dark (%.2f of %.2f); a child must still see it" % [light.light_energy, day])
+	# The teddy, brought to him.
+	var teddy: Node = _draggable(director, "teddy")
+	if teddy == null:
+		failures.append("bedtime: no teddy staged in the bedroom to bring him")
+	else:
+		var comfort_before: float = float((stats.call("describe") as Dictionary).get("happiness", 0.0))
+		tts.lines.clear()
+		teddy.emit_signal("chosen", "teddy")
+		if not " ".join(tts.lines).contains("Night night"):
+			failures.append("bedtime: the teddy at bedtime should be 'Night night!' (%s)" % str(tts.lines))
+		if float((stats.call("describe") as Dictionary).get("happiness", 0.0)) <= comfort_before:
+			failures.append("bedtime: his teddy did not comfort him")
+	# Picking him up ends the night: the light comes back.
+	var lie: Vector3 = SpatialUtil.world_position(bunny)
+	SpatialUtil.set_world_position(aliz, lie + Vector3(0.62, -lie.y, 0.0))
+	if not bool(bunny.call("perform_affordance", aliz)):
+		failures.append("bedtime: Bunny cannot be picked up off the bed")
+	_step(aliz, 40)
+	if bool(director.call("is_bedtime_active")):
+		failures.append("bedtime: picking him up did not end bedtime")
+	for _i: int in range(int(1.5 / DT)):
+		director.call("step", DT)
+	if absf(light.light_energy - day) > 0.01:
+		failures.append("bedtime: the light did not come back (%.2f, day %.2f)" % [light.light_energy, day])
+	# And again.
+	_arrive(aliz, "bedroom.bed")
+	_step(aliz, 40)
+	if not bool(director.call("is_bedtime_active")):
+		failures.append("bedtime: a second bedtime did not start")
+	SpatialUtil.set_world_position(aliz, SpatialUtil.world_position(bunny) + Vector3(0.62, -SpatialUtil.world_position(bunny).y, 0.0))
+	bunny.call("perform_affordance", aliz)
+	_step(aliz, 40)
+	aliz.call("put_down_carried")
+	_step(aliz, 40)
+	for _i: int in range(int(1.5 / DT)):
+		director.call("step", DT)
 	return failures
 
 
