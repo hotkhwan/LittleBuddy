@@ -62,4 +62,20 @@ Details: `docs/NIGHT_GAMEPLAY_QA.md` (per-probe evidence, error attribution),
 `docs/NAVMESH_WORKFLOW.md` (2026-09-22 section), `docs/HANDOFF_CODEX_TO_CLAUDE.md`.
 
 ## 3. Builds and remaining device checks
-(filled in below)
+
+**Final code commit `54ec471`**; the commits after it are this report only.
+
+| Build (from `54ec471`) | Path | Size | Verified |
+|---|---|---|---|
+| iOS export | `build/ios/LittleBuddy.xcodeproj`, `build/ios/LittleBuddy.pck` | pck 19,436,988 B | export preflight PASS (plugin folder real, untracked, arm64), post-export PASS (extension bundled), `CFBundleShortVersionString` 0.1.1 |
+| iOS arm64 compile | unsigned, `-destination generic/platform=iOS` | — | `** BUILD SUCCEEDED **`, 0 undefined `little_buddy_speech` symbols, 73 defined, binary arm64 |
+| Android debug APK | `build/android/LittleDays-debug.apk` | 48,365,114 B | SHA-256 `75904d67c342e7bf6732612f1058e7be6fa10adfce9098a510356fe3f6e04e15`, signed, zero permissions, versionName 0.1.1, 12 Meshy prop files + 38 UI picture/frame files packaged, 0 concept-art files |
+
+### Remaining physical-device checks (owner)
+1. iPhone launch: install from `build/ios/LittleBuddy.xcodeproj` (Signing → your Team; Product → Run). The dyld abort from 2026-09-21 is fixed at the source and verified on the binary, but only a device launch closes it.
+2. Learn with Aliz on the device: the iOS microphone + speech prompts appear on first entry; hands-free answers are heard; **no "yes yes" / doubled praise; no cut words** (the two owner reports of this night). If either persists, open the dev overlay (five taps on the mic indicator) and photograph it.
+3. Click-to-walk feel around the bed, wardrobe, bath, table, fridge, toy box and doors; room transitions in both directions do not bounce.
+4. Gestures read well at phone size (thumbs up, celebrate, thinking, encourage).
+5. Settings scrolling with real fingers; the Baby Room highchair Home double tap.
+6. Real safe areas at phone aspect after the Codex layout pass; Thai reading comfort.
+7. Free chat is dev-only (mock provider) and not reachable from the shipped build; nothing to test on the device.
