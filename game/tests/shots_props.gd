@@ -37,6 +37,7 @@ const HouseLayout := preload("res://scripts/house/house_layout.gd")
 const SpatialUtil := preload("res://scripts/navigation/spatial_util.gd")
 const ObjectSpawnerScript := preload("res://scripts/gameplay/object_spawner.gd")
 const HouseStageScript := preload("res://scripts/gameplay/house_stage.gd")
+const PropRegistry := preload("res://scripts/house/prop_registry.gd")
 
 ## The mission whose second beat is a real `choose` -- no walk, four dressing
 ## objects laid out by `house_stage.gd`. That is the beat the RC checklist's open
@@ -76,13 +77,17 @@ func _run() -> void:
 		if wide.size() == 2:
 			_frame = Vector2i(int(wide[0]), int(wide[1]))
 
-	# `-- <suffix> [WxH] [only]` where `only` is `items`, `ground`, `kitchen` or
-	# `choices`. Omitted, all four run; the choice sweep plays every shipped
-	# mission and takes minutes, which is a long wait when the question is a
-	# 9 cm apple.
+	# `-- <suffix> [WxH] [only] [ids]` where `only` is `items`, `ground`,
+	# `kitchen`, `choices` or `meshy`. Omitted, the first four run; the choice
+	# sweep plays every shipped mission and takes minutes, which is a long wait
+	# when the question is a 9 cm apple. `meshy` photographs the generated
+	# props pack straight from its manifest (`ids` narrows it: `teddy,toyBox`),
+	# which is how a prop is looked at BEFORE anything is wired to it.
 	var only: String = String(args[2]) if args.size() > 2 else ""
 
 	await process_frame
+	if only == "meshy":
+		await _shoot_meshy(String(args[3]) if args.size() > 3 else "")
 	if only.is_empty() or only == "items":
 		await _shoot_items()
 	if only.is_empty() or only == "ground":
@@ -422,6 +427,185 @@ func _collect_canvas_layers(node: Node, out: Array) -> void:
 		out.append(node)
 	for child: Node in node.get_children():
 		_collect_canvas_layers(child, out)
+
+
+# ---------------------------------------------------------------------------
+# 1c. The generated props pack, straight from its manifest
+# ---------------------------------------------------------------------------
+
+## Every prop in `assets/models/meshy-props/manifest.json` (or the ids given),
+## built by the SHIPPING `prop_registry.gd` at its manifest size, stood in the
+## real kitchen under the real single light: front, three-quarter and `ink`
+## silhouette. Printed per prop: triangles against its gate, texture long side,
+## extent in centimetres and the pivot it was hung on. This is the look-at-it
+## step between "the GLB imports" and "a room draws it".
+func _shoot_meshy(ids_csv: String) -> void:
+	await _open_world()
+	_world.call("place_in_room", HouseLayout.KITCHEN, "default")
+	await _settle(0.5)
+	var room: Node3D = _world.call("get_room", HouseLayout.KITCHEN) as Node3D
+	if room == null:
+		_fail.append("no kitchen to stand the meshy props in")
+		return
+	_set_chrome_visible(false)
+
+	var ids: Array = []
+	if ids_csv.strip_edges().is_empty():
+		ids = PropRegistry.props().keys()
+		ids.sort()
+	else:
+		for raw: String in ids_csv.split(","):
+			if not raw.strip_edges().is_empty():
+				ids.append(raw.strip_edges())
+	if ids.is_empty():
+		_fail.append("meshy-props manifest names no props")
+		return
+
+	var stand := Node3D.new()
+	stand.name = "MeshyDisplay"
+	room.add_child(stand)
+	stand.position = Vector3(0.0, ROW_Y, ROW_Z)
+
+	print("\n-- meshy props -----------------------------------------------")
+	print("  %-14s %6s %6s %5s  %-22s %s" % ["prop", "tris", "gate", "tex", "extent WxHxD (cm)", "pivot"])
+	var meshes: Array = []
+	var widths: Array = []
+	var gap: float = 0.12
+	var total_width: float = 0.0
+	for id: Variant in ids:
+		var prop_id: String = String(id)
+		var node: MeshInstance3D = PropRegistry.instance(prop_id)
+		if node == null:
+			_fail.append("meshy prop '%s' could not be built by the registry" % prop_id)
+			continue
+		var box: AABB = node.mesh.get_aabb()
+		var tris: int = PropRegistry.triangles(node.mesh)
+		var gate: int = PropRegistry.max_triangles(prop_id)
+		var tex: int = PropRegistry.texture_long_side(node.mesh)
+		print("  %-14s %6d %6d %5d  %5.1f x %5.1f x %5.1f      %s" % [
+			prop_id, tris, gate, tex, box.size.x * 100.0, box.size.y * 100.0, box.size.z * 100.0,
+			PropRegistry.pivot_for(prop_id)])
+		if tris > gate:
+			_fail.append("meshy prop '%s' is %d tris, over its %d gate" % [prop_id, tris, gate])
+		stand.add_child(node)
+		meshes.append(node)
+		widths.append(box.size.x)
+		total_width += box.size.x
+	total_width += gap * float(maxi(meshes.size() - 1, 0))
+	var x: float = -total_width * 0.5
+	var tallest: float = 0.0
+	for i: int in range(meshes.size()):
+		var node: MeshInstance3D = meshes[i]
+		var box: AABB = node.mesh.get_aabb()
+		# A hinge pivot puts the origin on an edge; the row still centres the box.
+		node.position = Vector3(x + float(widths[i]) * 0.5 - (box.position.x + box.size.x * 0.5),
+				0.0, -(box.position.z + box.size.z * 0.5))
+		x += float(widths[i]) + gap
+		tallest = maxf(tallest, box.size.y)
+
+	var camera := Camera3D.new()
+	camera.name = "MeshyCamera"
+	camera.fov = 30.0
+	room.add_child(camera)
+	# `fov` is the VERTICAL angle; the row is wide, so it is framed against the
+	# horizontal half-angle (vertical half-angle times the frame's aspect).
+	var aspect: float = float(_frame.x) / float(_frame.y) if _frame != Vector2i.ZERO else 16.0 / 9.0
+	var half_width_tan: float = tan(deg_to_rad(15.0)) * aspect
+	var distance: float = maxf(total_width * 0.5 / half_width_tan, tallest * 0.8 / tan(deg_to_rad(15.0))) * 1.15 + 0.4
+	# `focus` is a WORLD position (the kitchen is not at the origin), so the
+	# camera is placed in world space too, not in room-local coordinates.
+	var focus: Vector3 = SpatialUtil.world_position(stand) + Vector3(0.0, tallest * 0.45, 0.0)
+	camera.global_position = focus + Vector3(0.0, distance * 0.42, distance)
+	camera.look_at(focus)
+	camera.make_current()
+	await _settle(0.4)
+	await _shot("props_meshy")
+
+	camera.global_position = focus + Vector3(distance * 0.62, distance * 0.40, distance * 0.72)
+	camera.look_at(focus)
+	await _settle(0.25)
+	await _shot("props_meshy_turn")
+
+	var flat := StandardMaterial3D.new()
+	flat.albedo_color = Palette.INK
+	flat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flat.roughness = 1.0
+	for node: Variant in meshes:
+		(node as MeshInstance3D).material_override = flat
+	camera.global_position = focus + Vector3(0.0, distance * 0.42, distance)
+	camera.look_at(focus)
+	await _settle(0.2)
+	await _shot("props_meshy_silhouette")
+
+	for node: Variant in meshes:
+		(node as MeshInstance3D).material_override = null
+	for node: Variant in meshes:
+		stand.remove_child(node as Node)
+		(node as Node).queue_free()
+	await _assemble_toy_box(stand, camera)
+
+	stand.queue_free()
+	camera.queue_free()
+	_set_chrome_visible(true)
+	var world_camera: Node = _world.call("get_camera")
+	if world_camera is Camera3D:
+		(world_camera as Camera3D).make_current()
+	await _settle(0.3)
+
+
+## The split toy box put back together the way `room.gd` will hang it: body on
+## the floor, lid under a hinge node at the manifest's `attach.hingeOffsetMetres`,
+## photographed closed and open. Skipped, not failed, when either part is
+## missing; failed when the closed lid does not sit on the body's top rim.
+func _assemble_toy_box(stand: Node3D, camera: Camera3D) -> void:
+	if not PropRegistry.available("toyBoxBody") or not PropRegistry.available("toyBoxLid"):
+		return
+	var body: MeshInstance3D = PropRegistry.instance("toyBoxBody")
+	var lid: MeshInstance3D = PropRegistry.instance("toyBoxLid")
+	if body == null or lid == null:
+		_fail.append("toy box parts import but will not instance")
+		return
+	var attach: Dictionary = PropRegistry.entry("toyBoxBody").get("attach", {})
+	var offset_row: Array = attach.get("hingeOffsetMetres", [0.0, 0.0, 0.0])
+	var hinge_offset := Vector3(float(offset_row[0]), float(offset_row[1]), float(offset_row[2]))
+	stand.add_child(body)
+	var hinge := Node3D.new()
+	hinge.name = "StorageLid_toyBox"
+	hinge.position = hinge_offset
+	stand.add_child(hinge)
+	hinge.add_child(lid)
+
+	var body_box: AABB = body.mesh.get_aabb()
+	var lid_box: AABB = lid.mesh.get_aabb()
+	var seat: float = hinge_offset.y - body_box.end.y
+	print("  toy box assembled: body top %.3f m, hinge at (%.3f, %.3f, %.3f), lid %.3f wide x %.3f deep; closed lid underside sits %+.1f cm off the rim"
+			% [body_box.end.y, hinge_offset.x, hinge_offset.y, hinge_offset.z,
+			lid_box.size.x, lid_box.size.z, seat * 100.0])
+	if absf(seat) > 0.03:
+		_fail.append("toy box lid closes %.1f cm off the body's top rim -- fix attach.hingeOffsetMetres" % (seat * 100.0))
+	var front_reach: float = hinge_offset.z + lid_box.end.z
+	if front_reach < body_box.end.z - 0.06:
+		_fail.append("toy box lid stops %.1f cm short of the front rim when closed" % ((body_box.end.z - front_reach) * 100.0))
+
+	var focus: Vector3 = SpatialUtil.world_position(stand) + Vector3(0.0, 0.28, 0.0)
+	var distance: float = 2.3
+	camera.global_position = focus + Vector3(distance * 0.55, distance * 0.42, distance * 0.75)
+	camera.look_at(focus)
+	camera.make_current()
+	await _settle(0.3)
+	await _shot("props_toybox_closed")
+	# The same swing `room.gd::set_storage_open()` applies: minus `openDegrees`
+	# about X, so the lid rises toward the back wall.
+	var open_degrees: float = 104.0
+	for row: Dictionary in HouseLayout.storages(HouseLayout.BEDROOM):
+		if String(row.get("storageId", "")) == "toyBox":
+			open_degrees = float(row.get("openDegrees", open_degrees))
+	hinge.rotation_degrees.x = -open_degrees
+	await _settle(0.2)
+	await _shot("props_toybox_open")
+	body.queue_free()
+	hinge.queue_free()
+	await _settle(0.1)
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,8 @@ no network, no credits, pure stdlib (this runs on a bare machine).
     python3 tools/meshy_split.py <in.glb> --list
     python3 tools/meshy_split.py <in.glb> --parts apple,banana --out-dir <dir>
             [--assign 3=apple,4=apple] [--drop-inner-shells] [--scale 0.26]
-            [--origin bottom|keep] [--json]
+            [--origin bottom|keep] [--rotate-x lid=100.7] [--stretch lid=z:1.25]
+            [--part-origin lid=hingeBack] [--json]
 
 Why this exists. Meshy generates ONE mesh per task, and two things the game
 needs are not one mesh:
@@ -39,9 +40,20 @@ its base on Y = 0 -- section 6's "pivot at base centre", which is what lets
 a consumer rest a part on a surface by naming the surface. `--scale`
 multiplies positions first, so a part can be written in metres.
 
+Per-part posing, for a door or lid that Meshy generated OPEN (it does, even
+when asked for "closed"): `--rotate-x lid=100.7` turns that part about the X
+axis (degrees, right-handed, applied before `--scale`), `--stretch lid=z:1.25`
+lengthens it along one axis about its own centre (a flat slab that came back
+short of the opening it covers; invisible on a slab, never for anything
+round), and `--part-origin lid=hingeBack` puts that part's origin where
+`prop_registry.gd` will hang it -- `hingeBack`: back edge on Z = 0, base on
+Y = 0, X centred; `hingeLeft` / `hingeRight`: the -X / +X edge on X = 0, Y and
+Z centred. Parts not named keep `--origin`.
+
 A JSON report of every part (triangles, vertices, bounds) is printed with
 `--json`; `tools/meshy_batch.sh` reads it for the triangle gate.
 """
+import math
 import argparse
 import json
 import os
@@ -242,18 +254,52 @@ def assign_parts(comps, part_names, overrides):
     return assignment
 
 
-def build_part(gltf, binc, name, pos, nrm, uv, tris, tri_ids, material_index, scale, origin):
+def _origin_shift(lo, hi, origin):
+    """Translation that puts a part's bounds on its pivot (see the module doc)."""
+    cx, cy, cz = [(lo[i] + hi[i]) * 0.5 for i in range(3)]
+    if origin == "bottom":
+        return [-cx, -lo[1], -cz]
+    if origin == "hingeBack":
+        return [-cx, -lo[1], -lo[2]]
+    if origin == "hingeLeft":
+        return [-lo[0], -cy, -cz]
+    if origin == "hingeRight":
+        return [-hi[0], -cy, -cz]
+    return [0.0, 0.0, 0.0]
+
+
+def build_part(gltf, binc, name, pos, nrm, uv, tris, tri_ids, material_index, scale, origin,
+               rotate_x=0.0, stretch=None):
     used = sorted({v for t in tri_ids for v in tris[t]})
     remap = {v: k for k, v in enumerate(used)}
-    p = [[c * scale for c in pos[v]] for v in used]
+    p = [list(pos[v]) for v in used]
+    n = [list(nrm[v]) for v in used]
+    if abs(rotate_x) > 1e-9:
+        # About the X axis through the part's own centre; the origin step below
+        # re-places it, so WHERE the axis sits does not matter, only its direction.
+        c, s_ = math.cos(math.radians(rotate_x)), math.sin(math.radians(rotate_x))
+        for q in p:
+            q[1], q[2] = q[1] * c - q[2] * s_, q[1] * s_ + q[2] * c
+        for q in n:
+            q[1], q[2] = q[1] * c - q[2] * s_, q[1] * s_ + q[2] * c
+    if stretch:
+        axis, factor = stretch
+        lo0 = min(q[axis] for q in p); hi0 = max(q[axis] for q in p)
+        mid = (lo0 + hi0) * 0.5
+        for q in p:
+            q[axis] = mid + (q[axis] - mid) * factor
+        for q in n:  # inverse-transpose of an axis scale, then renormalise
+            q[axis] /= factor
+            length = (q[0] ** 2 + q[1] ** 2 + q[2] ** 2) ** 0.5 or 1.0
+            q[0], q[1], q[2] = q[0] / length, q[1] / length, q[2] / length
+    p = [[c * scale for c in q] for q in p]
     lo = [min(q[i] for q in p) for i in range(3)]
     hi = [max(q[i] for q in p) for i in range(3)]
-    if origin == "bottom":
-        shift = [-(lo[0] + hi[0]) * 0.5, -lo[1], -(lo[2] + hi[2]) * 0.5]
-        p = [[q[i] + shift[i] for i in range(3)] for q in p]
-        lo = [lo[i] + shift[i] for i in range(3)]
-        hi = [hi[i] + shift[i] for i in range(3)]
-    n = [nrm[v] for v in used]
+    shift = _origin_shift(lo, hi, origin)
+    p = [[q[i] + shift[i] for i in range(3)] for q in p]
+    lo = [lo[i] + shift[i] for i in range(3)]
+    hi = [hi[i] + shift[i] for i in range(3)]
+    n = [tuple(q) for q in n]
     t = [uv[v] for v in used]
     index = [remap[v] for tid in tri_ids for v in tris[tid]]
 
@@ -344,10 +390,14 @@ def main():
     ap.add_argument("glb")
     ap.add_argument("--list", action="store_true", help="print components and exit")
     ap.add_argument("--parts", default="", help="comma-separated part names, largest component first")
-    ap.add_argument("--assign", default="", help="component overrides: 3=apple,4=apple")
+    ap.add_argument("--assign", default="", help="component overrides: 3=apple,4=apple; `*=body` sends every other component to body")
     ap.add_argument("--drop-inner-shells", action="store_true")
     ap.add_argument("--scale", type=float, default=1.0, help="multiply positions (units -> metres)")
     ap.add_argument("--origin", choices=["bottom", "keep"], default="bottom")
+    ap.add_argument("--rotate-x", default="", help="per part, degrees about X before scaling: lid=100.7")
+    ap.add_argument("--stretch", default="", help="per part, one axis about its centre: lid=z:1.25")
+    ap.add_argument("--part-origin", default="",
+                    help="per part pivot: lid=hingeBack (bottom|keep|hingeBack|hingeLeft|hingeRight)")
     ap.add_argument("--out-dir", default="")
     ap.add_argument("--json", action="store_true", help="print a JSON report of the written parts")
     ap.add_argument("--force", action="store_true", help="overwrite existing part files")
@@ -371,12 +421,37 @@ def main():
             return
     part_names = [n.strip() for n in args.parts.split(",") if n.strip()]
     overrides = {}
+    rest = None   # `*=name`: every component not named goes to that part
     for item in filter(None, args.assign.split(",")):
         index, name = item.split("=")
-        overrides[int(index)] = name.strip()
         if name.strip() not in part_names:
             raise SystemExit(f"--assign names unknown part '{name}'")
+        if index.strip() == "*":
+            rest = name.strip()
+        else:
+            overrides[int(index)] = name.strip()
+    if rest is not None:
+        for i in range(len(comps)):
+            overrides.setdefault(i, rest)
     assignment = assign_parts(comps, part_names, overrides)
+
+    def per_part(text, what):
+        table = {}
+        for item in filter(None, text.split(",")):
+            name, value = item.split("=", 1)
+            if name.strip() not in part_names:
+                raise SystemExit(f"{what} names unknown part '{name}'")
+            table[name.strip()] = value.strip()
+        return table
+    rotations = {k: float(v) for k, v in per_part(args.rotate_x, "--rotate-x").items()}
+    stretches = {}
+    for k, v in per_part(args.stretch, "--stretch").items():
+        axis, factor = v.split(":")
+        stretches[k] = ("xyz".index(axis.lower()), float(factor))
+    origins = per_part(args.part_origin, "--part-origin")
+    for k, v in origins.items():
+        if v not in ("bottom", "keep", "hingeBack", "hingeLeft", "hingeRight"):
+            raise SystemExit(f"--part-origin {k}={v}: unknown origin")
 
     dropped = set()
     if args.drop_inner_shells:
@@ -405,9 +480,11 @@ def main():
         if os.path.exists(out_path) and not args.force:
             raise SystemExit(f"refusing to overwrite {out_path} (pass --force)")
         doc, blob, report = build_part(gltf, binc, name, pos, nrm, uv, tris, tri_ids,
-                                       materials.pop(), args.scale, args.origin)
+                                       materials.pop(), args.scale, origins.get(name, args.origin),
+                                       rotations.get(name, 0.0), stretches.get(name))
         write_glb(out_path, doc, blob)
         report["file"] = out_path
+        report["origin"] = origins.get(name, args.origin)
         report["bytes"] = os.path.getsize(out_path)
         report.pop("components", None)
         reports.append(report)

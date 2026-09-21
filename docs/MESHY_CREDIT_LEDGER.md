@@ -321,8 +321,43 @@ Zero-credit work recorded for provenance: `assets/tutor/props/fruit_set.glb` (ta
 by `tools/meshy_split.py` into `assets/models/meshy-props/apple.glb` (1,120 tris) and
 `banana.glb` (1,134 tris); both now stand in for the kitchen's drawn fruit.
 
+## 2026-09-21 — house props batch (Agent D, branch `wt7/meshy2`)
+
+**Observed balance delta, not a spend.** The key is now in the macOS keychain. First free read
+this session: `GET /openapi/v1/balance` → HTTP 200 **3174** (09:42:23Z; the lead read the same
+figure minutes earlier). The last recorded balance was **3124** (2026-09-20 15:18Z, after the
+tutor props) and no paid call was made in between by any agent, so the **+50 is an account
+top-up by the owner**, recorded here as an observation. Running totals below start from 3174.
+
+**Authorisation for this batch:** the previously proposed pair, **at most 40 credits total**:
+(1) teddy, (2) toy box with a separately movable lid — one text-to-3D task each at Smart Topology
+(preview 5 + refine 10 = 15; the `consumed_credits` the API reports is checked against that
+before the second asset is started). Bottle, cup and blocks are **not** in this batch. Rules
+applied per paid call: balance before → expected cost stated → exactly one call → balance after
+→ row below. A preview whose thumbnail does not read is not refined; a poor generation gets one
+improved prompt, then stop.
+
 Rows appended by `tools/meshy_batch.sh` from here on use this layout (letter `B` marks the
 batch tool):
 
 | # | Time (UTC) | Asset | Operation | Est. | Actual | Balance before → after | Task id | Outcome |
 |---|---|---|---|---|---|---|---|---|
+| B | 2026-09-21T09:43:12Z | teddy | text-to-3D preview, smart-topology meshy-t2, 2400 tris | 5 | 5 | 3174 → 3169 | `01a0c359-0d64-729f-98fe-4f3d84b4a8b6` | **SUCCEEDED** 30s, `consumed_credits` 5, 2,599 tris, 15 components; thumbnail reviewed (sitting bear, round head, ears, snout, arms out, legs forward) — usable, refine approved |
+| B | 2026-09-21T09:43:41Z | teddy | text-to-3D refine, 2k texture, no PBR | 10 | 0 | 3169 → 3169 | `01a0c359-7b16-71a1-b767-ec7be3cbce06` | **SUCCEEDED** ~80s, `consumed_credits` 10 (the 2-second re-read showed delta 0; the deduction landed on completion: balance 3159 at 09:44:44Z, so 3169 → **3159**); caramel plush, cream muzzle/belly/paws, dark eyes — **accepted**. Teddy total 15. |
+| B | 2026-09-21T09:46:57Z | toyBox | text-to-3D preview, smart-topology meshy-t2, 2200 tris | 5 | 5 | 3159 → 3154 | `01a0c35c-7baf-711a-a2df-d5991cf5a092` | **SUCCEEDED** 20s, `consumed_credits` 5, 1,982 tris, 58 components. Meshy drew the box **open** (lid up on back hinges) although the prompt said closed; the lid is its own 6-component group, so the split is *easier*, and the closed pose is a free local rotation. Thumbnail + free preview-GLB render reviewed — usable, refine approved |
+| B | 2026-09-21T09:50:17Z | toyBox | text-to-3D refine, 2k texture, no PBR | 10 | 10 | 3154 → 3144 | `01a0c35f-8605-77b3-bfde-f5b08153c4a4` | **SUCCEEDED** ~3 min, `consumed_credits` 10; mint body, pale lid, peach handles/feet/hinges — **accepted**. Split locally into `toyBoxBody` (1,820 tris) + `toyBoxLid` (162 tris, closed, hingeBack). Toy box total 15. |
+
+**House props batch — final accounting (2026-09-21, 09:51Z).**
+
+| | |
+|---|---|
+| Paid calls | 4 (2 previews at 5, 2 refines at 10) |
+| Spent | **30** — teddy 15, toyBox 15 (of the 40 authorised; **10 unspent**) |
+| Rejected / written off | none; both previews passed their look-at-it review; no re-prompt was needed |
+| Balance | 3174 → 3169 → 3159 → 3154 → **3144**; every delta matched the task's `consumed_credits` (the teddy refine's charge appeared a few seconds late, see its row) |
+| Pricing check | preview 5 + refine 10 = 15 per asset, unchanged from the 2026-09-20 price list; the second asset was started only after the first had cost exactly 15 |
+| Sprint ceiling | 100 authorised: 60 (tutor props) + 30 (this batch) = **90 spent, 10 unspent** |
+
+Runtime derivatives: `game/assets/models/meshy-props/{teddy,toyBoxBody,toyBoxLid}.glb`; raw
+masters: `game/assets_source/meshy/props/` (gitignored). Results and the next-batch proposal:
+`docs/MESHY_PRODUCTION_PLAN.md` §8–§9. Not authorised and not run: bottle, cup, blocks.

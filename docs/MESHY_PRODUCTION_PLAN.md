@@ -1,21 +1,17 @@
 # Meshy 3D production plan — house props
 
-**Date:** 2026-09-21 · **Agent C** · branch `wt6/meshy` · Godot 4.7.2
+**Date:** 2026-09-21 · **Agent C** (plan, `wt6/meshy`) → **Agent D** (batch 1 run, `wt7/meshy2`) · Godot 4.7.2
 
-> **BLOCKED: no MESHY_API_KEY on this machine**
->
-> `MESHY_API_KEY` is not in the shell environment and not in the macOS keychain
-> (`security find-generic-password -s MESHY_API_KEY -w` finds nothing). No paid call was
-> made, no balance was read, **0 credits were spent**; the 40 authorised credits are
-> untouched. To unblock, the owner runs once, on this MacBook:
->
-> ```
-> security add-generic-password -s MESHY_API_KEY -a littledays -w '<key>'
-> ```
->
-> Every new tool (`tools/meshy_batch.sh`) reads the env var first and falls back to that
-> keychain item; with neither it fails closed with that one-line instruction. The key is
-> never printed, logged or committed, and signed URLs are never written to a file.
+> **Batch 1 is DONE (2026-09-21, Agent D): teddy + toy box (body and lid), 30 of the 40 authorised
+> credits.** The key now lives in the macOS keychain (`security find-generic-password -s
+> MESHY_API_KEY -w`); `tools/meshy_batch.sh` reads it per call and never prints it. Results in
+> §8, next-batch proposal in §9. The earlier "BLOCKED: no key" note is kept below for the record.
+
+> *(Superseded 2026-09-21)* **BLOCKED: no MESHY_API_KEY on this machine** — the key was not in the
+> shell environment or the keychain when Agent C planned this; no paid call was made then.
+> Every new tool (`tools/meshy_batch.sh`) reads the env var first and falls back to the keychain
+> item; with neither it fails closed with a one-line instruction. The key is never printed,
+> logged or committed, and signed URLs are never written to a file.
 
 What was done without credits is real and shipping: the tutor's Meshy **fruit set was split
 locally into a separate apple and banana**, and the kitchen now draws those two GLBs
@@ -168,10 +164,79 @@ body+2 doors 15, bottle 15, blocks 15, tree 15, flowers 15 = 90.
 
 ## 7. Blockers and notes
 
-- **BLOCKED: no MESHY_API_KEY on this machine** — see the top of this file.
+- ~~BLOCKED: no MESHY_API_KEY on this machine~~ — resolved 2026-09-21; the key is in the keychain.
 - `objects.json` (content) is not owned by this agent: pointing the Baby Room `teddy` record at
   a Meshy teddy is a one-field change for the content owner once the asset exists; the loader
   change it needs is described in `tools/meshy_attach.md`.
 - Untracked `game/assets/ui/generated_v1/**/*.png.import` files appeared from `--import` (the UI
   pack commit shipped without sidecars); left untracked, not this agent's files.
 - No device claims: renders are Godot 4.7.2 Forward Mobile on macOS via the shot harnesses.
+
+## 8. Batch 1 results (2026-09-21, Agent D, branch `wt7/meshy2`)
+
+Balance 3174 → **3144**; 30 credits; four paid calls, each ledgered
+(`docs/MESHY_CREDIT_LEDGER.md`, rows `B`). Suite after install: `PASS - 163 case(s), 0 failure(s)`.
+
+| asset | verdict | task ids (preview → refine) | file | tris / gate | texture | size | shot |
+|---|---|---|---|---|---|---|---|
+| **teddy** | **accepted** — sitting bear, round head, ears, snout, arms out, legs forward; caramel plush, cream muzzle/belly/paws, dark eyes, no text | `01a0c359-0d64-729f-98fe-4f3d84b4a8b6` → `01a0c359-7b16-71a1-b767-ec7be3cbce06` | `game/assets/models/meshy-props/teddy.glb` | 2,599 / 2,600 (no trim needed) | 512² JPEG | 0.30 m tall, 20 × 30 × 25 cm, faces +Z | `docs/shots/props_meshy_ipad.png`, `props_meshy_turn_ipad.png`, `props_meshy_silhouette_ipad.png` |
+| **toy box body** | **accepted** — chest with corner feet, side handles, top rim; mint / peach | `01a0c35c-7baf-711a-a2df-d5991cf5a092` → `01a0c35f-8605-77b3-bfde-f5b08153c4a4` | `meshy-props/toyBoxBody.glb` | 1,820 / 2,000 | 512² JPEG (shared with the lid) | 0.700 × 0.353 × 0.475 m | same row shots + `props_toybox_closed_ipad.png`, `props_toybox_open_ipad.png` |
+| **toy box lid** | **accepted** — separate slab with frame and peach pull bar, `pivot: hingeBack` | same task | `meshy-props/toyBoxLid.glb` | 162 / 400 | shared | 0.588 wide × 0.076 × 0.473 deep | as above |
+
+What happened with the lid, because it is the thing the next furniture batch will hit again:
+Meshy generated the box **open** — lid up ~100° on two back hinges — despite "closed, lid resting
+on the body with a visible seam". That is the *good* outcome for a split: the lid came back as
+its own 6-component group (162 tris) and the knuckles stayed on the body, so route A (one task,
+split locally) worked without a re-prompt. The lid was then posed closed for free:
+`tools/meshy_split.py` gained per-part `--rotate-x` (100.5°, measured by PCA of the lid slab),
+`--stretch z:1.25` (the generated lid was ~20 % shorter than the opening; a flat slab does not
+show a length stretch) and `--part-origin hingeBack`; `tools/meshy_batch.sh install` gained
+`--pivot part=hingeBack` (manifest row + written-file pivot check) and `--split-args`
+passthrough, and `--assign` accepts `*=part` for "everything else". The exact command is in each
+manifest row's `derivedFrom.args`, so both parts regenerate from the master with no credits.
+
+Assembled check (`tests/shots_props.gd -- ipad 1334x750 meshy`, `_assemble_toy_box`): body on
+the floor, lid under a `StorageLid_toyBox` hinge node at the manifest's
+`attach.hingeOffsetMetres = (0, 0.337, −0.202)` from the body origin; the closed lid's
+underside sits 1.6 cm *below* the rim top (the generated lid drops into the rim like an inset
+lid, which is how Meshy modelled it), and it reaches the front rim. Opened −104° (the layout's
+`openDegrees`) it clears the opening.
+
+**Not wired** (Agent E, per the brief). Suggested attach points are in each manifest row's
+`attach` object:
+
+- `teddy` → bedroom prop `teddy` via `PropRegistry.instance("teddy", 0.30)`; Baby Room
+  `objects.json` `teddy.model` → `meshy-props/teddy`. Caveat: `object_spawner.gd`'s spawned-model
+  cap is 600 triangles (`test_assets_models.gd::_test_mesh_budget`); this teddy is 2,599. Either
+  raise the cap for the `meshy-props` pack with the owner's agreement, or derive a Baby Room LOD
+  locally (the same-UV edge collapse in `meshy_trim.py` will not reach 600 from 2,599 without
+  visible damage; a 5-credit remesh at `target_polycount` ~300 quads is the honest route).
+- `toyBoxBody` → `room.gd::_build_storages` toyBox body in place of `Kit.commit(body_tool)`;
+  `toyBoxLid` → the `Lid` mesh under the SAME `StorageLid_toyBox` hinge node, hinge moved to the
+  body's real top-back line (`attach.hingeOffsetMetres`); `set_storage_open()`'s X-rotation
+  tween is untouched. The generated body is 0.353 m tall against the layout box's 0.50: the
+  collider and stand point come from the layout, so either accept the shorter box or size the
+  body by height (`PropRegistry.instance("toyBoxBody", 0.99)` would make it 0.50 tall but 0.99
+  wide — too wide; better to accept 0.353 and lower the hinge).
+
+## 9. Proposed batch 2 — for owner approval (not authorised, not run)
+
+Balance **3144** (2026-09-21 09:51Z). Sprint: 100 authorised, **90 spent, 10 unspent** — batch 2
+needs a fresh authorisation. Same tier (Smart Topology preview 5 + refine 10), same stop rules,
+same one-task-split-locally route for anything that opens.
+
+| # | asset | operation | est. credits | priority | why | running balance |
+|---|---|---|---|---|---|---|
+| 1 | bottle (baby bottle, empty; `bottleOfMilk` stays drawn or gets a second look later) | preview + refine | 15 | 1 | kitchen `_draw_bottle()` is the weakest kitchen silhouette; two words hang on it | 3144 → 3129 |
+| 2 | cup | preview + refine | 15 | 4 | Kenney CC0 cup already reads well — lowest value; include only if the owner wants one collection look | 3129 → 3114 |
+| 3 | blocks (three plain green blocks, no numerals) | preview + refine | 15 | 2 | `proc/blocks` teaches "green block"; the tutor number blocks cannot stand in (numerals, wrong colours) | 3114 → 3099 |
+| 4 | fridge body + door (one task, split; prompt "door slightly ajar" given the toy-box lesson) | preview + refine | 15 | 3 | kitchen hero prop; `kitchen_view.gd` door hinge exists | 3099 → 3084 |
+| 5 | wardrobe body + 2 doors (one task, split, `hingeLeft`/`hingeRight`) | preview + refine | 15 | 5 | bedroom; `_build_wardrobe_doors` hinges exist | 3084 → 3069 |
+| 6 | tree (menu garden) | preview + refine | 15 | 6 | menu WOW; one canopy + trunk | 3069 → 3054 |
+| 7 | flowers (clump of three) | preview + refine | 15 | 7 | menu garden accent | 3054 → 3039 |
+| | **total if all seven** | | **105** | | | **3144 → 3039** |
+
+Recommended first slice if the owner prefers a smaller number: bottle + blocks + fridge = **45**.
+Lesson to carry into the prompts: for anything hinged, ask for "slightly ajar, small gap" rather
+than "closed with a seam" — Meshy ignored "closed" and produced an open lid, which split cleanly;
+a truly closed lid welded to the body would have needed route B (two tasks, 30 credits).

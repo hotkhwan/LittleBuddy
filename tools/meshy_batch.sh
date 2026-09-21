@@ -20,6 +20,7 @@
 #   tools/meshy_batch.sh fetch   <asset> <taskId>                               # free -> assets_source
 #   tools/meshy_batch.sh install <asset> <in.glb> [--max-tris 1200] [--size 0.30]
 #                                [--parts body,lid] [--scale 0.26] [--yaw 0]
+#                                [--pivot lid=hingeBack] [--split-args "..."]
 #                                [--dest <dir>] [--no-import] [--dry-run]       # free, local
 #
 # `install --dry-run` runs split/trim/gate/optimise into a scratch directory
@@ -27,6 +28,10 @@
 # `install --parts a,b` writes one GLB per part (see tools/meshy_split.py);
 # openable furniture (fridge, wardrobe, toy box) is installed this way so
 # room.gd can hinge the door/lid exactly as it hinges the drawn ones.
+# `--pivot lid=hingeBack` writes that part's manifest `pivot` (and checks the
+# written file is hung on that edge); `--split-args` hands extra flags to
+# meshy_split.py verbatim, e.g. "--rotate-x lid=100.7 --stretch lid=z:1.25
+# --part-origin lid=hingeBack --assign 3=lid" to close a lid Meshy drew open.
 #
 # Key: MESHY_API_KEY from the environment, else the macOS keychain item
 # `MESHY_API_KEY` (security find-generic-password -s MESHY_API_KEY -w). The key
@@ -89,7 +94,9 @@ api() {  # api <METHOD> <URL> [json-body] -> body on stdout; status via http_cod
   local tmp; tmp="$(mktemp)"
   local -a extra=()
   [[ -n "$body" ]] && extra=(-H 'Content-Type: application/json' -d "$body")
-  curl -sS -X "$method" "$url" -H "Authorization: Bearer ${MESHY_API_KEY}" "${extra[@]}" \
+  # ${extra[@]+"${extra[@]}"}: bash 3.2 (macOS) treats an EMPTY array as unset
+  # under `set -u`, so a plain "${extra[@]}" aborts every body-less GET.
+  curl -sS -X "$method" "$url" -H "Authorization: Bearer ${MESHY_API_KEY}" ${extra[@]+"${extra[@]}"} \
     -o "$tmp" -w '%{http_code}' >"$STATUS_FILE" 2>/dev/null || echo 000 >"$STATUS_FILE"
   cat "$tmp"; rm -f "$tmp"
 }
@@ -101,7 +108,11 @@ balance() {
   python3 -c 'import json,sys; print(json.load(sys.stdin).get("balance","?"))' <<<"$body"
 }
 
-cmd_balance() { resolve_key; echo "Meshy balance: $(balance) credits   ($(date -u +%FT%TZ))"; }
+cmd_balance() {
+  resolve_key
+  local now; now="$(balance)"   # a failed read aborts here (set -e), never prints a blank
+  echo "Meshy balance: ${now} credits   ($(date -u +%FT%TZ))"
+}
 
 check_task_id() {
   local id="$1"
@@ -266,9 +277,12 @@ cmd_install() {
   local asset="${1:-}" input="${2:-}"; shift 2 || true
   [[ -n "$asset" && -f "$input" ]] || die "usage: $0 install <asset> <in.glb> [--max-tris N] [--size M] [--parts a,b] [--scale S] [--yaw D] [--task-ids a,b] [--dest DIR] [--no-import] [--dry-run]"
   local max_tris=3000 size="" parts="" scale=1.0 yaw=0 task_ids="" dest="$PACK_DIR" do_import=1 dry=0 credits=15
+  local pivots="" split_args=""
   while (( $# )); do
     case "$1" in
       --max-tris) max_tris="$2"; shift 2;;
+      --pivot) pivots="$2"; shift 2;;
+      --split-args) split_args="$2"; shift 2;;
       --size) size="$2"; shift 2;;
       --parts) parts="$2"; shift 2;;
       --scale) scale="$2"; shift 2;;
@@ -287,10 +301,14 @@ cmd_install() {
 
   # 1. Parts. One file per part, or the whole thing as one part named <asset>.
   local -a names=()
+  local -a extra_split=()
+  # shellcheck disable=SC2206  # word-splitting the passthrough is the point
+  [[ -n "$split_args" ]] && extra_split=($split_args)
   if [[ -n "$parts" ]]; then
     IFS=',' read -r -a names <<<"$parts"
     python3 "${TOOLS}/meshy_split.py" "$input" --parts "$parts" --drop-inner-shells \
-      --scale "$scale" --origin bottom --out-dir "${work}/split" --json >"${work}/split.json"
+      --scale "$scale" --origin bottom ${extra_split[@]+"${extra_split[@]}"} \
+      --out-dir "${work}/split" --json >"${work}/split.json"
   else
     names=("$asset")
     mkdir -p "${work}/split"
@@ -309,11 +327,11 @@ cmd_install() {
     # optimize rewrites normals/material; the split already placed the pivot.
     if [[ -e "$final" && $dry -eq 0 ]]; then die "refusing to overwrite ${final}; remove it first if a re-install is intended"; fi
     cp "${work}/${name}_opt.glb" "$final"
-    rows="$(python3 - "$rows" "$final" "$name" "$asset" "$max_tris" "$size" "$yaw" "$task_ids" "$credits" "$input" "$parts" "$scale" <<'PY'
+    rows="$(python3 - "$rows" "$final" "$name" "$asset" "$max_tris" "$size" "$yaw" "$task_ids" "$credits" "$input" "$parts" "$scale" "$pivots" "$split_args" <<'PY'
 import json, os, struct, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])) if False else "TOOLS_PLACEHOLDER"))
-rows, path, name, asset, gate, size, yaw, task_ids, credits, src, parts, scale = sys.argv[1:13]
+rows, path, name, asset, gate, size, yaw, task_ids, credits, src, parts, scale, pivots, split_args = sys.argv[1:15]
 rows = json.loads(rows)
+pivot = dict(item.split("=", 1) for item in pivots.split(",") if "=" in item).get(name, "baseCentre")
 # Count triangles and read the bounds straight off the file: the gate is
 # checked on what was WRITTEN, not on what a tool reported.
 data = open(path, "rb").read()
@@ -332,7 +350,15 @@ for mesh in gltf["meshes"]:
         lo = [min(a, b) for a, b in zip(lo, pacc["min"])]; hi = [max(a, b) for a, b in zip(hi, pacc["max"])]
 longest = max(h - l for h, l in zip(hi, lo))
 if tris > int(gate): sys.exit("GATE FAILED: %s is %d triangles > %s" % (name, tris, gate))
-if abs(lo[1]) > 0.003: sys.exit("PIVOT FAILED: %s base at y=%.3f" % (name, lo[1]))
+cx, cy, cz = [(l + h) * 0.5 for l, h in zip(lo, hi)]
+if pivot == "hingeBack":
+    if abs(lo[1]) > 0.003 or abs(lo[2]) > 0.003 or abs(cx) > 0.003: sys.exit("PIVOT FAILED: %s (hingeBack) base y=%.3f back z=%.3f centre x=%.3f" % (name, lo[1], lo[2], cx))
+elif pivot == "hingeLeft":
+    if abs(lo[0]) > 0.003 or abs(cy) > 0.003 or abs(cz) > 0.003: sys.exit("PIVOT FAILED: %s (hingeLeft) -X edge at %.3f" % (name, lo[0]))
+elif pivot == "hingeRight":
+    if abs(hi[0]) > 0.003 or abs(cy) > 0.003 or abs(cz) > 0.003: sys.exit("PIVOT FAILED: %s (hingeRight) +X edge at %.3f" % (name, hi[0]))
+elif abs(lo[1]) > 0.003 or abs(cx) > 0.003 or abs(cz) > 0.003:
+    sys.exit("PIVOT FAILED: %s base at y=%.3f, footprint centre (%.3f, %.3f)" % (name, lo[1], cx, cz))
 tex = 0
 for img in gltf.get("images", []):
     tex = 512  # optimize_runtime_glb resamples to <= 512; asserted again by test_assets_models
@@ -340,10 +366,15 @@ row = {"propId": name, "word": name, "file": "res://assets/models/meshy-props/%s
        "longestAxisMetres": round(float(size) if size else longest, 4), "yawDegrees": float(yaw),
        "triangles": tris, "maxTriangles": int(gate), "textureSize": tex,
        "derivedFrom": {"file": os.path.basename(src), "tool": "tools/meshy_batch.sh install",
-                        "args": "--parts %s --scale %s --max-tris %s" % (parts or name, scale, gate)},
-       "meshyTaskIds": [t for t in task_ids.split(",") if t], "creditsSpent": int(credits) if name == asset or not parts else 0,
+                        "args": ("--parts %s --scale %s --max-tris %s" % (parts or name, scale, gate)
+                                 + (" --pivot %s" % pivots if pivots else "")
+                                 + (" --split-args \"%s\"" % split_args if split_args else ""))},
+       "meshyTaskIds": [t for t in task_ids.split(",") if t], "creditsSpent": int(credits) if (not parts or not rows) else 0,
+       "creditsNote": "" if (not parts or not rows) else "one task shared by the parts of '%s'; the credits are on the first part" % asset,
        "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids",
        "usedBy": []}
+if pivot != "baseCentre": row["pivot"] = pivot
+if not row["creditsNote"]: row.pop("creditsNote")
 rows.append(row)
 print(json.dumps(rows))
 print("  %-12s %5d tris  longest %.3f m  base y=%.3f  -> %s" % (name, tris, longest, lo[1], path), file=sys.stderr)
