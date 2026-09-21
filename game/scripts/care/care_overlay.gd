@@ -68,6 +68,12 @@ const DRY: String = "dryFace"
 ## close-up the whole mission has been walking towards.
 const MIX: String = "prepareMilk"
 const FEED: String = "giveBottle"
+## Prepared for Free Play's feeding close-up (2026-09-21): mashing soft food in
+## a bowl with a spoon. In COPY and drawable so a later pass in the free-play
+## director can `begin(MASH)` it beside `FEED` and `DRY`; nothing opens it yet.
+## The gesture is `WASH`'s -- rub anywhere over the bowl until enough ground is
+## covered -- because mashing rewards working the whole bowl, not one spot.
+const MASH: String = "mashFood"
 
 ## Copy per act: the instruction, the word being taught, and the child's line.
 const COPY: Dictionary = {
@@ -95,6 +101,11 @@ const COPY: Dictionary = {
 		"title": "Time to drink!", "word": "drink", "thai": "ดื่มนม",
 		"hint": "Hold the bottle at Bunny's mouth.",
 		"childLine": "Milk, please, Aliz!", "doneLine": "Thank you, Aliz!",
+	},
+	MASH: {
+		"title": "Mash the food!", "word": "mash", "thai": "บดอาหาร",
+		"hint": "Rub the spoon all around the bowl.",
+		"childLine": "Yum, food!", "doneLine": "All mashed!",
 	},
 }
 
@@ -476,8 +487,8 @@ func apply_stroke(to: Vector2) -> void:
 					_add_foam(to)
 				_last_dir = dir
 			_progress = clampf(float(_strokes) / float(BRUSH_STROKES_NEEDED), 0.0, 1.0)
-		WASH:
-			# Rewards covering ground anywhere on the face.
+		WASH, MASH:
+			# Rewards covering ground anywhere on the face (or, for MASH, the bowl).
 			if to.distance_to(centre) > FACE_RADIUS * 1.15:
 				return
 			_distance += moved
@@ -628,6 +639,9 @@ func _draw_face(_unused: Variant = null) -> void:
 	if _kind == FEED:
 		_draw_feed_target(c)
 		return
+	if _kind == MASH:
+		_draw_bowl(c, o)
+		return
 	c.draw_circle(o, FACE_RADIUS, Color(1.0, 0.886, 0.839))
 	# cheeks
 	c.draw_circle(o + Vector2(-112.0, 40.0), 34.0, Color(1.0, 0.776, 0.776, 0.75))
@@ -712,6 +726,23 @@ func _draw_heart(c: Control, at: Vector2, r: float) -> void:
 	]), Palette.SOFT_PINK)
 
 
+## MASH: a bowl of soft food standing in for the face. The lumps smooth out as
+## progress rises -- the same "the picture answers the gesture" rule as WASH's
+## sheen and DRY's patches. Foam blobs double as spoon marks.
+func _draw_bowl(c: Control, o: Vector2) -> void:
+	var rim: float = FACE_RADIUS * 0.95
+	c.draw_circle(o + Vector2(0.0, 30.0), rim, Palette.PEACH)
+	c.draw_circle(o + Vector2(0.0, 30.0), rim * 0.82, Color(1.0, 0.882, 0.600))
+	var lumps: int = int(round(7.0 * (1.0 - _progress)))
+	for i: int in range(lumps):
+		var a: float = TAU * float(i) / 7.0
+		var at: Vector2 = o + Vector2(0.0, 30.0) + Vector2.from_angle(a) * rim * 0.45
+		c.draw_circle(at, 16.0, Palette.STAR_EARNED)
+	for blob: Dictionary in _foam:
+		c.draw_circle(blob["pos"], float(blob["r"]), Color(1.0, 1.0, 1.0, 0.55))
+	c.draw_arc(o + Vector2(0.0, 30.0), rim, 0.0, TAU, 48, Palette.INK, 5.0)
+
+
 ## The bottle being filled, standing in for the face during `MIX`. The milk level
 ## rises with the POUR half only -- so a child can see that shaking a half-empty
 ## bottle is not what the first half of the bar was asking for.
@@ -771,6 +802,12 @@ func _draw_tool(_unused: Variant = null) -> void:
 			if _poured < POUR_SECONDS and _dragging:
 				c.draw_line(o + Vector2(52.0, 6.0), o + Vector2(52.0, 46.0),
 						Color(1.0, 0.988, 0.949), 9.0)
+		MASH:
+			# A spoon: a long handle and a round bowl at the working end.
+			c.draw_line(o + Vector2(0.0, -TOOL_SIZE * 0.5), o + Vector2(0.0, TOOL_SIZE * 0.1),
+					Palette.DUSTY_BLUE, 12.0)
+			c.draw_circle(o + Vector2(0.0, TOOL_SIZE * 0.26), 22.0, Palette.DUSTY_BLUE)
+			c.draw_circle(o + Vector2(0.0, TOOL_SIZE * 0.26), 14.0, Palette.CREAM)
 		FEED:
 			# The bottle itself, held teat-down, so it is obvious which end goes in.
 			c.draw_rect(Rect2(o + Vector2(-26.0, -46.0), Vector2(52.0, 74.0)),
