@@ -109,3 +109,21 @@ The same workflow scales to more rooms unchanged. What will need thought:
   physics.
 - Cell size is currently tuned for 4×4 m rooms. A much larger space should re-check the
   polygon count before assuming it is free.
+
+
+## 2026-09-22 — agent radius, main-island filter, stall guard
+
+- `HouseLayout.NAV_AGENT_RADIUS` is **0.25 m** (was 0.20) against the 0.22 m
+  capsule: every string-pulled corner waypoint now leaves 3 cm of clearance,
+  so a corner can no longer pin the body against furniture.
+- `tools/bake_navmesh.gd` keeps only the **main floor island**: Recast bakes
+  the floor inside tall hollow boxes (wardrobe, fridge, counter) as walkable
+  islands that paths can never reach but `map_get_closest_point()` happily
+  projected taps onto. The bake probe now requires every stand and spawn point
+  to be on the mesh (≤ 4 cm) and reachable (≤ 5 cm), storages included.
+- `character_movement_controller.gd` projects the tap to the nearest
+  navigable point before requesting the path, and has a no-progress guard
+  (under a quarter of the promised travel for 0.35 s → one re-path; 0.5 s
+  more → `move_failed(target, "blocked")`, ripple released, no residual
+  motion). Regression: `test_nav_corners`, `test_interaction_anchors`,
+  `test_room_transitions`.
