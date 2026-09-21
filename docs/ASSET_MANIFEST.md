@@ -27,6 +27,8 @@ licence file ships alongside the assets in this repo.
 | Kenney | Minigolf Kit — `ball-red` | `game/assets/models/kenney-minigolf-kit/ball-red.glb` | CC0 1.0 | no | yes | scale only |
 | Kenney | Furniture Kit 2.0 — `bedSingle`, `bookcaseClosedWide`, `books`, `cardboardBoxOpen`, `lampRoundFloor`, `lampRoundTable`, `plantSmall2`, `pottedPlant`, `rugRounded` | `game/assets/models/kenney-furniture-kit/` | CC0 1.0 | no | yes | **retinted to pastel by material name** at runtime; centring anchors added (pack pivots are corners); a backing board added behind `bookcaseClosedWide`, which ships with no back panel |
 
+| **Meshy (owner's account, generated for this project)** | `meshy-props` — `apple`, `banana` (split from the tutor `fruit_set`, task `01a0bf63-9030-7760-adcc-5e5d31b43d5d`) | `game/assets/models/meshy-props/` | Meshy subscription — commercial use per plan; **not CC0**, project's own generation | no | yes (per plan) | split by connected components, inner shell dropped, metres, base pivot (`tools/meshy_split.py`); provenance in `manifest.json` + `PROVENANCE.txt`; used by `kitchen_items.gd` via `scripts/house/prop_registry.gd` |
+
 Licence text shipped at `game/assets/models/<pack>/License.txt`, verbatim:
 
 > `License: (Creative Commons Zero, CC0)` · `http://creativecommons.org/publicdomain/zero/1.0/`

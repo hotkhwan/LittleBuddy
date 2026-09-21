@@ -306,3 +306,23 @@ retries. Balance at plan time: **3184** (`GET /openapi/v1/balance`, HTTP 200,
 
 Runtime derivatives: `game/assets/tutor/props/*.glb`; raw masters:
 `game/assets_source/meshy/tutor/` (gitignored). Details: `docs/TUTOR_MESHY_ASSETS.md`.
+
+## 2026-09-21 — house props sprint (Agent C): no paid action
+
+**Key unavailable.** `MESHY_API_KEY` was in neither the shell environment nor the macOS
+keychain, so `GET /openapi/v1/balance` could not be called and **no task was created**.
+Credits spent this session: **0**. Last verified balance stays **3124** (2026-09-20 15:18Z).
+Sprint authorisation: 100, spent 60, **40 remain**; the next batch (teddy 15 + toy box 15 = 30)
+is proposed in `docs/MESHY_PRODUCTION_PLAN.md` §6 and waits for the key and an explicit
+"approved".
+
+Zero-credit work recorded for provenance: `assets/tutor/props/fruit_set.glb` (tasks
+`01a0bf62-ee3f-76db-84c7-3ae636d45f97` → `01a0bf63-9030-7760-adcc-5e5d31b43d5d`) was split locally
+by `tools/meshy_split.py` into `assets/models/meshy-props/apple.glb` (1,120 tris) and
+`banana.glb` (1,134 tris); both now stand in for the kitchen's drawn fruit.
+
+Rows appended by `tools/meshy_batch.sh` from here on use this layout (letter `B` marks the
+batch tool):
+
+| # | Time (UTC) | Asset | Operation | Est. | Actual | Balance before → after | Task id | Outcome |
+|---|---|---|---|---|---|---|---|---|
