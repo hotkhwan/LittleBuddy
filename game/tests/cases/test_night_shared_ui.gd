@@ -4,6 +4,7 @@ const Care := preload("res://scripts/care/care_overlay.gd")
 const Art := preload("res://scripts/ui/activity_art.gd")
 const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
 const Palette := preload("res://scripts/ui/palette.gd")
+const HouseHud := preload("res://scripts/gameplay/house_hud.gd")
 
 func test_name() -> String:
 	return "night_shared_ui"
@@ -43,4 +44,19 @@ func run():
 	if button.get_theme_stylebox("pressed").shadow_size >= button.get_theme_stylebox("normal").shadow_size:
 		failures.append("pressed state must visibly settle")
 	button.free()
+	var hud := HouseHud.new()
+	hud.size = Vector2(1366, 1024)
+	hud.build()
+	hud.set_prompt("Put the toys in the toy box.", "เก็บของเล่นใส่กล่อง")
+	hud.set_caption("A Day With Bunny\nClean Up and Good Night")
+	var caption := hud.get_node("Caption") as Label
+	if caption.autowrap_mode == TextServer.AUTOWRAP_OFF or caption.offset_right > HouseHud.CAPTION_RIGHT:
+		failures.append("long story title must wrap before Home, never grow beneath it")
+	var story_card := hud.get_node("StoryInstructionCard") as Control
+	if story_card.mouse_filter != Control.MOUSE_FILTER_IGNORE or not story_card.visible:
+		failures.append("story instructions need a visible, non-blocking card")
+	hud.set_narration_covered(true)
+	if story_card.visible:
+		failures.append("story card must stand down when care narrates for itself")
+	hud.free()
 	return failures
