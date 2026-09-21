@@ -70,8 +70,8 @@ export type SignAlg = 'ES256' | 'RS256';
 export async function importPkcs8(pem: string, alg: SignAlg): Promise<CryptoKey> {
   const der = pemToDer(pem);
   const params = alg === 'ES256'
-    ? ({ name: 'ECDSA', namedCurve: 'P-256' } as EcKeyImportParams)
-    : ({ name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' } as RsaHashedImportParams);
+    ? ({ name: 'ECDSA', namedCurve: 'P-256' } as never)
+    : ({ name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' } as never);
   return crypto.subtle.importKey('pkcs8', der as BufferSource, params, false, ['sign']);
 }
 

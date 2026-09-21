@@ -103,8 +103,8 @@ export function request(method: string, path: string, body?: unknown, headers: R
 
 /** An RSA service-account key for the Google token path, minted per test run. */
 export async function rsaPkcs8Pem(): Promise<string> {
-  const pair = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
-  const der = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey));
+  const pair = (await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' } as never, true, ['sign', 'verify'])) as CryptoKeyPair;
+  const der = new Uint8Array((await crypto.subtle.exportKey('pkcs8', pair.privateKey)) as ArrayBuffer);
   const b64 = base64Encode(der).replace(/(.{64})/g, '$1\n');
   return `-----BEGIN PRIVATE KEY-----\n${b64}\n-----END PRIVATE KEY-----\n`;
 }

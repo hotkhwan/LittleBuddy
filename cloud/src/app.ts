@@ -90,7 +90,18 @@ export function createApp(options: AppOptions = {}) {
   const api = new Hono<{ Bindings: Env; Variables: Vars }>();
   api.route('/', accountRoutes);
   api.route('/', tutorRoutes);
-  api.route('/billing', billingRoutes);
+  // Agent F's billing module is a plain fetch-style handler (returns null off
+  // its mount); it is served here under /v1/billing with the Worker env.
+  api.all('/billing/*', async (c) => {
+    // The auth middleware may already have read the body; hand billing a
+    // fresh Request built from Hono's cached text so it can parse it again.
+    const raw = c.req.raw;
+    const body = raw.method === 'GET' || raw.method === 'HEAD' ? undefined : await c.req.text();
+    const fresh = new Request(raw.url, { method: raw.method, headers: raw.headers, body });
+    const handled = await billingRoutes(fresh, c.env as never);
+    if (handled) return handled;
+    throw errors.notFound();
+  });
   api.use('/dev/*', async (c, next) => {
     if (!c.get('config').devMode) throw errors.notFound();
     return next();
