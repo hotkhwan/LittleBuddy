@@ -1553,6 +1553,10 @@ func _ensure_care_overlay() -> Control:
 	var ui: Node = _world.get_node_or_null("UI")
 	if ui != null:
 		ui.add_child(care)
+		# Same rule as the level director (owner playtest 2026-09-21): the
+		# HUD stays above the full-rect close-up so Home keeps working.
+		if _hud != null and is_instance_valid(_hud) and _hud.get_parent() == ui:
+			ui.move_child(_hud, ui.get_child_count() - 1)
 	else:
 		add_child(care)
 	care.call("build")

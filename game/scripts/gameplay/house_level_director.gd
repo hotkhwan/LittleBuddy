@@ -264,8 +264,16 @@ func bind(world: Node) -> void:
 	_care_overlay = CareOverlayScript.new()
 	if ui != null:
 		ui.add_child(_care_overlay)
+		# OWNER PLAYTEST 2026-09-21: the HUD must stay ABOVE the close-up. The
+		# care overlay is a full-rect MOUSE_FILTER_STOP control; as the later
+		# sibling it won every pick, so the Home button (and Next, the child's
+		# way out) looked live during feeding and did nothing when pressed.
+		# The HUD's root and labels are IGNORE, so on top it lets every care
+		# stroke through while its buttons win again.
+		ui.move_child(_hud, ui.get_child_count() - 1)
 	else:
 		add_child(_care_overlay)
+		move_child(_hud, get_child_count() - 1)
 	_care_overlay.call("build")
 	_care_overlay.visible = false
 	_care_overlay.connect("care_completed", _on_care_completed)
