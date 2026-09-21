@@ -9,7 +9,7 @@
 import type { Emotion, Gesture, LessonAction, TutorTurn, VisualType } from './types';
 
 export const EMOTIONS: readonly Emotion[] = ['neutral', 'listening', 'thinking', 'happy', 'encouraging', 'smile'];
-export const GESTURES: readonly Gesture[] = ['none', 'nod', 'tilt', 'point', 'clap', 'wave'];
+export const GESTURES: readonly Gesture[] = ['none', 'nod', 'tilt', 'point', 'clap', 'wave', 'thumbsUp', 'celebrate', 'listening', 'thinking', 'encourage'];
 export const VISUAL_TYPES: readonly VisualType[] = ['none', 'flashcard', 'model'];
 export const LESSON_ACTIONS: readonly LessonAction[] = ['next_question', 'retry', 'give_hint', 'complete', 'end_session', 'switch_lesson', 'jump_step'];
 

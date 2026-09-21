@@ -1,6 +1,6 @@
 // Shared tutor types. TutorTurn mirrors docs/ALIZ_TUTOR_CONTRACTS.md exactly.
 export type Emotion = 'neutral' | 'listening' | 'thinking' | 'happy' | 'encouraging' | 'smile';
-export type Gesture = 'none' | 'nod' | 'tilt' | 'point' | 'clap' | 'wave';
+export type Gesture = 'none' | 'nod' | 'tilt' | 'point' | 'clap' | 'wave' | 'thumbsUp' | 'celebrate' | 'listening' | 'thinking' | 'encourage';
 export type VisualType = 'none' | 'flashcard' | 'model';
 export type LessonAction = 'next_question' | 'retry' | 'give_hint' | 'complete' | 'end_session' | 'switch_lesson' | 'jump_step';
 export type Outcome = 'correct' | 'incorrect' | 'unclear';

@@ -92,7 +92,12 @@ extends Node3D
 ## composes with the idle, the seated pose and the carry arms, and never with
 ## the walk:
 ##   `play_gesture(name) -> float`   "nod" (0.9 s) | "tilt" (1.2 s) | "point"
-##                                   (1.4 s) | "clap" (1.1 s) | "wave" (1.3 s).
+##                                   (1.4 s) | "clap" (1.1 s) | "wave" (1.3 s) |
+##                                   "thumbsUp" (1.1 s) | "celebrate" (1.6 s) |
+##                                   "listening" (1.4 s) | "thinking" (1.6 s) |
+##                                   "encourage" (1.2 s) (docs/ALIZ_GESTURES.md).
+##                                   A new gesture cross-fades over a running
+##                                   one (0.2 s); two never overlap otherwise.
 ##                                   Returns the duration, or 0.0 when refused:
 ##                                   unknown name, no rig, locomotion above
 ##                                   `GESTURE_MAX_SPEED_MPS` (0.1 m/s), or an arm
@@ -124,7 +129,11 @@ extends Node3D
 ##                                   inside 200 ms, listening face at once, head
 ##                                   turned to the attention target. `explaining`:
 ##                                   point, then a half nod every ~2.5 s while
-##                                   speaking. `celebrating`: clap + happy +
+##                                   speaking. `thinking`: the `thinking` gesture
+##                                   (hand under the chin) with the `eyesUpLeft`
+##                                   overlay for its hold. `encouraging`: the
+##                                   `encourage` gesture (open palm, small nod).
+##                                   `celebrating`: `celebrate` + happy +
 ##                                   `wants_sfx("laugh")`. `speaking`: lip-sync
 ##                                   mouth, +-1 degree head nods, a brow raise
 ##                                   every ~1.8 s and a glance every ~4.5 s as

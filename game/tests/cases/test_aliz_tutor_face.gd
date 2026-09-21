@@ -25,7 +25,8 @@ const GestureClips := preload("res://scripts/characters/buddy/buddy_gesture_clip
 const GestureLayer := preload("res://scripts/characters/buddy/buddy_gesture_layer.gd")
 
 const EXPRESSIONS: Array[String] = ["neutral", "listening", "thinking", "happy", "encouraging", "smile"]
-const GESTURES: Array[String] = ["nod", "tilt", "point", "clap", "wave"]
+const GESTURES: Array[String] = ["nod", "tilt", "point", "clap", "wave",
+	"thumbsUp", "celebrate", "listening", "thinking", "encourage"]
 const STEP: float = 1.0 / 60.0
 
 
@@ -46,6 +47,7 @@ func run():
 	failures.append_array(_test_lip_sync_pipeline(buddy))
 	failures.append_array(_test_tts_pseudo_envelope())
 	failures.append_array(_test_gestures(buddy))
+	failures.append_array(_test_gesture_handover(buddy))
 	failures.append_array(_test_gestures_refused_while_walking(buddy))
 	failures.append_array(_test_listening_pose(buddy))
 	failures.append_array(_test_layers_do_not_conflict(buddy))
@@ -492,7 +494,8 @@ func _test_gestures(buddy: Node3D):
 			failures.append("get_current_gesture() is '%s' after play_gesture('%s')"
 					% [String(buddy.call("get_current_gesture")), name])
 		# Sample the clip at the moment it should be most visible.
-		var peak_at: Dictionary = {"nod": 0.2, "tilt": 0.55, "point": 0.7, "clap": 0.35, "wave": 0.42}
+		var peak_at: Dictionary = {"nod": 0.2, "tilt": 0.55, "point": 0.7, "clap": 0.35, "wave": 0.42,
+				"thumbsUp": 0.4, "celebrate": 0.5, "listening": 0.8, "thinking": 1.0, "encourage": 0.5}
 		var t: float = 0.0
 		var head_pitch: float = 0.0
 		var head_roll: float = 0.0
@@ -548,6 +551,55 @@ func _test_gestures(buddy: Node3D):
 					failures.append("wave: the right hand rose only %.1f cm; it should be up" % hand_lift)
 				if absf(hand_l_lift) > 0.5:
 					failures.append("wave moved the LEFT hand %.1f cm" % hand_l_lift)
+			"thumbsUp":
+				# The fist at chin height, in front of the shoulder, left hand still.
+				if hand_lift < 30.0:
+					failures.append("thumbsUp: the right hand rose only %.1f cm; the fist should reach the chin" % hand_lift)
+				if absf(hand_l_lift) > 0.5:
+					failures.append("thumbsUp moved the LEFT hand %.1f cm" % hand_l_lift)
+				if _global(skeleton, hand_r).origin.z < 15.0:
+					failures.append("thumbsUp: the fist is at z %.1f cm, inside the hair line; it must sit in front" % _global(skeleton, hand_r).origin.z)
+			"celebrate":
+				# Both arms up in a V, hands outside the hair, and the hips hopped.
+				if hand_lift < 55.0 or hand_l_lift < 55.0:
+					failures.append("celebrate: hands rose %.1f / %.1f cm; both arms should be up" % [hand_lift, hand_l_lift])
+				if absf(_global(skeleton, hand_r).origin.x) < 33.0 or absf(_global(skeleton, hand_l).origin.x) < 33.0:
+					failures.append("celebrate: hands at x %.1f / %.1f cm are inside the hair's width (+-30)"
+							% [_global(skeleton, hand_r).origin.x, _global(skeleton, hand_l).origin.x])
+				var hop: float = _global(skeleton, skeleton.find_bone("Hips")).origin.y \
+						- skeleton.get_bone_global_rest(skeleton.find_bone("Hips")).origin.y
+				if hop < 1.5 or hop > 4.0:
+					failures.append("celebrate: the hips are %.1f cm up at the first hop; expected ~2.5" % hop)
+			"listening":
+				# The lean and the head tilt, hands still.
+				if absf(head_roll) < 4.0 or absf(head_roll) > 12.0:
+					failures.append("listening: head roll %.1f degrees while held; expected ~8" % head_roll)
+				if absf(hand_lift) > 1.0 or absf(hand_l_lift) > 1.0:
+					failures.append("listening moved the hands %.1f / %.1f cm; they must stay still" % [hand_lift, hand_l_lift])
+			"thinking":
+				# The hand under the chin, in front of the face; the head tilted.
+				var hand_pos: Vector3 = _global(skeleton, hand_r).origin
+				var head_pos: Vector3 = _global(skeleton, head).origin
+				if hand_pos.y < head_pos.y - 16.0 or hand_pos.y > head_pos.y:
+					failures.append("thinking: the hand is at y %.1f with the head at %.1f; it should be just under the chin" % [hand_pos.y, head_pos.y])
+				if absf(hand_pos.x) > 14.0:
+					failures.append("thinking: the hand is %.1f cm off centre; it should be under the chin" % hand_pos.x)
+				if hand_pos.z < 18.0:
+					failures.append("thinking: the hand is at z %.1f cm, inside the face (front at z 15)" % hand_pos.z)
+				if absf(head_roll) < 3.0:
+					failures.append("thinking: the head did not tilt toward the hand (%.1f degrees)" % head_roll)
+				if absf(hand_l_lift) > 0.5:
+					failures.append("thinking moved the LEFT hand %.1f cm" % hand_l_lift)
+			"encourage":
+				# The open palm forward at chest height, the nod at its peak.
+				if hand_lift < 20.0:
+					failures.append("encourage: the right hand rose only %.1f cm" % hand_lift)
+				if _global(skeleton, hand_r).origin.z < 15.0:
+					failures.append("encourage: the palm is at z %.1f cm; it should open toward the child" % _global(skeleton, hand_r).origin.z)
+				if head_pitch < 3.0:
+					failures.append("encourage: no nod at 0.5 s (head pitch %.1f)" % head_pitch)
+				if absf(hand_l_lift) > 0.5:
+					failures.append("encourage moved the LEFT hand %.1f cm" % hand_l_lift)
 		# The second half of the clap and the wave: the pulse / swing keeps going.
 		if name == "clap" or name == "wave":
 			var lo: float = 1e9
@@ -585,6 +637,11 @@ func _test_gestures(buddy: Node3D):
 		# quaternion round trip through it leaves ~0.04 degrees of noise.
 		if rad_to_deg(rest_pose.angle_to(skeleton.get_bone_pose_rotation(head))) > 0.1:
 			failures.append("after '%s' the head is still %.2f degrees off rest" % [name, rad_to_deg(rest_pose.angle_to(skeleton.get_bone_pose_rotation(head)))])
+		var hand_back: float = (_global(skeleton, hand_r).origin - skeleton.get_bone_global_rest(hand_r).origin).length()
+		var hips_back: float = (_global(skeleton, skeleton.find_bone("Hips")).origin
+				- skeleton.get_bone_global_rest(skeleton.find_bone("Hips")).origin).length()
+		if hand_back > 0.1 or hips_back > 0.01:
+			failures.append("after '%s' the right hand is %.2f cm and the hips %.2f cm off rest" % [name, hand_back, hips_back])
 	# The blend-out is 0.2 s: stop() mid-gesture and the weight is 0 within it.
 	buddy.call("play_gesture", "tilt")
 	for _k: int in range(30):
@@ -602,6 +659,105 @@ func _test_gestures(buddy: Node3D):
 		failures.append("stop_gesture() took %.2f s to blend out; the brief says 0.2" % fade)
 	skeleton.reset_bone_poses()
 	return failures
+
+
+## -- 6b. two gestures never overlap: a new one cross-fades over the old, and every
+## --     combination of calls hands the bones back to rest ----------------------------------
+
+func _test_gesture_handover(buddy: Node3D):
+	var failures: Array = []
+	var layer: SkeletonModifier3D = buddy.call("get_gesture_layer")
+	var skeleton: Skeleton3D = buddy.call("get_skeleton")
+	var head: int = skeleton.find_bone(GestureClips.HEAD)
+	var hand_r: int = skeleton.find_bone(GestureClips.HAND_R)
+	var hand_l: int = skeleton.find_bone(GestureClips.HAND_L)
+	var hips: int = skeleton.find_bone("Hips")
+	buddy.call("set_locomotion", 0.0)
+	buddy.call("set_carry_pose", false)
+	# A wave in full swing, then a clap: the wave goes to the outgoing slot,
+	# fades to 0 inside FADE_OUT_SEC and the hand never snaps to rest between.
+	skeleton.reset_bone_poses()
+	buddy.call("play_gesture", "wave")
+	for _k: int in range(30):
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+	var lifted: float = _global(skeleton, hand_r).origin.y - skeleton.get_bone_global_rest(hand_r).origin.y
+	var finished: Array = []
+	var on_finished: Callable = func(ended: String) -> void: finished.append(ended)
+	layer.connect("gesture_finished", on_finished)
+	buddy.call("play_gesture", "clap")
+	if String(layer.call("outgoing_gesture")) != "wave" or String(buddy.call("get_current_gesture")) != "clap":
+		failures.append("play_gesture('clap') over a wave: current '%s', outgoing '%s'"
+				% [String(buddy.call("get_current_gesture")), String(layer.call("outgoing_gesture"))])
+	if finished != ["wave"]:
+		failures.append("replacing the wave did not report gesture_finished('wave') at once: %s" % str(finished))
+	var lowest: float = 1e9
+	var t: float = 0.0
+	var outgoing_gone_at: float = -1.0
+	while t < 0.5:
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+		t += STEP
+		lowest = minf(lowest, _global(skeleton, hand_r).origin.y - skeleton.get_bone_global_rest(hand_r).origin.y)
+		if outgoing_gone_at < 0.0 and String(layer.call("outgoing_gesture")).is_empty():
+			outgoing_gone_at = t
+	print("      handover proof: wave hand %.1f cm up, lowest %.1f cm during the cross-fade to clap; wave gone at %.0f ms"
+			% [lifted, lowest, outgoing_gone_at * 1000.0])
+	if lowest < lifted * 0.35:
+		failures.append("the right hand dropped to %.1f cm (from %.1f) while the clap replaced the wave; that is a snap, not a cross-fade" % [lowest, lifted])
+	if outgoing_gone_at < 0.0 or outgoing_gone_at > GestureLayer.FADE_OUT_SEC + STEP * 1.5:
+		failures.append("the replaced wave took %.0f ms to fade out; the layer promises %.0f" % [outgoing_gone_at * 1000.0, GestureLayer.FADE_OUT_SEC * 1000.0])
+	layer.disconnect("gesture_finished", on_finished)
+	# Every ordered pair, interrupted at three moments, then a state change or
+	# a stop: the pose returns to rest within tolerance every time.
+	var checked: int = 0
+	for first: String in GESTURES:
+		for second: String in GESTURES:
+			for cut: float in [0.05, 0.3, 0.8]:
+				skeleton.reset_bone_poses()
+				buddy.call("play_gesture", first)
+				var elapsed: float = 0.0
+				while elapsed < cut:
+					skeleton.reset_bone_poses()
+					layer.call("step", STEP)
+					elapsed += STEP
+				buddy.call("play_gesture", second)
+				for _k: int in range(6):
+					skeleton.reset_bone_poses()
+					layer.call("step", STEP)
+				# A third call inside the cross-fade window: only one outgoing slot.
+				buddy.call("play_gesture", first)
+				if checked % 3 == 0:
+					buddy.call("stop_gesture")
+				else:
+					buddy.call("set_tutor_state", "idle")
+				var guard: int = 0
+				while (bool(layer.call("is_playing")) or not String(layer.call("outgoing_gesture")).is_empty()) and guard < 200:
+					skeleton.reset_bone_poses()
+					layer.call("step", STEP)
+					guard += 1
+				skeleton.reset_bone_poses()
+				layer.call("step", STEP)
+				var off: Array = _off_rest(skeleton, [head, hand_r, hand_l, hips])
+				if float(off[0]) > 0.1 or float(off[1]) > 0.1:
+					failures.append("%s -> %s at %.2f s -> %s: %.2f degrees / %.2f cm left on the bones"
+							% [first, second, cut, first, float(off[0]), float(off[1])])
+				checked += 1
+	print("      handover proof: %d interrupt combinations returned to rest" % checked)
+	buddy.call("set_tutor_state", "idle")
+	skeleton.reset_bone_poses()
+	return failures
+
+
+## [max degrees off rest rotation, max cm off rest position] over `bones`.
+static func _off_rest(skeleton: Skeleton3D, bones: Array) -> Array:
+	var worst_deg: float = 0.0
+	var worst_cm: float = 0.0
+	for bone: int in bones:
+		var rest: Quaternion = skeleton.get_bone_rest(bone).basis.get_rotation_quaternion()
+		worst_deg = maxf(worst_deg, rad_to_deg(rest.angle_to(skeleton.get_bone_pose_rotation(bone))))
+		worst_cm = maxf(worst_cm, (_global(skeleton, bone).origin - skeleton.get_bone_global_rest(bone).origin).length())
+	return [worst_deg, worst_cm]
 
 
 ## -- 7. gestures refuse to start while she walks, and fade if she moves off ----------------
@@ -738,10 +894,10 @@ func _test_tutor_states(buddy: Node3D):
 	buddy.connect("wants_sfx", on_sfx)
 	var expected: Dictionary = {
 		"idle": ["neutral", "", false], "listening": ["listening", "", false],
-		"thinking": ["thinking", "tilt", false], "speaking": ["smile", "", true],
+		"thinking": ["thinking", "thinking", false], "speaking": ["smile", "", true],
 		"interrupted": ["listening", "", false], "happy": ["happy", "nod", false],
-		"encouraging": ["encouraging", "nod", false], "explaining": ["smile", "point", true],
-		"celebrating": ["happy", "clap", false],
+		"encouraging": ["encouraging", "encourage", false], "explaining": ["smile", "point", true],
+		"celebrating": ["happy", "celebrate", false],
 	}
 	for name: String in expected.keys():
 		# From idle each time: happy / encouraging / celebrating leave the mouth
@@ -771,6 +927,35 @@ func _test_tutor_states(buddy: Node3D):
 	buddy.call("set_tutor_state", "listening")
 	if not bool(buddy.call("is_listening_pose")):
 		failures.append("'listening' did not lean in")
+	# Listening keeps the hands still: an arm gesture in flight is stopped.
+	buddy.call("set_tutor_state", "celebrating")
+	for _k: int in range(12):
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+	buddy.call("set_tutor_state", "listening")
+	var stop_took: float = 0.0
+	while bool(layer.call("is_playing")) and stop_took < 1.0:
+		skeleton.reset_bone_poses()
+		layer.call("step", STEP)
+		stop_took += STEP
+	if stop_took > 0.2 + STEP * 1.5:
+		failures.append("'listening' left the celebrate running %.2f s; the hands must be still" % stop_took)
+	# Thinking: the gaze goes up-left during the hold of the hand under the chin.
+	var driver: Node = buddy.call("get_tutor_state_driver")
+	buddy.call("set_tutor_state", "thinking")
+	var gaze_seen: bool = false
+	for _k: int in range(60):
+		driver.call("step", STEP)
+		if (buddy.call("get_face_overlays") as Array).has("eyesUpLeft"):
+			gaze_seen = true
+	if not gaze_seen:
+		failures.append("'thinking' never showed the eyesUpLeft glance during the hand-on-chin hold")
+	for _k: int in range(60):
+		driver.call("step", STEP)
+	if not (buddy.call("get_face_overlays") as Array).is_empty():
+		failures.append("'thinking' left the glance overlay on after the hold")
+	if String(buddy.call("get_expression")) != "thinking":
+		failures.append("the thinking glance changed the expression to '%s'" % String(buddy.call("get_expression")))
 	buddy.call("set_tutor_state", "idle")
 	if bool(buddy.call("is_listening_pose")) or bool(buddy.call("is_speaking")):
 		failures.append("'idle' did not straighten up and close the mouth")

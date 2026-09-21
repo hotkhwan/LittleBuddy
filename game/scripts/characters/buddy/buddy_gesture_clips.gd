@@ -45,8 +45,8 @@ extends RefCounted
 ##                      fist at chin height, and pumps twice; the head dips
 ##                      with the pumps. There are no finger bones on this rig,
 ##                      so the thumb is the raised fist's silhouette
-##   celebrate  1.6 s   both arms straight up and out over the hair, a small
-##                      bounce (the hips hop 2.5 cm twice, the spine pumps)
+##   celebrate  1.6 s   both arms up in a V beside the hair, a small bounce
+##                      (the hips hop 2.5 cm twice, the spine pumps)
 ##   listening  1.4 s   the attentive lean (the same spine angles as the held
 ##                      listening posture), the head tilted 8 degrees, the
 ##                      hands still; held, then back
@@ -299,11 +299,12 @@ static func _thumbs_up(skeleton: Skeleton3D, prefix: String) -> Animation:
 	var raise: Array = [[0.0, 0.0], [0.25, 1.0], [0.85, 1.0], [1.1, 0.0]]
 	var pump: Array = [[0.0, 0.0], [0.25, 0.0], [0.4, 1.0], [0.55, 0.2], [0.7, 1.0],
 			[0.85, 0.0], [1.1, 0.0]]
-	# Upper arm a little forward and OUT (TILT -), so the forearm rises beside
-	# the shoulder line rather than across the chest and the hair.
-	_bone(animation, skeleton, prefix, ARM_R, _scaled2(raise, TILT, -22.0, NOD, -28.0))
+	# Measured on the rig: upper arm 45 forward, forearm folded 100, puts the
+	# fist at (-26, 104, 21) cm -- chin height, a hand's width outside the
+	# hair's front edge (x -24, z 15 at that height), elbow at the ribs.
+	_bone(animation, skeleton, prefix, ARM_R, _scaled(raise, NOD, -45.0))
 	_bone(animation, skeleton, prefix, FOREARM_R, _combine(
-			_scaled(raise, NOD, -118.0), _scaled(pump, NOD, -14.0)))
+			_scaled(raise, NOD, -100.0), _scaled(pump, NOD, -14.0)))
 	# The fist turns knuckles-out so the thumb side faces the child.
 	_bone(animation, skeleton, prefix, HAND_R, _scaled2(raise, TURN, -35.0, NOD, -10.0))
 	_bone(animation, skeleton, prefix, HEAD, _scaled(pump, NOD, 5.0))
@@ -322,14 +323,17 @@ static func _celebrate(skeleton: Skeleton3D, prefix: String) -> Animation:
 		var arm: String = ARM_L if side > 0 else ARM_R
 		var forearm: String = FOREARM_L if side > 0 else FOREARM_R
 		var hand: String = HAND_L if side > 0 else HAND_R
-		# Out first (TILT, out = -side... out is -1 for the right arm, +1 for
-		# the left), then forward and over the top: a hanging arm turned 155
-		# degrees forward points up and a little back, clear of the hair.
+		# Out first (TILT: out is -1 for the right arm, +1 for the left), then
+		# 165 degrees forward and over: a V above the shoulders. Measured, the
+		# hands sit at (+-38, 133, 8) cm, 10 cm outside the hair (x +-27 at
+		# that height) and behind its front. The forearms tilt inward a
+		# little so the hands go up, not out.
+		var out: float = float(side)
 		_bone(animation, skeleton, prefix, arm, _combine(
-				_scaled2(raise, TILT, -float(side) * 32.0, NOD, -150.0),
-				_scaled(hop, TILT, -float(side) * 6.0)))
+				_scaled2(raise, TILT, out * 30.0, NOD, -165.0),
+				_scaled(hop, TILT, out * 5.0)))
 		_bone(animation, skeleton, prefix, forearm, _combine(
-				_scaled(raise, NOD, -12.0), _scaled(hop, NOD, -10.0)))
+				_scaled(raise, TILT, -out * 20.0), _scaled(hop, NOD, -10.0)))
 		_bone(animation, skeleton, prefix, hand, _scaled(raise, NOD, -10.0))
 	_bone(animation, skeleton, prefix, SPINE_LOW, _scaled(hop, NOD, -2.5))
 	_bone(animation, skeleton, prefix, SPINE_TOP, _scaled(hop, NOD, 2.0))
@@ -360,14 +364,14 @@ static func _listening(skeleton: Skeleton3D, prefix: String) -> Animation:
 static func _thinking(skeleton: Skeleton3D, prefix: String) -> Animation:
 	var animation: Animation = _one_shot(duration_of(GESTURE_THINKING))
 	var beats: Array = [[0.0, 0.0], [0.4, 1.0], [1.25, 1.0], [1.6, 0.0]]
-	# Upper arm forward and swung ACROSS (TURN +, toward her left) so the
-	# elbow sits in front of the chest, the forearm folded all the way up and
-	# in: the hand lands a few centimetres in front of and below the chin.
-	_bone(animation, skeleton, prefix, ARM_R, _scaled2(beats, NOD, -38.0, TURN, 30.0))
-	_bone(animation, skeleton, prefix, FOREARM_R, _scaled2(beats, NOD, -128.0, TILT, 18.0))
+	# Measured: upper arm 30 forward and swung 40 across (TURN +, toward her
+	# left), forearm folded 90 and tilted in, puts the hand at (-9, 98, 23)
+	# cm -- under the chin (the face front is z 15 there), elbow at the ribs.
+	_bone(animation, skeleton, prefix, ARM_R, _scaled2(beats, NOD, -30.0, TURN, 40.0))
+	_bone(animation, skeleton, prefix, FOREARM_R, _scaled2(beats, NOD, -90.0, TILT, -25.0))
 	_bone(animation, skeleton, prefix, HAND_R, _scaled(beats, NOD, -25.0))
-	# The head: rolled toward the hand (her right is TILT -... a tip toward
-	# her right), chin up 4 degrees so the eyes can go up-left.
+	# The head: rolled toward the hand (TILT - tips it toward her right),
+	# chin up 4 degrees so the eyes can go up-left.
 	_bone(animation, skeleton, prefix, HEAD, _scaled2(beats, TILT, -7.0, NOD, -4.0))
 	_bone(animation, skeleton, prefix, NECK, _scaled(beats, TILT, -2.0))
 	return animation
@@ -379,9 +383,11 @@ static func _encourage(skeleton: Skeleton3D, prefix: String) -> Animation:
 	var animation: Animation = _one_shot(duration_of(GESTURE_ENCOURAGE))
 	var open: Array = [[0.0, 0.0], [0.3, 1.0], [0.9, 1.0], [1.2, 0.0]]
 	var nod: Array = [[0.0, 0.0], [0.35, 0.0], [0.5, 1.0], [0.7, 0.0], [1.2, 0.0]]
-	_bone(animation, skeleton, prefix, ARM_R, _scaled2(open, NOD, -22.0, TILT, -16.0))
+	# Measured: the hand opens to (-29, 98, 24) cm -- chest height, in front
+	# of and outside the hair (x -25, z 15 at that height).
+	_bone(animation, skeleton, prefix, ARM_R, _scaled2(open, NOD, -35.0, TILT, -16.0))
 	# Forearm forward and OUT (the open palm), the hand turned palm-up.
-	_bone(animation, skeleton, prefix, FOREARM_R, _scaled2(open, NOD, -55.0, TILT, -38.0))
+	_bone(animation, skeleton, prefix, FOREARM_R, _scaled2(open, NOD, -70.0, TILT, -20.0))
 	_bone(animation, skeleton, prefix, HAND_R, _scaled2(open, TURN, -40.0, NOD, -15.0))
 	_bone(animation, skeleton, prefix, HEAD, _scaled(nod, NOD, 6.0))
 	_bone(animation, skeleton, prefix, NECK, _scaled(nod, NOD, 2.0))

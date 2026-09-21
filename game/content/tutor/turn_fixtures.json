@@ -1,5 +1,5 @@
 {
-  "$comment": "SHARED TutorTurn validator truth table (docs/ALIZ_TUTOR_CONTRACTS.md). Run by BOTH suites: game/tests/cases/test_tutor_turn.gd (client, game/scripts/tutor/turn/tutor_turn.gd) and backend/test/validator.test.js (server, backend/src/turn_validator.js). Format: cases[].input is the candidate turn; expect is 'valid' or 'fallback'; for 'valid' cases the optional `normalized` object lists fields the validator must output exactly; for 'fallback' cases `reasonPrefix` names the rule that must appear in the reasons list. lessonAction enum: next_question, retry, give_hint, complete, end_session, switch_lesson, jump_step (the last two added 2026-09-20 evening for choose steps and barge-in routing). Rules: ASCII printable 0x20..0x7E only (no typographic punctuation), extra fields dropped, visual required, missing/invalid anything -> the safe fallback turn.",
+  "$comment": "SHARED TutorTurn validator truth table (docs/ALIZ_TUTOR_CONTRACTS.md). Run by BOTH suites: game/tests/cases/test_tutor_turn.gd (client, game/scripts/tutor/turn/tutor_turn.gd) and backend/test/validator.test.js (server, backend/src/turn_validator.js). Format: cases[].input is the candidate turn; expect is 'valid' or 'fallback'; for 'valid' cases the optional `normalized` object lists fields the validator must output exactly; for 'fallback' cases `reasonPrefix` names the rule that must appear in the reasons list. lessonAction enum: next_question, retry, give_hint, complete, end_session, switch_lesson, jump_step (the last two added 2026-09-20 evening for choose steps and barge-in routing). Rules: ASCII printable 0x20..0x7E only (no typographic punctuation), extra fields dropped, visual required, missing/invalid anything -> the safe fallback turn. Gesture enum (additive 2026-09-22): none, nod, tilt, point, clap, wave, thumbsUp, celebrate, listening, thinking, encourage (docs/ALIZ_GESTURES.md).",
   "version": 2,
   "fallback": {
     "speech": "Let's try together!",
@@ -594,6 +594,92 @@
       "expect": "valid",
       "normalized": {
         "speech": "Okay! Let's see the dog!"
+      }
+    },
+    {
+      "name": "thumbsUp is a valid gesture (2026-09-22 set)",
+      "input": {
+        "speech": "Great! You said apple!",
+        "emotion": "happy",
+        "gesture": "thumbsUp",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "next_question",
+        "nextQuestion": "What color is the banana?"
+      },
+      "expect": "valid",
+      "normalized": {
+        "gesture": "thumbsUp",
+        "subtitle": "Great! You said apple!"
+      }
+    },
+    {
+      "name": "celebrate is a valid gesture (2026-09-22 set)",
+      "input": {
+        "speech": "Three in a row! Amazing!",
+        "emotion": "happy",
+        "gesture": "celebrate",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "complete"
+      },
+      "expect": "valid",
+      "normalized": {
+        "gesture": "celebrate",
+        "subtitle": "Three in a row! Amazing!"
+      }
+    },
+    {
+      "name": "listening is a valid gesture (2026-09-22 set)",
+      "input": {
+        "speech": "I am listening. Can you say it again?",
+        "emotion": "listening",
+        "gesture": "listening",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid",
+      "normalized": {
+        "gesture": "listening",
+        "subtitle": "I am listening. Can you say it again?"
+      }
+    },
+    {
+      "name": "thinking is a valid gesture (2026-09-22 set)",
+      "input": {
+        "speech": "Hmm, let me think about that.",
+        "emotion": "thinking",
+        "gesture": "thinking",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "give_hint"
+      },
+      "expect": "valid",
+      "normalized": {
+        "gesture": "thinking",
+        "subtitle": "Hmm, let me think about that."
+      }
+    },
+    {
+      "name": "encourage is a valid gesture (2026-09-22 set)",
+      "input": {
+        "speech": "Good try! Let's say it together.",
+        "emotion": "encouraging",
+        "gesture": "encourage",
+        "visual": {
+          "type": "none"
+        },
+        "lessonAction": "retry"
+      },
+      "expect": "valid",
+      "normalized": {
+        "gesture": "encourage",
+        "subtitle": "Good try! Let's say it together."
       }
     }
   ]

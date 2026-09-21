@@ -37,7 +37,7 @@ describe('validator rules', () => {
   it('every enum value is accepted and one-off values are not', () => {
     const base = { speech: 'Hi!', emotion: 'happy', gesture: 'nod', visual: { type: 'none' }, lessonAction: 'retry' };
     for (const emotion of ['neutral', 'listening', 'thinking', 'happy', 'encouraging', 'smile']) expect(validateTurn({ ...base, emotion }).ok, emotion).toBe(true);
-    for (const gesture of ['none', 'nod', 'tilt', 'point', 'clap', 'wave']) expect(validateTurn({ ...base, gesture }).ok, gesture).toBe(true);
+    for (const gesture of ['none', 'nod', 'tilt', 'point', 'clap', 'wave', 'thumbsUp', 'celebrate', 'listening', 'thinking', 'encourage']) expect(validateTurn({ ...base, gesture }).ok, gesture).toBe(true);
     for (const lessonAction of ['next_question', 'retry', 'give_hint', 'complete', 'end_session', 'switch_lesson', 'jump_step']) expect(validateTurn({ ...base, lessonAction }).ok, lessonAction).toBe(true);
     for (const id of DEFAULT_ASSET_ALLOWLIST) expect(validateTurn({ ...base, visual: { type: 'flashcard', assetId: id } }).ok, id).toBe(true);
     expect(validateTurn({ ...base, emotion: 'Happy' }).ok).toBe(false);

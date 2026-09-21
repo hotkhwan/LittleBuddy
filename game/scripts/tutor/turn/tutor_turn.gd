@@ -52,7 +52,11 @@ const FIXTURES_PATH: String = "res://content/tutor/turn_fixtures.json"
 const ALLOWLIST_PATH: String = "res://content/tutor/assets_allowlist.json"
 
 const EMOTIONS: Array[String] = ["neutral", "listening", "thinking", "happy", "encouraging", "smile"]
-const GESTURES: Array[String] = ["none", "nod", "tilt", "point", "clap", "wave"]
+## The five contract gestures plus the 2026-09-22 set (docs/ALIZ_GESTURES.md):
+## thumbsUp, celebrate, listening, thinking, encourage. Additive; the shared
+## fixtures and cloud/src/tutor/turn_validator.ts carry the same list.
+const GESTURES: Array[String] = ["none", "nod", "tilt", "point", "clap", "wave",
+	"thumbsUp", "celebrate", "listening", "thinking", "encourage"]
 const VISUAL_TYPES: Array[String] = ["none", "flashcard", "model"]
 ## `switch_lesson` and `jump_step` (addendum 2026-09-20 evening): the engine
 ## routed the child elsewhere (a choose step, a barge-in "I want a dog!").
