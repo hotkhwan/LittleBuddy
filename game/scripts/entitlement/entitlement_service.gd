@@ -35,13 +35,18 @@ extends RefCounted
 ## owns. Adding `"familyClub"` to it grants nothing, because the provider that
 ## would have to confirm it says it does not trust the file. Tested.
 ##
-## ## No billing. At all.
+## ## Billing: a shape exists, a charge path does not
 ##
-## There is no payment SDK, no StoreKit, no Play Billing, no price lookup, no
-## product id, no receipt validation and no purchase call anywhere in this
-## directory or this repository. Prices are shown to a PARENT as information, in
-## Parent Corner, behind the parental gate, and cannot be acted on in this build.
-## See `docs/FAMILY_CLUB.md` and `test_entitlement_no_purchase_guard.gd`.
+## `scripts/entitlement/store/` holds the store abstraction (gateway interface,
+## a deterministic mock, thin Apple / Google adapters that report unavailable
+## because no plugin ships, and the receipt -> backend -> decision flow).
+## Purchases are HARD-DISABLED by `little_days/billing/purchases_enabled=false`
+## and only the backend's verified decision can ever reach
+## `store_entitlement_provider.gd`. This service still has no purchase, buy,
+## restore or price method: the flow is a separate object a grown-up screen
+## would own, behind the parental gate. Prices are shown to a PARENT as
+## information, in Parent Corner, and cannot be acted on in this build. See
+## `docs/FAMILY_CLUB_BILLING.md` and `test_entitlement_no_purchase_guard.gd`.
 ##
 ## PURE. RefCounted, no 3D types, no network. The save service is duck-typed and
 ## optional, exactly like `parent_settings_model.gd`, so this works in a test run
@@ -62,6 +67,11 @@ const STATE_VERSION: int = 1
 const FIELD_VERSION: String = "stateVersion"
 const FIELD_PROVIDER: String = "providerId"
 const FIELD_ACTIVE: String = "active"
+## Optional: a provider's own bounded state (the store provider's last backend
+## decision). Written only when the provider exports something, read back only
+## into the same provider. Absent for the offline provider, so its saves are
+## byte-for-byte what they were.
+const FIELD_PROVIDER_STATE: String = "providerState"
 
 var _provider: Object = null
 ## The sanitised cache as loaded/last saved. Never consulted unless the provider
@@ -139,11 +149,16 @@ func to_dict() -> Dictionary:
 	var active: Array = []
 	for id: String in active_ids():
 		active.append(id)
-	return {
+	var out: Dictionary = {
 		FIELD_VERSION: STATE_VERSION,
 		FIELD_PROVIDER: provider_id(),
 		FIELD_ACTIVE: active,
 	}
+	if _provider != null and _provider.has_method("export_state"):
+		var exported: Variant = _provider.call("export_state")
+		if typeof(exported) == TYPE_DICTIONARY and not (exported as Dictionary).is_empty():
+			out[FIELD_PROVIDER_STATE] = (exported as Dictionary).duplicate(true)
+	return out
 
 
 ## Restores a cache, discarding anything that is not exactly the right shape.
@@ -181,6 +196,12 @@ func from_dict(raw: Variant) -> bool:
 		FIELD_PROVIDER: String(written_by),
 		FIELD_ACTIVE: active,
 	}
+	# A provider's own state goes back ONLY to the provider that wrote it, and
+	# that provider re-validates every field (the store provider re-checks the
+	# clock on every question, so an old decision is an expired decision).
+	if String(written_by) == provider_id() and _provider != null \
+			and _provider.has_method("import_state") and source.has(FIELD_PROVIDER_STATE):
+		_provider.call("import_state", source.get(FIELD_PROVIDER_STATE, null))
 	return true
 
 
@@ -213,7 +234,31 @@ func describe() -> Dictionary:
 		"trustsCachedState": _provider != null
 				and _provider.has_method("trusts_cached_state")
 				and bool(_provider.call("trusts_cached_state")),
-		"purchasingAvailable": false,  # nothing in this build can buy anything
+		# True only if the build enables purchases AND the provider has a store.
+		# Both are false in every committed build.
+		"purchasingAvailable": _provider != null and _provider.has_method("billing_available")
+				and bool(_provider.call("billing_available")),
+		"subscription": subscription_status(),
+	}
+
+
+## The paid entitlement's status, for the grown-up screen. Provider-neutral:
+## `{entitlementId, status, periodEnd, verifiedAt, source}` where `status` is
+## one of "none" | "active" | "grace" | "expired" | "revoked". A provider with
+## no notion of a subscription (offline, dev) reports "active" when it grants
+## `familyClub` and "none" otherwise, with no dates. No price, no receipt.
+func subscription_status() -> Dictionary:
+	if _provider != null and _provider.has_method("subscription_status"):
+		var raw: Variant = _provider.call("subscription_status")
+		if typeof(raw) == TYPE_DICTIONARY:
+			return (raw as Dictionary).duplicate(true)
+	var club: bool = is_active(EntitlementIds.FAMILY_CLUB)
+	return {
+		"entitlementId": EntitlementIds.FAMILY_CLUB if club else "",
+		"status": "active" if club else "none",
+		"periodEnd": 0,
+		"verifiedAt": 0,
+		"source": provider_id(),
 	}
 
 

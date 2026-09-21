@@ -47,6 +47,7 @@ pointing/emulate_mouse_from_touch=true
 
 ai_tutor/cloud_enabled=false
 ai_tutor/backend_url=""
+billing/purchases_enabled=false
 
 [rendering]
 

@@ -27,6 +27,20 @@ extends RefCounted
 ##      scarcity, "unlock", countdowns, and anything that makes Buddy the one
 ##      asking. Buddy is never sad about money.
 ##
+## ## The store layer (added with the billing work)
+##
+## `res://scripts/entitlement/store/` now holds a store ABSTRACTION: a gateway
+## interface, a deterministic mock, thin Apple / Google adapters over plugin
+## singletons that do not ship, and the receipt -> backend -> decision flow. It
+## is the one directory allowed to say `restore_purchases` in executable code
+## (`STORE_LAYER_ALLOWED_TOKENS`); every other payment token stays forbidden
+## there too, because the adapters reach a store only through
+## `Engine.get_singleton()` by name. In exchange, `_test_the_store_layer_is_disarmed()`
+## pins the rules that make it safe: `little_days/billing/purchases_enabled` is
+## committed false, `purchase()` answers `disabled` without a store call, no
+## plugin singleton exists, no gateway is ever handed to a child-facing scene,
+## and the store provider grants nothing without a backend decision.
+##
 ## ## Why the scanner strips comments
 ##
 ## Because this file's own subject matter is a list of things that must not appear,
@@ -65,6 +79,17 @@ const FORBIDDEN_PAYMENT: Array[String] = [
 	"restore_purchases", "restorePurchases", "show_paywall", "paywall",
 	"stripe", "braintree", "paypal", "checkout",
 ]
+
+## The store layer, and the ONLY tokens from FORBIDDEN_PAYMENT it may use in
+## executable code. Anything else on the list is still a failure there.
+const STORE_LAYER_DIR: String = "res://scripts/entitlement/store/"
+const ENTITLEMENT_LAYER_DIR: String = "res://scripts/entitlement/"
+const STORE_LAYER_ALLOWED_TOKENS: Array[String] = ["restore_purchases"]
+const BILLING_SETTING_LINE: String = "billing/purchases_enabled=false"
+const StoreProviderScript := preload("res://scripts/entitlement/store_entitlement_provider.gd")
+const MockGatewayScript := preload("res://scripts/entitlement/store/mock_store_gateway.gd")
+const BillingFlagsScript := preload("res://scripts/entitlement/store/billing_flags.gd")
+const StoreGatewayScript := preload("res://scripts/entitlement/store/store_gateway.gd")
 
 ## Launching an external application. The game does not do this.
 const FORBIDDEN_LAUNCH: Array[String] = [
@@ -119,6 +144,7 @@ func run():
 	failures.append_array(_test_the_copy_does_not_pressure_anybody())
 	failures.append_array(_test_the_gate_was_not_weakened())
 	failures.append_array(_test_the_panel_behaves())
+	failures.append_array(_test_the_store_layer_is_disarmed())
 	return failures
 
 
@@ -160,13 +186,18 @@ func _test_no_billing_anywhere():
 	var failures: Array = []
 	for path: String in _files_to_scan():
 		var code: String = _executable_of(path)
+		var in_store_layer: bool = path.begins_with(STORE_LAYER_DIR)
 		for token: String in FORBIDDEN_PAYMENT:
+			if in_store_layer and STORE_LAYER_ALLOWED_TOKENS.has(token):
+				continue
 			if code.contains(token):
 				failures.append(
-					("%s references %s. THIS BUILD HAS NO BILLING: no payment SDK, no payment "
-					+ "credentials, no product ids, no receipts and no purchase path of any kind. "
+					("%s references %s. THIS BUILD HAS NO CHARGE PATH: no payment SDK, no payment "
+					+ "credentials, no receipts validated on the device and no purchase that can "
+					+ "start while little_days/billing/purchases_enabled is false. The store layer "
+					+ "under %s may name restore_purchases and nothing else from this list. "
 					+ "The Family Club prices in Parent Corner are information for a grown-up and "
-					+ "cannot be acted on. See docs/FAMILY_CLUB.md.") % [path, token])
+					+ "cannot be acted on. See docs/FAMILY_CLUB_BILLING.md.") % [path, token, STORE_LAYER_DIR])
 
 	for relative: String in NATIVE_SOURCES:
 		var native: String = _read(_res_relative(relative))
@@ -186,8 +217,9 @@ func _test_no_billing_anywhere():
 	if not service.is_active(EntitlementIds.FREE_STARTER):
 		failures.append("the default service does not grant Free Starter")
 
-	# The store provider STUB never claims a purchase: it cannot grant familyClub
-	# and its validation always answers "pending server validation".
+	# The store provider never claims a purchase on its own: with no backend
+	# decision it cannot grant familyClub, billing is not available in a disabled
+	# build, and device-side validation still answers "pending server validation".
 	var store: Object = load("res://scripts/entitlement/store_entitlement_provider.gd").new()
 	if store.is_active(EntitlementIds.FAMILY_CLUB):
 		failures.append("the store stub grants familyClub with no server verdict")
@@ -490,6 +522,74 @@ func _test_the_panel_behaves():
 	tree.current_scene = previous_scene
 	tree.root.remove_child(panel)
 	panel.queue_free()
+	return failures
+
+
+# -- 8. the store layer, disarmed ----------------------------------------------
+
+## The store abstraction exists; a charge path does not. Read the committed
+## project file (not the running setting), then drive the real objects.
+func _test_the_store_layer_is_disarmed():
+	var failures: Array = []
+
+	# The switch is committed off, and off in this run.
+	var project_text: String = _read("res://project.godot")
+	if not project_text.contains(BILLING_SETTING_LINE):
+		failures.append("project.godot does not commit little_days/%s" % BILLING_SETTING_LINE)
+	if project_text.contains("billing/purchases_enabled=true"):
+		failures.append("project.godot enables purchases")
+	if BillingFlagsScript.purchases_enabled():
+		return failures + ["BillingFlags.purchases_enabled() is true; the rest of this case is void"]
+
+	# No store plugin singleton exists in this build.
+	for singleton_name: String in ["InAppStore", "GodotGooglePlayBilling"]:
+		if Engine.has_singleton(singleton_name):
+			failures.append("the %s plugin singleton is registered; no store plugin ships" % singleton_name)
+
+	# purchase() is disabled BEFORE the store is asked, on the mock and on the
+	# platform adapters (which have no plugin to ask anyway).
+	var mock: Object = MockGatewayScript.new()
+	var callbacks: Array = []
+	mock.connect("purchase_updated", func(receipt: Dictionary) -> void: callbacks.append(receipt))
+	var result: Dictionary = mock.purchase("little_days_family_monthly")
+	if String(result.get("status", "")) != StoreGatewayScript.STATUS_DISABLED:
+		failures.append("MockStoreGateway.purchase() answered %s in a disabled build" % str(result))
+	if not (mock.calls as Array).is_empty() or not callbacks.is_empty():
+		failures.append("a disabled purchase reached the mock store or emitted a receipt")
+	for script_path: String in ["res://scripts/entitlement/store/apple_store_gateway.gd",
+			"res://scripts/entitlement/store/google_play_gateway.gd"]:
+		var adapter: Object = load(script_path).new()
+		var outcome: Dictionary = adapter.call("purchase", "little_days_family_monthly")
+		if String(outcome.get("status", "")) != StoreGatewayScript.STATUS_DISABLED:
+			failures.append("%s purchase() answered %s in a disabled build" % [script_path, str(outcome)])
+		if bool(adapter.call("is_available")):
+			failures.append("%s reports a store on the test machine" % script_path)
+
+	# The store provider grants nothing without a backend decision, and even a
+	# decision it accepts cannot be a receipt: there is no method that takes one.
+	var provider: Object = StoreProviderScript.new()
+	if provider.is_active(EntitlementIds.FAMILY_CLUB):
+		failures.append("a fresh store provider grants familyClub")
+	for method: String in ["apply_receipt", "grant", "purchase", "buy", "restore_purchases"]:
+		if provider.has_method(method):
+			failures.append("the store provider exposes %s()" % method)
+	if bool(provider.call("billing_available")):
+		failures.append("the store provider says billing is available in a disabled build")
+
+	# The gateway, flow and verify client are never referenced by a child-facing
+	# scene or script, and no scene file instantiates any of them. Only the
+	# entitlement layer itself and the gated grown-up screen may preload them.
+	# (String bodies are scanned with comments stripped, so a doc comment that
+	# names the directory is not a reference.)
+	for path: String in _files_to_scan():
+		if path.begins_with(ENTITLEMENT_LAYER_DIR) or path == PARENT_SCRIPT:
+			continue
+		var text: String = _strings_of(_read(path)) if path.ends_with(".gd") else _read(path)
+		if text.contains("scripts/entitlement/store/"):
+			failures.append(
+				("%s references the store layer. Only the grown-up screen behind the parental "
+				+ "gate may ever own a gateway or a purchase flow; nothing child-facing and no "
+				+ "scene file may.") % path)
 	return failures
 
 
