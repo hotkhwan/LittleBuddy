@@ -169,6 +169,10 @@ var _forced_unavailable: bool = false
 ## scene keeps the mic open.
 const REARM_DELAY_SECONDS: float = 0.25
 var _rearm_left: float = -1.0
+## Set when the recogniser reported itself unavailable (permission refused,
+## plugin missing) during a session: hands-free is then honestly OFF until the
+## next start(), instead of a banner that says Listening over a closed mic.
+var _unavailable_latched: bool = false
 ## Stage counters for the dev diagnostic overlay and `user://tutor_diag.json`:
 ## names and counts only, never a transcript.
 var _diag: Dictionary = {"armed": 0, "opened": 0, "partials": 0, "finals": 0, "emptyFinals": 0,
@@ -246,7 +250,7 @@ func supports_barge_in() -> bool:
 
 
 func hands_free_available() -> bool:
-	if _forced_unavailable:
+	if _forced_unavailable or _unavailable_latched:
 		return false
 	return _recognizer_usable()
 
@@ -349,6 +353,7 @@ func diagnostics() -> Dictionary:
 	out["provider"] = String(_recognition.provider_name()) if _recognition != null else "none"
 	out["synthSpeaking"] = _synth != null and is_instance_valid(_synth) and bool(_synth.is_speaking())
 	out["rearmPending"] = _rearm_left >= 0.0
+	out["unavailableLatched"] = _unavailable_latched
 	return out
 
 
@@ -393,6 +398,7 @@ func start(lesson_id: String, opts: Dictionary = {}) -> bool:
 		return false
 	_ensure_components()
 	_capture_only = bool(opts.get("captureOnly", false))
+	_unavailable_latched = false
 	if _capture_only:
 		# Simulation first: on a desktop with no recogniser the simulated child
 		# audio IS the recogniser (tests, the dev panel); on a device it is
@@ -450,6 +456,8 @@ func start(lesson_id: String, opts: Dictionary = {}) -> bool:
 func stop(reason: String = REASON_STOPPED) -> void:
 	if not _active:
 		return
+	if reason == REASON_UNAVAILABLE:
+		_unavailable_latched = true
 	_set_state(STATE_CLOSING)
 	_active = false
 	_streaming = false

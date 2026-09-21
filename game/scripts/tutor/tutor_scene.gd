@@ -181,6 +181,25 @@ var ignore_desktop_focus: bool = false
 ## behaviour -- no microphone level until a recognition session is open --
 ## can be reproduced headless.
 var _speech_override: Node = null
+## OWNER PLAYTEST 2026-09-21: "no permission notification ever appeared; I
+## had to switch the microphone on in the phone's Settings myself." iOS shows
+## its microphone / speech-recognition prompt only when the app ASKS, and
+## nothing on the classroom path ever asked (the old feeding room did). The
+## classroom now asks before its first lesson when the recogniser exists but
+## has no permission yet, waits for the answer, then starts. A refusal falls
+## back to tap and cards and shows a grown-up the one place it can change.
+var _permission_pending: bool = false
+var _permission_asked: bool = false
+var _permission_denied: bool = false
+var _pending_lesson_id: String = ""
+## Diagnostic bookkeeping (counts and flags only; never a transcript).
+var _heard_count: int = 0
+var _last_heard_chars: int = 0
+var _diag_write_left: float = 0.0
+const DIAG_PATH: String = "user://tutor_diag.json"
+const DIAG_WRITE_SECONDS: float = 3.0
+const PERMISSION_TEXT: String = "Can I listen to you? A grown-up can say yes."
+const MIC_OFF_NOTE: String = "The microphone is off for Little Days. A grown-up can turn it on in Settings > Little Days."
 ## Correct answers since the lesson began: the break card's stars (QA C3).
 var _correct_this_session: int = 0
 var _using_real_engine: bool = false
@@ -284,6 +303,9 @@ func build() -> void:
 	_hud.mute_toggled.connect(set_muted)
 	_hud.repeat_pressed.connect(repeat_prompt)
 	_hud.tap_to_talk_pressed.connect(_on_tap_to_talk)
+	_hud.open_settings_pressed.connect(_on_open_settings)
+	if OS.is_debug_build() and OS.get_cmdline_user_args().has("--tutor-diag"):
+		_hud.call("toggle_diagnostics")
 	_hud.answer_card_tapped.connect(_on_answer_card)
 	_hud.exit_requested.connect(_on_exit_requested)
 	_hud.exit_kept.connect(_on_exit_kept)
@@ -440,11 +462,74 @@ func begin_lesson(lesson_id: String = DEFAULT_LESSON_ID) -> void:
 	if _quota != null and _quota.has_method("request_end_at_boundary"):
 		_quota.call("request_end_at_boundary")
 	_set_music(true)
+	if _needs_permission_ask():
+		_ask_permission()
+		return
 	_start_session()
 	_provider.call("begin_session", _lesson_id)
 	_show_card("")
 	_pending_phase = PHASE_WELCOME
 	_speak_turn(TurnValidator.make(WELCOME_TEXT, "smile", "wave", "retry"))
+
+
+## True when a real recogniser exists but the platform has not been asked yet.
+func _needs_permission_ask() -> bool:
+	if _permission_asked or _sim_enabled or _no_recogniser_forced:
+		return false
+	var speech: Node = _speech_service()
+	if speech == null or not speech.has_method("has_permission") or not speech.has_method("request_permission"):
+		return false
+	if not (speech.has_method("is_available") and bool(speech.call("is_available"))):
+		return false
+	return not bool(speech.call("has_permission"))
+
+
+func _ask_permission() -> void:
+	var speech: Node = _speech_service()
+	_permission_asked = true
+	_permission_pending = true
+	_hud.visible = true
+	_hud.call("set_banner", HudScript.BANNER_INFO, PERMISSION_TEXT)
+	_face("listening")
+	_set_state(STATE_IDLE)
+	_connect_if(speech, "permission_result", _on_permission_result)
+	speech.call("request_permission")
+
+
+func _on_permission_result(granted: bool) -> void:
+	if not _permission_pending:
+		return
+	_permission_pending = false
+	_permission_denied = not granted
+	_hud.call("set_banner", HudScript.BANNER_NONE)
+	if not granted:
+		_show_mic_off_note()
+	if _state != STATE_IDLE or _leaving:
+		return
+	_start_session()
+	_provider.call("begin_session", _lesson_id)
+	_show_card("")
+	_pending_phase = PHASE_WELCOME
+	_speak_turn(TurnValidator.make(WELCOME_TEXT, "smile", "wave", "retry"))
+
+
+func _show_mic_off_note() -> void:
+	# Text only. The product guard forbids launching anything from a
+	# child-facing scene, the Settings app included, so the grown-up is told
+	# the path in words instead of given a button.
+	_hud.call("show_parent_note", MIC_OFF_NOTE, false)
+
+
+func _on_open_settings() -> void:
+	pass  # no button is offered; kept so the HUD signal has a home
+
+
+func is_permission_pending() -> bool:
+	return _permission_pending
+
+
+func was_permission_denied() -> bool:
+	return _permission_denied
 
 
 func _start_session() -> void:
@@ -739,7 +824,12 @@ func _recogniser_available() -> bool:
 	if _no_recogniser_forced:
 		return false
 	var speech: Node = _speech_service()
-	return speech != null and speech.has_method("is_available") and bool(speech.call("is_available"))
+	if speech == null or not speech.has_method("is_available") or not bool(speech.call("is_available")):
+		return false
+	# A recogniser without permission cannot open: not "available" to a child.
+	if speech.has_method("has_permission") and not bool(speech.call("has_permission")):
+		return false
+	return true
 
 
 ## DEV/test seam: behave as a device whose recogniser is denied or missing,
@@ -956,6 +1046,8 @@ func _on_session_ended(reason: String) -> void:
 ## A transcript arrived, from whichever path. Blank (a cough) keeps listening.
 func _heard(transcript: String) -> void:
 	var text: String = transcript.strip_edges()
+	_heard_count += 1
+	_last_heard_chars = text.length()
 	if text.is_empty():
 		_child_talking = false
 		_timer = 0.0
@@ -1101,6 +1193,7 @@ func advance(delta: float) -> void:
 		return
 	_synth.call("advance", delta)
 	_hud.call("advance", delta)
+	_tick_diagnostics(delta)
 	if _session != null and _session.has_method("advance"):
 		_session.call("advance", delta)
 	_update_indicator()
@@ -1142,6 +1235,58 @@ func advance(delta: float) -> void:
 					_choose_subject("")
 				else:
 					_request_turn("", ScriptedProviderScript.PHASE_TOGETHER)
+
+
+## DEV: feeds the overlay (debug builds, when toggled) and, in debug builds,
+## writes `user://tutor_diag.json` every few seconds while a lesson runs, so
+## a phone with no console can still say which stage is dead. Counts, states
+## and flags only: no audio, no transcript.
+func _tick_diagnostics(delta: float) -> void:
+	if not OS.is_debug_build():
+		return
+	var overlay_on: bool = bool(_hud.call("diagnostics_enabled"))
+	_diag_write_left -= delta
+	if not overlay_on and _diag_write_left > 0.0:
+		return
+	var data: Dictionary = diagnostics()
+	if overlay_on:
+		_hud.call("refresh_diagnostics", data)
+	if _diag_write_left <= 0.0:
+		_diag_write_left = DIAG_WRITE_SECONDS
+		if _is_active_state() or _permission_pending:
+			var file: FileAccess = FileAccess.open(DIAG_PATH, FileAccess.WRITE)
+			if file != null:
+				file.store_string(JSON.stringify(data, "  "))
+				file.close()
+
+
+## The stage snapshot behind the overlay and the JSON file.
+func diagnostics() -> Dictionary:
+	var data: Dictionary = {}
+	if _session != null and _session.has_method("diagnostics"):
+		data = _session.call("diagnostics")
+	var speech: Node = _speech_service()
+	data["backend"] = String(speech.call("backend_name")) if speech != null and speech.has_method("backend_name") else "none"
+	data["available"] = speech != null and speech.has_method("is_available") and bool(speech.call("is_available"))
+	var permission: String = "unknown"
+	if speech != null and speech.has_method("has_permission"):
+		permission = "granted" if bool(speech.call("has_permission")) else ("denied" if _permission_denied else ("pending" if _permission_pending else "not asked"))
+	data["permission"] = permission
+	data["handsFreeLive"] = _hands_free_live()
+	data["simulation"] = _sim_enabled
+	data["lesson"] = "%s%s" % [_state, " (choosing)" if _choosing else ""]
+	data["step"] = String(_current_step.get("stepId", ""))
+	data["heard"] = "%d times, last %d chars" % [_heard_count, _last_heard_chars] if _heard_count > 0 else "none"
+	data["synthSpeaking"] = _synth != null and bool(_synth.call("is_speaking"))
+	var voice: Node = _autoload("Voice")
+	var tts: Node = _autoload("TtsService")
+	data["voiceSpeaking"] = voice != null and voice.has_method("is_speaking") and bool(voice.call("is_speaking"))
+	data["ttsSpeaking"] = tts != null and tts.has_method("is_speaking") and bool(tts.call("is_speaking"))
+	data["audioPlaying"] = bool(data["synthSpeaking"]) or bool(data["voiceSpeaking"]) or bool(data["ttsSpeaking"])
+	data["indicator"] = String(_hud.call("indicator_state"))
+	data["banner"] = String(_hud.call("banner_kind"))
+	data["writtenAt"] = Time.get_datetime_string_from_system(true)
+	return data
 
 
 func _update_indicator() -> void:

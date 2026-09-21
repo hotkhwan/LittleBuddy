@@ -254,6 +254,11 @@ func is_available() -> bool:
 	return _backend != null and _backend.is_available()
 
 
+## Which backend is behind the service: ios / unavailable / mock (or a test's name).
+func backend_name() -> String:
+	return _backend_name
+
+
 func has_permission() -> bool:
 	return _backend != null and _backend.has_permission()
 

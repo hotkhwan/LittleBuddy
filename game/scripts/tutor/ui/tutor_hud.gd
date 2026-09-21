@@ -51,6 +51,7 @@ const IndicatorScript := preload("res://scripts/tutor/ui/tutor_mic_indicator.gd"
 const FlashcardArtScript := preload("res://scripts/tutor/classroom/flashcard_art.gd")
 const ExitConfirmScript := preload("res://scripts/tutor/ui/tutor_exit_confirm.gd")
 
+signal open_settings_pressed()
 signal home_pressed()
 signal mute_toggled(muted: bool)
 signal repeat_pressed()
@@ -129,6 +130,7 @@ const BANNER_SUCCESS: String = "success"
 const BANNER_TOGETHER: String = "together"
 const BANNER_INTERRUPTED: String = "interrupted"
 const BANNER_INFO: String = "info"
+const DIAG_OVERLAY_PATH: String = "res://scripts/tutor/ui/tutor_diagnostics_overlay.gd"
 
 const BANNER_TEXTS: Dictionary = {
 	BANNER_LISTENING: "Listening...",
@@ -155,6 +157,12 @@ var _mute: Button = null
 var _mute_glyph: Control = null
 var _mute_caption: Label = null
 var _indicator: Control = null
+var _note: PanelContainer = null
+var _note_label: Label = null
+var _note_button: Button = null
+var _diag: Control = null
+var _diag_taps: int = 0
+var _diag_tap_msec: int = 0
 var _talk: Button = null
 var _repeat: Button = null
 var _card_button: Button = null
@@ -325,6 +333,14 @@ func build() -> void:
 	_place(_indicator, Control.PRESET_CENTER_BOTTOM, -INDICATOR_WIDTH * 0.5, INDICATOR_BOTTOM - INDICATOR_HEIGHT, INDICATOR_WIDTH * 0.5, INDICATOR_BOTTOM)
 	_safe.add_child(_indicator)
 	_indicator.call("build")
+	if OS.is_debug_build():
+		# Dev builds only: five quick taps on the indicator open the diagnostic.
+		var catcher := Control.new()
+		catcher.name = "DiagCatcher"
+		catcher.mouse_filter = Control.MOUSE_FILTER_PASS
+		_place(catcher, Control.PRESET_CENTER_BOTTOM, -INDICATOR_WIDTH * 0.5, INDICATOR_BOTTOM - INDICATOR_HEIGHT, INDICATOR_WIDTH * 0.5, INDICATOR_BOTTOM)
+		catcher.gui_input.connect(_on_diag_catcher_input)
+		_safe.add_child(catcher)
 
 	_talk = _round_button("TapToTalkButton", Palette.MINT, TALK_SIZE)
 	_place(_talk, Control.PRESET_CENTER_BOTTOM, -TALK_SIZE * 0.5, TALK_BOTTOM - TALK_SIZE, TALK_SIZE * 0.5, TALK_BOTTOM)
@@ -492,6 +508,93 @@ func indicator_caption() -> String:
 
 
 ## Hands-free off: the indicator gives way to the Tap-to-talk button.
+## A parent-facing line under the banner when the microphone is refused:
+## no error word, one plain sentence, and on iOS a button that opens this
+## app's page in the Settings app (the only place a permission can change).
+func show_parent_note(text: String, offer_settings: bool) -> void:
+	build()
+	if _note == null:
+		_note = PanelContainer.new()
+		_note.name = "ParentNote"
+		_note.add_theme_stylebox_override("panel", _pill(Palette.CREAM, 22, Palette.deep(Palette.PEACH)))
+		_place(_note, Control.PRESET_CENTER_TOP, -330.0, BANNER_TOP + BANNER_HEIGHT + 12.0, 330.0, BANNER_TOP + BANNER_HEIGHT + 12.0 + 64.0)
+		var row := HBoxContainer.new()
+		row.name = "Row"
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 14)
+		_note.add_child(row)
+		_note_label = _label("NoteText", 22, Palette.INK)
+		_note_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(_note_label)
+		_note_button = Button.new()
+		_note_button.name = "OpenSettingsButton"
+		_note_button.text = "Open Settings"
+		_note_button.focus_mode = Control.FOCUS_NONE
+		_note_button.custom_minimum_size = Vector2(190.0, 48.0)
+		_note_button.add_theme_font_size_override("font_size", 22)
+		_note_button.pressed.connect(func() -> void: open_settings_pressed.emit())
+		row.add_child(_note_button)
+		_safe.add_child(_note)
+	_note_label.text = text
+	_note_button.visible = offer_settings
+	_note.visible = not text.is_empty()
+
+
+func hide_parent_note() -> void:
+	if _note != null:
+		_note.visible = false
+
+
+func parent_note_text() -> String:
+	return _note_label.text if _note != null and _note.visible else ""
+
+
+func is_open_settings_offered() -> bool:
+	return _note != null and _note.visible and _note_button.visible
+
+
+## DEV: the recognition diagnostic overlay. Exists only in a debug build, and
+## there only after five quick taps on the mic indicator (or from the start
+## with `--tutor-diag`). A release build has no node, no catcher, nothing.
+func diagnostics_enabled() -> bool:
+	return _diag != null and _diag.visible
+
+
+func toggle_diagnostics() -> bool:
+	if not OS.is_debug_build():
+		return false
+	build()
+	if _diag == null:
+		var script: Resource = load(DIAG_OVERLAY_PATH)
+		if script == null:
+			return false
+		_diag = (script as GDScript).new()
+		_diag.call("build")
+		_place(_diag, Control.PRESET_TOP_LEFT, END_LEFT, END_TOP + END_HEIGHT + 14.0, END_LEFT + 640.0, END_TOP + END_HEIGHT + 14.0 + 250.0)
+		_safe.add_child(_diag)
+	return bool(_diag.call("toggle"))
+
+
+func refresh_diagnostics(data: Dictionary) -> void:
+	if _diag != null and _diag.visible:
+		_diag.call("refresh", data)
+
+
+func _on_diag_catcher_input(event: InputEvent) -> void:
+	var pressed: bool = (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed) \
+			or (event is InputEventMouseButton and (event as InputEventMouseButton).pressed and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT)
+	if not pressed:
+		return
+	var now: int = Time.get_ticks_msec()
+	if now - _diag_tap_msec > 1500:
+		_diag_taps = 0
+	_diag_tap_msec = now
+	_diag_taps += 1
+	if _diag_taps >= 5:
+		_diag_taps = 0
+		toggle_diagnostics()
+
+
 func set_tap_to_talk_visible(shown: bool) -> void:
 	build()
 	_talk.visible = shown

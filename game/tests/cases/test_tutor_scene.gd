@@ -72,6 +72,8 @@ func run():
 	failures.append_array(_test_break_card_stars_are_earned())
 	failures.append_array(_test_board_refuses_unknown_asset())
 	failures.append_array(_test_device_microphone_opens_without_a_level())
+	failures.append_array(_test_permission_is_asked_before_the_first_lesson())
+	failures.append_array(_test_diagnostics_overlay_is_dev_only())
 	return failures
 
 
@@ -851,4 +853,115 @@ func _test_device_microphone_opens_without_a_level():
 		failures.append("the mic must be closed while Aliz speaks")
 	_free(scene)
 	speech.free()
+	return failures
+
+
+## A device whose recogniser exists but has never been asked for permission.
+class UnaskedSpeech:
+	extends DeviceLikeSpeech
+	signal permission_result(granted: bool)
+	var granted: bool = false
+	var asked: int = 0
+	var answer: bool = true
+
+	func has_permission() -> bool:
+		return granted
+
+	func request_permission() -> void:
+		asked += 1
+
+	## The system prompt was answered.
+	func answer_prompt() -> void:
+		granted = answer
+		permission_result.emit(answer)
+
+	func start_listening(_locale: String = "en-US") -> void:
+		if not granted:
+			recognition_failed.emit("permission_denied")
+			session_ended.emit("failed")
+			return
+		super.start_listening(_locale)
+
+
+## OWNER PLAYTEST 2026-09-21: no permission prompt ever appeared. iOS prompts
+## only when the app asks; the classroom must ask before its first lesson,
+## wait, and start only then. A refusal falls back to tap + cards, never to
+## a "Listening" banner over a microphone that cannot open, and shows a
+## grown-up the one place it can be changed.
+func _test_permission_is_asked_before_the_first_lesson():
+	var failures: Array = []
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	for granted: bool in [true, false]:
+		var speech := UnaskedSpeech.new()
+		speech.answer = granted
+		tree.root.add_child(speech)
+		var packed: PackedScene = load(SCENE_PATH)
+		var scene: Node = packed.instantiate()
+		tree.root.add_child(scene)
+		scene.build()
+		scene.set_save_service(FakeSave.new())
+		scene.enable_simulation(false)
+		scene.set_speech_service(speech)
+		scene.begin_lesson()
+		var tag: String = "granted" if granted else "denied"
+		if speech.asked != 1:
+			failures.append("%s: the classroom should ask for permission exactly once before the first lesson (asked %d)" % [tag, speech.asked])
+		if not scene.is_permission_pending() or scene.state() != "idle":
+			failures.append("%s: the lesson must wait for the answer (pending %s, state %s)" % [tag, str(scene.is_permission_pending()), scene.state()])
+		if scene.hud().banner_kind() != Hud.BANNER_INFO:
+			failures.append("%s: while asking, the banner explains it (got '%s')" % [tag, scene.hud().banner_kind()])
+		# Time passes without an answer: nothing starts, nothing loops.
+		for i: int in range(120):
+			scene.advance(STEP)
+		if scene.state() != "idle" or speech.starts != 0:
+			failures.append("%s: nothing may start before the answer (state %s, starts %d)" % [tag, scene.state(), speech.starts])
+		speech.answer_prompt()
+		if _until(scene, func() -> bool: return scene.state() == "speaking", 10) < 0:
+			failures.append("%s: after the answer Aliz welcomes (state %s)" % [tag, scene.state()])
+		if granted:
+			if _until(scene, func() -> bool: return scene.state() == "listening" and speech.live, 400) < 0:
+				failures.append("granted: the mic opens for the first answer (state %s, live %s)" % [scene.state(), str(speech.live)])
+			if scene.hud().is_open_settings_offered() or not scene.hud().parent_note_text().is_empty():
+				failures.append("granted: no grown-up note is shown")
+		else:
+			if _until(scene, func() -> bool: return scene.state() == "awaitMic", 400) < 0:
+				failures.append("denied: the classroom falls back to tap-to-talk (state %s)" % scene.state())
+			if scene.hud().banner_kind() == Hud.BANNER_LISTENING or scene.hud().indicator_state() == Indicator.STATE_LISTENING:
+				failures.append("denied: never say Listening over a closed microphone")
+			if not scene.hud().parent_note_text().contains("Settings"):
+				failures.append("denied: a grown-up is told where the microphone can be turned on (note '%s')" % scene.hud().parent_note_text())
+			if scene.hud().answer_cards_shown().is_empty():
+				failures.append("denied: the answer cards carry the lesson")
+			if not scene.was_permission_denied():
+				failures.append("denied: the scene records the refusal")
+		_free(scene)
+		speech.free()
+	return failures
+
+
+## The recognition diagnostic exists only in a debug build, and there only
+## after five quick taps (or --tutor-diag); it never shows a transcript.
+func _test_diagnostics_overlay_is_dev_only():
+	var failures: Array = []
+	var scene: Node = _make()
+	var hud: Control = scene.hud()
+	if hud.find_child("TutorDiagnostics", true, false) != null:
+		failures.append("the overlay must not exist until toggled")
+	var shown: bool = bool(hud.toggle_diagnostics())
+	if OS.is_debug_build():
+		if not shown or hud.find_child("TutorDiagnostics", true, false) == null:
+			failures.append("a debug build can toggle the overlay on")
+		var data: Dictionary = scene.diagnostics()
+		for key: String in ["provider", "permission", "capturing", "vad", "recognition", "lesson", "audioPlaying"]:
+			if not data.has(key):
+				failures.append("the diagnostic snapshot lacks '%s'" % key)
+		var dumped: String = JSON.stringify(data).to_lower()
+		for word: String in ["transcript", "apple", "banana", "milk"]:
+			if dumped.contains(word):
+				failures.append("the diagnostic snapshot must not carry words the child said ('%s')" % word)
+		hud.toggle_diagnostics()
+	else:
+		if shown or hud.find_child("TutorDiagnostics", true, false) != null or hud.find_child("DiagCatcher", true, false) != null:
+			failures.append("a release build must have no diagnostic overlay at all")
+	_free(scene)
 	return failures
