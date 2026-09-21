@@ -628,6 +628,11 @@ func _open_step() -> void:
 func _request_turn(transcript: String, phase: String) -> void:
 	_pending_phase = phase
 	_pending_transcript = transcript
+	# Free chat (dev/QA, cloud flag on, DEV_MODE Worker): the controller
+	# answers through the same provider `turn_ready`; a no-op in lesson mode.
+	if _cloud_bridge != null and _cloud_bridge.has_meta("freeChat") \
+			and bool(_cloud_bridge.get_meta("freeChat").call("intercept_turn", transcript, phase)):
+		return
 	_provider.call("submit_turn", transcript, {
 		"phase": phase, "lessonId": _lesson_id, "step": _current_step,
 		"progress": _engine.call("progress"),
