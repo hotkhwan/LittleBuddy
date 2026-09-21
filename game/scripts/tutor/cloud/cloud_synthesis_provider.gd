@@ -116,6 +116,16 @@ func mode() -> String:
 	return _mode
 
 
+## Counters only (the scene's diagnostics() and the dev JSON): the cloud
+## audio player's chunk/frame/underrun/truncation tallies, plus which mode
+## the wrapper is in. No text, no audio.
+func diagnostics() -> Dictionary:
+	var out: Dictionary = {"mode": _mode, "wordsSource": _words_source}
+	if _player != null and is_instance_valid(_player) and _player.has_method("diagnostics"):
+		out.merge(_player.call("diagnostics"))
+	return out
+
+
 ## "cloud" when the last turn's words came from the cloud session (whichever
 ## voice played them), "local" otherwise, "" before any turn.
 func words_source() -> String:

@@ -621,6 +621,7 @@ func _start_session() -> void:
 		"handsFree": _hands_free_setting(),
 		"gatePassed": true,
 		"captureOnly": true,
+		"holdUntilSpoken": true,
 		"simulation": _sim_enabled,
 	})
 	_refresh_input_mode()

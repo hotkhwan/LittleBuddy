@@ -443,7 +443,9 @@ func is_recognizer_driven() -> bool:
 
 ## `opts`: gatePassed (REQUIRED true), handsFree (default true), locale,
 ## simulation (enable the recogniser's simulated path; desktop only), welcome
-## (default true: speak the current step at once).
+## (default true: speak the current step at once), captureOnly (the scene owns
+## the lesson loop), holdUntilSpoken (capture-only: start held; the mic opens
+## after the scene's first `set_aliz_speaking(false)`).
 func start(lesson_id: String, opts: Dictionary = {}) -> bool:
 	if _active:
 		return false
@@ -474,6 +476,12 @@ func start(lesson_id: String, opts: Dictionary = {}) -> bool:
 		if bool(opts.get("simulation", false)) and _recognition.has_method("set_simulation_enabled"):
 			_recognition.call("set_simulation_enabled", true)
 		_wire()
+		if bool(opts.get("holdUntilSpoken", false)):
+			# The scene speaks first (the welcome, the resumed question): no
+			# recogniser is opened just to be cancelled by that line 0 ms later.
+			_set_state(STATE_THINKING)
+			_update_capture()
+			return true
 		_listen()
 		return true
 	if _engine == null or not _engine.has_method("current_step"):

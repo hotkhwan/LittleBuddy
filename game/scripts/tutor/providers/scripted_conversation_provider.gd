@@ -65,6 +65,11 @@ var _turn_count: int = 0
 ## Set by a correct answer's turn; the next step's opening text drops its own
 ## leading acknowledgement so the child is not praised twice for one answer.
 var _after_praise: bool = false
+## The opener of the last praise this session ("yes", "wonderful", ...): the
+## next praise never opens the same way. Variant 0 keeps the lesson's own
+## opener, so "Yes! Red!" (authored) followed by variant 1 ("Yes!") would
+## otherwise sound identical; the pick is compared by what comes OUT.
+var _last_praise_opener: String = ""
 
 
 func provider_name() -> String:
@@ -88,6 +93,7 @@ func begin_session(lesson_id_value: String) -> void:
 	_active = true
 	_turn_count = 0
 	_after_praise = false
+	_last_praise_opener = ""
 	session_ready.emit({"sessionId": "local-%s" % lesson_id_value, "provider": provider_name(), "lessonId": lesson_id_value})
 
 
@@ -221,10 +227,11 @@ func turn_for_verdict(step: Dictionary, verdict: Dictionary, phase: String) -> D
 		var aliz_sound: String = String(reaction.get("alizSound", "")).strip_edges()
 		if not aliz_sound.is_empty() and not _starts_with_sound(success, aliz_sound):
 			success = "%s %s" % [aliz_sound, success]
-		var speech: String = frame(_pick(OPENERS_CORRECT, step, attempt), success)
+		var speech: String = _praise(step, attempt, success)
 		if not aliz_sound.is_empty():
 			speech = TurnValidator.dedupe_adjacent_phrases(success)  # the sound IS the opener; no "Yes! Meow!" on top
 		_after_praise = true
+		_last_praise_opener = _opener_key(speech)
 		var gesture: String = String(reaction.get("gesture", "clap"))
 		if not TurnValidator.GESTURES.has(gesture):
 			gesture = "clap"
@@ -247,6 +254,30 @@ func turn_for_verdict(step: Dictionary, verdict: Dictionary, phase: String) -> D
 			var encouragement: String = _non_empty(String(verdict.get("encouragement", "")), _non_empty(line, "Let's try together!"))
 			var table_retry: Array[String] = OPENERS_TIMEOUT if timed_out else OPENERS_RETRY
 			return TurnValidator.make(frame(_pick(table_retry, step, attempt), encouragement), "encouraging", "tilt", "retry", asset)
+
+
+## The praise line: the step's variant, unless that would open exactly like
+## the previous praise -- then the next variant that does not (seeded runs
+## are pinned and never rotate, so a test transcript stays stable).
+func _praise(step: Dictionary, attempt: int, success: String) -> String:
+	var base: int = variant_index(step, attempt)
+	var speech: String = frame(OPENERS_CORRECT[base], success)
+	if _seed_override >= 0 or _last_praise_opener.is_empty():
+		return speech
+	for offset: int in range(VARIANTS):
+		var candidate: String = frame(OPENERS_CORRECT[(base + offset) % VARIANTS], success)
+		if _opener_key(candidate) != _last_praise_opener:
+			return candidate
+	return speech
+
+
+## The acknowledgement a line opens with ("yes", "great job"), "" when none.
+static func _opener_key(text: String) -> String:
+	var sentences: PackedStringArray = TurnValidator.split_sentences(text)
+	if sentences.is_empty():
+		return ""
+	var key: String = TurnValidator.phrase_key(sentences[0])
+	return key if TurnValidator.is_acknowledgement(key) else ""
 
 
 ## The variant index this turn uses: reproducible per lesson/step/attempt.

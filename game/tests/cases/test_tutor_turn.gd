@@ -29,6 +29,61 @@ func run():
 	failures.append_array(_test_fallback_is_the_contract())
 	failures.append_array(_test_make_is_always_valid())
 	failures.append_array(_test_unknown_keys_dropped())
+	failures.append_array(_test_dedupe_adjacent_phrases())
+	return failures
+
+
+## The documented adjacent-phrase rule (owner: "yes yes"): accidental echoes
+## of a whole sentence and stacked openers go; teaching repetition stays;
+## validate()/coerce() never touch the text.
+func _test_dedupe_adjacent_phrases():
+	var failures: Array = []
+	var cases: Array = [
+		["Yes! Yes!", "Yes!"],
+		["Yes! Yes! Red!", "Yes! Red!"],
+		["Great! Great job! It's an apple!", "Great job! It's an apple!"],
+		["Wonderful! Yes! Red!", "Yes! Red!"],
+		["Super! Yes! Red! It's a red apple!", "Yes! Red! It's a red apple!"],
+		["It's a cat! It's a cat!", "It's a cat!"],
+		["Great job! What colour is it? What colour is it?", "Great job! What colour is it?"],
+		["Say it with me: cat. Cat!", "Say it with me: cat. Cat!"],
+		["Cat! Cat!", "Cat! Cat!"],
+		["Meow! Meow!", "Meow! Meow!"],
+		["Together now: red! Red!", "Together now: red! Red!"],
+		["What is this?", "What is this?"],
+		["Wait... what?! Really?!", "Wait... what?! Really?!"],
+		["Yes! Red! Yes! Blue!", "Yes! Red! Yes! Blue!"],
+		["", ""],
+		["  Great!  ", "Great!"],
+	]
+	for pair: Array in cases:
+		var got: String = TurnValidator.dedupe_adjacent_phrases(String(pair[0]))
+		if got != String(pair[1]):
+			failures.append("dedupe('%s') = '%s', expected '%s'" % [pair[0], got, pair[1]])
+	# Idempotent.
+	for pair: Array in cases:
+		var once: String = TurnValidator.dedupe_adjacent_phrases(String(pair[0]))
+		if TurnValidator.dedupe_adjacent_phrases(once) != once:
+			failures.append("dedupe is not idempotent on '%s'" % pair[0])
+	# make() applies it to speech and subtitle.
+	var made: Dictionary = TurnValidator.make("Yes! Yes! Red!", "happy", "clap", "next_question", "color_red")
+	if String(made["speech"]) != "Yes! Red!" or String(made["subtitle"]) != "Yes! Red!":
+		failures.append("make() dedupes what is spoken and shown: %s" % str(made))
+	# validate()/coerce() do NOT: the shared fixture contract is untouched.
+	var raw: Dictionary = {"speech": "Yes! Yes!", "emotion": "happy", "gesture": "nod", "visual": {"type": "none"}, "lessonAction": "retry"}
+	var report: Dictionary = TurnValidator.validate(raw)
+	if not bool(report["valid"]) or String(report["turn"]["speech"]) != "Yes! Yes!":
+		failures.append("validate() leaves the text alone: %s" % str(report))
+	# The helpers the provider composes with.
+	if TurnValidator.split_sentences("Great! It's a cat!") != PackedStringArray(["Great!", "It's a cat!"]):
+		failures.append("split_sentences keeps terminators: %s" % str(TurnValidator.split_sentences("Great! It's a cat!")))
+	if TurnValidator.phrase_key("It's a CAT!") != "its a cat":
+		failures.append("phrase_key: %s" % TurnValidator.phrase_key("It's a CAT!"))
+	if not TurnValidator.starts_with_acknowledgement("Great job! What colour is it?") or TurnValidator.starts_with_acknowledgement("What colour is it?"):
+		failures.append("starts_with_acknowledgement")
+	var split: Dictionary = TurnValidator.split_leading_acknowledgement("Yes! Red!")
+	if String(split["opener"]) != "Yes!" or String(split["rest"]) != "Red!":
+		failures.append("split_leading_acknowledgement: %s" % str(split))
 	return failures
 
 
