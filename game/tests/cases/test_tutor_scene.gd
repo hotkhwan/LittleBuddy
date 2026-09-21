@@ -71,6 +71,7 @@ func run():
 	failures.append_array(_test_long_pause_asks_again())
 	failures.append_array(_test_break_card_stars_are_earned())
 	failures.append_array(_test_board_refuses_unknown_asset())
+	failures.append_array(_test_device_microphone_opens_without_a_level())
 	return failures
 
 
@@ -739,4 +740,115 @@ func _test_board_refuses_unknown_asset():
 		failures.append("a card off the allowlist must leave the board blank, got '%s'" % board.current_card())
 	tree.root.remove_child(board)
 	board.free()
+	return failures
+
+
+## A SpeechService as a DEVICE has it: available, but the microphone level is
+## 0 until a recognition session is open (the iOS plugin's tap lives inside
+## the request). Signals and methods mirror the real autoload.
+class DeviceLikeSpeech:
+	extends Node
+	signal listening_started()
+	signal partial_recognized(text: String)
+	signal recognized(text: String)
+	signal recognition_failed(reason: String)
+	signal session_ended(outcome: String)
+	var live: bool = false
+	var level_while_live: float = 0.0
+	var starts: int = 0
+	var stops: int = 0
+	var double_starts: int = 0
+
+	func is_available() -> bool:
+		return true
+
+	func has_permission() -> bool:
+		return true
+
+	func get_input_level() -> float:
+		return level_while_live if live else 0.0
+
+	func start_listening(_locale: String = "en-US") -> void:
+		if live:
+			double_starts += 1
+			return
+		live = true
+		starts += 1
+		listening_started.emit()
+
+	func stop_listening() -> void:
+		if not live:
+			return
+		stops += 1
+		live = false
+		recognition_failed.emit("timeout")
+		session_ended.emit("failed")
+
+	## The child spoke and the recogniser decoded it (partial, then final).
+	func say(text: String) -> void:
+		if not live:
+			return
+		partial_recognized.emit(text)
+		live = false
+		recognized.emit(text)
+		session_ended.emit("recognized")
+
+
+## OWNER PLAYTEST 2026-09-21: "Aliz asks what I want to learn, I answer, she
+## does not hear me and asks again." On a device the level source reads 0
+## until the recogniser is open, so a VAD-first session never opened it. The
+## microphone must open the moment the scene listens, a decoded answer must
+## be heard with no VAD event at all, and a recogniser that times out while
+## the child is still allowed to answer must be opened again.
+func _test_device_microphone_opens_without_a_level():
+	var failures: Array = []
+	var speech := DeviceLikeSpeech.new()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	tree.root.add_child(speech)
+	var packed: PackedScene = load(SCENE_PATH)
+	var scene: Node = packed.instantiate()
+	tree.root.add_child(scene)
+	scene.build()
+	scene.set_save_service(FakeSave.new())
+	scene.enable_simulation(false)
+	scene.set_speech_service(speech)
+	scene.begin_lesson()
+	if not scene.using_real_session():
+		_free(scene)
+		speech.free()
+		return failures
+	if _until(scene, func() -> bool: return scene.state() == "listening", 400) < 0:
+		failures.append("the welcome should end in hands-free listening (state %s)" % scene.state())
+	# The deadlock: nothing has produced a level, yet the microphone is open.
+	if _until(scene, func() -> bool: return speech.live, 60) < 0:
+		failures.append("listening with a level of 0 must still open the recogniser (starts=%d)" % speech.starts)
+	if scene.hud().indicator_state() != Indicator.STATE_LISTENING:
+		failures.append("the indicator should say Listening while the mic is open, got '%s'" % scene.hud().indicator_state())
+	# The child answers; the recogniser decodes it; no VAD event was needed.
+	speech.say("animals")
+	if _until(scene, func() -> bool: return scene.state() == "speaking" and not scene.is_choosing_subject(), 60) < 0:
+		failures.append("a decoded 'animals' must choose the subject (state %s, choosing %s)" % [scene.state(), str(scene.is_choosing_subject())])
+	elif not String(scene.current_turn().get("speech", scene.current_turn().get("text", ""))).to_lower().contains("animal"):
+		failures.append("Aliz should confirm Animals, said %s" % str(scene.current_turn().get("text")))
+	# First question: the mic reopens by itself once she has finished.
+	if _until(scene, func() -> bool: return scene.state() == "listening" and speech.live, 600) < 0:
+		failures.append("after Aliz's question the mic must be open again (state %s, live %s)" % [scene.state(), str(speech.live)])
+	# The recogniser's own cap closes the session with nothing decoded while
+	# the child is still allowed to answer: it must be opened again.
+	var starts_before: int = speech.starts
+	speech.stop_listening()
+	if _until(scene, func() -> bool: return speech.live and speech.starts > starts_before, 60) < 0:
+		failures.append("a timed-out recogniser must be re-armed while listening (starts %d -> %d)" % [starts_before, speech.starts])
+	if scene.state() != "listening":
+		failures.append("a silent timeout must not move the lesson (state %s)" % scene.state())
+	if speech.double_starts > 0:
+		failures.append("the mic was asked to open while already open (%d times)" % speech.double_starts)
+	# Aliz speaking closes the mic (no self-hearing), and it reopens after.
+	speech.say("cat")
+	if _until(scene, func() -> bool: return scene.state() == "speaking", 60) < 0:
+		failures.append("the answer should be judged (state %s)" % scene.state())
+	elif speech.live:
+		failures.append("the mic must be closed while Aliz speaks")
+	_free(scene)
+	speech.free()
 	return failures

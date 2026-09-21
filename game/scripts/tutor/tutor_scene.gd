@@ -176,6 +176,11 @@ var _outcome_was_correct: bool = false
 ## DEV: photographed from an unfocused desktop window, the scene must not
 ## treat focus loss as a mobile background (the harnesses set this).
 var ignore_desktop_focus: bool = false
+## DEV/test seam: a stand-in for the SpeechService autoload (the on-device
+## recogniser AND the level source read from it), so a device's real
+## behaviour -- no microphone level until a recognition session is open --
+## can be reproduced headless.
+var _speech_override: Node = null
 ## Correct answers since the lesson began: the break card's stars (QA C3).
 var _correct_this_session: int = 0
 var _using_real_engine: bool = false
@@ -456,9 +461,11 @@ func _start_session() -> void:
 	if _session.has_method("set_face") and _aliz != null:
 		_session.call("set_face", _aliz)
 	if _session.has_method("set_level_source"):
-		var speech: Node = _autoload(SPEECH_SERVICE_PATH)
+		var speech: Node = _speech_service()
 		if speech != null and speech.has_method("get_input_level"):
 			_session.call("set_level_source", Callable(speech, "get_input_level"))
+	if _speech_override != null and _session.has_method("set_speech_service"):
+		_session.call("set_speech_service", _speech_override)
 	_session.call("start", _lesson_id, {
 		"handsFree": _hands_free_setting(),
 		"gatePassed": true,
@@ -731,12 +738,24 @@ func _hands_free_live() -> bool:
 func _recogniser_available() -> bool:
 	if _no_recogniser_forced:
 		return false
-	var speech: Node = _autoload(SPEECH_SERVICE_PATH)
+	var speech: Node = _speech_service()
 	return speech != null and speech.has_method("is_available") and bool(speech.call("is_available"))
 
 
 ## DEV/test seam: behave as a device whose recogniser is denied or missing,
 ## so the touch fallback can be exercised on a Mac that has one.
+func set_speech_service(service: Node) -> void:
+	_speech_override = service
+	if _session != null and _session.has_method("set_speech_service"):
+		_session.call("set_speech_service", service)
+
+
+func _speech_service() -> Node:
+	if _speech_override != null and is_instance_valid(_speech_override):
+		return _speech_override
+	return _autoload(SPEECH_SERVICE_PATH)
+
+
 func force_no_recogniser(forced: bool) -> void:
 	_no_recogniser_forced = forced
 	if _session != null and _session.has_method("force_unavailable"):
@@ -783,7 +802,7 @@ func _on_tap_to_talk() -> void:
 		return
 	_hud.call("set_tap_to_talk_enabled", false)
 	if _recogniser_available():
-		var speech: Node = _autoload(SPEECH_SERVICE_PATH)
+		var speech: Node = _speech_service()
 		_connect_if(speech, "recognized", _on_push_to_talk_recognized)
 		_connect_if(speech, "session_ended", _on_push_to_talk_ended)
 		_connect_if(speech, "recognition_failed", _on_recognition_failed)

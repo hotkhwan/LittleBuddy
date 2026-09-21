@@ -155,6 +155,25 @@ var _wired: bool = false
 ## `start(id, {captureOnly: true, gatePassed: true})`.
 var _capture_only: bool = false
 var _forced_unavailable: bool = false
+## OWNER PLAYTEST 2026-09-21 ("Aliz does not hear me"): on a device the
+## microphone level exists ONLY while a recognition session is open (the iOS
+## plugin installs its input tap with the request; `SpeechService` returns 0
+## otherwise), and the session used to open only when the VAD saw a level. A
+## deadlock: the VAD waited for the microphone, the microphone waited for the
+## VAD, the banner said "Listening" and Aliz repeated her question. Now the
+## recogniser is ARMED the moment the session listens; the VAD (fed by the
+## now-live tap) still marks speech start/end and closes the utterance. When
+## a recognition session ends without a final while we are still listening
+## (the 4 s no-speech cap, a busy refusal, a late failure) it is re-armed after
+## `REARM_DELAY_SECONDS`, so a quiet child is listened to for as long as the
+## scene keeps the mic open.
+const REARM_DELAY_SECONDS: float = 0.25
+var _rearm_left: float = -1.0
+## Stage counters for the dev diagnostic overlay and `user://tutor_diag.json`:
+## names and counts only, never a transcript.
+var _diag: Dictionary = {"armed": 0, "opened": 0, "partials": 0, "finals": 0, "emptyFinals": 0,
+	"timeouts": 0, "unavailable": 0, "refusedBusy": 0, "refusedPlayback": 0, "vadStarts": 0, "vadEnds": 0,
+	"longPauses": 0, "bargeIns": 0, "lastRecognitionEnd": "", "lastRefusal": ""}
 
 
 # -- Wiring ---------------------------------------------------------------------
@@ -169,6 +188,13 @@ func set_conversation_provider(provider: RefCounted) -> void:
 
 func set_recognition_provider(provider: RefCounted) -> void:
 	_recognition = provider
+
+
+## DEV/test seam: the SpeechService stand-in behind the on-device recogniser.
+func set_speech_service(service: Node) -> void:
+	_ensure_components()
+	if _recognition != null and _recognition.has_method("set_speech_service"):
+		_recognition.call("set_speech_service", service)
 
 
 func set_synthesis_provider(synth: Node) -> void:
@@ -301,6 +327,29 @@ func is_capturing() -> bool:
 ## 0..1 for the mic indicator; 0 whenever nothing is captured.
 func get_input_level() -> float:
 	return _level if is_capturing() else 0.0
+
+
+## Stage snapshot for the dev diagnostic overlay: states, flags and counts.
+## No transcript is ever part of it.
+func diagnostics() -> Dictionary:
+	var out: Dictionary = _diag.duplicate()
+	out["state"] = _state
+	out["active"] = _active
+	out["captureOnly"] = _capture_only
+	out["capturing"] = is_capturing()
+	out["levelSource"] = has_level_source()
+	out["recognizerDriven"] = is_recognizer_driven()
+	out["level"] = snappedf(_level, 0.001)
+	out["vad"] = vad().state() if _vad != null else ""
+	out["vadGated"] = vad().is_gated() if _vad != null and vad().has_method("is_gated") else false
+	out["recognition"] = String(_recognition.state()) if _recognition != null else "none"
+	out["recognitionOpen"] = _recognition != null and bool(_recognition.has_active_session())
+	out["recognitionAvailable"] = _recognition != null and bool(_recognition.call("is_available"))
+	out["simulation"] = _recognition != null and _recognition.has_method("is_simulation_enabled") and bool(_recognition.call("is_simulation_enabled"))
+	out["provider"] = String(_recognition.provider_name()) if _recognition != null else "none"
+	out["synthSpeaking"] = _synth != null and is_instance_valid(_synth) and bool(_synth.is_speaking())
+	out["rearmPending"] = _rearm_left >= 0.0
+	return out
 
 
 func current_turn() -> Dictionary:
@@ -515,6 +564,11 @@ func advance(delta: float) -> void:
 		if _thinking_seconds >= THINKING_TIMEOUT_SECONDS:
 			_thinking_seconds = 0.0
 			_speak(TurnValidator.fallback_turn(), _current_phase)
+	if _rearm_left >= 0.0 and _state == STATE_LISTENING:
+		_rearm_left -= delta
+		if _rearm_left < 0.0:
+			_rearm_left = -1.0
+			_arm_recognizer()
 	if is_capturing() and has_level_source():
 		var level_now: float = _next_level(ms)
 		_level = level_now
@@ -566,13 +620,16 @@ func _playback_level_now() -> float:
 func _on_vad_event(event: String) -> void:
 	match event:
 		VadScript.EVENT_SPEECH_STARTED:
+			_diag["vadStarts"] = int(_diag["vadStarts"]) + 1
 			if _state == STATE_LISTENING:
 				_set_state(STATE_CHILD_SPEAKING)
 				child_speech_started.emit()
-				_recognition.begin_listening(_locale)
+				if not _recognition.has_active_session():
+					_recognition.begin_listening(_locale)
 			elif _state == STATE_ALIZ_SPEAKING and _hands_free:
 				_do_barge_in()
 		VadScript.EVENT_SPEECH_ENDED:
+			_diag["vadEnds"] = int(_diag["vadEnds"]) + 1
 			if _state == STATE_CHILD_SPEAKING:
 				if _sim_active or not _sim_transcript.is_empty():
 					var text: String = _sim_transcript
@@ -585,6 +642,7 @@ func _on_vad_event(event: String) -> void:
 						return
 				_recognition.stop_listening()
 		VadScript.EVENT_LONG_PAUSE:
+			_diag["longPauses"] = int(_diag["longPauses"]) + 1
 			if _state == STATE_LISTENING:
 				_reprompt()
 
@@ -608,20 +666,26 @@ func _reprompt() -> void:
 # -- Recognition ----------------------------------------------------------------------------
 
 func _on_partial(text: String) -> void:
+	_diag["partials"] = int(_diag["partials"]) + 1
 	vad().set_last_partial(text)
 	partial_transcript.emit(text)
-	if _state == STATE_LISTENING and is_recognizer_driven():
+	# A partial IS speech, whether or not the VAD has caught up with the level
+	# (on a device the first buffers can decode before the meter settles).
+	if _state == STATE_LISTENING and (is_recognizer_driven() or _capture_only):
 		_set_state(STATE_CHILD_SPEAKING)
 		child_speech_started.emit()
 
 
 func _on_final(text: String) -> void:
+	_diag["finals"] = int(_diag["finals"]) + 1
 	if not _active or not (_state == STATE_CHILD_SPEAKING or _state == STATE_LISTENING or _state == STATE_INTERRUPTED):
 		return
 	child_speech_ended.emit(text)
 	if _capture_only:
 		_pending_phase = ""
-		if _state == STATE_CHILD_SPEAKING or _state == STATE_INTERRUPTED:
+		# The scene answers by speaking (which gates us) or ignores it; either
+		# way the mic is re-armed so the next word is never missed.
+		if _active and _state in [STATE_CHILD_SPEAKING, STATE_INTERRUPTED, STATE_LISTENING]:
 			_listen()
 		return
 	var phase: String = _pending_phase if not _pending_phase.is_empty() else ConversationProviderScript.PHASE_ANSWER
@@ -633,7 +697,20 @@ func _on_final(text: String) -> void:
 	_request_turn(text, phase)
 
 
+func _on_recognition_refused(reason: String) -> void:
+	_diag["lastRefusal"] = reason
+	if reason == "already_listening":
+		_diag["refusedBusy"] = int(_diag["refusedBusy"]) + 1
+	else:
+		_diag["refusedPlayback"] = int(_diag["refusedPlayback"]) + 1
+
+
 func _on_recognition_ended(terminal: String) -> void:
+	_diag["lastRecognitionEnd"] = terminal
+	if terminal == "unavailable":
+		_diag["unavailable"] = int(_diag["unavailable"]) + 1
+	elif terminal != "final":
+		_diag["timeouts"] = int(_diag["timeouts"]) + 1
 	if not _active:
 		return
 	match terminal:
@@ -645,8 +722,13 @@ func _on_recognition_ended(terminal: String) -> void:
 		_:
 			if _capture_only:
 				if _state == STATE_CHILD_SPEAKING:
+					_diag["emptyFinals"] = int(_diag["emptyFinals"]) + 1
 					child_speech_ended.emit("")
 					_listen()
+				elif _state == STATE_LISTENING:
+					# The 4 s no-speech cap (or a late failure) closed the mic
+					# while the child is still allowed to answer: open it again.
+					_rearm_left = REARM_DELAY_SECONDS
 				return
 			if _state == STATE_CHILD_SPEAKING:
 				# Heard something, decoded nothing: an unclear attempt, gently.
@@ -796,7 +878,27 @@ func _listen() -> void:
 	vad().set_gated(false)
 	vad().reset_pause_clock()
 	_update_capture()
-	_arm_recognizer_if_driven()
+	_rearm_left = -1.0
+	_arm_recognizer()
+
+
+## Opens a recognition session now if the mic should be live and none is open.
+## Capture-only (the classroom) and recogniser-driven sessions both arm here;
+## a lesson-driven session with a level source keeps the old VAD-first path
+## only when NOT capture-only (its tests model a constant level).
+func _arm_recognizer() -> void:
+	if not _active or _muted or _state != STATE_LISTENING or _recognition == null:
+		return
+	if not (_capture_only or is_recognizer_driven()):
+		return
+	if _recognition.has_active_session():
+		return
+	if _sim_active:
+		return  # a simulated clip opens its own session at speech start
+	_diag["armed"] = int(_diag["armed"]) + 1
+	if not _recognition.begin_listening(_locale):
+		# Playback still live or a session still closing: try again shortly.
+		_rearm_left = REARM_DELAY_SECONDS
 
 
 ## A realtime transport streams its reply while it is still being generated:
@@ -828,6 +930,7 @@ func _on_transport_done(raw_turn: Dictionary) -> void:
 # -- Barge-in --------------------------------------------------------------------------------
 
 func _do_barge_in() -> void:
+	_diag["bargeIns"] = int(_diag["bargeIns"]) + 1
 	var t0: int = Time.get_ticks_usec()
 	_interrupting = true
 	_barge_count += 1
@@ -927,6 +1030,8 @@ func _wire() -> void:
 	_recognition.partial.connect(_on_partial)
 	_recognition.final.connect(_on_final)
 	_recognition.session_ended.connect(_on_recognition_ended)
+	if _recognition.has_signal("refused"):
+		_recognition.refused.connect(_on_recognition_refused)
 	_recognition.bind_synthesis(_synth)
 	_synth.finished.connect(_on_synth_finished)
 	if _transport != null:
