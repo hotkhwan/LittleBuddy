@@ -84,6 +84,7 @@ const HouseStageScript := preload("res://scripts/gameplay/house_stage.gd")
 const PoseModifierScript := preload("res://scripts/interaction/pose_modifier.gd")
 const AffordanceLayerScript := preload("res://scripts/interaction/affordance_layer.gd")
 const HouseActs := preload("res://scripts/gameplay/house_freeplay_acts.gd")
+const TidyPlanScript := preload("res://scripts/gameplay/tidy_plan.gd")
 ## The break card's host (`break_host.gd`): holds the room, shows the card,
 ## gives the room back. See "The break card" below.
 const BreakHostScript := preload("res://scripts/session/break_host.gd")
@@ -571,6 +572,7 @@ func stage_draggables(room_id: String) -> Array:
 	if _stage == null or _world == null:
 		return []
 	_despawn_draggables()
+	_clear_tidy()
 	_staged_room = room_id
 	if not Words.DRAGGABLES.has(room_id):
 		return []
@@ -986,7 +988,11 @@ func describe_situation(target_id: String) -> Dictionary:
 		"canPlaceHere": false,
 		"combines": false,
 		"childAt": child_surface_now(),
+		"hasStorage": room != null and room.has_method("get_storage") and room.call("get_storage", local_id) != null,
+		"takesDrops": false,
 	}
+	if not bool(situation["openable"]) and Words.drag_focus_for(_current_room_id()) == local_id:
+		situation["takesDrops"] = true
 	if bool(situation["openable"]) and String(situation["carrying"]) == "item" and room.has_method("can_store_node"):
 		situation["canStore"] = bool(room.call("can_store_node", local_id, _character.call("get_carried_node")))
 	var kitchen: RefCounted = _kitchen()
@@ -1025,7 +1031,11 @@ func _act_at(target_id: String) -> Dictionary:
 		HouseActs.ACT_TOGGLE_OPEN:
 			return {"handled": _toggle_storage_if_container(target_id), "say": ""}
 		HouseActs.ACT_STORE_ITEM:
-			return {"handled": _store_carried_in(local_id), "say": "In it goes!"}
+			return _store_carried_in(local_id)
+		HouseActs.ACT_TIDY:
+			return _tidy_at(local_id)
+		HouseActs.ACT_DROP_IN:
+			return {"handled": _drop_carried_into(target_id), "say": ""}
 		HouseActs.ACT_PLACE_ON_TABLE:
 			return {"handled": _place_carried_on_table(target_id), "say": "On the table!"}
 		HouseActs.ACT_PLACE_CHILD:
@@ -1273,26 +1283,50 @@ func get_calm_seconds() -> float:
 
 ## Puts the carried prop INTO storage `local_id`: the model records it, the
 ## carry controller lands it on the container's floor, and it stays draggable
-## so it can come out again.
-func _store_carried_in(local_id: String) -> bool:
+## so it can come out again. A toy the tidy-up scattered is praised by name;
+## anything else gets "In it goes!".
+func _store_carried_in(local_id: String) -> Dictionary:
 	var room: Node = _world.call("get_current_room")
 	var item: Node = _character.call("get_carried_node")
 	if room == null or item == null or not room.has_method("store_node"):
-		return false
-	var slot: int = _stored.size()
+		return {"handled": false, "say": ""}
+	var model: RefCounted = room.call("get_storage", local_id) if room.has_method("get_storage") else null
+	var slot: int = int(model.call("count")) if model != null else _stored.size()
 	var rest: Variant = room.call("storage_rest_position", local_id, slot)
 	if not (rest is Vector3):
-		return false
+		return {"handled": false, "say": ""}
 	if not bool(_character.call("put_down_carried", rest)):
 		_refuse_landing()
-		return false
+		return {"handled": false, "say": ""}
 	var reason: String = String(room.call("store_node", local_id, item))
 	if not reason.is_empty():
-		return false
+		return {"handled": false, "say": ""}
 	_stored[item.get_instance_id()] = local_id
 	_pending_landing = {"node": item, "kind": "item"}
 	_watch_landing()
 	_play_sfx(SFX_PLACE_SOFT)
+	return {"handled": true, "say": _tidy_record(item, local_id)}
+
+
+## Drops the carried prop INTO the room's landing-pad prop -- the living room's
+## toy box, the bath -- exactly as a drag onto the pad would: it lands, the word
+## is said, and it slides home ready to be done again.
+func _drop_carried_into(target_id: String) -> bool:
+	var target: Node = _world.call("get_target_by_semantic_id", target_id)
+	var item: Node = _character.call("get_carried_node")
+	if not (target is Node3D) or item == null:
+		return false
+	var top: Vector3 = SpatialUtil.world_position(target as Node3D)
+	var box: Vector3 = Vector3(0.7, 0.5, 0.5)
+	for child: Node in target.get_children():
+		if child is CollisionShape3D and (child as CollisionShape3D).shape is BoxShape3D:
+			box = ((child as CollisionShape3D).shape as BoxShape3D).size
+	var spot: Vector3 = Vector3(top.x, top.y + box.y * 0.5 - 0.06, top.z)
+	if not bool(_character.call("put_down_carried", spot)):
+		_refuse_landing()
+		return false
+	_pending_landing = {"node": item, "kind": "dropIn"}
+	_watch_landing()
 	return true
 
 
@@ -1375,6 +1409,12 @@ func _on_landed(node: Node) -> void:
 		node.call("set_activity", String(landing.get("activity", "idle")))
 		_child_at = String(landing.get("surface", ""))
 		_child_at_node = node
+	elif String(landing.get("kind", "")) == "dropIn":
+		# Landed in the pad's prop: the same reward a drag there earns, and the
+		# same slide home afterwards. Its home stays on the floor.
+		var dropped: Variant = node.get("object_id")
+		if dropped != null:
+			_on_object_chosen(String(dropped))
 	elif node.has_method("set_home_position") and node is Node3D:
 		# It lives here now: a later slide-home returns it to the shelf, not to
 		# the floor it was picked up from.
@@ -1414,6 +1454,10 @@ func _on_object_taken(node: Node) -> void:
 		return
 	var local_id: String = String(_stored[id])
 	_stored.erase(id)
+	if _tidy != null and local_id == _tidy_box:
+		var taken: Variant = node.get("object_id")
+		if taken != null:
+			_tidy.call("unplace", String(taken))
 	var room: Node = _world.call("get_current_room")
 	if room != null and room.has_method("get_storage"):
 		var model: RefCounted = room.call("get_storage", local_id)
@@ -1752,6 +1796,211 @@ func _set_room_input(enabled: bool) -> void:
 		_nav.set("taps_enabled", enabled)
 	if _character != null and _character.has_method("set_disabled"):
 		_character.call("set_disabled", not enabled)
+
+
+## -- Tidy up (the bedroom toy box) ---------------------------------------------------
+##
+## Empty hands at a container with a storage model open it AND start a tidy:
+## `tidy_plan.gd` picks a few toys the box will take, they are scattered on the
+## floor as real pickups, and each one put away -- dragged onto the box's pad,
+## tapped (the tap fallback every pickup has), or carried in -- is praised by
+## name until the last one is "All tidy!". Arriving again mid-tidy repeats the
+## next prompt; arriving after the last one starts a fresh scatter, so it is
+## replayable for as long as a child wants to play it. Before this the lid
+## opened, a teddy could be put in, and nothing was ever said about it.
+
+## Where the scattered toys go, room-local (x, z) on the floor: off the row of
+## staged pickups at the room's centre, away from the bed and the box.
+const TIDY_SPOTS: Array = [
+	Vector2(-0.6, 0.7), Vector2(0.25, 0.75), Vector2(-0.15, 1.35),
+	Vector2(0.55, 1.3), Vector2(-0.75, -0.45), Vector2(0.35, -0.6),
+]
+const TIDY_MAX_SCATTER: int = 4
+
+var _tidy: RefCounted = null
+var _tidy_box: String = ""
+var _tidy_room: String = ""
+var _tidy_nodes: Array = []
+var _tidies_started: int = 0
+
+
+func _tidy_at(local_id: String) -> Dictionary:
+	var room: Node = _world.call("get_current_room")
+	if room == null or not room.has_method("get_storage"):
+		return {"handled": false, "say": ""}
+	var model: RefCounted = room.call("get_storage", local_id)
+	if model == null:
+		return {"handled": _toggle_storage_if_container("%s.%s" % [_current_room_id(), local_id]), "say": ""}
+	if is_tidy_active() and _tidy_box == local_id and _tidy_room == _current_room_id():
+		# Mid-tidy: the lid stays open and the next thing is named again.
+		if not bool(room.call("is_open", local_id)):
+			room.call("set_open", local_id, true)
+		var next: Dictionary = _tidy.call("next_item")
+		return {"handled": true, "say": TidyPlanScript.prompt_line(String(_tidy.call("word_for", String(next.get("itemId", "")))))}
+	return _start_tidy(room, local_id, model)
+
+
+func _start_tidy(room: Node, local_id: String, model: RefCounted) -> Dictionary:
+	_clear_tidy()
+	if not bool(room.call("is_open", local_id)):
+		room.call("set_open", local_id, true)
+		_speak("open", false)
+	var library: Object = _content_library()
+	var spawner: GDScript = load(OBJECT_SPAWNER_SCRIPT_PATH) as GDScript
+	if library == null or spawner == null or not library.has_method("get_object"):
+		return {"handled": true, "say": "Open!"}
+	var free_slots: int = int(model.get("capacity")) - int(model.call("count"))
+	if free_slots < 1:
+		return {"handled": true, "say": "Open!"}
+	var exclude: Array = []
+	for node: Variant in _draggables:
+		if node is Node and is_instance_valid(node as Node):
+			exclude.append(String((node as Node).get("object_id")))
+	var plan: RefCounted = TidyPlanScript.build_for(model.get("accepted_tags") as Array,
+			mini(free_slots, TIDY_MAX_SCATTER), _tidies_started, exclude)
+	var rows: Array = []
+	for row: Variant in plan.get("items"):
+		var record: Dictionary = library.call("get_object", String((row as Dictionary)["itemId"]))
+		if not record.is_empty():
+			rows.append({"row": row, "record": record})
+	if rows.is_empty():
+		return {"handled": true, "say": "Open!"}
+	var kept: Array = []
+	for entry: Dictionary in rows:
+		kept.append(entry["row"])
+	plan.set("items", kept)
+
+	var zone: Node = _stage.call("get_drop_zone", DropZoneScript.zone_id_for_interaction("dragToToyBox")) \
+			if _stage != null else null
+	var scale: float = float(_stage.call("get_object_scale")) if _stage != null and _stage.has_method("get_object_scale") else 1.0
+	for index: int in range(rows.size()):
+		var record: Dictionary = (rows[index] as Dictionary)["record"]
+		var node: Area3D = spawner.call("spawn", record, "dragToToyBox")
+		if node == null:
+			continue
+		var spot: Vector2 = TIDY_SPOTS[index % TIDY_SPOTS.size()]
+		node.scale = Vector3.ONE * scale
+		room.add_child(node)
+		node.call("set_home_position", Vector3(spot.x, HouseLayout.FLOOR_Y, spot.y))
+		if zone != null and node.has_method("set_drop_zone"):
+			var radius: float = float(zone.call("get_radius")) if zone.has_method("get_radius") else 0.26
+			node.call("set_drop_zone", zone, radius)
+			if zone.has_method("set_marker_visible"):
+				zone.call("set_marker_visible", false)
+		node.connect("chosen", _on_tidy_chosen)
+		if node.has_signal("pickup_started"):
+			node.connect("pickup_started", _on_object_taken.bind(node))
+		_tidy_nodes.append(node)
+	if _tidy_nodes.is_empty():
+		return {"handled": true, "say": "Open!"}
+	_tidy = plan
+	_tidy_box = local_id
+	_tidy_room = _current_room_id()
+	_tidies_started += 1
+	_speak("Let's tidy up!", true)
+	var first: Dictionary = plan.call("next_item")
+	return {"handled": true, "say": TidyPlanScript.prompt_line(String(plan.call("word_for", String(first.get("itemId", "")))))}
+
+
+## A scattered toy reached the box's pad (drag) or was tapped (the fallback):
+## it goes in the box, the word is said, and the praise follows.
+func _on_tidy_chosen(object_id: String) -> void:
+	_quieten_nudge()
+	var node: Node = _tidy_node(object_id)
+	var room: Node = _world.call("get_current_room")
+	if node == null or room == null or _tidy == null:
+		return
+	var model: RefCounted = room.call("get_storage", _tidy_box)
+	if model == null:
+		return
+	if not bool(room.call("is_open", _tidy_box)):
+		room.call("set_open", _tidy_box, true)
+	var reason: String = String(room.call("store_node", _tidy_box, node))
+	if not reason.is_empty():
+		var refusal: String = TidyPlanScript.refusal_line(reason, "toy box")
+		if _hud != null and not refusal.is_empty():
+			_hud.call("show_encouragement", refusal)
+		_speak(refusal, false)
+		_pending_returns.append({"node": node, "remaining": RETURN_HOME_SEC})
+		return
+	_stored[node.get_instance_id()] = _tidy_box
+	var rest: Variant = room.call("storage_rest_position", _tidy_box, maxi(int(model.call("count")) - 1, 0))
+	if rest is Vector3 and node is Node3D:
+		SpatialUtil.set_world_position(node as Node3D, rest as Vector3)
+		node.call("set_home_position", (node as Node3D).position)
+	_play_sfx(SFX_PLACE_SOFT)
+	var word: String = String(node.get("word"))
+	if not word.strip_edges().is_empty():
+		if _hud != null:
+			_hud.call("show_word", word, "")
+		_speak(word, true)
+	var line: String = _tidy_record(node, _tidy_box)
+	if _hud != null:
+		_hud.call("show_encouragement", line)
+	_speak(line, false)
+
+
+## The praise for `node` going into `local_id`: by name and in rotation for a
+## toy the tidy scattered, "All tidy!" for the last, "In it goes!" otherwise.
+func _tidy_record(node: Node, local_id: String) -> String:
+	if _tidy == null or local_id != _tidy_box:
+		return "In it goes!"
+	var object_id: Variant = node.get("object_id")
+	if object_id == null:
+		return "In it goes!"
+	var result: Dictionary = _tidy.call("record_placed", String(object_id))
+	if not bool(result.get("recorded", false)):
+		return "In it goes!"
+	if bool(result.get("complete", false)):
+		if _character != null and _character.has_method("play_action"):
+			_character.call("play_action", "clap")
+	return String(result.get("say", "Great!"))
+
+
+func _tidy_node(object_id: String) -> Node:
+	for node: Variant in _tidy_nodes:
+		if node is Node and is_instance_valid(node as Node) \
+				and String((node as Node).get("object_id")) == object_id:
+			return node as Node
+	return null
+
+
+## Frees the scattered toys (a toy in her hand travels on as an ordinary
+## pickup) and forgets the plan. Called on a new scatter and on leaving the room.
+func _clear_tidy() -> void:
+	var in_hand: Node = _character.call("get_carried_node") \
+			if _character != null and _character.has_method("get_carried_node") else null
+	for node: Variant in _tidy_nodes:
+		if not (node is Node) or not is_instance_valid(node as Node):
+			continue
+		if node == in_hand:
+			_draggables.append(node)
+			continue
+		_forget_stored(node as Node)
+		if (node as Node).is_inside_tree():
+			(node as Node).queue_free()
+		else:
+			(node as Node).free()
+	_tidy_nodes = []
+	_tidy = null
+	_tidy_box = ""
+	_tidy_room = ""
+
+
+func is_tidy_active() -> bool:
+	return _tidy != null and not bool(_tidy.call("is_complete"))
+
+
+func get_tidy_plan() -> RefCounted:
+	return _tidy
+
+
+func get_tidy_nodes() -> Array:
+	return _tidy_nodes.duplicate()
+
+
+func get_tidy_count() -> int:
+	return _tidies_started
 
 
 ## -- The kitchen, in Free Play -----------------------------------------------------

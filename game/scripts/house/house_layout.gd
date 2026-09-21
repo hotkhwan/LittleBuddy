@@ -498,8 +498,12 @@ static func furniture(room_id: String) -> Array:
 			return [
 				_prop("sofa", "sofa", Vector3(1.8, 0.75, 0.8), Vector3(-0.7, 0.375, -1.5),
 						Vector3(-0.7, FLOOR_Y, -0.85), ["sit", "hug"], Palette.SOFT_PINK),
+				# No `open`: this box has no lid and no storage model behind it
+				# (the bedroom's has both). It is the room's landing pad -- toys are
+				# dragged or carried INTO it -- and a badge that said OPEN on it did
+				# nothing when tapped (owner playtest 2026-09-21).
 				_prop("toyBox", "toy box", Vector3(0.7, 0.5, 0.5), Vector3(1.45, 0.25, -1.65),
-						Vector3(1.45, FLOOR_Y, -1.05), ["open", "play"], Palette.MINT),
+						Vector3(1.45, FLOOR_Y, -1.05), ["play", "putAway"], Palette.MINT),
 				# OPEN, and therefore wider than it is deep. A closed book on a floor
 				# is a rectangular slab seen from above, and a rectangular slab seen
 				# from above is a tray -- which is exactly what the owner named this

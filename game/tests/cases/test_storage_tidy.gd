@@ -36,6 +36,7 @@ func run():
 	failures.append_array(_test_the_plan_is_child_sized())
 	failures.append_array(_test_a_full_tidy_completes())
 	failures.append_array(_test_it_is_data_not_code())
+	failures.append_array(_test_a_plan_for_one_box())
 	return failures
 
 
@@ -211,4 +212,52 @@ func _test_it_is_data_not_code():
 	for word: String in ["toy", "book", "shirt", "open", "close", "put away", "clean up"]:
 		if not Tidy.WORDS.has(word):
 			failures.append("the tidy activity no longer teaches '%s'" % word)
+	return failures
+
+
+## The house tidies ONE box at a time: the plan takes only what that box will
+## accept, never something already on the floor, as few as one when the box is
+## nearly full -- and keeps score for a storage that stores the real node itself.
+func _test_a_plan_for_one_box():
+	var failures: Array = []
+	var plan: RefCounted = Tidy.build_for(["toy"], 4, 3, ["teddy"])
+	if int(plan.call("total")) != 4:
+		failures.append("build_for: asked for 4 toys, got %d" % plan.call("total"))
+	for row: Dictionary in plan.get("items"):
+		if not (row["tags"] as Array).has("toy"):
+			failures.append("build_for: '%s' is not a toy and the toy box will not take it" % row["itemId"])
+		if String(row["itemId"]) == "teddy":
+			failures.append("build_for: the excluded teddy was picked")
+	var two: RefCounted = Tidy.build_for(["toy"], 2, 3)
+	if int(two.call("total")) != 2:
+		failures.append("build_for: a box with two free slots should get a tidy of two, got %d" % two.call("total"))
+	if int(Tidy.build_for(["toy"], 0, 3).call("total")) != 1:
+		failures.append("build_for: a count below one should still be one toy")
+	if int(Tidy.build_for(["cutlery"], 3, 3).call("total")) != 0:
+		failures.append("build_for: a box that takes nothing this plan knows should get an empty plan")
+	if Tidy.build_for(["toy"], 3, 11).get("items") != Tidy.build_for(["toy"], 3, 11).get("items"):
+		failures.append("build_for: the same seed should give the same plan")
+
+	# Keeping score without a storage: praise by rotation, then the tidy line.
+	var ids: Array = []
+	for row: Dictionary in plan.get("items"):
+		ids.append(String(row["itemId"]))
+	var said: Array = []
+	for id: String in ids:
+		var result: Dictionary = plan.call("record_placed", id)
+		if not bool(result["recorded"]):
+			failures.append("record_placed: '%s' was in the plan and was not recorded" % id)
+		said.append(String(result["say"]))
+	if not bool(plan.call("is_complete")):
+		failures.append("record_placed: recording every toy did not complete the plan")
+	if not said[-1].to_lower().contains("tidy"):
+		failures.append("record_placed: the last line should celebrate, got '%s'" % said[-1])
+	if said[0] == said[1]:
+		failures.append("record_placed: praise repeated verbatim ('%s')" % said[0])
+	if bool(plan.call("record_placed", "pillow")["recorded"]):
+		failures.append("record_placed: a thing the plan never scattered was recorded")
+	if not bool(plan.call("unplace", ids[0])) or bool(plan.call("is_complete")):
+		failures.append("unplace: taking a toy back out should reopen the plan")
+	if bool(plan.call("unplace", "pillow")):
+		failures.append("unplace: an id that was never placed claimed success")
 	return failures

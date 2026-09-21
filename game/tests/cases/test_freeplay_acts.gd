@@ -82,7 +82,17 @@ func _test_decisions():
 	if f.call("wardrobe", {"openable": true}) != Acts.ACT_TOGGLE_OPEN:
 		failures.append("acts: alone at the wardrobe should toggle its doors")
 	if f.call("toyBox", {"openable": true}) != Acts.ACT_TOGGLE_OPEN:
-		failures.append("acts: alone at the toy box should toggle its lid")
+		failures.append("acts: alone at a lidded thing with no storage behind it should toggle its lid")
+	if f.call("toyBox", {"openable": true, "hasStorage": true}) != Acts.ACT_TIDY:
+		failures.append("acts: alone at the toy box (a storage) should open it and tidy")
+	if f.call("wardrobe", {"openable": true, "hasStorage": false}) != Acts.ACT_TOGGLE_OPEN:
+		failures.append("acts: the wardrobe has no storage model and just swings its doors")
+	if f.call("toyBox", {"carrying": "item", "takesDrops": true}) != Acts.ACT_DROP_IN:
+		failures.append("acts: a carried toy at the living room's lidless toy box goes in")
+	if f.call("bath", {"carrying": "item", "takesDrops": true}) != Acts.ACT_DROP_IN:
+		failures.append("acts: a carried bath toy at the bath goes in")
+	if f.call("toyBox", {"carrying": "item"}) != Acts.ACT_NONE:
+		failures.append("acts: a carried toy at a box that takes no drops does nothing")
 	if f.call("sofa") != Acts.ACT_SIT:
 		failures.append("acts: alone at the sofa should sit")
 	if f.call("bed") != Acts.ACT_SIT:
@@ -220,6 +230,7 @@ func _test_acts_on_the_real_house():
 
 	failures.append_array(_wardrobe(world, director, aliz))
 	failures.append_array(_toy_box(world, director, aliz))
+	failures.append_array(_tidy_loop(world, director, aliz))
 	failures.append_array(_bed_and_bunny(world, director, aliz, bunny))
 	failures.append_array(_every_room_opens(world, director, aliz, tts))
 	failures.append_array(_gate_seam_when_switched_on(world, director, aliz, tts))
@@ -293,6 +304,147 @@ func _toy_box(world, director, aliz):
 	if not bool(aliz.call("put_down_carried")):
 		failures.append("toy box: could not put the teddy back on the floor")
 	_step(aliz, 40)
+	return failures
+
+
+## The tidy-up: empty hands at the bedroom toy box scatter a few real toys,
+## each one put away is praised by name, the last is "All tidy!", and arriving
+## again afterwards starts a fresh one. Both ways in are driven: the pad (a
+## drag, or the tap fallback, through `chosen`) and the carry.
+func _tidy_loop(world, director, aliz):
+	var failures: Array = []
+	world.call("place_in_room", "bedroom", "")
+	var room: Node = world.call("get_current_room")
+	var model: RefCounted = room.call("get_storage", "toyBox")
+	# `_toy_box()` above already opened the box once (and so started a tidy);
+	# start this case from a shut, empty box.
+	director.call("_clear_tidy")
+	room.call("set_open", "toyBox", false)
+	if bool(aliz.call("is_carrying_node")):
+		aliz.call("put_down_carried")
+		_step(aliz, 40)
+	var started_before: int = int(director.call("get_tidy_count"))
+	var opened: Dictionary = director.call("_act_at", "bedroom.toyBox")
+	if not bool(opened.get("handled", false)):
+		return ["tidy: arriving at the toy box with empty hands was not handled"]
+	if not bool(room.call("is_storage_open", "toyBox")):
+		failures.append("tidy: the lid did not open")
+	if not bool(director.call("is_tidy_active")):
+		return failures + ["tidy: no tidy started at the toy box"]
+	if int(director.call("get_tidy_count")) != started_before + 1:
+		failures.append("tidy: the tidy count did not advance")
+	var plan: RefCounted = director.call("get_tidy_plan")
+	var nodes: Array = director.call("get_tidy_nodes")
+	if nodes.size() < 3 or nodes.size() > 4:
+		failures.append("tidy: %d toys scattered; wanted 3-4 (box capacity 4)" % nodes.size())
+	if nodes.size() != int(plan.call("total")):
+		failures.append("tidy: %d toys on the floor but the plan has %d" % [nodes.size(), plan.call("total")])
+	var first: Dictionary = plan.call("next_item")
+	if not String(opened.get("say", "")).begins_with("Put the "):
+		failures.append("tidy: the opening line should name the first toy, got '%s'" % opened.get("say"))
+	for node: Variant in nodes:
+		var at: Vector3 = SpatialUtil.world_position(node as Node3D)
+		if at.distance_to(SpatialUtil.world_position(aliz)) < 0.05:
+			failures.append("tidy: a toy was scattered under her feet")
+		if (node as Node).get_parent() != room:
+			failures.append("tidy: the scattered %s is not in the bedroom" % (node as Node).get("object_id"))
+		if bool(model.call("contains", String((node as Node).get("object_id")))):
+			failures.append("tidy: %s starts out already in the box" % (node as Node).get("object_id"))
+	var staged: Array = []
+	for pickup: Variant in director.call("ensure_draggables"):
+		staged.append(String((pickup as Node).get("object_id")))
+	for node: Variant in nodes:
+		if staged.has(String((node as Node).get("object_id"))):
+			failures.append("tidy: %s was scattered although one is already staged on the floor" % (node as Node).get("object_id"))
+	# Arriving again mid-tidy: the lid stays open, the next toy is named again.
+	var again: Dictionary = director.call("_act_at", "bedroom.toyBox")
+	if not bool(room.call("is_storage_open", "toyBox")):
+		failures.append("tidy: a second arrival mid-tidy shut the lid")
+	if String(again.get("say", "")) != String(opened.get("say", "")):
+		failures.append("tidy: a second arrival should repeat the prompt, said '%s'" % again.get("say"))
+	if int(director.call("get_tidy_count")) != started_before + 1:
+		failures.append("tidy: a second arrival mid-tidy started another tidy")
+
+	# The first toy by the pad (drag / tap fallback -> `chosen`).
+	var first_node: Node = nodes[0]
+	var first_id: String = String(first_node.get("object_id"))
+	first_node.emit_signal("chosen", first_id)
+	if not bool(model.call("contains", first_id)):
+		failures.append("tidy: %s did not go into the box when it reached the pad" % first_id)
+	if (plan.get("placed") as Array).size() != 1:
+		failures.append("tidy: the plan did not count the first toy (%s)" % str(plan.get("placed")))
+	var rest0: Vector3 = room.call("storage_rest_position", "toyBox", 0)
+	if SpatialUtil.world_position(first_node as Node3D).distance_to(rest0) > 0.3:
+		failures.append("tidy: %s is %.2f m from the inside of the box" % [first_id, SpatialUtil.world_position(first_node as Node3D).distance_to(rest0)])
+	# The rest by carrying: each one is praised, the last one is "All tidy!".
+	var lines: Array = []
+	for index: int in range(1, nodes.size()):
+		var node: Node = nodes[index]
+		if not bool(aliz.call("carry_node", node, "itemHoldRight")):
+			failures.append("tidy: could not pick up %s" % node.get("object_id"))
+			continue
+		_step(aliz, 40)
+		var stored: Dictionary = director.call("_act_at", "bedroom.toyBox")
+		_step(aliz, 40)
+		lines.append(String(stored.get("say", "")))
+		if not bool(model.call("contains", String(node.get("object_id")))):
+			failures.append("tidy: the carried %s did not go in the box" % node.get("object_id"))
+	if not bool(plan.call("is_complete")):
+		failures.append("tidy: after every toy went in, the plan is not complete (%d left)" % plan.call("remaining"))
+	if bool(director.call("is_tidy_active")):
+		failures.append("tidy: the tidy is still active after the last toy")
+	if lines.is_empty() or not lines[-1].to_lower().contains("tidy"):
+		failures.append("tidy: the last toy should end with 'All tidy!', said %s" % str(lines))
+	for line: String in lines.slice(0, lines.size() - 1):
+		if line == "In it goes!" or line.is_empty():
+			failures.append("tidy: a scattered toy got the generic line '%s' instead of praise" % line)
+	# Taking one back out counts it again -- and arriving empty-handed then
+	# CONTINUES this tidy rather than starting another.
+	var last_node: Node = nodes[nodes.size() - 1]
+	if bool(aliz.call("carry_node", last_node, "itemHoldRight")):
+		_step(aliz, 40)
+		if bool(model.call("contains", String(last_node.get("object_id")))):
+			failures.append("tidy: the box still lists a toy that is in her hand")
+		if bool(plan.call("is_complete")):
+			failures.append("tidy: the plan stayed complete with a toy back in her hand")
+		var floor_spot: Vector3 = SpatialUtil.world_position(aliz) + Vector3(0.3, 0.0, 0.3)
+		aliz.call("put_down_carried", floor_spot)
+		_step(aliz, 60)
+		if bool(aliz.call("is_carrying_node")):
+			failures.append("tidy: could not put the toy back on the floor")
+		var resumed: Dictionary = director.call("_act_at", "bedroom.toyBox")
+		if int(director.call("get_tidy_count")) != started_before + 1:
+			failures.append("tidy: arriving with one toy still out started a new tidy instead of continuing")
+		if not String(resumed.get("say", "")).begins_with("Put the "):
+			failures.append("tidy: continuing should name the toy still out, said '%s'" % resumed.get("say"))
+		# And back in it goes.
+		if bool(aliz.call("carry_node", last_node, "itemHoldRight")):
+			_step(aliz, 40)
+			var back: Dictionary = director.call("_act_at", "bedroom.toyBox")
+			_step(aliz, 40)
+			if not bool(plan.call("is_complete")):
+				failures.append("tidy: putting the toy back did not complete the plan again")
+			if not String(back.get("say", "")).to_lower().contains("tidy"):
+				failures.append("tidy: putting the last toy back should say all tidy again, said '%s'" % back.get("say"))
+	# Replay: empty hands at the box again starts a fresh scatter; the old toys are gone.
+	var replay: Dictionary = director.call("_act_at", "bedroom.toyBox")
+	if int(director.call("get_tidy_count")) != started_before + 2:
+		failures.append("tidy: arriving after the tidy did not start a new one")
+	if not bool(director.call("is_tidy_active")):
+		failures.append("tidy: the replayed tidy is not active")
+	var fresh: Array = director.call("get_tidy_nodes")
+	if fresh.size() < 1:
+		failures.append("tidy: the replay scattered nothing")
+	for node: Variant in nodes:
+		if is_instance_valid(node) and fresh.has(node):
+			failures.append("tidy: an old toy survived into the replay")
+	if int(model.call("count")) != 0:
+		failures.append("tidy: the box still holds %d old toys after the replay began (%s)" % [model.call("count"), model.call("describe")])
+	if not String(replay.get("say", "")).begins_with("Put the "):
+		failures.append("tidy: the replay did not name a toy, said '%s'" % replay.get("say"))
+	# Leave it clean for the cases that follow.
+	director.call("_clear_tidy")
+	room.call("set_open", "toyBox", false)
 	return failures
 
 

@@ -21,7 +21,11 @@ extends RefCounted
 ##   `isCharacter`  the target is Bunny himself
 ##   `openable`     it opens (a storage lid, the wardrobe doors)
 ##   `isOpen`       ... and is open now
+##   `hasStorage`   ... and there is a storage model behind it (a toy box, a
+##                  shelf) rather than bare doors (the wardrobe)
 ##   `canStore`     the carried prop may go in (storage model says yes)
+##   `takesDrops`   the room's landing-pad prop (the living room's toy box,
+##                  the bath): a carried thing can be dropped into it
 ##   `station`      the kitchen's `describe()` for this id, or {} off-kitchen
 ##   `kitchenHeld`  the kitchen item in her hand ("" for none)
 ##   `canFeed`      the kitchen item in hand is something Bunny eats
@@ -53,6 +57,13 @@ const ACT_FEED_CHILD: String = "feedChild"
 ## Play used to answer `ACT_NONE` here (owner bug: arriving at Bunny with empty
 ## hands was a dead end, not the carry a child would expect a tap on him to be).
 const ACT_CARRY_CHILD: String = "carryChild"
+## Empty hands at a container with a storage model: open it and TIDY -- a few
+## toys are scattered, each one put away is praised, the last is "all tidy".
+## Before this the lid opened and that was the whole event.
+const ACT_TIDY: String = "tidy"
+## A carried prop at the room's landing-pad prop (the living room's toy box,
+## the bath): it goes in, the same way a drag onto the pad would take it.
+const ACT_DROP_IN: String = "dropIn"
 
 ## What Bunny does once he is set down on each surface. The sofa uses the
 ## seated posture his `carried` clip already has (knees up, hands resting):
@@ -123,6 +134,8 @@ static func decide(situation: Dictionary) -> Dictionary:
 			return {"act": ACT_NONE}
 		if actions.has("eat"):
 			return {"act": ACT_PLACE_ON_TABLE}
+		if bool(situation.get("takesDrops", false)):
+			return {"act": ACT_DROP_IN}
 		return {"act": ACT_NONE}
 
 	# Empty arms. The kitchen first: its stations have their own state.
@@ -156,6 +169,8 @@ static func decide(situation: Dictionary) -> Dictionary:
 		return {"act": ACT_NONE}
 
 	if bool(situation.get("openable", false)):
+		if bool(situation.get("hasStorage", false)):
+			return {"act": ACT_TIDY}
 		return {"act": ACT_TOGGLE_OPEN}
 	if local_id == "sink":
 		return {"act": ACT_WASH_HANDS}

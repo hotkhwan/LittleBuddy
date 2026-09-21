@@ -112,7 +112,9 @@ const ACTIONS: Dictionary = {
 	"counter": "",
 	"table": "",
 	"sofa": "sit",
-	"toyBox": "",
+	# The living room's box has no lid: with empty hands she points at it (its
+	# toys are dragged or carried in). The bedroom's is a storage and tidies.
+	"toyBox": "point",
 	"toyShelf": "",
 	"littleBuddy": "hug",
 	"book": "point",
@@ -231,8 +233,11 @@ const DRAGGABLES: Dictionary = {
 ## One per room, deliberately: `house_stage.gd` tracks every prop pad to a single
 ## focus point, so a room with two furniture targets would put both pads in the
 ## same place. Rooms whose objects all go to Little Buddy have no entry, and
-## their pads simply follow him.
+## their pads simply follow him. The bedroom's pad is on its toy box for the
+## tidy-up (`house_freeplay_director.gd`): its three staged pickups still go to
+## Little Buddy, the scattered toys go in the box.
 const DRAG_FOCUS: Dictionary = {
+	"bedroom": "toyBox",
 	"bathroom": "bath",
 	"livingRoom": "toyBox",
 }

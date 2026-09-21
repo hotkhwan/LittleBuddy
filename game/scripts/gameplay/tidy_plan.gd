@@ -35,10 +35,15 @@ const WORDS: Array[String] = [
 ## One row per scatterable thing. `tags` is what decides where it belongs, and
 ## it is deliberately the SAME vocabulary the storage accepts -- a `toy` goes in
 ## whatever takes `toy`, so adding a second toy cabinet needs no code.
+## The toy ids are `content/objects.json` records, so the house can put the
+## real thing on the floor (`house_freeplay_director.gd` scatters them).
 const ITEMS: Array[Dictionary] = [
 	{"itemId": "teddy", "word": "teddy", "tags": ["toy"]},
 	{"itemId": "ball", "word": "ball", "tags": ["toy"]},
 	{"itemId": "blocks", "word": "blocks", "tags": ["toy"]},
+	{"itemId": "starToy", "word": "star", "tags": ["toy"]},
+	{"itemId": "squareToy", "word": "square", "tags": ["toy"]},
+	{"itemId": "circleToy", "word": "circle", "tags": ["toy"]},
 	{"itemId": "book", "word": "book", "tags": ["book"]},
 	{"itemId": "shirt", "word": "shirt", "tags": ["clothes"]},
 	{"itemId": "socks", "word": "socks", "tags": ["clothes"]},
@@ -110,6 +115,39 @@ static func build(count: int, seed_value: int = 0) -> RefCounted:
 	return plan
 
 
+## A plan for ONE container: only items it will take (`accepted_tags`, an
+## empty list meaning anything), never an id in `exclude` (things already on
+## the floor), at most `count` of them. `count` is clamped to 1..`MAX_ITEMS`
+## rather than 3..6, because the box may have only two free slots left and a
+## tidy of two is still a tidy; a plan with nothing in it is the caller's cue
+## to just open the lid.
+static func build_for(accepted_tags: Array, count: int, seed_value: int = 0,
+		exclude: Array = []) -> RefCounted:
+	var plan = new()
+	var wanted: int = clampi(count, 1, MAX_ITEMS)
+	var pool: Array = []
+	for row: Dictionary in ITEMS:
+		var item_id: String = String(row["itemId"])
+		if exclude.has(item_id):
+			continue
+		if accepted_tags.is_empty():
+			pool.append(row)
+			continue
+		for tag: Variant in row["tags"]:
+			if accepted_tags.has(String(tag)):
+				pool.append(row)
+				break
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	for i in range(pool.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, i)
+		var tmp: Variant = pool[i]
+		pool[i] = pool[j]
+		pool[j] = tmp
+	plan.items = pool.slice(0, wanted)
+	return plan
+
+
 func total() -> int:
 	return items.size()
 
@@ -141,6 +179,33 @@ func word_for(item_id: String) -> String:
 		if String(row["itemId"]) == item_id:
 			return String(row["word"])
 	return item_id
+
+
+## Marks `item_id` as put away when the host's OWN storage has already taken
+## it (the room's model stores the real node; this plan only keeps score).
+## Same shape as `place()`'s success: the sentence to say and whether that was
+## the last one. `recorded` is false for an id this plan never scattered, so
+## a teddy that was already on the floor gets the ordinary "In it goes!".
+func record_placed(item_id: String) -> Dictionary:
+	if tags_for(item_id).is_empty():
+		return {"recorded": false, "say": "", "complete": is_complete()}
+	if not placed.has(item_id):
+		placed.append(item_id)
+	var done: bool = is_complete()
+	return {
+		"recorded": true,
+		"say": finished_line() if done else praise_line(placed.size() - 1),
+		"complete": done,
+	}
+
+
+## The child took it back out: it counts again. Never an error.
+func unplace(item_id: String) -> bool:
+	var index: int = placed.find(item_id)
+	if index < 0:
+		return false
+	placed.remove_at(index)
+	return true
 
 
 ## Attempts to put `item_id` into `storage`. Returns
