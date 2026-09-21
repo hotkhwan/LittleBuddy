@@ -10,7 +10,7 @@ extends Node3D
 ##
 ## This is what it opens now: the real Aliz, through her production wrapper,
 ## on a pastel stage; four named bow cards in a colour studio that recolour
-## her OUTFIT ACCENTS at once; a friendly "More outfits soon!" line; and a
+## her OUTFIT ACCENTS at once; a short instruction for choosing a bow; and a
 ## Back button that returns to the title screen.
 ##
 ## ## What the swatches recolour, and why not the dress itself
@@ -92,12 +92,19 @@ class BowPreview extends Control:
 	func _draw() -> void:
 		var c := size * 0.5
 		var r: float = minf(size.x * 0.2, size.y * 0.32)
-		draw_circle(c + Vector2(-r * 0.8, 5), r, colour.darkened(0.14), true, -1, true)
-		draw_circle(c + Vector2(r * 0.8, 5), r, colour.darkened(0.14), true, -1, true)
-		draw_circle(c + Vector2(-r * 0.8, 0), r, colour, true, -1, true)
-		draw_circle(c + Vector2(r * 0.8, 0), r, colour, true, -1, true)
-		draw_circle(c + Vector2(-r * 1.05, -r * 0.35), r * 0.35, colour.lightened(0.35), true, -1, true)
-		draw_circle(c + Vector2(r * 0.65, -r * 0.35), r * 0.35, colour.lightened(0.35), true, -1, true)
+		draw_circle(c, r * 1.65, colour.lerp(Palette.CREAM, 0.72), true, -1, true)
+		# Tapered satin loops and little ribbon tails read as wearable bows,
+		# not the two-circle placeholder used by the first colour studio.
+		for side: float in [-1.0, 1.0]:
+			var tail := PackedVector2Array([c + Vector2(side * r * 0.15, r * 0.12), c + Vector2(side * r * 0.92, r * 1.25), c + Vector2(side * r * 0.47, r * 1.10), c + Vector2(side * r * 0.28, r * 1.42)])
+			draw_colored_polygon(tail, colour.darkened(0.08))
+			var points := PackedVector2Array()
+			for i: int in range(33):
+				var angle: float = TAU * float(i) / 32.0
+				points.append(c + Vector2(side * r * (0.76 + cos(angle) * 0.75), sin(angle) * r * (0.67 + cos(angle) * 0.18)))
+			draw_colored_polygon(points, colour)
+			draw_polyline(points, colour.darkened(0.12), 2.0, true)
+			draw_arc(c + Vector2(side * r * 0.85, -r * 0.03), r * 0.44, PI * 1.08, PI * 1.77, 20, colour.lightened(0.4), r * 0.13, true)
 		draw_circle(c, r * 0.43, colour.darkened(0.10), true, -1, true)
 		draw_circle(c + Vector2(0, -3), r * 0.34, colour.lightened(0.12), true, -1, true)
 
@@ -158,6 +165,10 @@ func apply_swatch(swatch_name: String, remember: bool = true) -> bool:
 		_style_swatch(_swatch_buttons[name] as Button, name, name == swatch_name)
 	if _selection_label != null:
 		_selection_label.text = "%s looks lovely!" % swatch_name.capitalize()
+		var feedback := StyleBoxFlat.new()
+		feedback.bg_color = colour.lerp(Palette.CREAM, 0.55)
+		feedback.set_corner_radius_all(22)
+		_selection_label.add_theme_stylebox_override("normal", feedback)
 	if remember:
 		_remember_swatch(swatch_name)
 	return true
@@ -218,8 +229,8 @@ func _build_swatches() -> void:
 		check.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		check.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		check.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-		check.position = Vector2(-44, 12)
-		check.size = Vector2(30, 30)
+		check.position = Vector2(-49, 14)
+		check.size = Vector2(34, 34)
 		button.add_child(check)
 		_style_swatch(button, name, false)
 		_swatch_buttons[name] = button
@@ -251,7 +262,7 @@ func _build_wardrobe_panel() -> void:
 	_wardrobe_panel.name = "WardrobePanel"
 	_wardrobe_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
-	style.bg_color = Palette.light(Palette.LAVENDER)
+	style.bg_color = Palette.CREAM
 	style.set_corner_radius_all(36)
 	style.border_color = Palette.CREAM
 	style.set_border_width_all(4)
@@ -262,14 +273,16 @@ func _build_wardrobe_panel() -> void:
 	safe.add_child(_wardrobe_panel)
 	safe.move_child(_wardrobe_panel, 0)
 	var title := Label.new()
+	title.name = "StudioTitle"
 	title.text = "Colour studio"
-	title.position = Vector2(32, 24)
+	title.position = Vector2(32, 20)
 	title.add_theme_font_size_override("font_size", Typography.SECTION)
 	title.add_theme_color_override("font_color", Palette.INK)
 	_wardrobe_panel.add_child(title)
 	var helper := Label.new()
-	helper.text = "Bows, frills & little shoes"
-	helper.position = Vector2(32, 74)
+	helper.name = "StudioHelper"
+	helper.text = "Choose a colour for Aliz"
+	helper.position = Vector2(32, 68)
 	helper.add_theme_font_size_override("font_size", Typography.HELPER)
 	helper.add_theme_color_override("font_color", Palette.INK_SOFT)
 	_wardrobe_panel.add_child(helper)
@@ -278,9 +291,17 @@ func _build_wardrobe_panel() -> void:
 	_selection_label.add_theme_font_size_override("font_size", Typography.BODY)
 	_selection_label.add_theme_color_override("font_color", Palette.INK)
 	_wardrobe_panel.add_child(_selection_label)
+	var category := Label.new()
+	category.name = "AccessoryCategory"
+	category.text = "Bows · Frills · Shoes"
+	category.position = Vector2(32, 110)
+	category.add_theme_font_size_override("font_size", Typography.HELPER)
+	category.add_theme_color_override("font_color", Palette.INK_SOFT)
+	_wardrobe_panel.add_child(category)
 	get_node("UI/SafeArea/TitlePanel/TitleLabel").add_theme_font_size_override("font_size", Typography.DISPLAY)
 	_hint_label.add_theme_font_size_override("font_size", Typography.HELPER)
 	_hint_label.add_theme_constant_override("outline_size", 0)
+	_hint_label.text = "Tap a bow. Make it yours!"
 
 
 func _layout_wardrobe() -> void:
@@ -290,9 +311,9 @@ func _layout_wardrobe() -> void:
 	var panel_width: float = clampf(safe.size.x * 0.36, 490, 600)
 	_wardrobe_panel.position = Vector2(safe.size.x - panel_width - 40, 218)
 	_wardrobe_panel.size = Vector2(panel_width, 670)
-	_swatch_row.position = _wardrobe_panel.position + Vector2(32, 132)
+	_swatch_row.position = _wardrobe_panel.position + Vector2(32, 150)
 	_swatch_row.size = Vector2(panel_width - 64, 464)
-	_selection_label.position = Vector2(24, 608)
+	_selection_label.position = Vector2(24, 620)
 	_selection_label.size = Vector2(panel_width - 48, 46)
 	var camera: Camera3D = get_node("Camera3D")
 	var viewport: Viewport = get_viewport()

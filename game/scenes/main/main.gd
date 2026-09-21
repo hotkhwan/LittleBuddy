@@ -264,9 +264,9 @@ static var _welcomed_this_launch: bool = false
 const VoiceBridge := preload("res://scripts/voice/voice_bridge.gd")
 const VoiceCues := preload("res://scripts/voice/voice_cues.gd")
 const SubtitleStripScript := preload("res://scripts/voice/subtitle_strip.gd")
-## The subtitle pill sits above the Learn with Aliz banner (which ends 404 px
-## up; the button row ends at 292).
-const SUBTITLE_BOTTOM_MARGIN: float = 420.0
+## The welcome line lives below the logo, above both children's heads. Keeping
+## it near the button row obscured Bunny's face in the actual 1024-high layout.
+const SUBTITLE_BOTTOM_MARGIN: float = 720.0
 var _skip_catcher: Control = null
 ## The activity picker while it is open over the menu, or null.
 var _picker: Control = null

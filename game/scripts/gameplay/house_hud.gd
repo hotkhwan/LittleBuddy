@@ -61,7 +61,7 @@ const STAR_GHOST: Color = Color("#E8DCC8")
 
 const PROMPT_FONT_SIZE: int = 42
 const HINT_FONT_SIZE: int = 27
-const CAPTION_FONT_SIZE: int = 24
+const CAPTION_FONT_SIZE: int = 22
 const BUTTON_FONT_SIZE: int = 30
 const STAR_FONT_SIZE: int = 34
 ## The star glyph beside the number: 1.3x the digits' size, with a 3 px ink
@@ -200,6 +200,11 @@ var _speak_button: Button = null
 var _speech_feedback: Control = null
 var _word: Label = null
 var _word_thai: Label = null
+var _activity_tag: Panel = null
+var _activity_tag_text: Label = null
+var _activity_tag_icon: TextureRect = null
+var _activity_tag_kind: String = ""
+var _story_card: Panel = null
 
 var _total: int = 0
 var _current: int = 0
@@ -245,6 +250,7 @@ func build() -> void:
 	# reason `room_camera.gd` does it: a node that has its script attached after
 	# it is already in the tree never gets the chance to opt in from `_ready()`.
 	set_process(true)
+	resized.connect(_sync_story_card)
 
 	# The proximity affordances draw UNDER every other piece of chrome, so the
 	# badge can never cover a prompt or a button. Bound to the world lazily in
@@ -253,14 +259,28 @@ func build() -> void:
 	add_child(_affordance)
 	move_child(_affordance, 0)
 	_affordance.call("build")
+	_story_card = Panel.new()
+	_story_card.name = "StoryInstructionCard"
+	_story_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_story_card.add_theme_stylebox_override("panel", preload("res://scripts/ui/storybook_chrome.gd").panel())
+	add_child(_story_card)
 
 	_caption = _add_label("Caption", CAPTION_FONT_SIZE, LAVENDER)
 	_caption.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	_caption.offset_left = -400.0
-	_caption.offset_top = 30.0
+	_caption.offset_left = -600.0
+	_caption.offset_top = 12.0
 	_caption.offset_right = CAPTION_RIGHT
-	_caption.offset_bottom = 120.0
+	_caption.offset_bottom = 76.0
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_caption.add_theme_constant_override("outline_size", 0)
+	_caption.add_theme_color_override("font_color", INK)
+	var caption_style := preload("res://scripts/ui/storybook_chrome.gd").panel(Palette.LAVENDER.lightened(0.70), 20)
+	caption_style.content_margin_top = 4.0
+	caption_style.content_margin_bottom = 4.0
+	caption_style.shadow_size = 3
+	caption_style.shadow_offset = Vector2(0, 2)
+	_caption.add_theme_stylebox_override("normal", caption_style)
 	_caption.visible = false
 
 	_prompt = _add_label("Prompt", PROMPT_FONT_SIZE, CREAM)
@@ -518,6 +538,57 @@ func get_seen_focus_radius() -> float:
 
 func _process(_delta: float) -> void:
 	refresh_presentation()
+	_refresh_activity_tag()
+
+
+## Read-only presentation of existing Free Play state. No activity transitions,
+## timers, reward changes or input handling belong here.
+func _refresh_activity_tag() -> void:
+	var kind: String = ""
+	if _free_play and _chrome_on and not _narration_covered and not _paused_world:
+		var world: Node = get_world()
+		var director: Node = world.call("get_free_play_director") if world != null and world.has_method("get_free_play_director") else null
+		if director != null and not bool(director.call("is_care_open")) and not bool(director.call("is_chooser_open")):
+			if bool(director.call("is_bedtime_active")):
+				kind = "moon"
+			elif bool(director.call("is_tidy_active")):
+				kind = "tidy"
+	if kind == _activity_tag_kind:
+		return
+	_activity_tag_kind = kind
+	if _activity_tag == null and not kind.is_empty():
+		_activity_tag = Panel.new()
+		_activity_tag.name = "ActivityTag"
+		_activity_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_activity_tag.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_activity_tag.offset_left = -186.0
+		_activity_tag.offset_right = 186.0
+		_activity_tag.offset_top = 24.0
+		_activity_tag.offset_bottom = 120.0
+		_activity_tag.add_theme_stylebox_override("panel", preload("res://scripts/ui/storybook_chrome.gd").panel(Palette.CREAM))
+		add_child(_activity_tag)
+		_activity_tag_icon = TextureRect.new()
+		_activity_tag_icon.name = "ActivityIcon"
+		_activity_tag_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_activity_tag_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_activity_tag_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_activity_tag_icon.position = Vector2(20, 12)
+		_activity_tag_icon.size = Vector2(72, 72)
+		_activity_tag.add_child(_activity_tag_icon)
+		_activity_tag_text = Label.new()
+		_activity_tag_text.name = "ActivityLabel"
+		preload("res://scripts/ui/typography.gd").apply(_activity_tag_text, 32)
+		_activity_tag_text.add_theme_color_override("font_color", Palette.INK)
+		_activity_tag_text.position = Vector2(104, 16)
+		_activity_tag_text.size = Vector2(248, 64)
+		_activity_tag_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_activity_tag.add_child(_activity_tag_text)
+	if _activity_tag != null:
+		_activity_tag.visible = not kind.is_empty()
+		if not kind.is_empty():
+			_activity_tag_icon.texture = preload("res://scripts/ui/activity_art.gd").texture_for(kind)
+			_activity_tag_text.text = "Sleep tight" if kind == "moon" else "Tidy together"
+	_push_keep_outs()
 
 
 ## The live close-up's half-width, straight from whichever camera is rendering.
@@ -580,6 +651,7 @@ func _apply_mode(initial: bool) -> void:
 	_encouragement.add_theme_font_size_override("font_size", int(l["encouragementSize"]))
 
 	_layout_star_counter(int(l["starSize"]))
+	_sync_story_card()
 
 	if not initial:
 		_refresh_visibility()
@@ -619,8 +691,33 @@ func _layout_star_counter(font_size: int) -> void:
 ## the thing that knows. `#000000` appears in neither: `ink` is the only dark
 ## this game has (ART_BIBLE §3).
 func _set_inverted(label: Label, inverted: bool, normal_color: Color) -> void:
-	label.add_theme_color_override("font_color", INK if inverted else normal_color)
-	label.add_theme_color_override("font_outline_color", CREAM if inverted else INK)
+	# Both camera modes now have a cream surface. Avoid thick outlined text;
+	# keep the old parameters/signature for existing presentation call sites.
+	label.add_theme_color_override("font_color", INK)
+	label.add_theme_constant_override("outline_size", 0)
+
+
+func _sync_story_card() -> void:
+	if _story_card == null or _prompt == null or _hint == null:
+		return
+	_story_card.visible = _prompt.visible
+	if _mode == Presentation.MODE_FEED:
+		_story_card.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+		_story_card.offset_left = _prompt.offset_left - 12.0
+		_story_card.offset_right = _prompt.offset_right + 12.0
+	else:
+		var available: float = size.x if size.x > 0.0 else 1366.0
+		var width: float = minf(920.0, available - 300.0)
+		for label: Label in [_prompt, _hint]:
+			label.anchor_left = 0.5
+			label.anchor_right = 0.5
+			label.offset_left = -width * 0.5 + 24.0
+			label.offset_right = width * 0.5 - 24.0
+		_story_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_story_card.offset_left = -width * 0.5
+		_story_card.offset_right = width * 0.5
+	_story_card.offset_top = _prompt.offset_top - 8.0
+	_story_card.offset_bottom = (_hint.offset_bottom if _hint.visible else _prompt.offset_bottom) + 8.0
 
 
 func _place(control: Control, rect: Variant) -> void:
@@ -653,6 +750,7 @@ func _refresh_visibility() -> void:
 	_hint.visible = objective and bool(l["hintVisible"]) \
 			and not _hint.text.strip_edges().is_empty()
 	_caption.visible = objective and not _caption.text.strip_edges().is_empty()
+	_sync_story_card()
 	_dots.visible = _chrome_on and not _free_play and _total > 0
 	_encouragement.visible = _chrome_on and _encouragement_on
 	_stars.visible = _chrome_on
@@ -1351,6 +1449,8 @@ func _push_keep_outs() -> void:
 			if _stars.visible else Rect2())
 	_affordance.call("set_keep_out", "version", Rect2())
 	_affordance.call("set_keep_out", "subtitle", subtitle_rect(view) if _subtitle_showing() else Rect2())
+	_affordance.call("set_keep_out", "activity_tag", _activity_tag.get_global_rect()
+			if _activity_tag != null and _activity_tag.visible and _activity_tag.is_inside_tree() else Rect2())
 
 
 ## -- Construction helpers ------------------------------------------------------

@@ -766,8 +766,8 @@ func _test_dress_up_round_trip():
 		if String(screen.call("get_current_swatch")) != "mint":
 			failures.append("the current swatch is '%s' after pressing mint" % String(screen.call("get_current_swatch")))
 	var hint: Label = screen.get_node_or_null("UI/SafeArea/HintLabel") as Label
-	if hint == null or not hint.text.contains("More outfits soon"):
-		failures.append("Dress Up does not say 'More outfits soon!'")
+	if hint == null or hint.text != "Tap a bow. Make it yours!":
+		failures.append("Dress Up must explain its available bow-colour interaction")
 	# One light, no shadows, no post -- the same budget as the menu.
 	var lights: Array = []
 	_collect(screen, "Light3D", lights)

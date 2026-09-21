@@ -26,6 +26,7 @@ const _RatingStar := preload("res://scripts/ui/rating_star.gd")
 const _IconGlyph := preload("res://scripts/progression/icon_glyph.gd")
 const _SafeArea := preload("res://scripts/ui/safe_area.gd")
 const _SubtitleStrip := preload("res://scripts/voice/subtitle_strip.gd")
+const _Typography := preload("res://scripts/ui/typography.gd")
 
 const FRAME_PANEL: StyleBox = preload("res://assets/ui/styles/panel_cream.tres")
 const FRAME_BUTTON: StyleBox = preload("res://assets/ui/styles/btn_peach.tres")
@@ -35,11 +36,11 @@ const FRAME_ENCOURAGE: StyleBox = preload("res://assets/ui/styles/btn_mint.tres"
 
 ## ART_BIBLE.md section 8: a child-facing control is never smaller than this.
 const ROUND_BUTTON: float = 200.0
-const PROMPT_FONT: int = 46
-const HELPER_FONT: int = 30
-const COUNT_FONT: int = 50
-const HINT_FONT: int = 36
-const ENCOURAGE_FONT: int = 44
+const PROMPT_FONT: int = _Typography.SECTION
+const HELPER_FONT: int = _Typography.HELPER
+const COUNT_FONT: int = _Typography.COUNT
+const HINT_FONT: int = _Typography.BODY
+const ENCOURAGE_FONT: int = _Typography.SECTION
 const ENCOURAGE_SECONDS: float = 1.8
 
 ## Sparkle lines live this long.
@@ -266,6 +267,7 @@ func _label(text: String, size: int, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_constant_override("line_spacing", 4)
 	label.add_theme_color_override("font_color", color)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -289,8 +291,11 @@ func _build_prompt_bar() -> void:
 
 	var column := VBoxContainer.new()
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_theme_constant_override("separation", 2)
+	column.add_theme_constant_override("separation", 6)
 	bar.add_child(column)
+	var title := _label("Bunny's table", _Typography.HELPER, _Palette.INK_SOFT)
+	title.name = "ActivityTitle"
+	column.add_child(title)
 
 	_prompt_label = _label("", PROMPT_FONT, _Palette.INK)
 	_prompt_label.name = "PromptLabel"
@@ -321,7 +326,7 @@ func _build_star_counter() -> void:
 
 	_counter_star = _RatingStar.new()
 	_counter_star.name = "CounterStar"
-	_counter_star.custom_minimum_size = Vector2(64.0, 64.0)
+	_counter_star.custom_minimum_size = Vector2(44.0, 44.0)
 	_counter_star.call("set_state", _RatingStar.State.EARNED)
 	row.add_child(_counter_star)
 
@@ -337,7 +342,7 @@ func _build_star_counter() -> void:
 	row.add_child(gap)
 	_task_star = _RatingStar.new()
 	_task_star.name = "TaskStar"
-	_task_star.custom_minimum_size = Vector2(50.0, 50.0)
+	_task_star.custom_minimum_size = Vector2(36.0, 36.0)
 	_task_star.call("set_state", _RatingStar.State.EARNED)
 	_task_star.visible = false
 	row.add_child(_task_star)
@@ -349,9 +354,18 @@ func _round_button(node_name: String) -> Button:
 	button.custom_minimum_size = Vector2(ROUND_BUTTON, ROUND_BUTTON)
 	button.focus_mode = Control.FOCUS_NONE
 	for state: String in ["normal", "hover", "disabled", "focus"]:
-		button.add_theme_stylebox_override(state, FRAME_BUTTON)
-	button.add_theme_stylebox_override("pressed", FRAME_BUTTON_DOWN)
+		button.add_theme_stylebox_override(state, _inset_frame(FRAME_BUTTON))
+	button.add_theme_stylebox_override("pressed", _inset_frame(FRAME_BUTTON_DOWN))
 	return button
+
+
+## Stylebox inset changes only visible art. The full 200-square Button still
+## owns input, including its transparent outer margin.
+func _inset_frame(source: StyleBox) -> StyleBox:
+	var frame: StyleBox = source.duplicate()
+	for side: String in ["left", "top", "right", "bottom"]:
+		frame.set("expand_margin_" + side, -26.0)
+	return frame
 
 
 func _build_buttons() -> void:
@@ -367,10 +381,16 @@ func _build_buttons() -> void:
 	_home_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_home_button.pressed.connect(func() -> void: home_pressed.emit())
 	_safe.add_child(_home_button)
-	var house := HouseGlyph.new()
+	var house := _IconGlyph.new()
+	house.set("glyph", _IconGlyph.Glyph.PICTURE_HOUSE)
 	house.set_anchors_preset(Control.PRESET_FULL_RECT)
+	house.offset_left = 60.0
+	house.offset_right = -60.0
+	house.offset_top = 42.0
+	house.offset_bottom = -78.0
 	house.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_home_button.add_child(house)
+	_add_button_caption(_home_button, "Home")
 
 	# Back: bottom-left, like the concept.
 	_back_button = _round_button("BackButton")
@@ -386,12 +406,23 @@ func _build_buttons() -> void:
 	arrow.set("glyph", _IconGlyph.Glyph.BACK)
 	arrow.set("tint", _Palette.INK)
 	arrow.set_anchors_preset(Control.PRESET_FULL_RECT)
-	arrow.offset_left = 50.0
-	arrow.offset_right = -50.0
-	arrow.offset_top = 40.0
-	arrow.offset_bottom = -62.0
+	arrow.offset_left = 68.0
+	arrow.offset_right = -68.0
+	arrow.offset_top = 50.0
+	arrow.offset_bottom = -86.0
 	arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_back_button.add_child(arrow)
+	_add_button_caption(_back_button, "Back")
+
+
+func _add_button_caption(button: Button, text: String) -> void:
+	var label := _label(text, _Typography.BUTTON, _Palette.INK)
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.offset_left = 28.0
+	label.offset_right = -28.0
+	label.offset_top = 120.0
+	label.offset_bottom = -48.0
+	button.add_child(label)
 
 
 func _build_hint() -> void:
@@ -450,26 +481,6 @@ func _build_encouragement() -> void:
 # Drawn pieces
 # ---------------------------------------------------------------------------
 
-## The little house on the Home button. Chunky ink, like the owner's sheet.
-class HouseGlyph extends Control:
-	func _draw() -> void:
-		var s: Vector2 = size
-		var c: Vector2 = s * 0.5 + Vector2(0.0, -4.0)
-		var w: float = s.x * 0.44
-		var ink: Color = _Palette.INK
-		# Roof.
-		var roof := PackedVector2Array([
-			c + Vector2(-w * 0.62, -w * 0.02),
-			c + Vector2(0.0, -w * 0.58),
-			c + Vector2(w * 0.62, -w * 0.02),
-		])
-		draw_colored_polygon(roof, ink)
-		# Body.
-		draw_rect(Rect2(c + Vector2(-w * 0.44, -w * 0.06), Vector2(w * 0.88, w * 0.62)), ink)
-		# Door and window, in the button's own peach.
-		var peach: Color = _Palette.PEACH
-		draw_rect(Rect2(c + Vector2(-w * 0.12, w * 0.18), Vector2(w * 0.24, w * 0.38)), peach)
-		draw_rect(Rect2(c + Vector2(w * 0.18, w * 0.06), Vector2(w * 0.16, w * 0.16)), peach)
 
 
 ## Sparkle lines around a bite and the guided-mode arrow. Nothing here blocks

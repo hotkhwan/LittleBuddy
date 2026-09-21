@@ -427,3 +427,25 @@ the live kitchen factory: `docs/shots/v3_before_bottle.png` and
 Final gameplay render and parity result belong in `docs/VISUAL_PRODUCTION_V3.md`.
 Asset review screenshots: `docs/shots/v3_bottle_preview.png` and
 `docs/shots/v3_bottle_refined.png`.
+
+## Night visual sprint — 2026-09-21
+
+Owner authorized justified Meshy use without a fixed cap. Audit found reusable
+accepted assets for the confirmed defects, so **no paid task was submitted**.
+Credits spent: **0**. New task IDs: **none**. Rejected generations: **none**.
+Balance was not re-queried (no authentication/credit operation needed); last
+independently verified balance remains **3129**, from the V3 entry above, not
+a claim about subsequent activity by other agents/accounts.
+
+| Asset | Defect / decision | Source / cost | Runtime path | Integration | Evidence |
+|---|---|---|---|---|---|
+| Toy blocks | Procedural stepped lump lacked readable individual blocks | Existing accepted classroom `number_blocks.glb`; local normalization, 0 credits | `game/assets/models/meshy-props/toyBlocks.glb` | ObjectSpawner real `blocks` ID in Baby Room and `house_world.tscn` tidy objects; original colliders retained | `docs/shots/night/blocks_before.png`, `blocks_after.png` |
+| Apple / banana | Older staged room meshes differed from accepted food-choice pictures | Existing accepted apple/banana GLBs; 0 credits, no copies or generation | Existing `game/assets/models/meshy-props/{apple,banana}.glb` | ObjectSpawner real fruit IDs now share kitchen/card assets, retaining original sizes and grab envelopes | `docs/shots/night/fruit_before.png`, `fruit_after.png` |
+| Bottle UI | Drawn feeding rectangle differed from accepted bottle | Transparent Godot render of accepted babyBottle; 0 credits | `game/assets/ui/icons/pictures/care_bottle.png` | CareOverlay feeding tool and ActivityPicker picture | `docs/shots/night/freeplay_feed_after.png` |
+| Refrigerator, classroom furniture, wardrobe | Coherent and functional; no defect sufficient to justify replacing working assemblies | Retained; 0 credits | Existing assets | No changes | Existing V3/room audit captures |
+
+Toy-block derivative: 2547 triangles, one surface, 512 texture, base-centered,
+0.26m longest-axis presentation. Original paid task provenance remains in
+manifest `meshyTaskIds`; it is explicitly not a new paid task. All adaptations
+are used in gameplay, not merely downloaded. Accepted characters, teddy, toy
+box, fruit and bottle were not regenerated.

@@ -41,6 +41,8 @@ func run():
 	failures.append_array(_test_model_names(spawner))
 	failures.append_array(_test_untextured_model_parts(spawner))
 	failures.append_array(_test_procedural_visual(spawner))
+	failures.append_array(_test_accepted_blocks_upgrade(spawner))
+	failures.append_array(_test_accepted_fruit_upgrade(spawner))
 	return failures
 
 
@@ -216,7 +218,7 @@ func _test_model_visual(spawner: GDScript):
 	# record's colour. Checked on the apple, whose record colour is strongly red,
 	# so an accidental tint would show up here rather than cancelling out.
 	var apple: Area3D = spawner.spawn({
-		"objectId": "apple", "word": "apple", "category": "feeding",
+		"objectId": "kenney_apple_fixture", "word": "apple", "category": "feeding",
 		"primitive": "sphere", "model": "apple", "color": "#E8453C",
 		"defaultInteraction": "dragToMouth",
 	})
@@ -430,7 +432,7 @@ func _test_untextured_model_parts(spawner: GDScript):
 func _test_procedural_visual(spawner: GDScript):
 	var failures: Array = []
 	var node: Area3D = spawner.spawn({
-		"objectId": "blocks", "word": "block", "category": "play",
+		"objectId": "procedural_blocks_fixture", "word": "block", "category": "play",
 		"primitive": "box", "model": "proc/blocks", "color": "#6BCB77",
 		"defaultInteraction": "dragToToyBox",
 	})
@@ -460,7 +462,7 @@ func _test_procedural_visual(spawner: GDScript):
 	# The mesh must be colour-independent: the SAME cached mesh has to serve a
 	# differently-coloured record, or the cache would hand out the wrong colour.
 	var other: Area3D = spawner.spawn({
-		"objectId": "blocks", "word": "block", "category": "play",
+		"objectId": "procedural_blocks_fixture", "word": "block", "category": "play",
 		"primitive": "box", "model": "proc/blocks", "color": "#FF6B6B",
 		"defaultInteraction": "dragToToyBox",
 	})
@@ -481,13 +483,86 @@ func _test_procedural_visual(spawner: GDScript):
 	return failures
 
 
+## The real blocks use the accepted classroom art but keep frozen content and
+## the same child-sized touch/drag contract. The test above still independently
+## exercises the procedural fallback, without a production-id upgrade.
+func _test_accepted_blocks_upgrade(spawner: GDScript):
+	var failures: Array = []
+	var library: RefCounted = (load(LIBRARY_PATH) as GDScript).create()
+	var record: Dictionary = library.get_object("blocks")
+	var snapshot: Dictionary = record.duplicate(true)
+	var spec: Dictionary = spawner.build_spec(record)
+	if spec.get("model") != "meshy-props/toyBlocks":
+		failures.append("real blocks did not upgrade to the accepted classroom art")
+	if record != snapshot:
+		failures.append("blocks presentation changed frozen content")
+	var node: Area3D = spawner.spawn_from_spec(spec)
+	if node == null:
+		return failures + ["upgraded blocks failed to spawn"]
+	if node.get("object_id") != "blocks" or node.get("interaction") != record.get("defaultInteraction"):
+		failures.append("upgraded blocks lost semantic identity/interaction")
+	var visual := node.get_node_or_null("Visual") as MeshInstance3D
+	if visual == null or visual.mesh == null:
+		failures.append("upgraded blocks lost Visual mesh")
+	else:
+		var registry: GDScript = load("res://scripts/house/prop_registry.gd")
+		if registry.triangles(visual.mesh) != 2547 or visual.mesh.get_surface_count() != 1:
+			failures.append("accepted blocks changed their 2547-triangle single-surface budget")
+		var material := visual.mesh.surface_get_material(0) as StandardMaterial3D
+		if material == null or material.albedo_texture == null:
+			failures.append("accepted blocks lost their source texture")
+		if absf((visual.transform * visual.mesh.get_aabb()).position.y) > 0.002:
+			failures.append("accepted blocks float above their floor anchor")
+	for child: Node in node.get_children():
+		if child is CollisionShape3D and child.shape is BoxShape3D:
+			if not child.shape.size.is_equal_approx(Vector3.ONE * spawner.GRAB_SIZE_M):
+				failures.append("upgraded blocks changed the accessible grab collider")
+	node.free()
+	return failures
+
+
+## Food choices and staged pickups must use the same accepted geometry/texture.
+## Keep legacy pickup dimensions, semantic metadata, and touch collider intact.
+func _test_accepted_fruit_upgrade(spawner: GDScript):
+	var failures: Array = []
+	var library: RefCounted = (load(LIBRARY_PATH) as GDScript).create()
+	var registry: GDScript = load("res://scripts/house/prop_registry.gd")
+	var items: GDScript = load("res://scripts/kitchen/kitchen_items.gd")
+	for id: String in ["apple", "banana"]:
+		var record: Dictionary = library.get_object(id)
+		var snapshot: Dictionary = record.duplicate(true)
+		var spec: Dictionary = spawner.build_spec(record)
+		if spec.model != "meshy-props/" + id or items.data(id).model != id:
+			failures.append("%s card and staged world no longer share the accepted prop" % id)
+		var original: Dictionary = spawner.model_presentation(record.model)
+		if spec.modelSize != original.size or record != snapshot:
+			failures.append("%s upgrade changed content or pickup size" % id)
+		var node: Area3D = spawner.spawn_from_spec(spec)
+		if node.get("object_id") != id or node.get("interaction") != record.defaultInteraction:
+			failures.append("%s upgrade changed semantic identity/interaction" % id)
+		var visual := node.get_node("Visual") as MeshInstance3D
+		if visual.mesh != registry.sized_mesh(id, spec.modelSize):
+			failures.append("%s pickup bypasses the shared accepted-mesh cache" % id)
+		var material := visual.mesh.surface_get_material(0) as StandardMaterial3D
+		if material == null or material.albedo_texture == null or visual.material_override != null:
+			failures.append("%s lost or overpainted the accepted texture" % id)
+		if absf((visual.transform * visual.mesh.get_aabb()).position.y) > 0.002:
+			failures.append("%s upgrade lost its floor anchor" % id)
+		for child: Node in node.get_children():
+			if child is CollisionShape3D and child.shape is BoxShape3D:
+				if not child.shape.size.is_equal_approx(Vector3.ONE * spawner.GRAB_SIZE_M):
+					failures.append("%s upgrade changed accessible grab collider" % id)
+		node.free()
+	return failures
+
+
 ## The whole point of making `model` optional: a missing or broken model must
 ## degrade to the primitive the game already shipped, never to an invisible or
 ## untouchable object.
 func _test_missing_model_falls_back(spawner: GDScript):
 	var failures: Array = []
 	var record: Dictionary = {
-		"objectId": "apple", "word": "apple", "category": "feeding",
+		"objectId": "missing_apple_fixture", "word": "apple", "category": "feeding",
 		"primitive": "sphere", "model": "no-such-kenney-model", "color": "#E8453C",
 		"defaultInteraction": "dragToMouth",
 	}

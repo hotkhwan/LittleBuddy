@@ -124,8 +124,11 @@ func _apply() -> void:
 	if not _built:
 		return
 	_caption.text = String(CAPTIONS.get(state, ""))
-	_speaker_glyph.visible = state == STATE_MUTED
-	_mic_glyph.visible = state != STATE_MUTED
+	# Speaking is an output state, not a recording state. Keep the textual
+	# contract and pair it with waves; muted keeps the same speaker quiet.
+	_speaker_glyph.visible = state == STATE_MUTED or state == STATE_ALIZ
+	_speaker_glyph.set("active", state == STATE_ALIZ)
+	_mic_glyph.visible = state != STATE_MUTED and state != STATE_ALIZ
 	_mic_glyph.set("tint", Palette.INK if state != STATE_OFF else Palette.INK_SOFT)
 	queue_redraw()
 

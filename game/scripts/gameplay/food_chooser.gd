@@ -17,6 +17,7 @@ const Palette := preload("res://scripts/ui/palette.gd")
 const ItemPreview := preload("res://scripts/ui/kitchen_item_preview.gd")
 const Items := preload("res://scripts/kitchen/kitchen_items.gd")
 const Typography := preload("res://scripts/ui/typography.gd")
+const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
 
 signal picked(item_id: String)
 signal dismissed()
@@ -59,22 +60,13 @@ func build() -> void:
 	_title.name = "Title"
 	_title.text = TITLE
 	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_title.add_theme_font_size_override("font_size", 56)
-	_title.add_theme_color_override("font_color", Palette.CREAM)
-	var title_pill := StyleBoxFlat.new()
-	title_pill.bg_color = Color(0.31, 0.22, 0.29, 0.82)
-	title_pill.set_corner_radius_all(28)
-	title_pill.content_margin_left = 34.0
-	title_pill.content_margin_right = 34.0
-	title_pill.content_margin_top = 10.0
-	title_pill.content_margin_bottom = 12.0
-	title_pill.shadow_color = Color(0.1, 0.07, 0.1, 0.18)
-	title_pill.shadow_size = 10
-	title_pill.shadow_offset = Vector2(0.0, 5.0)
+	Typography.apply(_title, Typography.DISPLAY)
+	_title.add_theme_color_override("font_color", Palette.INK)
+	var title_pill := Chrome.panel(Palette.CREAM)
 	_title.add_theme_stylebox_override("normal", title_pill)
 	_title.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_title.offset_left = -400.0
-	_title.offset_right = 400.0
+	_title.offset_left = -310.0
+	_title.offset_right = 310.0
 	_title.offset_top = 56.0
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_title)
@@ -228,7 +220,16 @@ func _make_card(data: Dictionary) -> Button:
 	Typography.apply(word, Typography.SECTION)
 	word.add_theme_color_override("font_color", Palette.INK)
 	word.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	word.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var word_band := Chrome.panel(Palette.light(accent), 20)
+	word_band.shadow_size = 0
+	word_band.set_border_width_all(0)
+	word_band.content_margin_top = 4.0
+	word_band.content_margin_bottom = 4.0
+	word.add_theme_stylebox_override("normal", word_band)
 	word.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	word.offset_left = 18.0
+	word.offset_right = -18.0
 	word.offset_top = -92.0
 	word.offset_bottom = -28.0
 	card.add_child(word)
@@ -243,8 +244,8 @@ func _card_style(fill: Color, rim: Color, shadow_y: float) -> StyleBoxFlat:
 	style.set_corner_radius_all(32)
 	style.set_border_width_all(4)
 	style.border_color = rim
-	style.shadow_color = Color(0.14, 0.09, 0.12, 0.28)
-	style.shadow_size = 14
+	style.shadow_color = Color(Palette.INK, 0.15)
+	style.shadow_size = 8
 	style.shadow_offset = Vector2(0.0, shadow_y)
 	style.content_margin_left = 18.0
 	style.content_margin_right = 18.0

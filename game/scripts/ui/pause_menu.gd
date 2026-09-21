@@ -23,10 +23,13 @@ extends Control
 
 const Palette := preload("res://scripts/ui/palette.gd")
 const HouseGlyphScript := preload("res://scenes/main/house_glyph.gd")
+const Chrome := preload("res://scripts/ui/storybook_chrome.gd")
+const Typography := preload("res://scripts/ui/typography.gd")
+const IconGlyph := preload("res://scripts/progression/icon_glyph.gd")
 
 const CARD_WIDTH: float = 560.0
 const CARD_HEIGHT: float = 470.0
-const TITLE_FONT_SIZE: int = 40
+const TITLE_FONT_SIZE: int = Typography.DISPLAY
 const BUTTON_FONT_SIZE: int = 32
 const SMALL_FONT_SIZE: int = 27
 ## ART_BIBLE §8: 240 px is the floor for a child's tap target.
@@ -78,11 +81,7 @@ func build() -> void:
 	_card = PanelContainer.new()
 	_card.name = "Card"
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
-	var card_style: StyleBoxFlat = StyleBoxFlat.new()
-	card_style.bg_color = Palette.CREAM
-	card_style.border_color = Palette.deep(Palette.PEACH)
-	card_style.set_border_width_all(4)
-	card_style.set_corner_radius_all(36)
+	var card_style: StyleBoxFlat = Chrome.panel(Palette.CREAM, 36)
 	card_style.content_margin_left = 40.0
 	card_style.content_margin_right = 40.0
 	card_style.content_margin_top = 30.0
@@ -111,6 +110,7 @@ func build() -> void:
 	column.add_child(_title)
 
 	_continue = _button("ContinueButton", CONTINUE_TEXT, Palette.MINT, BUTTON_HEIGHT, BUTTON_FONT_SIZE)
+	_add_icon(_continue, IconGlyph.Glyph.PLAY)
 	_continue.pressed.connect(_on_continue)
 	column.add_child(_continue)
 
@@ -134,6 +134,7 @@ func build() -> void:
 	_settings = _button("SettingsButton", SETTINGS_TEXT, Palette.PARENT_CHROME,
 			SMALL_BUTTON_HEIGHT, SMALL_FONT_SIZE)
 	_settings.pressed.connect(_on_settings)
+	_add_icon(_settings, IconGlyph.Glyph.SETTINGS)
 	column.add_child(_settings)
 
 
@@ -192,11 +193,18 @@ func _button(node_name: String, text: String, tint: Color, height: float, font_s
 	button.add_theme_color_override("font_color", Palette.INK)
 	button.add_theme_color_override("font_hover_color", Palette.INK)
 	button.add_theme_color_override("font_pressed_color", Palette.INK)
-	for state: String in ["normal", "hover", "pressed", "focus"]:
-		var style: StyleBoxFlat = StyleBoxFlat.new()
-		style.bg_color = Palette.deep(tint) if state == "pressed" else tint
-		style.border_color = Palette.deep(tint)
-		style.set_border_width_all(3)
-		style.set_corner_radius_all(int(height * 0.5))
-		button.add_theme_stylebox_override(state, style)
+	Chrome.button(button, tint)
 	return button
+
+
+func _add_icon(button: Button, glyph: int) -> void:
+	var icon := IconGlyph.new()
+	icon.name = "ActionIcon"
+	icon.glyph = glyph
+	icon.tint = Palette.INK
+	icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
+	icon.offset_left = 30.0
+	icon.offset_right = 74.0
+	icon.offset_top = -22.0
+	icon.offset_bottom = 22.0
+	button.add_child(icon)
