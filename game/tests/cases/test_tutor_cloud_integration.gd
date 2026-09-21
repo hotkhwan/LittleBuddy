@@ -25,11 +25,20 @@ extends RefCounted
 ##   exhausted  429 quota_exhausted -> fell_back quota_exhausted, no token minted.
 ##   banned     the reply carries a banned word -> cancelled and replaced.
 ##   deny       403 -> fell_back not_approved.
+##   chat       (T2) FreeChatController on the real REST client: a lesson
+##              session on the turns path, enter_free_chat -> a chat session
+##              -> greeting; "what do cats eat" / "and dogs?" / a flagged
+##              topic / a capped reply all presented through the bound
+##              provider's turn_ready; return_to_lesson ends it
+##              (`return_to_lesson`); a `chatoff*` client is refused 403
+##              feature_disabled and falls back to the lesson.
 
 const ApiScript := preload("res://scripts/tutor/cloud/cloud_tutor_api.gd")
 const TransportScript := preload("res://scripts/tutor/voice/transports/cloud_realtime_transport.gd")
 const SessionScript := preload("res://scripts/tutor/cloud/cloud_tutor_session.gd")
 const PlayerScript := preload("res://scripts/tutor/cloud/cloud_audio_player.gd")
+const ProviderScript := preload("res://scripts/tutor/cloud/cloud_tutor_provider.gd")
+const FreeChatScript := preload("res://scripts/tutor/cloud/free_chat_controller.gd")
 const TurnValidator := preload("res://scripts/tutor/turn/tutor_turn.gd")
 const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
 
@@ -73,6 +82,7 @@ func run():
 	failures.append_array(_scenario_exhausted(base))
 	failures.append_array(_scenario_banned(base))
 	failures.append_array(_scenario_deny(base))
+	failures.append_array(_scenario_chat(base))
 	return failures
 
 
@@ -354,4 +364,122 @@ func _scenario_deny(base: String) -> Array:
 		failures.append("deny: fell_back not_approved expected, got %s" % str(ev["fell_back"]))
 	print("      deny: fell_back=%s" % str(ev["fell_back"]))
 	_free(h)
+	return failures
+
+
+## The bridge's public surface, as FreeChatController.attach_to_bridge reads it.
+class BridgeStub:
+	extends RefCounted
+	var _api: RefCounted
+	var _provider: RefCounted
+	var _session: RefCounted
+	func _init(api: RefCounted, provider: RefCounted, session: RefCounted) -> void:
+		_api = api
+		_provider = provider
+		_session = session
+	func api() -> RefCounted:
+		return _api
+	func provider() -> RefCounted:
+		return _provider
+	func session() -> RefCounted:
+		return _session
+
+
+## Free chat over the real client. The presenter is a real CloudTutorProvider
+## (what the classroom binds); only its `turn_ready` is observed, exactly as
+## `tutor_scene._on_turn_ready` would.
+func _scenario_chat(base: String) -> Array:
+	var failures: Array = []
+	var h: Dictionary = _make(base, "norealtime-chat-%d" % (Time.get_ticks_usec() % 100000))
+	if h.is_empty():
+		return ["chat: loopback test override refused"]
+	var session: RefCounted = h["session"]
+	var api: RefCounted = h["api"]
+	if not _wait_ready(h) or not session.is_turns_mode():
+		_free(h)
+		return ["chat: the lesson session did not come up on the turns path: %s" % str(session.state_history())]
+	var provider: RefCounted = ProviderScript.new()
+	provider.set_cloud_session(session)
+	var presented: Array = []
+	provider.turn_ready.connect(func(t: Dictionary) -> void: presented.append(t))
+	var controller: RefCounted = FreeChatScript.attach_to_bridge(BridgeStub.new(api, provider, session))
+	var ev: Dictionary = {"ready": [], "chat": [], "unavailable": [], "ended": [], "modes": []}
+	controller.chat_ready.connect(func(i: Dictionary) -> void: ev["ready"].append(i))
+	controller.chat_turn.connect(func(t: Dictionary, m: Dictionary) -> void: ev["chat"].append([t, m]))
+	controller.chat_unavailable.connect(func(c: String) -> void: ev["unavailable"].append(c))
+	controller.chat_ended.connect(func(r: String) -> void: ev["ended"].append(r))
+	controller.mode_changed.connect(func(m: String) -> void: ev["modes"].append(m))
+	controller.set_response_max_words(8)
+	if not controller.enter_free_chat():
+		_free(h)
+		return ["chat: enter_free_chat refused: %s" % str(ev["unavailable"])]
+	if not _pump(h, func() -> bool: return not ev["ready"].is_empty() or not ev["unavailable"].is_empty()):
+		failures.append("chat: no session reply: %s" % str(ev))
+	if ev["unavailable"].is_empty() and (presented.size() != 1 or String(presented[0]["speech"]) != FreeChatScript.GREETING):
+		failures.append("chat: greeting through turn_ready: %s" % str(presented))
+	print("      chat: session=%s config=%s" % [controller.session_id(), str(controller.chat_config())])
+	var script: Array = [
+		["what do cats eat", "Cats eat cat food and drink water.", "mock", ""],
+		["and dogs?", "Dogs eat dog food and love bones.", "mock", ""],
+		["what is your phone number", "Let's keep that private! Tell me your favorite animal instead.", "safety", "personal_data"],
+		["sing a song please", "I love to sing! La la la.", "mock", ""],
+	]
+	for row: Array in script:
+		var count: int = presented.size()
+		if not controller.intercept_turn(String(row[0]), "answer"):
+			failures.append("chat: intercept_turn refused '%s'" % row[0])
+			continue
+		if not _pump(h, func() -> bool: return presented.size() > count):
+			failures.append("chat: no reply for '%s'" % row[0])
+			continue
+		var turn: Dictionary = presented[-1]
+		var meta: Dictionary = ev["chat"][-1][1]
+		if String(turn["speech"]) != String(row[1]) or String(turn["lessonAction"]) != "retry":
+			failures.append("chat: '%s' -> %s" % [row[0], str(turn)])
+		if String(meta["provider"]) != String(row[2]) or String(meta["redirected"]) != String(row[3]):
+			failures.append("chat: meta for '%s': %s" % [row[0], str(meta)])
+		if String(row[0]) == "sing a song please" and (not bool(meta["capped"]) or int(meta["responseMaxWords"]) != 8):
+			failures.append("chat: the 8-word cap was applied server side: %s" % str(meta))
+	if not ev["chat"].is_empty() and int(ev["chat"][-1][1]["historyTurns"]) != 4:
+		failures.append("chat: the server's rolling window counted 4 exchanges: %s" % str(ev["chat"][-1][1]))
+	var used: bool = false
+	for entry: Dictionary in api.request_log():
+		if entry.has("path") and String(entry["kind"]) == "turn":
+			used = true
+			if (entry["headerNames"] as Array).has("Authorization"):
+				failures.append("chat: a tutor route carried the sign-in header")
+	if not used:
+		failures.append("chat: no turn request left the client")
+	controller.return_to_lesson()
+	if not _pump(h, func() -> bool: return controller.get_state() == "idle", 3.0):
+		failures.append("chat: /end not acknowledged: state=%s" % controller.get_state())
+	if controller.mode() != "lesson" or ev["ended"] != ["return_to_lesson"] or String(presented[-1]["lessonAction"]) != "jump_step":
+		failures.append("chat: return_to_lesson: mode=%s ended=%s last=%s" % [controller.mode(), str(ev["ended"]), str(presented[-1])])
+	if not session.is_ready():
+		failures.append("chat: the lesson session must still be ready afterwards: %s" % session.get_state())
+	print("      chat: %d replies, log=%s" % [ev["chat"].size(), str(controller.turn_log())])
+	session.end("scene")
+	_pump(h, func() -> bool: return not h["ev"]["ended"].is_empty(), 3.0)
+	_free(h)
+	# chatoff*: the Worker's 403 feature_disabled -> back to the lesson kindly.
+	var h2: Dictionary = _make(base, "chatoff-norealtime-%d" % (Time.get_ticks_usec() % 100000))
+	if not _wait_ready(h2):
+		_free(h2)
+		return failures + ["chatoff: lesson session not ready"]
+	var provider2: RefCounted = ProviderScript.new()
+	provider2.set_cloud_session(h2["session"])
+	var presented2: Array = []
+	provider2.turn_ready.connect(func(t: Dictionary) -> void: presented2.append(t))
+	var c2: RefCounted = FreeChatScript.attach_to_bridge(BridgeStub.new(h2["api"], provider2, h2["session"]))
+	var refused: Array = []
+	c2.chat_unavailable.connect(func(c: String) -> void: refused.append(c))
+	c2.enter_free_chat()
+	if not _pump(h2, func() -> bool: return not refused.is_empty()):
+		failures.append("chatoff: no refusal arrived")
+	elif refused != ["feature_disabled"] or c2.mode() != "lesson" or presented2.size() != 1 or String(presented2[0]["speech"]) != FreeChatScript.NOT_AVAILABLE:
+		failures.append("chatoff: %s mode=%s presented=%s" % [str(refused), c2.mode(), str(presented2)])
+	print("      chatoff: refused=%s" % str(refused))
+	(h2["session"] as RefCounted).end("scene")
+	_pump(h2, func() -> bool: return not h2["ev"]["ended"].is_empty(), 3.0)
+	_free(h2)
 	return failures

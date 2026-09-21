@@ -7,9 +7,10 @@ extends RefCounted
 ##   POST {base}/v1/parents                     {provider: "dev", subject, clientId}   (DEV_MODE sign-in, no credential)
 ##   PUT  {base}/v1/consent                     {kind, granted}                        (parent sign-in header)
 ##   GET  {base}/v1/tutor/entitlement?clientId= -> {quota}                             (approval header)
-##   POST {base}/v1/tutor/sessions              {lessonId, clientId}                   (approval header)
+##   POST {base}/v1/tutor/sessions              {lessonId, clientId} | {mode: "chat", clientId}   (approval header)
 ##   POST {base}/v1/tutor/realtime/token        {sessionId}                            (approval header)
 ##   POST {base}/v1/tutor/sessions/:id/turns    {transcript, lessonContext}  + Idempotency-Key
+##                                              chat session: {transcript, responseMaxWords?}
 ##   POST {base}/v1/tutor/sessions/:id/end      {reason}                               (reason <= 40 chars)
 ##
 ## `base` is `TutorFlags.backend_url()` and nothing else (a test may point it
@@ -51,9 +52,18 @@ extends RefCounted
 ## `{ok, status, body, code, message, retryAfterSeconds, replayed}` and `code`
 ## is one of the Worker's error codes (`not_approved`, `consent_required`,
 ## `quota_exhausted`, `rate_limited`, `session_ended`, `not_found`,
-## `provider_unavailable`, `invalid_turn`, `idempotency_mismatch`, ...) or
-## `timeout`, `bad_response`, `cloud_disabled`, `not_configured`. Pumped by
-## `advance(delta)`.
+## `provider_unavailable`, `invalid_turn`, `idempotency_mismatch`,
+## `feature_disabled`, ...) or `timeout`, `bad_response`, `cloud_disabled`,
+## `not_configured`. Pumped by `advance(delta)`.
+##
+## ## Free chat (`docs/ALIZ_TUTOR_FREE_CHAT.md`)
+##
+## `create_session(lesson_id, MODE_CHAT)` opens a conversation session (the
+## Worker answers `403 feature_disabled` unless it runs in DEV_MODE with
+## `FREE_CHAT_ENABLED`); `submit_chat_turn()` posts the child's words with an
+## optional word cap and no lessonContext. The reply is the same TutorTurn
+## shape with `lessonAction: "none"`; `free_chat_controller.gd` owns the
+## mode switch and hands the turn to the classroom's presentation path.
 
 const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
 
@@ -95,6 +105,14 @@ const MAX_TRANSCRIPT_CHARS: int = 500
 const MAX_END_REASON_CHARS: int = 40
 const MAX_AUDIO_SECONDS: float = 30.0
 const OUTCOMES: Array[String] = ["correct", "incorrect", "unclear"]
+## Session modes on `POST /v1/tutor/sessions`.
+const MODE_LESSON: String = "lesson"
+const MODE_CHAT: String = "chat"
+const SESSION_MODES: Array[String] = [MODE_LESSON, MODE_CHAT]
+## The Worker's free-chat word-cap band (`cloud/src/tutor/chat_config.ts`).
+const CHAT_MIN_WORDS: int = 8
+const CHAT_MAX_WORDS: int = 40
+const CHAT_DEFAULT_WORDS: int = 25
 ## The lessonContext keys the Worker reads (`docs/ALIZ_TUTOR_API.md`); anything else stays on the device.
 const CONTEXT_KEYS: Array[String] = ["stepId", "outcome", "matched", "lessonAction", "expectedAnswers", "hint", "nextQuestionText", "visualAssetId"]
 
@@ -109,6 +127,7 @@ const CODE_PROVIDER_UNAVAILABLE: String = "provider_unavailable"
 const CODE_INVALID_TURN: String = "invalid_turn"
 const CODE_IDEMPOTENCY_MISMATCH: String = "idempotency_mismatch"
 const CODE_UNKNOWN_LESSON: String = "unknown_lesson"
+const CODE_FEATURE_DISABLED: String = "feature_disabled"
 const CODE_BAD_REQUEST: String = "bad_request"
 const CODE_TIMEOUT: String = "timeout"
 const CODE_BAD_RESPONSE: String = "bad_response"
@@ -257,9 +276,12 @@ func grant_consent(kind: String = CONSENT_AI_TUTOR) -> bool:
 	return _enqueue(KIND_CONSENT, HTTPClient.METHOD_PUT, CONSENT_PATH, {"kind": kind, "granted": true}, AUTH_PARENT)
 
 
-func create_session(lesson_id: String) -> bool:
-	return _enqueue(KIND_SESSION, HTTPClient.METHOD_POST, SESSIONS_PATH,
-		{"lessonId": lesson_id, "clientId": _client_id}, AUTH_APPROVAL)
+## `mode` is `MODE_LESSON` (default; the body is `{lessonId, clientId}`, the
+## reconciled shape) or `MODE_CHAT` (`{mode: "chat", clientId}`; `lesson_id`
+## is ignored, the Worker records the session under `free_chat`).
+func create_session(lesson_id: String, mode: String = MODE_LESSON) -> bool:
+	var body: Dictionary = session_body(lesson_id, mode, _client_id)
+	return _enqueue(KIND_SESSION, HTTPClient.METHOD_POST, SESSIONS_PATH, body, AUTH_APPROVAL)
 
 
 func mint_token(session_id: String) -> bool:
@@ -275,6 +297,15 @@ func submit_turn(session_id: String, idempotency_key: String, transcript: String
 	}
 	if audio_seconds > 0.0:
 		body["audioSeconds"] = snappedf(clampf(audio_seconds, 0.0, MAX_AUDIO_SECONDS), 0.1)
+	return _enqueue(KIND_TURN, HTTPClient.METHOD_POST, "%s/%s/turns" % [SESSIONS_PATH, session_id], body,
+		AUTH_APPROVAL, {HEADER_IDEMPOTENCY: idempotency_key.strip_edges().left(200)})
+
+
+## One free-chat turn: the child's words and an optional word cap, no
+## lessonContext (the Worker refuses one on a chat session anyway). The same
+## Idempotency-Key rule as `submit_turn()`.
+func submit_chat_turn(session_id: String, idempotency_key: String, transcript: String, response_max_words: int = 0) -> bool:
+	var body: Dictionary = chat_turn_body(transcript, response_max_words)
 	return _enqueue(KIND_TURN, HTTPClient.METHOD_POST, "%s/%s/turns" % [SESSIONS_PATH, session_id], body,
 		AUTH_APPROVAL, {HEADER_IDEMPOTENCY: idempotency_key.strip_edges().left(200)})
 
@@ -312,6 +343,24 @@ static func build_headers(approval_token: String, extra: Dictionary = {}) -> Pac
 		if not value.is_empty():
 			headers.append("%s: %s" % [name, value])
 	return headers
+
+
+## The `POST /v1/tutor/sessions` body for a mode (the fixture test pins it):
+## a lesson session never carries `mode` (the reconciled shape stays
+## byte-identical); a chat session carries `{mode: "chat", clientId}` only.
+static func session_body(lesson_id: String, mode: String, client_id: String) -> Dictionary:
+	if mode == MODE_CHAT:
+		return {"mode": MODE_CHAT, "clientId": client_id}
+	return {"lessonId": lesson_id, "clientId": client_id}
+
+
+## The chat turn body: transcript bounded like a lesson turn; the word cap only
+## when asked for, clamped into the Worker's band (0 = the session default).
+static func chat_turn_body(transcript: String, response_max_words: int = 0) -> Dictionary:
+	var body: Dictionary = {"transcript": transcript.strip_edges().left(MAX_TRANSCRIPT_CHARS)}
+	if response_max_words > 0:
+		body["responseMaxWords"] = clampi(response_max_words, CHAT_MIN_WORDS, CHAT_MAX_WORDS)
+	return body
 
 
 ## Account routes: the parent's sign-in token and nothing else.

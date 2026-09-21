@@ -1,0 +1,412 @@
+{
+  "source": "Recorded from tools/tutor_mock_server/server.mjs (chat scenario) on 2026-09-21. Synthetic, adult-authored text only; the same strings the Worker mock chat provider (cloud/src/tutor/chat_provider.ts) produces. No child data.",
+  "baseUrl": "http://127.0.0.1:8787",
+  "refused": {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": "feature_disabled",
+        "message": "That feature is not available on this server.",
+        "feature": "free_chat"
+      }
+    }
+  },
+  "session": {
+    "status": 201,
+    "body": {
+      "sessionId": "c41630a9-1d9c-4746-8717-6c199f747bbc",
+      "childId": "dev-parent",
+      "entitlement": "free",
+      "quota": {
+        "entitlement": "free",
+        "dailyAllowanceSeconds": 300,
+        "usedSeconds": 0,
+        "remainingSeconds": 300,
+        "resetAtUtc": "2026-09-22T00:00:00.000Z",
+        "dailyTurnAllowance": 60,
+        "usedTurns": 0
+      },
+      "lessonId": "free_chat",
+      "lessonKnown": false,
+      "mode": "chat",
+      "chat": {
+        "responseMaxWords": 25,
+        "contextTurns": 6
+      }
+    }
+  },
+  "exchanges": [
+    {
+      "name": "cats",
+      "request": {
+        "path": "/v1/tutor/sessions/c41630a9-1d9c-4746-8717-6c199f747bbc/turns",
+        "headers": {
+          "Idempotency-Key": "c41630a9-1d9c-4746-8717-6c199f747bbc:c1"
+        },
+        "body": {
+          "transcript": "what do cats eat"
+        }
+      },
+      "status": 200,
+      "body": {
+        "turn": {
+          "speech": "Cats eat cat food and drink water.",
+          "subtitle": "Cats eat cat food and drink water.",
+          "emotion": "happy",
+          "gesture": "nod",
+          "visual": {
+            "type": "flashcard",
+            "assetId": "cat"
+          },
+          "lessonAction": "none"
+        },
+        "quota": {
+          "entitlement": "free",
+          "dailyAllowanceSeconds": 300,
+          "usedSeconds": 10,
+          "remainingSeconds": 290,
+          "resetAtUtc": "2026-09-22T00:00:00.000Z",
+          "dailyTurnAllowance": 60,
+          "usedTurns": 1
+        },
+        "endAtBoundary": false,
+        "turnIndex": 1,
+        "chargedSeconds": 10,
+        "provider": "mock",
+        "cached": false,
+        "fallback": null,
+        "contextSource": "chat",
+        "mode": "chat",
+        "chat": {
+          "responseMaxWords": 25,
+          "historyTurns": 1,
+          "redirected": null,
+          "capped": false
+        },
+        "usage": {
+          "sttSeconds": 0,
+          "llmInputTokens": 0,
+          "llmOutputTokens": 0,
+          "ttsChars": 34,
+          "latencyMs": 1,
+          "costUsd": 0
+        }
+      }
+    },
+    {
+      "name": "follow_up_dogs",
+      "request": {
+        "path": "/v1/tutor/sessions/c41630a9-1d9c-4746-8717-6c199f747bbc/turns",
+        "headers": {
+          "Idempotency-Key": "c41630a9-1d9c-4746-8717-6c199f747bbc:c2"
+        },
+        "body": {
+          "transcript": "and dogs?"
+        }
+      },
+      "status": 200,
+      "body": {
+        "turn": {
+          "speech": "Dogs eat dog food and love bones.",
+          "subtitle": "Dogs eat dog food and love bones.",
+          "emotion": "happy",
+          "gesture": "nod",
+          "visual": {
+            "type": "flashcard",
+            "assetId": "dog"
+          },
+          "lessonAction": "none"
+        },
+        "quota": {
+          "entitlement": "free",
+          "dailyAllowanceSeconds": 300,
+          "usedSeconds": 20,
+          "remainingSeconds": 280,
+          "resetAtUtc": "2026-09-22T00:00:00.000Z",
+          "dailyTurnAllowance": 60,
+          "usedTurns": 2
+        },
+        "endAtBoundary": false,
+        "turnIndex": 2,
+        "chargedSeconds": 10,
+        "provider": "mock",
+        "cached": false,
+        "fallback": null,
+        "contextSource": "chat",
+        "mode": "chat",
+        "chat": {
+          "responseMaxWords": 25,
+          "historyTurns": 2,
+          "redirected": null,
+          "capped": false
+        },
+        "usage": {
+          "sttSeconds": 0,
+          "llmInputTokens": 0,
+          "llmOutputTokens": 0,
+          "ttsChars": 33,
+          "latencyMs": 1,
+          "costUsd": 0
+        }
+      }
+    },
+    {
+      "name": "follow_up_why_uses_context",
+      "request": {
+        "path": "/v1/tutor/sessions/c41630a9-1d9c-4746-8717-6c199f747bbc/turns",
+        "headers": {
+          "Idempotency-Key": "c41630a9-1d9c-4746-8717-6c199f747bbc:c3"
+        },
+        "body": {
+          "transcript": "why?"
+        }
+      },
+      "status": 200,
+      "body": {
+        "turn": {
+          "speech": "About dogs? Dogs say woof and wag their tails when happy.",
+          "subtitle": "About dogs? Dogs say woof and wag their tails when happy.",
+          "emotion": "happy",
+          "gesture": "point",
+          "visual": {
+            "type": "flashcard",
+            "assetId": "dog"
+          },
+          "lessonAction": "none"
+        },
+        "quota": {
+          "entitlement": "free",
+          "dailyAllowanceSeconds": 300,
+          "usedSeconds": 30,
+          "remainingSeconds": 270,
+          "resetAtUtc": "2026-09-22T00:00:00.000Z",
+          "dailyTurnAllowance": 60,
+          "usedTurns": 3
+        },
+        "endAtBoundary": false,
+        "turnIndex": 3,
+        "chargedSeconds": 10,
+        "provider": "mock",
+        "cached": false,
+        "fallback": null,
+        "contextSource": "chat",
+        "mode": "chat",
+        "chat": {
+          "responseMaxWords": 25,
+          "historyTurns": 3,
+          "redirected": null,
+          "capped": false
+        },
+        "usage": {
+          "sttSeconds": 0,
+          "llmInputTokens": 0,
+          "llmOutputTokens": 0,
+          "ttsChars": 57,
+          "latencyMs": 1,
+          "costUsd": 0
+        }
+      }
+    },
+    {
+      "name": "redirect_personal_data",
+      "request": {
+        "path": "/v1/tutor/sessions/c41630a9-1d9c-4746-8717-6c199f747bbc/turns",
+        "headers": {
+          "Idempotency-Key": "c41630a9-1d9c-4746-8717-6c199f747bbc:c4"
+        },
+        "body": {
+          "transcript": "what is your phone number"
+        }
+      },
+      "status": 200,
+      "body": {
+        "turn": {
+          "speech": "Let's keep that private! Tell me your favorite animal instead.",
+          "subtitle": "Let's keep that private! Tell me your favorite animal instead.",
+          "emotion": "smile",
+          "gesture": "tilt",
+          "visual": {
+            "type": "none"
+          },
+          "lessonAction": "none"
+        },
+        "quota": {
+          "entitlement": "free",
+          "dailyAllowanceSeconds": 300,
+          "usedSeconds": 40,
+          "remainingSeconds": 260,
+          "resetAtUtc": "2026-09-22T00:00:00.000Z",
+          "dailyTurnAllowance": 60,
+          "usedTurns": 4
+        },
+        "endAtBoundary": false,
+        "turnIndex": 4,
+        "chargedSeconds": 10,
+        "provider": "safety",
+        "cached": false,
+        "fallback": "redirect:child:personal_data",
+        "contextSource": "chat",
+        "mode": "chat",
+        "chat": {
+          "responseMaxWords": 25,
+          "historyTurns": 4,
+          "redirected": "personal_data",
+          "capped": false
+        },
+        "usage": {
+          "sttSeconds": 0,
+          "llmInputTokens": 0,
+          "llmOutputTokens": 0,
+          "ttsChars": 62,
+          "latencyMs": 1,
+          "costUsd": 0
+        }
+      }
+    },
+    {
+      "name": "capped_song",
+      "request": {
+        "path": "/v1/tutor/sessions/c41630a9-1d9c-4746-8717-6c199f747bbc/turns",
+        "headers": {
+          "Idempotency-Key": "c41630a9-1d9c-4746-8717-6c199f747bbc:c5"
+        },
+        "body": {
+          "transcript": "sing a song please",
+          "responseMaxWords": 8
+        }
+      },
+      "status": 200,
+      "body": {
+        "turn": {
+          "speech": "I love to sing! La la la.",
+          "subtitle": "I love to sing! La la la.",
+          "emotion": "happy",
+          "gesture": "nod",
+          "visual": {
+            "type": "none"
+          },
+          "lessonAction": "none"
+        },
+        "quota": {
+          "entitlement": "free",
+          "dailyAllowanceSeconds": 300,
+          "usedSeconds": 50,
+          "remainingSeconds": 250,
+          "resetAtUtc": "2026-09-22T00:00:00.000Z",
+          "dailyTurnAllowance": 60,
+          "usedTurns": 5
+        },
+        "endAtBoundary": false,
+        "turnIndex": 5,
+        "chargedSeconds": 10,
+        "provider": "mock",
+        "cached": false,
+        "fallback": null,
+        "contextSource": "chat",
+        "mode": "chat",
+        "chat": {
+          "responseMaxWords": 8,
+          "historyTurns": 5,
+          "redirected": null,
+          "capped": true
+        },
+        "usage": {
+          "sttSeconds": 0,
+          "llmInputTokens": 0,
+          "llmOutputTokens": 0,
+          "ttsChars": 25,
+          "latencyMs": 1,
+          "costUsd": 0
+        }
+      }
+    },
+    {
+      "name": "unsure",
+      "request": {
+        "path": "/v1/tutor/sessions/c41630a9-1d9c-4746-8717-6c199f747bbc/turns",
+        "headers": {
+          "Idempotency-Key": "c41630a9-1d9c-4746-8717-6c199f747bbc:c6"
+        },
+        "body": {
+          "transcript": "zorp blex"
+        }
+      },
+      "status": 200,
+      "body": {
+        "turn": {
+          "speech": "I'm not sure, let's find out together! Do you like cats or dogs?",
+          "subtitle": "I'm not sure, let's find out together! Do you like cats or dogs?",
+          "emotion": "thinking",
+          "gesture": "tilt",
+          "visual": {
+            "type": "none"
+          },
+          "lessonAction": "none"
+        },
+        "quota": {
+          "entitlement": "free",
+          "dailyAllowanceSeconds": 300,
+          "usedSeconds": 60,
+          "remainingSeconds": 240,
+          "resetAtUtc": "2026-09-22T00:00:00.000Z",
+          "dailyTurnAllowance": 60,
+          "usedTurns": 6
+        },
+        "endAtBoundary": false,
+        "turnIndex": 6,
+        "chargedSeconds": 10,
+        "provider": "mock",
+        "cached": false,
+        "fallback": null,
+        "contextSource": "chat",
+        "mode": "chat",
+        "chat": {
+          "responseMaxWords": 25,
+          "historyTurns": 6,
+          "redirected": null,
+          "capped": false
+        },
+        "usage": {
+          "sttSeconds": 0,
+          "llmInputTokens": 0,
+          "llmOutputTokens": 0,
+          "ttsChars": 64,
+          "latencyMs": 1,
+          "costUsd": 0
+        }
+      }
+    }
+  ],
+  "emptyTranscript": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": "invalid_turn",
+        "message": "transcript is required in chat mode"
+      }
+    }
+  },
+  "end": {
+    "status": 200,
+    "body": {
+      "sessionId": "c41630a9-1d9c-4746-8717-6c199f747bbc",
+      "endedAt": "2026-09-21T09:00:00.000Z",
+      "quota": {
+        "entitlement": "free",
+        "dailyAllowanceSeconds": 300,
+        "usedSeconds": 60,
+        "remainingSeconds": 240,
+        "resetAtUtc": "2026-09-22T00:00:00.000Z",
+        "dailyTurnAllowance": 60,
+        "usedTurns": 6
+      },
+      "usage": {
+        "turns": 6,
+        "llmInputTokens": 0,
+        "llmOutputTokens": 0,
+        "audioSeconds": 0,
+        "costUsd": 0
+      }
+    }
+  }
+}
