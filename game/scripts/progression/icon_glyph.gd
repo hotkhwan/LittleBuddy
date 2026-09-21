@@ -71,6 +71,15 @@ enum Glyph {
 	PICTURE_DRESS,
 	## Home, everywhere: the pink-roofed house the logo shows.
 	PICTURE_HOUSE,
+	## Parents: the fourth destination card uses the same glossy picture tier.
+	PICTURE_PARENTS,
+	# Functional additions are appended so existing scene ordinals stay stable.
+	CLOSE,
+	DONE,
+	RESET,
+	MUSIC,
+	VOICE,
+	LANGUAGE,
 }
 
 const ICON_PATHS: Dictionary = {
@@ -86,6 +95,13 @@ const ICON_PATHS: Dictionary = {
 	Glyph.PICTURE_TOYS: "res://assets/ui/icons/pictures/toys.png",
 	Glyph.PICTURE_DRESS: "res://assets/ui/icons/pictures/dress.png",
 	Glyph.PICTURE_HOUSE: "res://assets/ui/icons/pictures/house.png",
+	Glyph.PICTURE_PARENTS: "res://assets/ui/icons/pictures/parents.png",
+	Glyph.CLOSE: "res://assets/ui/icons/close.svg",
+	Glyph.DONE: "res://assets/ui/icons/done.svg",
+	Glyph.RESET: "res://assets/ui/icons/reset.svg",
+	Glyph.MUSIC: "res://assets/ui/icons/music.svg",
+	Glyph.VOICE: "res://assets/ui/icons/voice.svg",
+	Glyph.LANGUAGE: "res://assets/ui/icons/language.svg",
 }
 
 ## The glyphs that are pictures. Kept as a dictionary rather than "ordinal >=
@@ -95,6 +111,7 @@ const PICTURE_GLYPHS: Dictionary = {
 	Glyph.PICTURE_TOYS: true,
 	Glyph.PICTURE_DRESS: true,
 	Glyph.PICTURE_HOUSE: true,
+	Glyph.PICTURE_PARENTS: true,
 }
 
 

@@ -101,24 +101,24 @@ func _test_standalone_mode(tree: SceneTree):
 	if gear != null and gear.visible:
 		failures.append("standalone: the corner gear must not compete with the gate card")
 
-	# The hold bar is a real 3 s gate with visible progress.
+	# The hold bar is a real 1 s gate with visible progress.
 	var hold: Control = panel.find_child("GateHold", true, false) as Control
 	if hold == null:
 		failures.append("no GateHold on the gate card")
 	else:
-		if absf(float(hold.get("hold_duration")) - 3.0) > 0.01:
-			failures.append("the gate card hold is %.1f s, expected 3.0" % float(hold.get("hold_duration")))
+		if absf(float(hold.get("hold_duration")) - 1.0) > 0.01:
+			failures.append("the gate card hold is %.1f s, expected 1.0" % float(hold.get("hold_duration")))
 		var opened: Array = [false]
 		panel.connect("opened", func() -> void: opened[0] = true)
 		hold.call("begin_hold")
-		hold.call("advance", 1.5)
+		hold.call("advance", 0.5)
 		if absf(float(hold.call("get_progress")) - 0.5) > 0.05:
 			failures.append("half-way through the hold the progress is %.2f" % float(hold.call("get_progress")))
 		if opened[0]:
 			failures.append("the panel opened before the hold completed")
-		hold.call("advance", 1.6)
+		hold.call("advance", 0.6)
 		if not opened[0]:
-			failures.append("a completed 3 s hold did not open the settings")
+			failures.append("a completed 1 s hold did not open the settings")
 		if not bool(panel.call("is_panel_visible")) or bool(panel.call("is_gate_card_visible")):
 			failures.append("after the hold the panel must show and the gate card must hide")
 

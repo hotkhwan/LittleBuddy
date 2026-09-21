@@ -68,6 +68,6 @@ grow_vertical = 0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.541, 0.451, 0.345, 0.75)
 theme_override_font_sizes/font_size = 18
-text = "v0.1.0"
+text = "v0.1.1"
 horizontal_alignment = 2
 vertical_alignment = 1

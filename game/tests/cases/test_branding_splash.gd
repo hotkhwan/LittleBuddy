@@ -167,6 +167,10 @@ func _test_logo_title_drop_in():
 			failures.append("LogoTitle does not keep the logo's aspect")
 		if rect.mouse_filter != Control.MOUSE_FILTER_IGNORE:
 			failures.append("LogoTitle eats taps; it is decorative")
+		splash.call("_apply_intro", 0.0)
+		if not rect.pivot_offset.is_equal_approx(rect.size * 0.5):
+			failures.append("the first intro frame scales around %s, not the centred pivot %s"
+					% [str(rect.pivot_offset), str(rect.size * 0.5)])
 		# Sway: 3 degrees at the peak, none at rest, and gated by is_processing().
 		var peak: float = absf(float(rect.call("sway_at", LogoTitle.SWAY_PERIOD_SEC * 0.25)))
 		if absf(peak - deg_to_rad(LogoTitle.SWAY_DEGREES)) > 0.001:

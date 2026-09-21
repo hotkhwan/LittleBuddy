@@ -183,8 +183,7 @@ theme_override_styles/focus = ExtResource("6")
 ; the caption band under it holds two lines at the shared 30 pt size. Touch target and visible icon are separate
 ; numbers on purpose: the finger gets the whole card, the eye gets a sticker.
 ; Play with Bunny, Free Play and Dress Up carry PICTURES from the owner's pack
-; (`IconGlyph` picture tier); Grown-ups keeps the flat gear, the plainest thing
-; in the row, because a child should not be drawn to it.
+; (`IconGlyph` picture tier), including the softer lavender Parents gear.
 [node name="PlayIcon" type="TextureRect" parent="UI/SafeArea/PlayButton"]
 layout_mode = 1
 anchors_preset = -1
@@ -337,15 +336,14 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -42.0
-offset_top = 24.0
-offset_right = 42.0
-offset_bottom = 108.0
+offset_left = -48.0
+offset_top = 18.0
+offset_right = 48.0
+offset_bottom = 114.0
 grow_horizontal = 2
 mouse_filter = 2
 script = ExtResource("3")
-glyph = 6
-tint = Color(0.42, 0.38, 0.635, 1)
+glyph = 12
 
 [node name="ParentCaption" type="Label" parent="UI/SafeArea/ParentButton"]
 layout_mode = 1

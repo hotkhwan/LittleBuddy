@@ -1016,7 +1016,7 @@ func _place_logo() -> void:
 	panel.visible = false
 
 
-## "v0.1.0", bottom-right, ink at 55%. Read from `GameVersion.BUILD` so it can
+## "v0.1.1", bottom-right, ink at 55%. Read from `GameVersion.BUILD` so it can
 ## never disagree with the content packs' idea of the build.
 func _add_version_label() -> void:
 	var host: Control = get_node_or_null("UI/SafeArea") as Control
