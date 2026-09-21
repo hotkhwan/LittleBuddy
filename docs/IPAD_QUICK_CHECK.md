@@ -105,6 +105,23 @@ Stop and write it down if: it crashes, Aliz gets stuck, anything is unreadable,
 the iPad gets hot, a reward is granted twice, progress is lost, or the classroom
 mic is ever on outside a lesson (the indicator at the bottom says so).
 
+## If Aliz does not hear you (debug builds only)
+
+1. In the classroom, tap the round mic indicator at the bottom centre **five
+   times quickly**. A dark panel opens at the top left. It shows, live:
+   Speech provider (on_device / mock / none), Permission (granted / denied /
+   not asked / pending), Capture (running / stopped) with the level, VAD
+   (silence / speech), Recognition (open / armed / partials / finals /
+   timeouts), Lesson state, Audio (playing / stopped). No words you say are
+   shown or stored. Five more taps close it. A release build has no panel.
+2. Photograph the panel while you speak and send the photo.
+3. The same numbers are written every 3 s to `Documents/tutor_diag.json`
+   in the app container; pull it like `speech_diag.json` below.
+4. The first time you open Learn with Aliz the iPad must show its own
+   microphone and speech-recognition prompts. If it never did, that is a
+   FAIL on its own. If you refused them once, turn them on in
+   Settings → Little Days (the classroom tells a grown-up this in one line).
+
 ## Speech evidence to send back
 
 Parent Corner → **Check speech** names the root cause in one line. Then, from
@@ -115,6 +132,8 @@ xcrun devicectl device copy from --device <UDID> \
   --domain-type appDataContainer --domain-identifier com.pointit.littlebuddy \
   --source Documents/speech_diag.json --destination ./speech_diag.json
 ```
+
+For the classroom, repeat with `Documents/tutor_diag.json`.
 
 `backend` should read `ios`. `mock` on a device is a bug, not a result.
 
