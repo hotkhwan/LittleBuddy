@@ -6,6 +6,26 @@
   "notes": "Every file is in METRES with its base on Y=0 and its footprint centred (ART_BIBLE §6 pivot). longestAxisMetres is the size a consumer gets when it asks for none; a consumer may pass its own. maxTriangles is the per-prop gate asserted by test_assets_models.gd. derivedFrom records the exact local command so a part can be regenerated from its master without credits.",
   "props": [
     {
+      "propId": "toyBlocks",
+      "word": "blocks",
+      "file": "res://assets/models/meshy-props/toyBlocks.glb",
+      "longestAxisMetres": 0.26,
+      "yawDegrees": 0,
+      "triangles": 2547,
+      "maxTriangles": 2600,
+      "textureSize": 512,
+      "derivedFrom": {
+        "file": "res://assets/tutor/props/number_blocks.glb",
+        "tool": "tools/meshy_split.py",
+        "args": "--parts toyBlocks --assign *=toyBlocks --scale 0.26 --origin bottom"
+      },
+      "meshyTaskIds": ["01a0bf64-9d67-774f-8c81-7d1df655c930", "01a0bf65-28bb-7381-a687-705b4994647d"],
+      "creditsSpent": 0,
+      "creditsNote": "Free reuse of accepted classroom generation; original 15 credits already recorded in tutor manifest and shared ledger.",
+      "license": "Meshy subscription — owner's account, commercial use per plan; evidence: original task ids",
+      "usedBy": ["scripts/gameplay/object_spawner.gd (blocks in Baby Room and house tidy-up)"]
+    },
+    {
       "propId": "apple",
       "word": "apple",
       "file": "res://assets/models/meshy-props/apple.glb",
@@ -26,7 +46,8 @@
       "creditsSpent": 0,
       "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids",
       "usedBy": [
-        "scripts/kitchen/kitchen_items.gd (apple)"
+        "scripts/kitchen/kitchen_items.gd (apple)",
+        "scripts/gameplay/object_spawner.gd (apple in staged world/Baby Room)"
       ]
     },
     {
@@ -50,7 +71,8 @@
       "creditsSpent": 0,
       "license": "Meshy subscription — owner's account, commercial use per plan; evidence: task ids",
       "usedBy": [
-        "scripts/kitchen/kitchen_items.gd (banana)"
+        "scripts/kitchen/kitchen_items.gd (banana)",
+        "scripts/gameplay/object_spawner.gd (banana in staged world/Baby Room)"
       ]
     },
     {

@@ -135,6 +135,9 @@ const MESHY_PACK: String = "meshy-props"
 ## own model/primitive as before.
 const MODEL_UPGRADES: Dictionary = {
 	"teddy": "meshy-props/teddy",
+	"blocks": "meshy-props/toyBlocks",
+	"apple": "meshy-props/apple",
+	"banana": "meshy-props/banana",
 }
 const PropRegistryScript := preload("res://scripts/house/prop_registry.gd")
 
@@ -192,6 +195,13 @@ const MODEL_MAX_SIZE_M: float = 0.26
 const MODEL_PRESENTATION: Dictionary = {
 	# Meshy teddy (2026-09-21): sits facing the camera; 0.25 m tall in a hand.
 	"meshy-props/teddy": {"size": 0.25, "rotation": Vector3(0.0, 0.0, 0.0)},
+	# Reuse the accepted classroom blocks; identical footprint/grab envelope to
+	# the procedural stack. Only the presentation changes, never the object id.
+	"meshy-props/toyBlocks": {"size": 0.26, "rotation": Vector3(0.0, -18.0, 0.0)},
+	# Match the food chooser/kitchen accepted art while retaining each original
+	# pickup size and its grab envelope. The accepted banana already lies on X.
+	"meshy-props/apple": {"size": 0.19, "rotation": Vector3.ZERO},
+	"meshy-props/banana": {"size": 0.25, "rotation": Vector3.ZERO},
 	# Leaf and stem turned toward the camera.
 	"kenney-food-kit/apple": {"size": 0.19, "rotation": Vector3(0.0, 35.0, 0.0)},
 	# Authored lying along -Z, i.e. pointing away from the camera. Turned across

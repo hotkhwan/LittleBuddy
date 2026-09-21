@@ -1,5 +1,13 @@
 meshy-props — generated props for the house (Little Days)
 
+toyBlocks.glb — night sprint free reuse of accepted classroom number_blocks.glb.
+Original tasks 01a0bf64-9d67-774f-8c81-7d1df655c930 and
+01a0bf65-28bb-7381-a687-705b4994647d; no new tasks or credits. Locally normalized
+with tools/meshy_split.py --parts toyBlocks --assign '*=toyBlocks' --scale 0.26
+--origin bottom. All 2547 triangles and the accepted 512px texture retained;
+base Y=0, footprint centred, 0.26m wide. Shared classroom visual vocabulary,
+used by ObjectSpawner for real house tidy-up and Baby Room objects.
+
 Source: Meshy text-to-3D (Smart Topology tier, ai_model meshy-t2), generated on
 the owner's paid Meshy account from prompts written for this project, with no
 reference images. Commercial use per the plan's terms. Provenance evidence is
