@@ -143,6 +143,12 @@ func _test_nothing_shipped_from_uiGenerated():
 	for path: String in [BOOT_SPLASH, LOGO_1024, LOGO_512, PROJECT_ICON]:
 		if path.contains("uiGenerated"):
 			failures.append("%s lives under uiGenerated, which every export excludes" % path)
+		if path.contains("generated_v1"):
+			failures.append("%s lives under the owner's source pack, which is .gdignore'd and never in the pck" % path)
+	# The pack's app-icon concept shows a white rabbit, not Bunny; its README
+	# says it MUST NOT ship, and the folder it sits in is ignored by the engine.
+	if not FileAccess.file_exists(ProjectSettings.globalize_path("res://assets/ui/generated_v1/.gdignore")):
+		failures.append("assets/ui/generated_v1 has lost its .gdignore; the app-icon concept there must never ship")
 	for script_path: String in [
 		"res://scripts/branding/splash.gd",
 		"res://scripts/branding/logo_title.gd",

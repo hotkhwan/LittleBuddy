@@ -14,3 +14,13 @@ Each icon is an independently cropped PNG with alpha, 512 x 512. These are OWNER
 - `branding/app_icon_CONCEPT_NOT_CANONICAL_BUNNY.png`: concept only. It contains a white rabbit rather than human baby Bunny and a different Aliz hairstyle, and MUST NOT be shipped as Little Days canonical character icon. Use the repo's canonical character render for final app icon instead.
 
 Implementation: copy into `game/assets/ui/generated_v1/`; use icon inside consistent Godot TextureButton/button component. Keep accessible hit area ~44–48pt or larger and icon itself smaller; evaluate at iPhone and iPad viewports. Do not hard-replace working runtime assets before comparing. PNG assets have a generative origin; do not confuse with licensed third-party art. Keep the existing game's progress, navigation and subscriptions unchanged.
+
+## Integration status (2026-09-21)
+
+This folder is the owner's SOURCE pack and is `.gdignore`d: nothing here is
+imported, referenced or exported (so the app-icon concept cannot ship by
+accident). The four icons that were adopted are re-boxed onto the icon set's
+shared 86% optical grid and downscaled to 256 px under
+`assets/ui/icons/pictures/` (`play_badge`, `toys`, `dress`, `house`), and drawn
+through `IconGlyph` picture glyphs. What was used where, and why the rest was
+not, is in `docs/UI_PACK_INTEGRATION.md`.

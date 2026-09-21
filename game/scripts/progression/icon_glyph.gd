@@ -27,6 +27,25 @@ extends TextureRect
 ##
 ## `tint` drives `self_modulate`, never `modulate`, so a caller (the celebration
 ## fade, say) still owns `modulate` for animation.
+##
+## ## Two tiers, one component (owner UI pack v1, 2026-09-21)
+##
+## The flat white-SVG glyphs above are the CONTROL tier: ink-tinted, one weight,
+## on every in-game button (Next, Speak, Back, Mute, the gear). The owner's
+## generated pack added a second, PICTURE tier -- full-colour, soft-shaded
+## stickers in the same family as the title logo -- and the rule for where each
+## goes is short: **pictures name PLACES a child chooses to go; glyphs name
+## things to DO.** So the title-screen destination cards (Play with Bunny, Free
+## Play, Dress Up) and the one picture that means "back to the title" (the
+## house, on every Home button) are pictures; everything a child operates
+## inside a level stays a glyph, and the grown-up controls stay the quietest
+## thing on the screen. `docs/UI_PACK_INTEGRATION.md` has the per-asset call.
+##
+## Picture glyphs ignore `tint` (they are already coloured; multiplying them by
+## ink would muddy them) and sample with mipmaps, because the 256 px source is
+## always drawn smaller than it is. Sources live under `icons/pictures/`,
+## re-boxed onto the same 86% optical grid as the SVGs so a picture and a glyph
+## sit at matching weight in matching buttons.
 
 enum Glyph {
 	STAR,
@@ -41,6 +60,17 @@ enum Glyph {
 	## Learn with Aliz: an open book. The title screen has no microphone open,
 	## so it does not show one (QA C8).
 	BOOK,
+	# -- Picture tier (full colour; `tint` is ignored). Appended, never
+	# reordered: scene files store the ordinal.
+	## Play with Bunny: the pack's play badge.
+	PICTURE_PLAY,
+	## Free Play: a toy block, a spade and a ball -- "play", not "the house",
+	## so it can never be confused with Home.
+	PICTURE_TOYS,
+	## Dress Up: a dress on a hanger with a hat.
+	PICTURE_DRESS,
+	## Home, everywhere: the pink-roofed house the logo shows.
+	PICTURE_HOUSE,
 }
 
 const ICON_PATHS: Dictionary = {
@@ -52,17 +82,37 @@ const ICON_PATHS: Dictionary = {
 	Glyph.STICKERS: "res://assets/ui/icons/stickers.svg",
 	Glyph.SETTINGS: "res://assets/ui/icons/settings.svg",
 	Glyph.BOOK: "res://assets/ui/icons/book.svg",
+	Glyph.PICTURE_PLAY: "res://assets/ui/icons/pictures/play_badge.png",
+	Glyph.PICTURE_TOYS: "res://assets/ui/icons/pictures/toys.png",
+	Glyph.PICTURE_DRESS: "res://assets/ui/icons/pictures/dress.png",
+	Glyph.PICTURE_HOUSE: "res://assets/ui/icons/pictures/house.png",
 }
+
+## The glyphs that are pictures. Kept as a dictionary rather than "ordinal >=
+## PICTURE_PLAY" so a future glyph can join either tier without a renumber.
+const PICTURE_GLYPHS: Dictionary = {
+	Glyph.PICTURE_PLAY: true,
+	Glyph.PICTURE_TOYS: true,
+	Glyph.PICTURE_DRESS: true,
+	Glyph.PICTURE_HOUSE: true,
+}
+
+
+static func is_picture(which: int) -> bool:
+	return PICTURE_GLYPHS.has(which)
 
 @export var glyph: Glyph = Glyph.STAR:
 	set(value):
 		glyph = value
 		_apply_texture()
+		_apply_tint()
 
+## Ignored by picture glyphs (see `is_picture()`); kept on them so a caller can
+## set it without checking which tier it has.
 @export var tint: Color = Color(1.0, 1.0, 1.0, 1.0):
 	set(value):
 		tint = value
-		self_modulate = value
+		_apply_tint()
 
 ## A coloured disc behind the icon, drawn in `_draw()` before the texture.
 ##
@@ -102,7 +152,7 @@ func _ready() -> void:
 	stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_apply_texture()
-	self_modulate = tint
+	_apply_tint()
 
 
 func _notification(what: int) -> void:
@@ -137,3 +187,9 @@ func _apply_texture() -> void:
 		texture = null
 		return
 	texture = load(path)
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if is_picture(glyph) \
+			else CanvasItem.TEXTURE_FILTER_PARENT_NODE
+
+
+func _apply_tint() -> void:
+	self_modulate = Color(1.0, 1.0, 1.0, tint.a) if is_picture(glyph) else tint

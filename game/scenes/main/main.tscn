@@ -1,16 +1,14 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scenes/main/main.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/safe_area.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/progression/icon_glyph.gd" id="3"]
-[ext_resource type="Script" path="res://scenes/main/house_glyph.gd" id="4"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/panel_cream.tres" id="5"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_mint.tres" id="6"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_mint_down.tres" id="7"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_peach.tres" id="8"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_peach_down.tres" id="9"]
 [ext_resource type="Script" path="res://scripts/menu/menu_garden.gd" id="11"]
-[ext_resource type="Script" path="res://scripts/menu/dress_glyph.gd" id="12"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_pink.tres" id="13"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_pink_down.tres" id="14"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/btn_lavender.tres" id="15"]
@@ -168,9 +166,9 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -572.0
-offset_top = -292.0
-offset_right = -316.0
+offset_left = -540.0
+offset_top = -276.0
+offset_right = -300.0
 offset_bottom = -36.0
 grow_horizontal = 2
 grow_vertical = 0
@@ -180,33 +178,39 @@ theme_override_styles/hover = ExtResource("6")
 theme_override_styles/pressed = ExtResource("7")
 theme_override_styles/disabled = ExtResource("6")
 theme_override_styles/focus = ExtResource("6")
+; The four cards are 240 x 240 -- ART_BIBLE section 8's floor, exactly -- and
+; the picture inside each is a 116 px box (the art covers 86% of it, ~100 px),
+; the caption band under it 98 px (two lines of 30 pt for Play with Bunny). Touch target and visible icon are separate
+; numbers on purpose: the finger gets the whole card, the eye gets a sticker.
+; Play with Bunny, Free Play and Dress Up carry PICTURES from the owner's pack
+; (`IconGlyph` picture tier); Grown-ups keeps the flat gear, the plainest thing
+; in the row, because a child should not be drawn to it.
 [node name="PlayIcon" type="TextureRect" parent="UI/SafeArea/PlayButton"]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -56.0
-offset_top = 22.0
-offset_right = 56.0
-offset_bottom = 134.0
+offset_left = -58.0
+offset_top = 12.0
+offset_right = 58.0
+offset_bottom = 128.0
 grow_horizontal = 2
 mouse_filter = 2
 script = ExtResource("3")
-glyph = 3
-tint = Color(0.137, 0.365, 0.294, 1)
+glyph = 8
 
 [node name="PlayCaption" type="Label" parent="UI/SafeArea/PlayButton"]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 10.0
-offset_top = 138.0
+offset_top = 128.0
 offset_right = -10.0
-offset_bottom = 246.0
+offset_bottom = 226.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.137, 0.365, 0.294, 1)
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 30
 text = "Play with Bunny"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -220,8 +224,8 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -276.0
-offset_top = -292.0
+offset_left = -260.0
+offset_top = -276.0
 offset_right = -20.0
 offset_bottom = -36.0
 grow_horizontal = 2
@@ -232,28 +236,26 @@ theme_override_styles/hover = ExtResource("8")
 theme_override_styles/pressed = ExtResource("9")
 theme_override_styles/disabled = ExtResource("8")
 theme_override_styles/focus = ExtResource("8")
-[node name="HouseIcon" type="Control" parent="UI/SafeArea/FreePlayButton"]
+[node name="ToysIcon" type="TextureRect" parent="UI/SafeArea/FreePlayButton"]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -62.0
-offset_top = 34.0
-offset_right = 62.0
-offset_bottom = 158.0
+offset_left = -58.0
+offset_top = 12.0
+offset_right = 58.0
+offset_bottom = 128.0
 grow_horizontal = 2
 mouse_filter = 2
-script = ExtResource("4")
-tint = Color(0.349, 0.259, 0.169, 1)
-face_color = Color(0.984, 0.82, 0.675, 1)
-window_color = Color(0.984, 0.82, 0.675, 1)
+script = ExtResource("3")
+glyph = 9
 
 [node name="FreePlayCaption" type="Label" parent="UI/SafeArea/FreePlayButton"]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 164.0
-offset_bottom = 222.0
+offset_top = 128.0
+offset_bottom = 226.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
@@ -271,8 +273,8 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = 20.0
-offset_top = -292.0
-offset_right = 276.0
+offset_top = -276.0
+offset_right = 260.0
 offset_bottom = -36.0
 grow_horizontal = 2
 grow_vertical = 0
@@ -282,27 +284,26 @@ theme_override_styles/hover = ExtResource("13")
 theme_override_styles/pressed = ExtResource("14")
 theme_override_styles/disabled = ExtResource("13")
 theme_override_styles/focus = ExtResource("13")
-[node name="DressIcon" type="Control" parent="UI/SafeArea/DressUpButton"]
+[node name="DressIcon" type="TextureRect" parent="UI/SafeArea/DressUpButton"]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -62.0
-offset_top = 34.0
-offset_right = 62.0
-offset_bottom = 158.0
+offset_left = -58.0
+offset_top = 12.0
+offset_right = 58.0
+offset_bottom = 128.0
 grow_horizontal = 2
 mouse_filter = 2
-script = ExtResource("12")
-tint = Color(0.349, 0.259, 0.169, 1)
-face_color = Color(0.973, 0.749, 0.82, 1)
+script = ExtResource("3")
+glyph = 10
 
 [node name="DressUpCaption" type="Label" parent="UI/SafeArea/DressUpButton"]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 164.0
-offset_bottom = 222.0
+offset_top = 128.0
+offset_bottom = 226.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.349, 0.259, 0.169, 1)
@@ -319,9 +320,9 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = 316.0
-offset_top = -292.0
-offset_right = 572.0
+offset_left = 300.0
+offset_top = -276.0
+offset_right = 540.0
 offset_bottom = -36.0
 grow_horizontal = 2
 grow_vertical = 0
@@ -336,10 +337,10 @@ layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -62.0
-offset_top = 34.0
-offset_right = 62.0
-offset_bottom = 158.0
+offset_left = -50.0
+offset_top = 20.0
+offset_right = 50.0
+offset_bottom = 120.0
 grow_horizontal = 2
 mouse_filter = 2
 script = ExtResource("3")
@@ -350,8 +351,8 @@ tint = Color(0.42, 0.38, 0.635, 1)
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 164.0
-offset_bottom = 222.0
+offset_top = 128.0
+offset_bottom = 226.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.42, 0.38, 0.635, 1)

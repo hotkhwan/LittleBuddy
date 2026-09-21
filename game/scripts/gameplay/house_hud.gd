@@ -388,10 +388,13 @@ func build() -> void:
 	house.set("face_color", Palette.HOME_CHROME)
 	house.set("window_color", Palette.HOME_CHROME)
 	house.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	house.offset_left = 16.0
-	house.offset_top = 14.0
-	house.offset_right = -16.0
-	house.offset_bottom = -18.0
+	# An 80 px picture box in the 104 px disc (the house covers 86% of it):
+	# the target is the disc, the picture is what the eye gets. Pack house,
+	# 2026-09-21; see docs/UI_PACK_INTEGRATION.md.
+	house.offset_left = 12.0
+	house.offset_top = 10.0
+	house.offset_right = -12.0
+	house.offset_bottom = -14.0
 	_home_button.add_child(house)
 	_home_button.pressed.connect(open_pause_menu)
 

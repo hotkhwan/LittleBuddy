@@ -70,6 +70,7 @@ func test_name() -> String:
 func run():
 	var failures: Array = []
 	failures.append_array(_test_icons())
+	failures.append_array(_test_pictures())
 	failures.append_array(_test_styles())
 	failures.append_array(_test_celebration_anchor())
 	failures.append_array(_test_sticker_columns())
@@ -93,6 +94,56 @@ static func _files_under(dir_path: String, suffix: String) -> PackedStringArray:
 	for sub: String in dir.get_directories():
 		found.append_array(_files_under("%s/%s" % [dir_path, sub], suffix))
 	return found
+
+
+# ---------------------------------------------------------------------------
+# Pictures (the owner's UI pack, picture tier of IconGlyph)
+# ---------------------------------------------------------------------------
+
+## The full-colour pictures ship small, with mipmaps, and only from
+## `icons/pictures/`; the owner's source pack under `generated_v1/` is
+## `.gdignore`d so nothing there (least of all the app-icon concept) is ever
+## imported or exported. Picture glyphs ignore `tint`, so a caller that tints
+## everything ink cannot muddy them.
+func _test_pictures():
+	var failures: Array = []
+	var pictures: int = 0
+	for glyph: Variant in IconGlyphScript.ICON_PATHS.keys():
+		if not IconGlyphScript.is_picture(int(glyph)):
+			continue
+		pictures += 1
+		var path: String = String(IconGlyphScript.ICON_PATHS[glyph])
+		if not path.begins_with("res://assets/ui/icons/pictures/") or not path.ends_with(".png"):
+			failures.append("picture glyph %s lives at %s, not under icons/pictures/*.png" % [str(glyph), path])
+		var absolute: String = ProjectSettings.globalize_path(path)
+		var image: Image = Image.load_from_file(absolute) if FileAccess.file_exists(absolute) else null
+		if image == null:
+			failures.append("%s is missing or unreadable" % path)
+			continue
+		if image.get_width() != image.get_height() or image.get_width() > 256:
+			failures.append("%s is %dx%d; pictures are square and at most 256 px (they are never drawn larger)"
+					% [path, image.get_width(), image.get_height()])
+		if image.detect_alpha() == Image.ALPHA_NONE:
+			failures.append("%s has no alpha; a picture sits on a button face" % path)
+		var import_text: String = FileAccess.get_file_as_string(path + ".import")
+		if not import_text.contains("mipmaps/generate=true"):
+			failures.append("%s.import does not generate mipmaps; it is always downscaled" % path)
+		if not import_text.contains("detect_3d/compress_to=0"):
+			failures.append("%s.import may be re-imported as a 3D texture on first use in a 3D scene" % path)
+	if pictures == 0:
+		failures.append("IconGlyph has no picture glyphs")
+	var glyph: TextureRect = IconGlyphScript.new()
+	glyph.set("glyph", IconGlyphScript.Glyph.PICTURE_HOUSE)
+	glyph.set("tint", Color(0.349, 0.259, 0.169))
+	if glyph.self_modulate.r < 0.999 or glyph.self_modulate.g < 0.999 or glyph.self_modulate.b < 0.999:
+		failures.append("tinting a picture glyph ink muddied it (self_modulate %s)" % str(glyph.self_modulate))
+	glyph.set("glyph", IconGlyphScript.Glyph.SETTINGS)
+	if glyph.self_modulate.is_equal_approx(Color.WHITE):
+		failures.append("a flat glyph stopped taking its tint")
+	glyph.free()
+	if not FileAccess.file_exists(ProjectSettings.globalize_path("res://assets/ui/generated_v1/.gdignore")):
+		failures.append("assets/ui/generated_v1 is not .gdignore'd; the source pack (and the app-icon concept) would be imported and exported")
+	return failures
 
 
 # ---------------------------------------------------------------------------

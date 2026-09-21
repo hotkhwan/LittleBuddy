@@ -281,7 +281,8 @@ func build() -> void:
 	house.set("tint", Palette.INK)
 	house.set("face_color", Palette.HOME_CHROME)
 	house.set("window_color", Palette.HOME_CHROME)
-	_place(house, Control.PRESET_FULL_RECT, 16.0, 14.0, -16.0, -18.0)
+	# 80 px picture box in the 104 px disc, the same as the house HUD's Home.
+	_place(house, Control.PRESET_FULL_RECT, 12.0, 10.0, -12.0, -14.0)
 	_home.add_child(house)
 	_home.pressed.connect(func() -> void: home_pressed.emit())
 	_safe.add_child(_home)

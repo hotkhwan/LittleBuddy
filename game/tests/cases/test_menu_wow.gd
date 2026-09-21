@@ -49,7 +49,7 @@ const GARDEN_TRIANGLE_CAP: int = 60000
 ## The layout the scene stores, in the 1024-tall design space.
 const DESIGN_HEIGHT: float = 1024.0
 const TITLE_BOTTOM: float = 170.0
-const BUTTON_ROW_TOP: float = DESIGN_HEIGHT - 292.0
+const BUTTON_ROW_TOP: float = DESIGN_HEIGHT - 276.0
 ## The narrowest shape the game ships on: a 4:3 iPad.
 const NARROWEST_ASPECT: float = 4.0 / 3.0
 const MIN_TOUCH_SIDE: float = 240.0
