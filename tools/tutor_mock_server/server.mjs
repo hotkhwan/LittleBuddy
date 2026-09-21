@@ -39,6 +39,18 @@
 //                function-call-only response first, then the spoken one after
 //                the client returns the outputs -- the vendor's real shape)
 //   rate*        first /sessions answers 429 rate_limited with retryAfterSeconds 0.2
+//   chatoff*     POST /sessions {mode:"chat"} answers 403 feature_disabled (the
+//                Worker's shape outside DEV_MODE / with FREE_CHAT_ENABLED off)
+//
+// Free chat (T2): POST /sessions {mode:"chat", clientId} opens a CHAT session
+//   (any clientId not prefixed chatoff). Its turns need no lessonContext:
+//   {transcript, responseMaxWords?} -> a deterministic reply with follow-up
+//   context (the last topic is remembered: "and dogs?" / "why?"), a safety
+//   redirect for flagged child text (same categories as the Worker), the word
+//   cap (8..40, default 25) and `turn.lessonAction: "none"`, `mode: "chat"`,
+//   `contextSource: "chat"`, `chat: {responseMaxWords, historyTurns,
+//   redirected, capped}`. The reply table mirrors cloud/src/tutor/chat_provider.ts
+//   so the headless client test can pin exact strings.
 //
 // Env: PORT (8787), HOST (127.0.0.1), MOCK_ALLOWANCE_SECONDS (300),
 //      MOCK_TURN_SECONDS (10, the floor charged per REST turn so quota moves in
@@ -78,6 +90,78 @@ const SCRIPT = [
   { keys: ['three'], speech: 'Three! Nice!', card: 'number_3', gesture: 'point', emotion: 'happy' },
 ];
 const RETRY_LINE = { speech: "Let's try together! Can you say it again?", card: '', gesture: 'tilt', emotion: 'encouraging' };
+
+// -- free chat (mirrors cloud/src/tutor/chat_provider.ts + chat_safety.ts) ----------------
+const CHAT_TOPICS = [
+  { keys: ['cat', 'cats', 'kitty', 'kitten'], name: 'cats', asset: 'cat', facts: ['Cats eat cat food and drink water.', 'Cats say meow and love to nap in the sun.', 'A baby cat is a kitten. Kittens love to play!'] },
+  { keys: ['dog', 'dogs', 'puppy', 'doggy'], name: 'dogs', asset: 'dog', facts: ['Dogs eat dog food and love bones.', 'Dogs say woof and wag their tails when happy.', 'A baby dog is a puppy. Puppies love to run!'] },
+  { keys: ['apple', 'apples'], name: 'apples', asset: 'apple_red', facts: ['Apples grow on trees. They can be red or green.', 'Apples are sweet and crunchy. Yum!', 'You can make apple juice from apples.'] },
+  { keys: ['banana', 'bananas'], name: 'bananas', asset: 'banana_yellow', facts: ['Bananas are yellow and soft inside.', 'Monkeys love bananas, and so do I!', 'Bananas grow in big bunches on tall plants.'] },
+  { keys: ['red', 'blue', 'yellow', 'green', 'color', 'colour', 'colors', 'colours'], name: 'colors', asset: '', facts: ['Red like an apple, blue like the sky, yellow like the sun!', 'Mixing blue and yellow makes green.', 'The sky is blue on a sunny day.'] },
+  { keys: ['sun', 'sunny', 'sky', 'moon', 'star', 'stars'], name: 'the sky', asset: '', facts: ['The sun is a big warm star. It gives us light.', 'At night we can see the moon and the stars.', 'Clouds float in the sky. Some look like animals!'] },
+  { keys: ['rain', 'rainy', 'water', 'wet'], name: 'rain', asset: '', facts: ['Rain is water falling from clouds.', 'Plants drink the rain to grow big.', 'After the rain you might see a rainbow!'] },
+  { keys: ['one', 'two', 'three', 'count', 'counting', 'number', 'numbers'], name: 'counting', asset: '', facts: ['One, two, three! Can you count with me?', 'Two hands, ten fingers. Let us count them!', 'Three is one more than two.'] },
+  { keys: ['song', 'sing', 'music', 'dance'], name: 'music', asset: '', facts: ['I love to sing! La la la. Do you like to dance?', 'Music makes me want to clap my hands.', 'We can sing about the sun and the rain.'] },
+  { keys: ['friend', 'friends', 'play', 'game', 'toy', 'toys'], name: 'playing', asset: '', facts: ['Playing with friends is so much fun!', 'We can play a color game. Say a color!', 'Toys are for sharing. That is kind.'] },
+];
+const CHAT_UNSURE = "I'm not sure, let's find out together!";
+const CHAT_FOLLOW_UP = /^\s*(and|what about|how about|why|why not|more|tell me more|again|really)\b/i;
+const CHAT_REDIRECTS = [
+  ['personal_data', /\b(what('?s| is) (your|my) (full |last |real )?name|home address|where (do|does) (you|i|we|she|he) live|which school|what school|phone number|mobile number|password|passcode|credit card|how old (are|am) (you|i)|date of birth)\b/i, "Let's keep that private! Tell me your favorite animal instead."],
+  ['contact', /\b(meet (me|up)|come to my house|come over|send (me )?(a )?(photo|picture|pic|selfie)|keep (it|this) (a )?secret|stranger|text me|call me|add me|whatsapp|instagram|tiktok|snapchat|facebook|youtube)\b/i, 'Aliz only plays here with you. What do you like to play?'],
+  ['adult', /\b(sex|sexy|naked|nude|porn|kiss(ing|ed)?|boyfriend|girlfriend|marry me)\b/i, "That is a grown-up thing. Let's talk about animals or colors!"],
+  ['violence', /\b(kill(s|ed|ing)?|murder|gun(s)?|knife|knives|shoot(s|ing)?|stab|bomb(s)?|blood|weapon(s)?|war)\b/i, "Let's play something gentle. What is your favorite animal?"],
+  ['substances', /\b(drug(s)?|beer|wine|vodka|whisky|whiskey|drunk|cigarette(s)?|vape|vaping|weed|cocaine)\b/i, 'That is for grown-ups. Do you like apples or bananas?'],
+  ['scary', /\b(die|dies|died|dying|dead|death|ghost(s)?|zombie(s)?|demon(s)?|devil|hell|nightmare(s)?|haunted)\b/i, "Let's think of happy things! What makes you smile?"],
+  ['self_harm', /\b(hurt myself|cut myself|want to die|wanna die|kill myself|suicide)\b/i, "You are wonderful! Please tell a grown-up how you feel. Let's play together!"],
+  ['unsafe_acts', /\b(play with (fire|matches|a lighter)|touch the (stove|oven|knife)|drink (bleach|poison|medicine)|eat (soap|pills|medicine|batteries)|jump (off|out of) the (window|roof|balcony)|run (into|across) the (road|street))\b/i, 'That is not safe. Ask a grown-up for help! Want to count with me?'],
+  ['money', /\b(buy (me|it|this)|how much (does|is) (it|that) cost|dollar(s)?|baht|price|subscribe|subscription|in-?app|download|app store|play store|ads?)\b/i, "You do not need to buy anything. Let's play! What color do you like?"],
+  ['links', /(https?:\/\/|www\.|\.com\b|\.net\b|\.org\b|\.io\b|\.app\b|\.co\b)/i, "Let's stay here and play! What is your favorite color?"],
+];
+const CHAT_MIN_WORDS = 8, CHAT_MAX_WORDS = 40, CHAT_DEFAULT_WORDS = 25, CHAT_CONTEXT_TURNS = 6;
+
+function chatTopicIn(text) {
+  const said = ` ${String(text).toLowerCase().replace(/[^a-z ]/g, ' ')} `;
+  for (const t of CHAT_TOPICS) if (t.keys.some((k) => said.includes(` ${k} `))) return t;
+  return null;
+}
+function chatRedirect(text) {
+  const t = String(text || '').replace(/\s+/g, ' ');
+  for (const [category, re, line] of CHAT_REDIRECTS) if (re.test(t)) return { category, line };
+  return null;
+}
+function capWords(text, maxWords) {
+  const words = String(text).replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  if (words.length <= maxWords) return { text: words.join(' '), capped: false };
+  const head = words.slice(0, maxWords).join(' ');
+  const boundary = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '));
+  return { text: boundary > head.length / 3 ? head.slice(0, boundary + 1) : `${head.replace(/[,;:\s-]+$/, '')}.`, capped: true };
+}
+// Deterministic chat reply: the same rules as the Worker's mock chat provider.
+function chatReply(session, transcript, maxWords) {
+  const said = String(transcript || '').trim();
+  const history = session.chatHistory;
+  const redirect = chatRedirect(said);
+  if (redirect) return { speech: redirect.line, emotion: 'smile', gesture: 'tilt', asset: '', redirected: redirect.category, provider: 'safety', capped: false };
+  let topic = chatTopicIn(said);
+  let fromContext = false;
+  if (!topic && CHAT_FOLLOW_UP.test(said)) {
+    for (let i = history.length - 1; i >= 0 && !topic; i -= 1) topic = chatTopicIn(history[i].text);
+    fromContext = Boolean(topic);
+  }
+  let speech, emotion = 'smile', gesture = 'nod', asset = '';
+  if (topic) {
+    const seen = history.filter((m) => m.role === 'child' && chatTopicIn(m.text) === topic).length;
+    const fact = topic.facts[seen % topic.facts.length];
+    speech = fromContext ? `About ${topic.name}? ${fact}` : fact;
+    emotion = 'happy'; gesture = fromContext ? 'point' : 'nod'; asset = topic.asset;
+  } else if (/\bhow are you\b/i.test(said)) { speech = 'I am happy today! How are you?'; emotion = 'happy'; gesture = 'wave'; }
+  else if (/\b(hi|hello|hey|good morning|good night)\b/i.test(said)) { speech = 'Hello! I am Aliz. What do you want to talk about?'; emotion = 'happy'; gesture = 'wave'; }
+  else if (/\b(thank you|thanks)\b/i.test(said)) { speech = 'You are welcome! What else do you want to know?'; emotion = 'happy'; gesture = 'clap'; }
+  else { speech = `${CHAT_UNSURE} Do you like cats or dogs?`; emotion = 'thinking'; gesture = 'tilt'; }
+  const capped = capWords(speech, maxWords);
+  return { speech: capped.text, emotion, gesture, asset, redirected: null, provider: 'mock', capped: capped.capped };
+}
 const BANNED_LINE = { speech: 'That was a stupid answer, try again.', card: '', gesture: 'tilt', emotion: 'encouraging' };
 
 function scriptFor(text, scenario) {
@@ -103,7 +187,7 @@ function scenarioOf(clientId) {
   const has = (p) => id.startsWith(p);
   return {
     exhausted: has('exhausted'), deny: has('deny'), norealtime: has('norealtime'), shortday: has('shortday'), drop: has('drop'),
-    banned: has('banned'), noaudio: has('noaudio'), toolsInline: has('toolsinline'), rate: has('rate'),
+    banned: has('banned'), noaudio: has('noaudio'), toolsInline: has('toolsinline'), rate: has('rate'), chatOff: has('chatoff'),
   };
 }
 function allowanceFor(scenario) { return scenario.exhausted ? 0 : scenario.shortday ? 25 : ALLOWANCE; }
@@ -253,7 +337,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && path === '/v1/tutor/sessions') {
-    const lessonId = String(body.lessonId || '');
+    const mode = body.mode === undefined ? 'lesson' : String(body.mode);
+    if (mode !== 'lesson' && mode !== 'chat') return fail(res, 400, 'bad_request', 'mode must be lesson or chat');
+    if (mode === 'chat' && scenario.chatOff) { log(`403 sessions feature_disabled (chatoff scenario)`); return fail(res, 403, 'feature_disabled', 'That feature is not available on this server.', { feature: 'free_chat' }); }
+    const lessonId = String(body.lessonId || (mode === 'chat' ? 'free_chat' : ''));
     if (!lessonId || !clientId) return fail(res, 400, 'bad_request', 'lessonId and clientId are required');
     if (!parent.consent.has('ai_tutor')) return fail(res, 403, 'consent_required', 'A parent needs to give consent in Parent Corner first.', { kind: 'ai_tutor' });
     const st = scenarioState.get(clientId) ?? {};
@@ -265,16 +352,19 @@ const server = http.createServer(async (req, res) => {
     const session = {
       sessionId: crypto.randomUUID(), childId, clientId, lessonId, approval: auth.approval, mode: 'turns', scenario,
       createdAt: now, lastEventAt: now, realtimeStartedAt: 0, lastChargedAt: 0, expiresAtMs: 0, endedAt: 0, endReason: null,
-      responses: 0, turns: 0, socket: null,
+      responses: 0, turns: 0, socket: null, chat: mode === 'chat', chatHistory: [],
     };
     sessions.set(session.sessionId, session);
-    log(`201 sessions ${session.sessionId} lesson=${lessonId} scenario=${Object.entries(scenario).filter(([, v]) => v).map(([k]) => k).join(',') || 'default'}`);
-    return send(res, 201, { sessionId: session.sessionId, childId, entitlement: 'free', quota: q, lessonId, lessonKnown: true });
+    log(`201 sessions ${session.sessionId} mode=${mode} lesson=${lessonId} scenario=${Object.entries(scenario).filter(([, v]) => v).map(([k]) => k).join(',') || 'default'}`);
+    const out = { sessionId: session.sessionId, childId, entitlement: 'free', quota: q, lessonId, lessonKnown: mode === 'lesson', mode };
+    if (mode === 'chat') out.chat = { responseMaxWords: CHAT_DEFAULT_WORDS, contextTurns: CHAT_CONTEXT_TURNS };
+    return send(res, 201, out);
   }
 
   if (req.method === 'POST' && path === '/v1/tutor/realtime/token') {
     const session = sessions.get(String(body.sessionId || ''));
     if (!session) return fail(res, 404, 'not_found', 'Session not found.');
+    if (session.chat) return fail(res, 400, 'bad_request', 'realtime sessions are lesson sessions; free chat runs on the turns path');
     if (session.scenario.norealtime) { log(`503 token (norealtime scenario)`); return fail(res, 503, 'provider_unavailable', 'Realtime tutoring is not configured on this server.'); }
     if (session.approval !== auth.approval) return fail(res, 403, 'not_approved', 'This session belongs to another approval.');
     if (session.endedAt) return fail(res, 409, 'session_ended', 'This lesson session has already ended.');
@@ -320,15 +410,43 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, prior.body, { 'idempotent-replayed': 'true' });
     }
     if (typeof body.transcript !== 'string' && body.transcript !== undefined) return fail(res, 400, 'bad_request', 'transcript must be a string');
-    const lc = body.lessonContext;
-    if (!lc || typeof lc !== 'object' || Array.isArray(lc)) return fail(res, 400, 'invalid_turn', 'lessonContext is required');
-    if (!OUTCOMES.has(lc.outcome)) return fail(res, 400, 'invalid_turn', 'lessonContext.outcome must be correct, incorrect or unclear');
-    if (typeof lc.stepId !== 'string' || !lc.stepId) return fail(res, 400, 'invalid_turn', 'lessonContext.stepId is required');
+    const lc = session.chat ? { outcome: 'unclear', lessonAction: '' } : body.lessonContext;
+    if (session.chat) {
+      if (!String(body.transcript || '').trim()) return fail(res, 400, 'invalid_turn', 'transcript is required in chat mode');
+    } else {
+      if (!lc || typeof lc !== 'object' || Array.isArray(lc)) return fail(res, 400, 'invalid_turn', 'lessonContext is required');
+      if (!OUTCOMES.has(lc.outcome)) return fail(res, 400, 'invalid_turn', 'lessonContext.outcome must be correct, incorrect or unclear');
+      if (typeof lc.stepId !== 'string' || !lc.stepId) return fail(res, 400, 'invalid_turn', 'lessonContext.stepId is required');
+    }
     const before = quotaBlock(childId, session.scenario, now);
     if (before.remainingSeconds <= 0) { endSession(session, 'quota_exhausted', now); return fail(res, 429, 'quota_exhausted', 'Great job today!', { reason: 'daily_quota', quota: before }); }
     if (before.usedTurns >= TURN_ALLOWANCE) { endSession(session, 'daily_turns', now); return fail(res, 429, 'quota_exhausted', 'Aliz needs a little rest.', { reason: 'daily_turns', quota: before }); }
     const gap = Math.min(Math.max(0, (now - session.lastEventAt) / 1000), TURN_CAP);
     const chargedSeconds = Math.max(gap, TURN_FLOOR);
+    if (session.chat) {
+      const requested = Number(body.responseMaxWords);
+      const maxWords = Number.isFinite(requested) ? Math.max(CHAT_MIN_WORDS, Math.min(CHAT_MAX_WORDS, Math.floor(requested))) : CHAT_DEFAULT_WORDS;
+      const said = String(body.transcript).trim();
+      const r = chatReply(session, said, maxWords);
+      session.chatHistory.push({ role: 'child', text: said }, { role: 'tutor', text: r.speech });
+      if (session.chatHistory.length > CHAT_CONTEXT_TURNS * 2) session.chatHistory = session.chatHistory.slice(-CHAT_CONTEXT_TURNS * 2);
+      charge(childId, chargedSeconds, allowanceFor(session.scenario) + GRACE);
+      countTurn(childId);
+      session.turns += 1;
+      session.lastEventAt = now;
+      const q = quotaBlock(childId, session.scenario, now);
+      const endAtBoundary = q.remainingSeconds <= 0 || q.usedTurns >= TURN_ALLOWANCE;
+      const reply = {
+        turn: { speech: r.speech, subtitle: r.speech, emotion: r.emotion, gesture: r.gesture, visual: r.asset ? { type: 'flashcard', assetId: r.asset } : { type: 'none' }, lessonAction: 'none' },
+        quota: q, endAtBoundary, turnIndex: session.turns, chargedSeconds: Math.round(chargedSeconds * 10) / 10,
+        provider: r.provider, cached: false, fallback: r.redirected ? `redirect:child:${r.redirected}` : null, contextSource: 'chat', mode: 'chat',
+        chat: { responseMaxWords: maxWords, historyTurns: session.chatHistory.length / 2, redirected: r.redirected, capped: r.capped },
+        usage: { sttSeconds: 0, llmInputTokens: 0, llmOutputTokens: 0, ttsChars: r.speech.length, latencyMs: 1, costUsd: 0 },
+      };
+      if (idemId) idempotency.set(idemId, { bodyHash: hash, body: reply });
+      log(`200 chat turn ${session.sessionId} #${session.turns} transcript_chars=${said.length} words=${r.speech.split(' ').length} redirected=${r.redirected || 'no'} history=${session.chatHistory.length / 2}`);
+      return send(res, 200, reply);
+    }
     const line = scriptFor(body.transcript || '', session.scenario);
     charge(childId, chargedSeconds, allowanceFor(session.scenario) + GRACE);
     countTurn(childId);
@@ -359,6 +477,7 @@ const server = http.createServer(async (req, res) => {
     if (wasOpen) {
       if (!session.realtimeStartedAt) charge(childId, Math.min(Math.max(0, (now - session.lastEventAt) / 1000), TURN_CAP), allowanceFor(session.scenario) + GRACE);
       endSession(session, reason, now);
+      session.chatHistory = [];  // the child's words never outlive the session
     }
     log(`200 end ${session.sessionId} reason=${reason} first=${wasOpen} turns=${session.turns} responses=${session.responses}`);
     return send(res, 200, {
