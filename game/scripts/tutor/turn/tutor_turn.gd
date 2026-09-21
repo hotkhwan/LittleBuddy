@@ -29,6 +29,24 @@ extends RefCounted
 ##
 ## Pure GDScript: no nodes, no 3D types, no I/O except the optional allowlist
 ## and fixture reads.
+##
+## ## Adjacent-phrase dedupe (`dedupe_adjacent_phrases`, 2026-09-21)
+##
+## The owner heard "yes yes" and doubled acknowledgements on the device. The
+## rule below is applied to what is SPOKEN (`make()`, the scene's
+## `_speak_turn()`, the cloud provider's words); `validate()`/`coerce()` are
+## untouched so the shared fixture file stays the contract. Sentences are
+## split at `.`, `!`, `?` (a run like "?!" or "..." stays with its sentence):
+##   1. a sentence identical to the one before it (letters and digits only,
+##      case-insensitive) is DROPPED when it is an acknowledgement
+##      ("Yes! Yes!") or has more than one word ("It's a cat! It's a cat!");
+##   2. two different acknowledgements back to back keep only the second
+##      ("Great! Great job!" -> "Great job!", "Super! Yes! Red!" -> "Yes! Red!");
+##   3. a repeated SINGLE content word is KEPT ("Say it with me: cat. Cat!",
+##      "Cat! Cat!", "Meow! Meow!"): that is teaching repetition, the one kind
+##      of repeat a lesson wants;
+##   4. nothing else moves: order, punctuation and every other word are the
+##      author's. The helper never invents a word and never reorders.
 
 const FIXTURES_PATH: String = "res://content/tutor/turn_fixtures.json"
 const ALLOWLIST_PATH: String = "res://content/tutor/assets_allowlist.json"
@@ -68,6 +86,14 @@ const BANNED_WORDS: Array[String] = [
 	"hate", "stupid", "idiot", "dumb", "ugly", "loser", "shut up",
 	"damn", "hell", "crap", "sex", "sexy", "naked", "drug", "drugs", "beer", "wine", "drunk",
 	"password", "credit card", "phone number", "home address", "where do you live", "last name",
+]
+
+## Openers a child hears as "yes": the words the dedupe rule treats as an
+## acknowledgement (letters only, lower case, single spaces -- `phrase_key`).
+const ACKNOWLEDGEMENTS: Array[String] = [
+	"yes", "yay", "wow", "great", "great job", "good", "good job", "nice", "super",
+	"wonderful", "well done", "awesome", "amazing", "perfect", "excellent", "bravo",
+	"hooray", "correct", "thats right", "that is right", "very good", "okay", "ok",
 ]
 
 ## Same expression as the server's `URL_PATTERN`.
@@ -230,9 +256,11 @@ static func check_text(value: Variant, field: String, max_length: int, required:
 static func make(speech: String, emotion: String, gesture: String, lesson_action: String,
 		asset_id: String = "", next_question: String = "", subtitle: String = "",
 		visual_type: String = "flashcard") -> Dictionary:
+	var spoken: String = dedupe_adjacent_phrases(speech)
+	var shown: String = dedupe_adjacent_phrases(subtitle) if not subtitle.is_empty() else spoken
 	var turn: Dictionary = {
-		"speech": sanitize_text(speech, MAX_SPEECH),
-		"subtitle": sanitize_text(subtitle if not subtitle.is_empty() else speech, MAX_SUBTITLE),
+		"speech": sanitize_text(spoken, MAX_SPEECH),
+		"subtitle": sanitize_text(shown, MAX_SUBTITLE),
 		"emotion": emotion if EMOTIONS.has(emotion) else "neutral",
 		"gesture": gesture if GESTURES.has(gesture) else "none",
 		"visual": {"type": "none"},
@@ -285,6 +313,80 @@ static func sanitize_text(text: String, limit: int) -> String:
 		var space: int = cut.rfind(" ")
 		line = (cut.left(space) if space > limit / 2 else cut).strip_edges()
 	return line
+
+
+## The adjacent-phrase rule from the file header, applied to one spoken line.
+static func dedupe_adjacent_phrases(text: String) -> String:
+	var sentences: PackedStringArray = split_sentences(text)
+	if sentences.size() < 2:
+		return text.strip_edges()
+	var kept: Array = []  # [sentence, key]
+	for sentence: String in sentences:
+		var key: String = phrase_key(sentence)
+		if not kept.is_empty() and not key.is_empty():
+			var previous_key: String = String(kept[kept.size() - 1][1])
+			if key == previous_key and (is_acknowledgement(key) or key.contains(" ")):
+				continue  # an accidental echo of a whole sentence
+			if is_acknowledgement(key) and is_acknowledgement(previous_key):
+				kept.pop_back()  # one opener per turn: the second, more specific one wins
+		kept.append([sentence, key])
+	var out: PackedStringArray = PackedStringArray()
+	for pair: Array in kept:
+		out.append(String(pair[0]))
+	return " ".join(out)
+
+
+## Sentences of `text`, terminators kept ("Great! It's a cat!" -> ["Great!", "It's a cat!"]).
+static func split_sentences(text: String) -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	var trimmed: String = text.strip_edges()
+	var current: String = ""
+	for i: int in range(trimmed.length()):
+		var c: String = trimmed[i]
+		current += c
+		if c == "." or c == "!" or c == "?":
+			var next: String = trimmed[i + 1] if i + 1 < trimmed.length() else ""
+			if next == "." or next == "!" or next == "?":
+				continue  # "?!" and "..." belong to the same sentence
+			if not current.strip_edges().is_empty():
+				out.append(current.strip_edges())
+			current = ""
+	if not current.strip_edges().is_empty():
+		out.append(current.strip_edges())
+	return out
+
+
+## Letters and digits only, lower case, single spaces: "It's a CAT!" -> "its a cat".
+static func phrase_key(sentence: String) -> String:
+	var out: String = ""
+	var lower: String = sentence.to_lower()
+	for i: int in range(lower.length()):
+		var code: int = lower.unicode_at(i)
+		if (code >= 0x61 and code <= 0x7A) or (code >= 0x30 and code <= 0x39):
+			out += lower[i]
+		elif code == 0x20 and not out.is_empty() and not out.ends_with(" "):
+			out += " "
+	return out.strip_edges()
+
+
+static func is_acknowledgement(key: String) -> bool:
+	return ACKNOWLEDGEMENTS.has(key)
+
+
+## True when the line opens with an acknowledgement sentence ("Great job! What colour is it?").
+static func starts_with_acknowledgement(text: String) -> bool:
+	var sentences: PackedStringArray = split_sentences(text)
+	return not sentences.is_empty() and is_acknowledgement(phrase_key(sentences[0]))
+
+
+## `{opener, rest}`: the leading acknowledgement sentence and what follows it
+## ("Yes! Red!" -> {"Yes!", "Red!"}); `opener` is "" when there is none.
+static func split_leading_acknowledgement(text: String) -> Dictionary:
+	var sentences: PackedStringArray = split_sentences(text)
+	if sentences.is_empty() or not is_acknowledgement(phrase_key(sentences[0])):
+		return {"opener": "", "rest": text.strip_edges()}
+	var rest: PackedStringArray = sentences.slice(1)
+	return {"opener": sentences[0], "rest": " ".join(rest)}
 
 
 ## Loads the shared fixture file: `[{name, input, expect, normalized?, reasonPrefix?}]`.

@@ -18,6 +18,20 @@ extends "res://scripts/tutor/providers/conversation_provider.gd"
 ## (question, hint, success line, answer line) is always the substance; the
 ## variants only frame it.
 ##
+## ## One opener per turn (2026-09-21, owner: "yes yes")
+##
+## A correct answer is voiced as ONE opener + ONE confirmation. The lesson's
+## success line often opens with its own acknowledgement ("Yes! Red!",
+## "Great job! It's an apple!"); the picked opener REPLACES that word instead
+## of stacking on it ("Yes! Yes! Red!", "Wonderful! Great job! ..." never
+## happen), and a line without one is framed as before. The pick rotates by
+## STEP INDEX (`stepIndex` from the engine's `current_step()`), so consecutive
+## correct answers never sound identical; a seed still pins it for tests.
+## After praise, the next step's own text drops a leading acknowledgement
+## ("Great job! What colour is it?" -> "What colour is it?"): the child was
+## just praised, once. `TurnValidator.dedupe_adjacent_phrases()` is the last
+## net under all of it.
+##
 ## `build_turn(transcript, phase)` evaluates through the engine (once per
 ## answer -- the engine counts attempts). `turn_for_verdict(step, verdict,
 ## phase)` builds the turn for a verdict already obtained, which is how the
@@ -48,6 +62,9 @@ const COMPLETE_LINE: String = "Great job today!"
 
 var _seed_override: int = -1
 var _turn_count: int = 0
+## Set by a correct answer's turn; the next step's opening text drops its own
+## leading acknowledgement so the child is not praised twice for one answer.
+var _after_praise: bool = false
 
 
 func provider_name() -> String:
@@ -70,6 +87,7 @@ func begin_session(lesson_id_value: String) -> void:
 	_lesson_id = lesson_id_value
 	_active = true
 	_turn_count = 0
+	_after_praise = false
 	session_ready.emit({"sessionId": "local-%s" % lesson_id_value, "provider": provider_name(), "lessonId": lesson_id_value})
 
 
@@ -118,13 +136,27 @@ func build_turn(transcript: String, phase: String) -> Dictionary:
 func open_turn(step: Dictionary) -> Dictionary:
 	var asset: String = String(step.get("visualAssetId", ""))
 	var kind: String = String(step.get("kind", "ask"))
+	var after_praise: bool = _after_praise
+	_after_praise = false
 	if kind == "teach":
-		return TurnValidator.make(_non_empty(String(step.get("teachText", "")), "Look!"), "smile", "point", "next_question", asset)
+		var teach: String = _non_empty(String(step.get("teachText", "")), "Look!")
+		return TurnValidator.make(_without_second_praise(teach, after_praise), "smile", "point", "next_question", asset)
 	if kind == "celebrate":
 		return TurnValidator.make(_non_empty(String(step.get("teachText", "")), COMPLETE_LINE), "happy", "clap", "complete", asset)
-	var question: String = _non_empty(String(step.get("questionText", "")), "What is this?")
+	var question: String = _without_second_praise(_non_empty(String(step.get("questionText", "")), "What is this?"), after_praise)
 	var gesture: String = "point" if not asset.is_empty() else "tilt"
 	return TurnValidator.make(question, "smile", gesture, "retry", asset, question)
+
+
+## Right after praise, a step text that opens with its own acknowledgement
+## loses it ("Great job! What colour is it?" -> "What colour is it?"). A text
+## that is nothing but an acknowledgement is kept whole.
+static func _without_second_praise(text: String, after_praise: bool) -> String:
+	if not after_praise:
+		return text
+	var split: Dictionary = TurnValidator.split_leading_acknowledgement(text)
+	var rest: String = String(split.get("rest", ""))
+	return rest if not String(split.get("opener", "")).is_empty() and not rest.is_empty() else text
 
 
 ## Barge-in: the child spoke over Aliz. Topic change -> honoured; an answer ->
@@ -189,9 +221,10 @@ func turn_for_verdict(step: Dictionary, verdict: Dictionary, phase: String) -> D
 		var aliz_sound: String = String(reaction.get("alizSound", "")).strip_edges()
 		if not aliz_sound.is_empty() and not _starts_with_sound(success, aliz_sound):
 			success = "%s %s" % [aliz_sound, success]
-		var speech: String = _pick(OPENERS_CORRECT, step, attempt).replace("{line}", success)
+		var speech: String = frame(_pick(OPENERS_CORRECT, step, attempt), success)
 		if not aliz_sound.is_empty():
-			speech = success  # the sound IS the opener; no "Yes! Meow!" on top
+			speech = TurnValidator.dedupe_adjacent_phrases(success)  # the sound IS the opener; no "Yes! Meow!" on top
+		_after_praise = true
 		var gesture: String = String(reaction.get("gesture", "clap"))
 		if not TurnValidator.GESTURES.has(gesture):
 			gesture = "clap"
@@ -205,27 +238,73 @@ func turn_for_verdict(step: Dictionary, verdict: Dictionary, phase: String) -> D
 		"give_hint":
 			var hint: String = _non_empty(String(verdict.get("hint", "")), _non_empty(line, "%s!" % word.capitalize()))
 			var table: Array[String] = OPENERS_TIMEOUT if timed_out else OPENERS_HINT
-			return TurnValidator.make(_pick(table, step, attempt).replace("{line}", hint), "encouraging", "point", "give_hint", asset)
+			return TurnValidator.make(frame(_pick(table, step, attempt), hint), "encouraging", "point", "give_hint", asset)
 		"next_question", "complete":
 			var taught: String = _non_empty(line, "%s! Say %s." % [word.capitalize(), word])
 			var table_taught: Array[String] = OPENERS_TIMEOUT if timed_out else OPENERS_TAUGHT
-			return TurnValidator.make(_pick(table_taught, step, attempt).replace("{line}", taught), "encouraging", "nod", action, asset)
+			return TurnValidator.make(frame(_pick(table_taught, step, attempt), taught), "encouraging", "nod", action, asset)
 		_:
 			var encouragement: String = _non_empty(String(verdict.get("encouragement", "")), _non_empty(line, "Let's try together!"))
 			var table_retry: Array[String] = OPENERS_TIMEOUT if timed_out else OPENERS_RETRY
-			return TurnValidator.make(_pick(table_retry, step, attempt).replace("{line}", encouragement), "encouraging", "tilt", "retry", asset)
+			return TurnValidator.make(frame(_pick(table_retry, step, attempt), encouragement), "encouraging", "tilt", "retry", asset)
 
 
 ## The variant index this turn uses: reproducible per lesson/step/attempt.
+## Keyed by the step's INDEX when the engine's step carries one, so two
+## consecutive correct answers rotate ("Yes!" then "Wonderful!" then plain);
+## a raw lesson step without an index falls back to a hash of its id.
 func variant_index(step: Dictionary, attempt: int) -> int:
 	if _seed_override >= 0:
 		return (_seed_override + attempt) % VARIANTS
+	var index: Variant = step.get("stepIndex", null)
+	if typeof(index) == TYPE_INT or typeof(index) == TYPE_FLOAT:
+		return absi(int(index) + attempt) % VARIANTS
 	var key: String = "%s:%s" % [_lesson_id, String(step.get("stepId", ""))]
 	return absi(key.hash() + attempt) % VARIANTS
 
 
 func _pick(table: Array[String], step: Dictionary, attempt: int) -> String:
 	return table[variant_index(step, attempt)]
+
+
+## ONE opener + ONE line. `template` is an OPENERS_* entry ("Yes! {line}",
+## "Here is a hint. {line}", "Let's try together! Listen. {line}", "{line}").
+##   * an acknowledgement opener REPLACES the line's own leading one;
+##   * an opener sentence the line already says anywhere is dropped (the
+##     engine's default encouragement IS "Let's try together!", so the
+##     timeout frame used to produce "Let's try together! Listen. Let's try
+##     together!");
+##   * an opener whose last sentence begins the line's first ("Listen." before
+##     "Listen carefully.") is dropped too;
+##   * the result passes the adjacent-phrase dedupe, so no doubled sentence
+##     can survive whatever the lesson text says.
+static func frame(template: String, line: String) -> String:
+	var opener: String = template.replace("{line}", "").strip_edges()
+	if opener.is_empty():
+		return TurnValidator.dedupe_adjacent_phrases(line)
+	var body: String = line.strip_edges()
+	if TurnValidator.starts_with_acknowledgement(opener):
+		var split: Dictionary = TurnValidator.split_leading_acknowledgement(body)
+		if not String(split.get("opener", "")).is_empty():
+			body = String(split.get("rest", ""))
+	if body.is_empty():
+		return opener
+	var body_keys: Array = []
+	for sentence: String in TurnValidator.split_sentences(body):
+		body_keys.append(TurnValidator.phrase_key(sentence))
+	var kept: PackedStringArray = PackedStringArray()
+	var opener_sentences: PackedStringArray = TurnValidator.split_sentences(opener)
+	for i: int in range(opener_sentences.size()):
+		var key: String = TurnValidator.phrase_key(opener_sentences[i])
+		if body_keys.has(key):
+			continue  # the line already says it
+		if i == opener_sentences.size() - 1 and not body_keys.is_empty() \
+				and String(body_keys[0]).begins_with(key + " "):
+			continue  # "Listen." right before "Listen carefully."
+		kept.append(opener_sentences[i])
+	if kept.is_empty():
+		return TurnValidator.dedupe_adjacent_phrases(body)
+	return TurnValidator.dedupe_adjacent_phrases("%s %s" % [" ".join(kept), body])
 
 
 ## The canonical answer for a step, or a readable word from its asset id.

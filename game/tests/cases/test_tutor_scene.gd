@@ -336,8 +336,13 @@ func _test_no_recogniser_fallbacks():
 		failures.append("never returned to a question by touch")
 	else:
 		scene.hud().press("tapToTalk")
-		if scene.state() != "speaking" or not String(scene.current_turn().get("speech", "")).begins_with("Let's try together"):
+		var together: String = String(scene.current_turn().get("speech", ""))
+		var word: String = String(scene.current_step().get("expectedAnswers", ["?"])[0])
+		var together_shape: bool = together.begins_with("Let's try together") or together.begins_with("Say it with me") or together.begins_with("Together now")
+		if scene.state() != "speaking" or not together_shape or not together.to_lower().contains(word.to_lower()):
 			failures.append("Tap-to-talk without a recogniser should say it together, got %s" % str(scene.current_turn().get("speech")))
+		if scene.hud().banner_kind() != Hud.BANNER_TOGETHER:
+			failures.append("the say-together beat shows the together banner whatever its words, got %s" % scene.hud().banner_kind())
 		if String(scene.current_turn().get("lessonAction", "")) != "next_question":
 			failures.append("say-together must move the lesson on, never trap")
 	_free(scene)

@@ -749,10 +749,23 @@ func _test_owner_dialogue():
 		"Meow! You're amazing!",
 		"What animal is this?",
 	]
-	# Line 4 may carry a seeded praise opener ("Yes! Great! It's a cat!").
+	# Line 4 carries ONE praise opener: the rotation may replace the lesson's
+	# "Great!" ("Wonderful! It's a cat!"), never stack on it ("Yes! Great! ...").
 	for i: int in range(expected_lines.size()):
-		if i >= lines.size() or not String(lines[i]).ends_with(expected_lines[i]):
-			failures.append("owner dialogue line %d: got '%s', expected '%s'" % [i, lines[i] if i < lines.size() else "<none>", expected_lines[i]])
+		var got: String = String(lines[i]) if i < lines.size() else "<none>"
+		var want: String = expected_lines[i]
+		if i == 4:
+			want = "It's a cat!"
+		if not got.ends_with(want):
+			failures.append("owner dialogue line %d: got '%s', expected '%s'" % [i, got, expected_lines[i]])
+		if TurnValidator.dedupe_adjacent_phrases(got) != got:
+			failures.append("owner dialogue line %d carries a doubled phrase: '%s'" % [i, got])
+		var openers: int = 0
+		for sentence: String in TurnValidator.split_sentences(got):
+			if TurnValidator.is_acknowledgement(TurnValidator.phrase_key(sentence)):
+				openers += 1
+		if openers > 1:
+			failures.append("owner dialogue line %d has %d openers: '%s'" % [i, openers, got])
 	if String(engine.lesson_id()) != "animals_cat_dog":
 		failures.append("the choice switched into the animals lesson: %s" % engine.lesson_id())
 	var meow_turn: Dictionary = {}
