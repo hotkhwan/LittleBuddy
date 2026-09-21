@@ -180,6 +180,11 @@ func _apply_intro(elapsed: float) -> void:
 	var logo: Control = get_node_or_null("Logo")
 	if logo == null:
 		return
+	# `_ready()` can run before the first layout pass on a cold launch. Scaling
+	# around Control's default (0, 0) made that first visible frame appear left
+	# shifted even though the anchors themselves were symmetric. Recompute the
+	# pivot immediately before every intro sample, including t=0.
+	logo.pivot_offset = logo.size * 0.5
 	var t: float = clampf(elapsed / INTRO_SEC, 0.0, 1.0)
 	var eased: float = 1.0 - pow(1.0 - t, 3.0)
 	logo.modulate.a = eased

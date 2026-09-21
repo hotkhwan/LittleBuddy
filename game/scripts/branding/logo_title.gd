@@ -67,12 +67,16 @@ func _init() -> void:
 	# Decorative: taps go through to whatever the menu puts underneath.
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_load_texture()
+	pivot_offset = size * 0.5
 
 
 func _ready() -> void:
 	_recentre_pivot()
 	if not resized.is_connected(_recentre_pivot):
 		resized.connect(_recentre_pivot)
+	# Ensure transforms are centred before the first draw notification, not one
+	# idle frame after the container resolves this rect.
+	call_deferred("_recentre_pivot")
 
 
 func _process(delta: float) -> void:

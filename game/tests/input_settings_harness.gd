@@ -311,7 +311,7 @@ func _hold_for_three_seconds(hold: Control, tag: String) -> void:
 	await _settle(0.2)
 	if not bool(hold.call("is_holding")) or float(hold.call("get_progress")) <= 0.0:
 		_fail.append("%s: the hold did not advance while pressed (progress %.2f)" % [tag, float(hold.call("get_progress"))])
-	hold.call("advance", 3.0)
+	hold.call("advance", 1.0)
 	await process_frame
 	_touch_up(center)
 	await process_frame

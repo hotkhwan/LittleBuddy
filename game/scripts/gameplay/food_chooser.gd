@@ -58,6 +58,17 @@ func build() -> void:
 	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_title.add_theme_font_size_override("font_size", 56)
 	_title.add_theme_color_override("font_color", Palette.CREAM)
+	var title_pill := StyleBoxFlat.new()
+	title_pill.bg_color = Color(0.31, 0.22, 0.29, 0.82)
+	title_pill.set_corner_radius_all(28)
+	title_pill.content_margin_left = 34.0
+	title_pill.content_margin_right = 34.0
+	title_pill.content_margin_top = 10.0
+	title_pill.content_margin_bottom = 12.0
+	title_pill.shadow_color = Color(0.1, 0.07, 0.1, 0.18)
+	title_pill.shadow_size = 10
+	title_pill.shadow_offset = Vector2(0.0, 5.0)
+	_title.add_theme_stylebox_override("normal", title_pill)
 	_title.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	_title.offset_left = -400.0
 	_title.offset_right = 400.0
@@ -175,16 +186,12 @@ func _make_card(data: Dictionary) -> Button:
 	card.custom_minimum_size = CARD_SIZE
 	card.focus_mode = Control.FOCUS_NONE
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
-	var normal := StyleBoxFlat.new()
-	normal.bg_color = Palette.CREAM
-	normal.set_corner_radius_all(28)
-	normal.border_width_bottom = 8
-	normal.border_color = Palette.deep(Palette.CREAM)
-	var pressed := StyleBoxFlat.new()
-	pressed.bg_color = Palette.light(Palette.MINT)
-	pressed.set_corner_radius_all(28)
+	var accent: Color = data.get("color", Palette.PEACH)
+	var normal := _card_style(Palette.CREAM, Palette.deep(accent), 9.0)
+	var hover := _card_style(Palette.light(accent), Palette.deep(accent), 12.0)
+	var pressed := _card_style(Palette.light(Palette.MINT), Palette.deep(Palette.MINT), 3.0)
 	card.add_theme_stylebox_override("normal", normal)
-	card.add_theme_stylebox_override("hover", normal)
+	card.add_theme_stylebox_override("hover", hover)
 	card.add_theme_stylebox_override("pressed", pressed)
 	card.add_theme_stylebox_override("focus", normal)
 
@@ -215,6 +222,22 @@ func _make_card(data: Dictionary) -> Button:
 	return card
 
 
+func _card_style(fill: Color, rim: Color, shadow_y: float) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill
+	style.set_corner_radius_all(32)
+	style.set_border_width_all(4)
+	style.border_color = rim
+	style.shadow_color = Color(0.14, 0.09, 0.12, 0.28)
+	style.shadow_size = 14
+	style.shadow_offset = Vector2(0.0, shadow_y)
+	style.content_margin_left = 18.0
+	style.content_margin_right = 18.0
+	style.content_margin_top = 18.0
+	style.content_margin_bottom = 18.0
+	return style
+
+
 ## The item as a shape in its own colour -- the same vocabulary
 ## `kitchen_items.gd` gives the 3D prop, so the card and the thing agree.
 func _draw_picture(picture: Control) -> void:
@@ -222,13 +245,25 @@ func _draw_picture(picture: Control) -> void:
 	var color: Color = picture.get_meta("color", Palette.PEACH)
 	var o := Vector2.ZERO
 	var r: float = PICTURE_RADIUS
+	# Every object sits on the same soft sticker halo, so very different shapes
+	# still read as one learning-card family.
+	var halo: Color = Palette.light(color)
+	halo.a = 0.72
+	picture.draw_circle(o, r * 1.18, halo)
+	picture.draw_circle(o + Vector2(-r * 0.36, -r * 0.42), r * 0.2, Color(1, 1, 1, 0.62))
 	match shape:
 		"flat":
 			# A banana: a thick arc.
 			picture.draw_arc(o + Vector2(0.0, -r * 0.3), r * 0.9, PI * 0.15, PI * 0.85, 24, color, r * 0.42)
 		"cup":
-			picture.draw_rect(Rect2(o + Vector2(-r * 0.45, -r * 0.7), Vector2(r * 0.9, r * 1.5)), color, true)
-			picture.draw_rect(Rect2(o + Vector2(-r * 0.25, -r * 0.95), Vector2(r * 0.5, r * 0.3)), Palette.SOFT_PINK, true)
+			# A bottle needs a darker silhouette even when its content colour is
+			# cream; otherwise it disappears into the card face.
+			var bottle_rim: Color = Palette.deep(color)
+			picture.draw_rect(Rect2(o + Vector2(-r * 0.49, -r * 0.74), Vector2(r * 0.98, r * 1.58)), bottle_rim, true)
+			picture.draw_rect(Rect2(o + Vector2(-r * 0.42, -r * 0.67), Vector2(r * 0.84, r * 1.44)), color, true)
+			picture.draw_rect(Rect2(o + Vector2(-r * 0.29, -r * 0.98), Vector2(r * 0.58, r * 0.34)), bottle_rim, true)
+			picture.draw_rect(Rect2(o + Vector2(-r * 0.23, -r * 0.92), Vector2(r * 0.46, r * 0.24)), Palette.SOFT_PINK, true)
+			picture.draw_rect(Rect2(o + Vector2(-r * 0.31, r * 0.18), Vector2(r * 0.62, r * 0.42)), Palette.light(Palette.DUSTY_BLUE), true)
 		"bowl":
 			picture.draw_circle(o, r, color)
 			picture.draw_rect(Rect2(o + Vector2(-r, -r), Vector2(r * 2.0, r)), Palette.CREAM, true)

@@ -21,7 +21,7 @@ extends RefCounted
 ##   4. **The link is not on screen until a grown-up asks twice.** Held behind the
 ##      unchanged press-and-hold gate, then behind an explicit tap to reveal, then
 ##      behind a confirming second tap to copy. Asserted by driving the real panel.
-##   5. **The gate was not weakened** to make room for any of this: still 3.0
+##   5. **The gate remains a deliberate hold**: one second, never a tap.
 ##      seconds, still hiding the whole panel.
 ##   6. **No pressure on the child.** The Family Club copy is scanned for urgency,
 ##      scarcity, "unlock", countdowns, and anything that makes Buddy the one
@@ -127,7 +127,7 @@ const FORBIDDEN_PRESSURE: Array[String] = [
 ]
 
 ## The gate, unchanged.
-const REQUIRED_HOLD_SECONDS: float = 3.0
+const REQUIRED_HOLD_SECONDS: float = 1.0
 
 
 func test_name() -> String:

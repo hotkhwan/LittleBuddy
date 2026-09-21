@@ -29,7 +29,7 @@ signal tapped()
 
 enum Style { RING, BAR }
 
-const DEFAULT_HOLD_SECONDS := 3.0
+const DEFAULT_HOLD_SECONDS := 1.0
 ## A press released within this long counts as a tap (`tapped`), not as an
 ## abandoned hold. Well under any hold duration, so it can never race `unlocked`.
 const TAP_MAX_SECONDS := 0.45

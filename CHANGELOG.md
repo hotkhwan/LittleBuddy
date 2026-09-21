@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 — 2026-09-21
+
+- Polished the pastel menu, parent controls, settings, and learning-card UI.
+- Centred the animated startup logo from its first rendered frame.
+- Reduced parent-gate holds to one second and completed the shared icon set.
+
 Versioning starts here, at the owner's instruction. The version of record lives in `VERSION` and
 must stay in step with `application/short_version` and `application/version` in
 `game/export_presets.cfg` — a test enforces that they agree, because a version that disagrees with

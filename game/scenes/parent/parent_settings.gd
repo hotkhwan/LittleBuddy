@@ -1115,9 +1115,9 @@ func _refresh_row_helpers() -> void:
 		label.text_direction = Control.TEXT_DIRECTION_RTL if rtl else Control.TEXT_DIRECTION_AUTO
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if rtl else HORIZONTAL_ALIGNMENT_LEFT
 	# The gate card's own helper, so the hold instruction is readable too.
-	var hold_hint: String = Localization.helper("hold_for_3_seconds_to_open", "")
-	_gate_hold_label.text = "Hold for 3 seconds to open" \
-			if hold_hint.is_empty() else "Hold for 3 seconds to open\n%s" % hold_hint
+	var hold_hint: String = Localization.helper("hold_for_1_second_to_open", "")
+	_gate_hold_label.text = "Hold for 1 second to open" \
+			if hold_hint.is_empty() else "Hold for 1 second to open\n%s" % hold_hint
 	# The Thai privacy block follows the language at once too, not only on the
 	# next open (harness, 2026-09-21: it stayed up under Japanese).
 	if _aliz_privacy_th != null:

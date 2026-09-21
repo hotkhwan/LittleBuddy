@@ -24,7 +24,7 @@ extends RefCounted
 ## wrong place to be clever.
 
 ## This build. Must equal the `VERSION` file at the repository root.
-const BUILD: String = "0.1.0"
+const BUILD: String = "0.1.1"
 
 const PATTERN: String = "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$"
 

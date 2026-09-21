@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scenes/parent/parent_settings.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/safe_area.gd" id="2"]
@@ -11,6 +11,9 @@
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/small/btn_blue.tres" id="9"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/small/btn_mint.tres" id="10"]
 [ext_resource type="StyleBoxTexture" path="res://assets/ui/styles/small/btn_mint_down.tres" id="11"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/close.svg" id="12"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/done.svg" id="13"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/reset.svg" id="14"]
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_speed"]
 
@@ -61,7 +64,7 @@ offset_right = -8.0
 offset_bottom = 90.0
 self_modulate = Color(1, 1, 1, 0)
 script = ExtResource("3")
-hold_duration = 3.0
+hold_duration = 1.0
 style = 0
 
 [node name="GearVisual" type="Control" parent="SafeArea/EntryGate"]
@@ -113,6 +116,14 @@ layout_mode = 2
 theme_override_constants/separation = 18
 alignment = 1
 
+[node name="GateMotif" type="Label" parent="SafeArea/GateScreen/GateCard/GateMargin/GateColumn"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.74, 0.49, 0.61, 1)
+theme_override_font_sizes/font_size = 20
+text = "✦   ♥   ✦"
+horizontal_alignment = 1
+
 [node name="GateTitle" type="Label" parent="SafeArea/GateScreen/GateCard/GateMargin/GateColumn"]
 layout_mode = 2
 horizontal_alignment = 1
@@ -126,14 +137,14 @@ autowrap_mode = 2
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 24
 theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
-text = "Press and hold the bar for 3 seconds to open the settings. A tap does nothing, so little fingers stay out."
+text = "Press and hold the bar for 1 second to open the settings. A tap does nothing, so little fingers stay out."
 
 [node name="GateHold" type="Control" parent="SafeArea/GateScreen/GateCard/GateMargin/GateColumn"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 script = ExtResource("3")
-hold_duration = 3.0
+hold_duration = 1.0
 style = 1
 
 [node name="GateHoldLabel" type="Label" parent="SafeArea/GateScreen/GateCard/GateMargin/GateColumn/GateHold"]
@@ -148,7 +159,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 theme_override_font_sizes/font_size = 30
 theme_override_colors/font_color = Color(0.36, 0.2, 0.26, 1)
-text = "Hold for 3 seconds to open"
+text = "Hold for 1 second to open"
 
 [node name="GateBackButton" type="Button" parent="SafeArea/GateScreen/GateCard/GateMargin/GateColumn"]
 unique_name_in_owner = true
@@ -226,6 +237,9 @@ theme_override_styles/hover = ExtResource("7")
 theme_override_styles/pressed = ExtResource("8")
 theme_override_styles/focus = ExtResource("7")
 text = "Close"
+icon = ExtResource("12")
+expand_icon = true
+icon_max_width = 36
 
 [node name="Subtitle" type="Label" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
@@ -240,6 +254,14 @@ theme_override_constants/separation = 10
 
 [node name="MusicRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
+
+[node name="MusicIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/Content/MusicRow"]
+custom_minimum_size = Vector2(54, 54)
+layout_mode = 2
+size_flags_vertical = 4
+script = ExtResource("5")
+glyph = 16
+tint = Color(0.43, 0.31, 0.54, 1)
 theme_override_constants/separation = 24
 
 [node name="MusicText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/MusicRow"]
@@ -298,6 +320,14 @@ text = "100%"
 
 [node name="VoiceVolumeRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
+
+[node name="VoiceVolumeIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/Content/VoiceVolumeRow"]
+custom_minimum_size = Vector2(54, 54)
+layout_mode = 2
+size_flags_vertical = 4
+script = ExtResource("5")
+glyph = 17
+tint = Color(0.22, 0.42, 0.5, 1)
 theme_override_constants/separation = 24
 
 [node name="VoiceVolumeText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/VoiceVolumeRow"]
@@ -472,6 +502,14 @@ text = "85%"
 
 [node name="VoiceRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
+
+[node name="VoiceIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/Content/VoiceRow"]
+custom_minimum_size = Vector2(54, 54)
+layout_mode = 2
+size_flags_vertical = 4
+script = ExtResource("5")
+glyph = 4
+tint = Color(0.49, 0.28, 0.4, 1)
 theme_override_constants/separation = 24
 
 [node name="VoiceText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/VoiceRow"]
@@ -616,6 +654,14 @@ theme_override_styles/focus = ExtResource("8")
 text = "Normal"
 [node name="HelperRow" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Content"]
 layout_mode = 2
+
+[node name="LanguageIcon" type="TextureRect" parent="SafeArea/Center/Panel/Margin/Content/HelperRow"]
+custom_minimum_size = Vector2(54, 54)
+layout_mode = 2
+size_flags_vertical = 4
+script = ExtResource("5")
+glyph = 18
+tint = Color(0.33, 0.43, 0.26, 1)
 theme_override_constants/separation = 24
 
 [node name="HelperText" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin/Content/HelperRow"]
@@ -999,7 +1045,7 @@ size_flags_vertical = 4
 
 [node name="ResetButton" type="Button" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow/ResetRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 78)
+custom_minimum_size = Vector2(250, 78)
 layout_mode = 2
 focus_mode = 0
 theme_override_font_sizes/font_size = 26
@@ -1014,6 +1060,9 @@ theme_override_styles/pressed = ExtResource("8")
 theme_override_styles/disabled = ExtResource("7")
 theme_override_styles/focus = ExtResource("7")
 text = "Reset progress"
+icon = ExtResource("14")
+expand_icon = true
+icon_max_width = 32
 
 [node name="DoneButton" type="Button" parent="SafeArea/Footer/FooterMargin/FooterColumn/BottomRow"]
 unique_name_in_owner = true
@@ -1031,6 +1080,9 @@ theme_override_styles/hover = ExtResource("10")
 theme_override_styles/pressed = ExtResource("11")
 theme_override_styles/focus = ExtResource("10")
 text = "Done"
+icon = ExtResource("13")
+expand_icon = true
+icon_max_width = 38
 
 [node name="ConfirmBox" type="VBoxContainer" parent="SafeArea/Footer/FooterMargin/FooterColumn"]
 unique_name_in_owner = true
@@ -1070,7 +1122,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(380, 78)
 layout_mode = 2
 script = ExtResource("3")
-hold_duration = 3.0
+hold_duration = 1.0
 style = 1
 
 [node name="HoldLabel" type="Label" parent="SafeArea/Footer/FooterMargin/FooterColumn/ConfirmBox/ConfirmButtons/ConfirmHold"]
@@ -1084,4 +1136,4 @@ horizontal_alignment = 1
 vertical_alignment = 1
 theme_override_font_sizes/font_size = 25
 theme_override_colors/font_color = Color(0.36, 0.2, 0.26, 1)
-text = "Hold 3 seconds to erase"
+text = "Hold 1 second to erase"
