@@ -228,9 +228,9 @@ const VERSION_MARGIN: Vector2 = Vector2(14.0, 10.0)
 ## place and the text panel is hidden. Without it the text panel stays -- the
 ## fallback is what shipped before.
 const LOGO_TITLE_SCRIPT_PATH: String = "res://scripts/branding/logo_title.gd"
-const LOGO_HALF_WIDTH: float = 230.0
-const LOGO_TOP: float = 0.0
-const LOGO_BOTTOM: float = 228.0
+const LOGO_HALF_WIDTH: float = 220.0
+const LOGO_TOP: float = 4.0
+const LOGO_BOTTOM: float = 222.0
 
 ## The walk home (`scripts/menu/menu_departure.gd`): what Start and Free Play
 ## play before the hand-off. `load()`ed like everything optional here.
