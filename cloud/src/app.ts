@@ -49,11 +49,24 @@ export function createApp(options: AppOptions = {}) {
   });
 
   // 2. health (no auth, no rate limit)
-  const health = (c: AppContext) => {
+  const health = async (c: AppContext) => {
     const config = c.get('config');
-    return c.json(config.devMode
+    const body: Record<string, unknown> = config.devMode
       ? { ok: true, service: 'little-days-cloud', apiVersion: API_VERSION, devMode: true, provider: config.providerName, lessons: LESSONS.size, billingEnabled: config.billingEnabled }
-      : { ok: true, apiVersion: API_VERSION });
+      : { ok: true, apiVersion: API_VERSION };
+    // `?db=1`: the first-deployment check. Proves the D1 binding answers and
+    // counts applied migrations. Numbers only; never a row of user data.
+    if (c.req.query('db') === '1') {
+      try {
+        const row = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM d1_migrations').first<{ n: number }>();
+        body.db = { ok: true, migrations: Number(row?.n ?? 0) };
+      } catch (error) {
+        body.ok = false;
+        body.db = { ok: false, error: 'd1_unavailable' };
+        return c.json(body, 503);
+      }
+    }
+    return c.json(body);
   };
   app.get('/healthz', health);
   app.get('/v1/health', health);

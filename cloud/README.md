@@ -162,6 +162,29 @@ Rules first:
    laptop; the `.example` file carries names only.
 5. Review `wrangler deploy --dry-run --env <env>` output before a real deploy.
 
+### Credentials on the MacBook (no `wrangler login` needed)
+
+Store a **scoped API token** and the account id in the macOS keychain once
+(the token needs Workers Scripts:Edit, D1:Edit, Account Settings:Read and
+Workers Routes:Edit on the `joinanny.com` zone; never a Global API Key):
+
+```sh
+security add-generic-password -s CLOUDFLARE_API_TOKEN -a littledays -w '<token>'
+security add-generic-password -s CLOUDFLARE_ACCOUNT_ID -a littledays -w '<account id>'
+source tools/cf_keychain.sh          # exports both, prints only lengths
+```
+
+Then the first dev deployment is one script, preflight first:
+
+```sh
+LD_DEV_WORKER_NAME=<the Worker the owner created> tools/cf_deploy_dev.sh          # dry run
+LD_DEV_WORKER_NAME=<the Worker the owner created> tools/cf_deploy_dev.sh --apply  # create dev D1, migrate, deploy dev, curl /healthz?db=1
+```
+
+`GET /healthz?db=1` proves the D1 binding and reports the number of applied
+migrations (numbers only). The custom domain `api.littledays.joinanny.com`
+belongs to production and is NOT attached by this script.
+
 One-time per environment (owner, with `wrangler login`):
 
 ```sh

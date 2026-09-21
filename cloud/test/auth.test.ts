@@ -12,6 +12,14 @@ describe('health', () => {
     expect(r.body).toMatchObject({ ok: true, service: 'little-days-cloud', apiVersion: 'v1', devMode: true, provider: 'mock', lessons: 6, billingEnabled: false });
   });
 
+  it('GET /healthz?db=1 proves the D1 binding and counts applied migrations', async () => {
+    const c = makeClient({ defaultToken: null });
+    const r = await c.api('GET', '/healthz?db=1');
+    expect(r.status).toBe(200);
+    expect(r.body.db.ok).toBe(true);
+    expect(r.body.db.migrations).toBeGreaterThanOrEqual(4);
+  });
+
   it('GET /v1/health outside DEV_MODE is the minimal shape', async () => {
     const c = makeClient({ defaultToken: null, env: { DEV_MODE: '0' } });
     const r = await c.api('GET', '/v1/health');
