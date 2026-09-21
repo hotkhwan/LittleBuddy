@@ -184,6 +184,9 @@ var _portrait_on: bool = false
 ## What Bunny was doing before a close-up took him (sitting at the table,
 ## standing about), handed back to him afterwards.
 var _care_prev_activity: String = ""
+## The surface the open close-up is happening at ("bath", "sink", ""), so the
+## bath can be followed by the towel.
+var _care_surface: String = ""
 ## The surface Bunny was last set down on ("table", "bed", "sofa", "bath") and
 ## the node that is him. Cleared the moment he is picked up again. This is how
 ## the table knows he is sitting at it when his food arrives.
@@ -1568,6 +1571,7 @@ func _care_for_child(surface: String, care_kind: String) -> bool:
 		_place_child_on(surface, "bath")
 	_care_child = child
 	_care_kind = care_kind
+	_care_surface = surface
 	_care_elapsed = 0.0
 	_care_prev_activity = String(child.call("get_activity")) if child.has_method("get_activity") else ""
 	if child.has_method("set_bubble_suppressed"):
@@ -1617,6 +1621,19 @@ func _ensure_care_overlay() -> Control:
 
 
 func _on_care_completed(care_kind: String) -> void:
+	# Out of the bath, the towel: the same child, the same held room, straight
+	# into the next act, so a bath never ends with a wet Bunny.
+	var follow_up: String = HouseActs.care_follow_up(_care_surface, care_kind)
+	if not follow_up.is_empty() and _care_child != null and is_instance_valid(_care_child) \
+			and _care != null and is_instance_valid(_care):
+		_care_kind = follow_up
+		_care_elapsed = 0.0
+		if _care_child.has_method("satisfy"):
+			_care_child.call("satisfy", "dirty", 40.0)
+		_care.visible = true
+		_care.call("begin", follow_up)
+		_speak(String(_care.call("word_for", follow_up)) if _care.has_method("word_for") else follow_up, true)
+		return
 	if _care != null:
 		_care.visible = false
 	_end_portrait()
@@ -1624,6 +1641,7 @@ func _on_care_completed(care_kind: String) -> void:
 	var previous: String = _care_prev_activity
 	_care_child = null
 	_care_kind = ""
+	_care_surface = ""
 	_care_prev_activity = ""
 	if _hud != null and _hud.has_method("set_narration_covered"):
 		_hud.call("set_narration_covered", false)

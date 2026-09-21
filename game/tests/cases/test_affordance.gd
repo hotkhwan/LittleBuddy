@@ -88,6 +88,14 @@ class FakeWorld extends Node:
 		return null
 
 
+## A world that also knows which room it is in, as `house_world.gd` does.
+class RoomWorld extends FakeWorld:
+	var room_id: String = "kitchen"
+
+	func get_current_room_id() -> String:
+		return room_id
+
+
 func test_name() -> String:
 	return "affordance"
 
@@ -103,6 +111,7 @@ func run():
 	failures.append_array(_test_layer_tap_falls_through_or_is_handled())
 	failures.append_array(_test_layer_stands_down_when_input_is_off())
 	failures.append_array(_test_default_context_reads_the_kitchen())
+	failures.append_array(_test_the_bathroom_sink_is_not_a_kitchen_station())
 	failures.append_array(_test_a_character_is_never_taken())
 	failures.append_array(_test_badge_placement_avoids_keep_outs())
 	failures.append_array(_test_a_visible_care_overlay_silences_the_layer())
@@ -1142,4 +1151,39 @@ func _test_the_thing_she_faces_wins():
 	picked = Rules.pick([door, toy_box], Vector3.ZERO, ["bedroom.doorToKitchen"], facing_box)
 	if String(picked.get("targetId", "")) != "bedroom.doorToKitchen":
 		failures.append("affordance: the mission's door lost to a toy box she happened to face")
+	return failures
+
+
+## The kitchen's state answers for any id it knows, and it knows "sink" -- so
+## the BATHROOM sink, holding the banana, used to read PLACE off the kitchen
+## while the act there was a hand wash (verb/act mismatch, owner playtest
+## 2026-09-21). The default context asks the kitchen only in the kitchen.
+func _test_the_bathroom_sink_is_not_a_kitchen_station():
+	var failures: Array = []
+	var world: RoomWorld = RoomWorld.new()
+	var actor: FakeActor = FakeActor.new()
+	world.character = actor
+	world.kitchen = KitchenState.new()
+	var layer: Control = LayerScript.new()
+	world.add_child(layer)
+	layer.call("bind", world)
+	var sink: Area3D = _make_target("sink", "bathroom", ["wash", "brushTeeth"], Vector3(0.6, 0.7, 0.45), Vector3(-1.2, 0.35, -1.72))
+	world.add_child(sink)
+	world.kitchen.call("set_open", "fridge", true)
+	world.kitchen.call("take", "fridge", "banana")
+
+	world.room_id = "bathroom"
+	var context: Dictionary = layer.call("context_for", sink, actor)
+	if context.has("station"):
+		failures.append("affordance: in the bathroom the sink was described as a kitchen station (%s)" % str(context))
+	var verb: String = Rules.verb_for_target({"supportedActions": ["wash", "brushTeeth"]}, context)
+	if verb != Rules.VERB_WASH:
+		failures.append("affordance: holding the banana at the bathroom sink should still say WASH, got %s" % verb)
+
+	world.room_id = "kitchen"
+	var in_kitchen: Dictionary = layer.call("context_for", sink, actor)
+	if not in_kitchen.has("station"):
+		failures.append("affordance: in the kitchen the sink station is still the kitchen's (%s)" % str(in_kitchen))
+
+	world.free()
 	return failures

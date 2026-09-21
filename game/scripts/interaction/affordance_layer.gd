@@ -509,7 +509,15 @@ func _default_context(target: Object) -> Dictionary:
 		context["door"] = {"locked": not to_room.is_empty() and not is_room_open(to_room)}
 		return context
 
-	if _world.has_method("get_kitchen_state"):
+	# The kitchen's stations are the kitchen's furniture. Its state answers for
+	# any id it knows -- and it knows "sink" -- so the BATHROOM sink used to read
+	# PLACE off the kitchen while the act there was a hand wash. Ask it only in
+	# the kitchen (a world that cannot say which room it is in is asked as before).
+	var in_kitchen: bool = true
+	if _world.has_method("get_current_room_id"):
+		var room_id: String = String(_world.call("get_current_room_id"))
+		in_kitchen = room_id.is_empty() or room_id == "kitchen"
+	if in_kitchen and _world.has_method("get_kitchen_state"):
 		var kitchen: Variant = _world.call("get_kitchen_state")
 		if kitchen is Object and is_instance_valid(kitchen) and kitchen.has_method("describe") \
 				and kitchen.has_method("held"):

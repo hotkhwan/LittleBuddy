@@ -107,10 +107,17 @@ func _test_decisions():
 	if f.call("sink", {"carrying": "child"}) != Acts.ACT_CARE_CHILD:
 		failures.append("acts: carrying Bunny to the sink should open the wash close-up")
 	var sink_decision: Dictionary = Acts.decide({"localId": "sink", "actions": _actions_of("sink"), "carrying": "child"})
-	if String(sink_decision.get("careKind", "")) != "washFace":
-		failures.append("acts: the sink's care act should be washFace, got '%s'" % sink_decision.get("careKind"))
+	if String(sink_decision.get("careKind", "")) != "brushTeeth":
+		failures.append("acts: the sink's care act should be brushTeeth, got '%s'" % sink_decision.get("careKind"))
 	if f.call("bath", {"carrying": "child"}) != Acts.ACT_CARE_CHILD:
 		failures.append("acts: carrying Bunny to the bath should open a close-up")
+	var bath_decision: Dictionary = Acts.decide({"localId": "bath", "actions": _actions_of("bath"), "carrying": "child"})
+	if String(bath_decision.get("careKind", "")) != "washFace":
+		failures.append("acts: the bath's care act should be washFace, got '%s'" % bath_decision.get("careKind"))
+	if Acts.care_follow_up("bath", "washFace") != "dryFace":
+		failures.append("acts: the bath's wash should be followed by the towel (dryFace)")
+	if not Acts.care_follow_up("sink", "brushTeeth").is_empty() or not Acts.care_follow_up("bath", "dryFace").is_empty():
+		failures.append("acts: brushing teeth and drying are each the last act at their basin")
 	if f.call("wardrobe", {"carrying": "child", "openable": true}) != Acts.ACT_TOGGLE_OPEN:
 		failures.append("acts: the wardrobe still opens with Bunny in her arms")
 
@@ -690,7 +697,8 @@ func _bathroom(world, director, aliz, bunny):
 		failures.append("bath: no bubbles")
 	if bunny == null:
 		return failures
-	# Bunny to the sink: the close-up, on him.
+	# Bunny to the sink: the TEETH close-up, on him -- brushed with the real
+	# gesture (strokes back and forth over the mouth), not a fallback.
 	bunny.call("room_changed", world.call("get_current_room"), aliz)
 	SpatialUtil.set_world_position(aliz, SpatialUtil.world_position(bunny) + Vector3(0.0, 0.0, 0.62))
 	if not bool(bunny.call("perform_affordance", aliz)):
@@ -701,28 +709,66 @@ func _bathroom(world, director, aliz, bunny):
 	var before: float = float((stats.call("describe") as Dictionary).get("cleanliness", 0.0))
 	_arrive(aliz, "bathroom.sink")
 	if not bool(director.call("is_care_open")):
-		failures.append("sink: the wash close-up did not open with Bunny in her arms")
+		failures.append("sink: the teeth close-up did not open with Bunny in her arms")
 	else:
 		var care: Control = director.call("get_care_overlay")
-		if String(care.call("get_care_kind")) != "washFace":
-			failures.append("sink: the close-up is '%s', not washFace" % care.call("get_care_kind"))
+		if String(care.call("get_care_kind")) != "brushTeeth":
+			failures.append("sink: the close-up is '%s', not brushTeeth" % care.call("get_care_kind"))
 		if care.get_parent() == null or care.get_parent().name != "UI":
 			failures.append("sink: the close-up is not under the world's UI layer")
-		care.call("complete_by_touch")
+		var mouth: Vector2 = care.call("get_mouth_target")
+		care.call("_set_dragging", true, mouth)
+		for i: int in range(40):
+			care.call("apply_stroke", mouth + Vector2(30.0 if i % 2 == 0 else -30.0, 0.0))
+			if bool(care.call("is_finished")):
+				break
+		if not bool(care.call("is_finished")):
+			failures.append("sink: 40 strokes over the mouth did not finish brushing (progress %.2f)" % care.call("get_progress"))
+			care.call("complete_by_touch")
 		var after: float = float((stats.call("describe") as Dictionary).get("cleanliness", 0.0))
 		if after <= before:
-			failures.append("sink: washing did not raise cleanliness (%.0f -> %.0f)" % [before, after])
+			failures.append("sink: brushing did not raise cleanliness (%.0f -> %.0f)" % [before, after])
 		if bool(director.call("is_care_open")):
 			failures.append("sink: the close-up did not close")
 	if not bool(aliz.call("is_carrying_node")):
-		failures.append("sink: Bunny left her arms during the wash")
-	# The bath: he goes in the tub, then the close-up.
+		failures.append("sink: Bunny left her arms during the brushing")
+	# The bath: he goes in the tub, the wash close-up opens, and when the wash
+	# is done the TOWEL follows in the same held room -- a bath ends dry.
+	stats.call("adjust", "cleanliness", -60.0)
+	var grubby: float = float((stats.call("describe") as Dictionary).get("cleanliness", 0.0))
 	_arrive(aliz, "bathroom.bath")
 	_step(aliz, 40)
 	if not bool(director.call("is_care_open")):
 		failures.append("bath: no close-up opened for Bunny")
 	else:
-		director.call("get_care_overlay").call("complete_by_touch")
+		var care: Control = director.call("get_care_overlay")
+		if String(care.call("get_care_kind")) != "washFace":
+			failures.append("bath: the close-up is '%s', not washFace" % care.call("get_care_kind"))
+		care.call("complete_by_touch")
+		if not bool(director.call("is_care_open")):
+			failures.append("bath: the towel did not follow the wash; the close-up closed")
+		elif String(care.call("get_care_kind")) != "dryFace":
+			failures.append("bath: after the wash the close-up is '%s', not dryFace" % care.call("get_care_kind"))
+		else:
+			if String(aliz.call("get_state_name")) != "disabled":
+				failures.append("bath: the room's input came back between the wash and the towel")
+			# Dry every patch of the face: the real DRY gesture, reach not scrubbing.
+			var centre: Vector2 = care.size * 0.5
+			care.call("_set_dragging", true, centre)
+			var step: float = 190.0 * 2.0 / 3.0
+			for row: int in range(3):
+				for col: int in range(3):
+					care.call("apply_stroke", centre + Vector2(-190.0 + step * (float(col) + 0.5), -190.0 + step * (float(row) + 0.5)))
+			if not bool(care.call("is_finished")):
+				failures.append("bath: wiping all nine patches did not finish drying (progress %.2f)" % care.call("get_progress"))
+				care.call("complete_by_touch")
+		if bool(director.call("is_care_open")):
+			failures.append("bath: the close-up is still open after the towel")
+		if String(aliz.call("get_state_name")) == "disabled":
+			failures.append("bath: input was not given back after the towel")
+		var dried: float = float((stats.call("describe") as Dictionary).get("cleanliness", 0.0))
+		if dried <= grubby:
+			failures.append("bath: the bath did not raise cleanliness (%.0f -> %.0f)" % [grubby, dried])
 	if bool(aliz.call("is_carrying_node")):
 		failures.append("bath: Bunny is still in her arms; he should be in the tub")
 	var tub: Vector3 = SpatialUtil.world_transform(world.call("get_current_room")) \
@@ -731,7 +777,8 @@ func _bathroom(world, director, aliz, bunny):
 		failures.append("bath: Bunny is at %s, not in the tub at %s" % [SpatialUtil.world_position(bunny), tub])
 	if String(bunny.call("get_activity")) != "bath":
 		failures.append("bath: Bunny's activity is '%s', not bath" % bunny.call("get_activity"))
-	# The close-up's own safety: it completes itself if the gesture never comes.
+	# The close-up's own safety: it completes itself if the gesture never comes
+	# -- at the sink, and through BOTH halves of the bath.
 	SpatialUtil.set_world_position(aliz, tub + Vector3(0.0, -tub.y, 0.7))
 	bunny.call("perform_affordance", aliz)
 	_step(aliz, 40)
@@ -741,6 +788,24 @@ func _bathroom(world, director, aliz, bunny):
 			director.call("step", DT)
 		if bool(director.call("is_care_open")):
 			failures.append("sink: the close-up never completed itself; a child who cannot drag is stuck")
+	_arrive(aliz, "bathroom.bath")
+	_step(aliz, 40)
+	if bool(director.call("is_care_open")):
+		for _i: int in range(int(30.0 / DT)):
+			director.call("step", DT)
+		if bool(director.call("is_care_open")):
+			failures.append("bath: the wash-then-towel never completed itself (stuck on %s)" % director.call("get_care_overlay").call("get_care_kind"))
+	# Replayable: out of the tub and back in opens the wash again.
+	SpatialUtil.set_world_position(aliz, tub + Vector3(0.0, -tub.y, 0.7))
+	bunny.call("perform_affordance", aliz)
+	_step(aliz, 40)
+	_arrive(aliz, "bathroom.bath")
+	_step(aliz, 40)
+	if not bool(director.call("is_care_open")) or String(director.call("get_care_overlay").call("get_care_kind")) != "washFace":
+		failures.append("bath: a second bath did not open the wash close-up again")
+	else:
+		director.call("get_care_overlay").call("complete_by_touch")
+		director.call("get_care_overlay").call("complete_by_touch")
 	return failures
 
 

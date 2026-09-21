@@ -64,11 +64,23 @@ const CHILD_ACTIVITY_FOR: Dictionary = {
 	"sofa": "carried",
 	"table": "carried",
 }
-## The care act each basin opens on Bunny.
+## The care act each basin opens on Bunny: teeth at the sink, a wash in the
+## bath (which the director follows with the towel, `dryFace`, so a bath ends
+## dry). Two basins, two different gestures -- a sink that opened the same
+## face-wash as the bath was one act with two badges.
 const CARE_KIND_FOR: Dictionary = {
-	"sink": "washFace",
+	"sink": "brushTeeth",
 	"bath": "washFace",
 }
+## The act that follows another on the same surface: out of the bath, the towel.
+const CARE_FOLLOW_UP: Dictionary = {
+	"bath/washFace": "dryFace",
+}
+
+
+## The care act that follows `care_kind` at `surface`, or "" when it was the last.
+static func care_follow_up(surface: String, care_kind: String) -> String:
+	return String(CARE_FOLLOW_UP.get("%s/%s" % [surface, care_kind], ""))
 
 
 static func decide(situation: Dictionary) -> Dictionary:
