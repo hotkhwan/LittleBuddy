@@ -141,9 +141,6 @@ act dresses him (no DRESS verb in the rules yet).
 - Barge-in on a real device: the mic is closed while Aliz speaks (no
   self-hearing risk); the echo-cancelled keep-open path is not enabled.
 
-## 3. Gates (see §7 for the final numbers)
-
-## 4. Builds (see §7)
 
 ## 5. Spending
 Meshy 0 credits. OpenAI $0 (no key, no call).
@@ -166,4 +163,40 @@ Meshy 0 credits. OpenAI $0 (no key, no call).
 | 13 | Return Home safely | AUTOMATED PASS (smokes, no-dead-end guards) — DEVICE: NOT TESTED |
 
 ## 7. Final numbers
-(filled in below)
+
+**Final code commit: the one after `f8f2552` carrying this section** (only this
+document changed after `f8f2552`). Independent QA ran on `71dd184`
+(`docs/QA_PLAYTEST_71dd184.md`): 11 of 13 acceptance items AUTOMATED PASS,
+item 2 (hands-free hearing on a real device) NOT TESTABLE HEADLESS, and four
+blockers. B1 (a mic that opens but never decodes made Aliz repeat the same
+question every 4.5 s forever — the owner's exact symptom shape), B2 (unmute
+never reopened the mic on a device) and B4 (Listening banner stayed up after
+the recogniser dropped) are fixed in `f8f2552` with a regression test that
+fails on the old code. B3 is Mac-only: the custom Godot.app bundles the
+native recogniser, so the Mac editor never uses the mock and a bare Godot.app
+aborts on the permission prompt (its Info.plist lacks
+`NSSpeechRecognitionUsageDescription`); the iOS export has both strings.
+
+| Gate on `f8f2552` | Result |
+|---|---|
+| Godot suite | **PASS - 159 case(s), 0 failure(s)** (fe15a62 had 157) |
+| Mission 01 / Snack Time walkthroughs | SMOKE PASS / SMOKE PASS |
+| Audio shipping smoke | SMOKE PASS |
+| Settings real-input harness | INPUT SETTINGS OK |
+| Backend | 126 pass, 0 fail |
+| Tutor / free-play / carry / menu shot harnesses | PASS (frames in docs/shots) |
+
+| Build from `f8f2552` | Path | Size | Note |
+|---|---|---|---|
+| Android debug APK | `build/android/LittleDays-debug.apk` | 44,067,163 B | SHA-256 `6a0f2b84f8b2208d4ae093f893c5d355e711ade9cb220d7e2f75da352090127a`, signed, **zero permissions** (no microphone on Android by design) |
+| iOS export | `build/ios/LittleBuddy.xcodeproj`, `build/ios/LittleBuddy.pck` | pck 15,148,824 B | mic + speech usage strings present; owner signs in Xcode |
+| iOS arm64 compile | `xcodebuild … CODE_SIGNING_ALLOWED=NO` | — | `** BUILD SUCCEEDED **` |
+
+Remaining known items: QA cosmetics (a second finger can press an option
+while the first scrolls Settings; the living-room toy box has no badge when
+empty-handed; tapping Bunny while holding a teddy is a silent tap; the picker
+shows nine cards; the free-play feeding portrait frames wider than Mission
+01's). Barge-in with the mic open during Aliz's speech is not enabled on
+devices. **Everything above is automated evidence; the owner's device run is
+the next step and the only thing that can turn AUTOMATED PASS into DEVICE
+PASS.**
