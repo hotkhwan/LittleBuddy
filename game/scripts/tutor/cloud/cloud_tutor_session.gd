@@ -365,8 +365,11 @@ func is_streaming_allowed() -> bool:
 
 # -- lifecycle -----------------------------------------------------------------------------
 
+## Starts a session for the configured lesson. Allowed from idle and again
+## after `end()` (a lesson switch mid-classroom: the previous session's late
+## `/end` acknowledgement is swallowed, never mistaken for this one's).
 func start() -> bool:
-	if _state != STATE_IDLE:
+	if _state not in [STATE_IDLE, STATE_ENDED, STATE_FAILED, STATE_ENDING]:
 		return false
 	if _api == null or _transport == null:
 		_fail("not_configured")
@@ -375,15 +378,7 @@ func start() -> bool:
 		_fail(ApiScript.CODE_CLOUD_DISABLED)
 		return false
 	_wire()
-	_reconnects = 0
-	_rate_limit_retries = 0
-	_turn_failures = 0
-	_end_at_boundary = false
-	_boundary_reason = ""
-	_idle_seconds = 0.0
-	_active_seconds = 0.0
-	_transport_mode = ""
-	_end_posted = false
+	_reset_for_start()
 	if _api.has_method("has_approval") and not bool(_api.call("has_approval")):
 		# No parental-approval token yet: the DEV sign-in mints one (DEV_MODE
 		# Worker only; the Parent Corner flow replaces this later).
@@ -393,6 +388,30 @@ func start() -> bool:
 	_set_state(STATE_QUOTA)
 	_api.call("fetch_quota")
 	return true
+
+
+func _reset_for_start() -> void:
+	_session_id = ""
+	_reconnects = 0
+	_rate_limit_retries = 0
+	_turn_failures = 0
+	_end_at_boundary = false
+	_boundary_reason = ""
+	_end_reason = ""
+	_idle_seconds = 0.0
+	_active_seconds = 0.0
+	_transport_mode = ""
+	_end_posted = false
+	_turn_request = {}
+	_retry_action = ""
+	_retry_left = -1.0
+	_reply_open = false
+	_reply_claimable = false
+	_reply_done = false
+	_reply_had_audio = false
+	_reply_turn = {}
+	_streamed_text = ""
+	_set_speaking(false)
 
 
 func push_audio(pcm: PackedByteArray) -> bool:
@@ -571,7 +590,9 @@ func _on_api_completed(kind: String, result: Dictionary) -> void:
 		ApiScript.KIND_TURN:
 			_on_turn_completed(result)
 		ApiScript.KIND_END:
-			_finish_end(result)
+			if _state == STATE_ENDING or _state == STATE_FAILED:
+				_finish_end(result)
+			# else: the acknowledgement of a session `start()` already superseded
 		_:
 			pass
 

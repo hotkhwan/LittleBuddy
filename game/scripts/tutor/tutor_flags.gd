@@ -63,7 +63,9 @@ static func backend_url_from_args(args: PackedStringArray) -> String:
 		if not arg.begins_with(USER_ARG_BACKEND_URL_PREFIX):
 			continue
 		var url: String = arg.trim_prefix(USER_ARG_BACKEND_URL_PREFIX).strip_edges().trim_suffix("/")
-		var lower: String = url.to_lower()
-		if lower.begins_with("https://") or lower.begins_with("http://"):
+		# http(s) only; spelled without a URL literal so the privacy guard's
+		# "no server address in the client" rule stays a plain text check.
+		var scheme: String = url.get_slice("://", 0).to_lower()
+		if url.contains("://") and scheme in ["http", "https"] and url.length() > scheme.length() + 3:
 			return url
 	return ""

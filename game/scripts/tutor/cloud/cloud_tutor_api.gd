@@ -90,6 +90,7 @@ const DEV_PROVIDER: String = "dev"
 const CONSENT_AI_TUTOR: String = "ai_tutor"
 
 const TIMEOUT_SECONDS: float = 8.0
+const DEV_URL_ENV: String = "LD_TUTOR_DEV_URL"
 const MAX_TRANSCRIPT_CHARS: int = 500
 const MAX_END_REASON_CHARS: int = 40
 const MAX_AUDIO_SECONDS: float = 30.0
@@ -132,6 +133,9 @@ var _client_id: String = ""
 var _parent_token: String = ""
 var _approval_token: String = ""
 var _dev_override: bool = false
+## The one non-loopback host a test-armed client may dial: the development
+## Worker named by the LD_TUTOR_DEV_URL environment variable, never a literal.
+var _dev_remote_host: String = ""
 var _timeout_seconds: float = TIMEOUT_SECONDS
 var _debug_now_ms: int = 0
 
@@ -189,6 +193,27 @@ func enable_for_tests(enabled: bool = true) -> bool:
 		return false
 	_dev_override = enabled
 	return _dev_override
+
+
+## Arms the client for the deployed DEVELOPMENT Worker in the headless suite,
+## without the project flag: refused on a mobile or release build, and only
+## when `url` is exactly the value of the LD_TUTOR_DEV_URL environment
+## variable (an https address the operator set for this run; nothing in the
+## repository names it). Returns false otherwise and dials nothing.
+func enable_dev_api_for_tests(url: String) -> bool:
+	if OS.has_feature("mobile") or OS.has_feature("template_release"):
+		return false
+	var wanted: String = OS.get_environment(DEV_URL_ENV).strip_edges().trim_suffix("/")
+	var given: String = url.strip_edges().trim_suffix("/")
+	if wanted.is_empty() or given.is_empty() or given != wanted:
+		return false
+	var parts: Dictionary = parse_url(given)
+	if parts.is_empty() or not bool(parts["tls"]):
+		return false
+	_dev_override = true
+	_dev_remote_host = String(parts["host"])
+	set_base_url(given)
+	return true
 
 
 func is_available() -> bool:
@@ -441,7 +466,8 @@ func _start_next() -> void:
 			_request = entry
 			_finish(0, {}, CODE_NOT_CONFIGURED)
 			continue
-		if _dev_override and not flag_enabled() and not is_loopback(String(parts["host"])):
+		if _dev_override and not flag_enabled() and not is_loopback(String(parts["host"])) \
+				and (_dev_remote_host.is_empty() or String(parts["host"]) != _dev_remote_host):
 			_request = entry
 			_finish(0, {}, CODE_NOT_CONFIGURED)
 			continue

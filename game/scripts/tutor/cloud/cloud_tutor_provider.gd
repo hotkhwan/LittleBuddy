@@ -52,6 +52,9 @@ const FIRST_REPLY_SECONDS_TURNS: float = 10.0
 
 var _scripted: RefCounted = ScriptedProviderScript.new()
 var _cloud: RefCounted = null
+## The lesson the cloud session was started for (the server binds a session
+## to ONE lesson and refuses another lesson's step ids with invalid_turn).
+var _cloud_lesson: String = ""
 var _pending: Dictionary = {}
 var _first_delta_left: float = -1.0
 var _wired: bool = false
@@ -101,11 +104,41 @@ func begin_session(lesson_id_value: String) -> void:
 	_lesson_id = lesson_id_value
 	_active = true
 	_scripted.begin_session(lesson_id_value)
-	if _cloud != null:
-		_cloud.call("configure", lesson_id_value, "realtime")
-		if String(_cloud.call("get_state")) == "idle":
-			_cloud.call("start")
+	_sync_cloud_lesson()
 	session_ready.emit({"sessionId": "cloud-pending", "provider": provider_name(), "lessonId": lesson_id_value})
+
+
+## The lesson the cloud session was started for, "" while none.
+func cloud_lesson_id() -> String:
+	return _cloud_lesson
+
+
+## Keeps the cloud session on the lesson the ENGINE is running: the classroom
+## may open on the subject chooser and switch lesson afterwards without a
+## second `begin_session()`. No session is opened for a chooser step (every
+## choose turn is local and free); when the engine's lesson differs from the
+## session's, the old session ends (`lesson_switch`) and a new one starts, so
+## the server always resolves the step ids it is sent.
+func _sync_cloud_lesson() -> void:
+	if _cloud == null or not _active:
+		return
+	var lesson: String = _lesson_id
+	if has_engine() and _engine.has_method("lesson_id"):
+		var engine_lesson: String = String(_engine.call("lesson_id"))
+		if not engine_lesson.is_empty():
+			lesson = engine_lesson
+	if lesson.is_empty():
+		return
+	var step: Dictionary = _engine.call("current_step") if has_engine() else {}
+	if String(step.get("kind", "")) == "choose":
+		return
+	if lesson == _cloud_lesson and String(_cloud.call("get_state")) not in ["idle", "ended", "failed"]:
+		return
+	if lesson != _cloud_lesson and bool(_cloud.call("is_active")):
+		_cloud.call("end", "lesson_switch")
+	_cloud_lesson = lesson
+	_cloud.call("configure", lesson, "realtime")
+	_cloud.call("start")
 
 
 func submit_turn(transcript: String, lesson_context: Dictionary) -> void:
@@ -113,6 +146,7 @@ func submit_turn(transcript: String, lesson_context: Dictionary) -> void:
 	if not has_engine():
 		provider_failed.emit("no_lesson_engine")
 		return
+	_sync_cloud_lesson()
 	var step: Dictionary = _engine.call("current_step")
 	if phase != PHASE_ANSWER or step.is_empty() or bool(_engine.call("is_complete")) \
 			or String(step.get("kind", "")) == "choose":
@@ -145,6 +179,7 @@ func end_session() -> void:
 	_scripted.end_session()
 	_pending = {}
 	_first_delta_left = -1.0
+	_cloud_lesson = ""
 	if _cloud != null and bool(_cloud.call("is_active")):
 		_cloud.call("end", "scene")
 
