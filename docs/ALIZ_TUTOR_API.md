@@ -1,5 +1,75 @@
 # Aliz Tutor backend API (v1)
 
+Two implementations share this contract:
+
+- **Cloudflare Worker** (`cloud/`, the product shape, NOT DEPLOYED yet) — section 1.
+- **Node prototype** (`backend/`, the reference implementation) — section 2, kept verbatim.
+
+The prototype's routes, bodies, quota block, TutorTurn rules and error codes
+are the base; the Worker serves all of them under both `/v1` and `/api/v1`
+(the shipped Godot clients use the latter) and adds the account layer below.
+
+---
+
+# 1. Worker contract (`cloud/`)
+
+Source: `cloud/src/routes/*.ts`, `cloud/src/do/*.ts`. Design: `docs/CLOUD_BACKEND.md`.
+Run locally: `cd cloud && npm run dev` (see `cloud/README.md`).
+
+## 1.1 Credentials
+
+| Header | Token | Who | Where accepted |
+| --- | --- | --- | --- |
+| `Authorization: Bearer pt1.<...>` | parent sign-in (30 d) | Parent Corner | every account route; `PUT /consent`, `POST /parents/approval` and `POST /tutor/sessions/:id/stop` require it |
+| `X-Parent-Approval: pa1.<...>` or body `parentApprovalToken` | parental approval bound to `clientId` (+ optional `childId`) | the game | every route; REQUIRED on tutor routes, re-verified on each session call (same token that created the session) |
+| literal `dev-parent-approval` | DEV_MODE only | dev runs | as above, maps to the synthetic parent `dev-parent` |
+
+`pa1` keeps the prototype's format (`pa1.<base64url JSON>.<hex HMAC-SHA256>`,
+claims `sub` = clientId, `iat`, `exp`) plus `pid` (parent) and optional `cid`
+(child). Missing/invalid/expired/mis-bound credential: `403 not_approved`.
+
+## 1.2 Routes (prefix `/v1` or `/api/v1`)
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/healthz`, `/v1/health` | no credential |
+| POST | `/v1/parents` | no credential. `{provider:"dev", subject, clientId?}` (DEV_MODE) -> `201 {parentId, created, parentToken, expiresAt, parentApprovalToken?}`; `apple`/`google` -> `501 not_implemented` until identity tokens are verified |
+| GET | `/v1/parents/me` | `{parentId, provider, consentVersion, createdAt, via}` |
+| POST | `/v1/parents/approval` | bearer. `{clientId, childId?, ttlSeconds?}` -> `201 {parentApprovalToken, expiresAt}` (server half of the parental gate) |
+| GET / POST | `/v1/children` | `{nickname (<=24, no contact details), avatarId?, birthYearBucket? ("2020-2021"), locale?}` -> `201 {childId, ...}`; max 6 |
+| GET / POST | `/v1/devices` | `{clientId, platform: ios|android|macos|unknown, appVersion?}` -> `201`; `409 conflict` when the device belongs to another family |
+| GET / PUT | `/v1/consent` | PUT (bearer) `{kind: privacy|ai_tutor|voice, version?, granted}`; GET -> `{requiredVersion, consent:{kind:{version, grantedAt, revokedAt, granted}}}` |
+| GET | `/v1/entitlements` | `{entitlement, activeUntil, source, allowances, products:[{productId, priceHint:{currency, monthly, status}}], billing:{enabled}, records}` — price hint is config |
+| GET | `/v1/tutor/quota`, `/v1/tutor/entitlement?clientId=` | `{clientId, childId, entitlement, quota, products, priceHint}` (prototype alias shape kept) |
+| POST | `/v1/tutor/sessions` | as prototype + optional `childId`; response adds `childId`. Needs consent `ai_tutor` (`403 consent_required {kind}`) |
+| POST | `/v1/tutor/sessions/:id/turns` | as prototype (idempotent, `X-Parent-Approval` = creating token) |
+| POST | `/v1/tutor/sessions/:id/end` | as prototype; `usage` = `{turns, llmInputTokens, llmOutputTokens, audioSeconds, costUsd}` |
+| POST | `/v1/tutor/sessions/:id/usage` | realtime usage reports, as prototype |
+| POST | `/v1/tutor/sessions/:id/stop` | bearer; Parent Corner stop -> `{sessionId, ended}` |
+| POST | `/v1/tutor/realtime/token` | `503 provider_unavailable` unless `OPENAI_API_KEY` + provider module (Agent E) + consent `voice`; otherwise `201` with BOTH shapes: `{sessionId, quotaSessionId, clientSecret:{value, expiresAt(unix s)}, token:{value, expiresAt(ISO)}, expiresInSeconds, wsUrl, subprotocols, headers, sessionUpdate, realtime:{model, turnDetection, mock:false}, quota, lessonKnown}` (what `cloud_realtime_transport.gd` reads + the prototype fields) |
+| DELETE | `/v1/tutor/clients/:clientId` | `{clientId, deleted:{sessions, usageEvents, idempotency}}` |
+| GET / PUT | `/v1/progress` | PUT `{childId?, lessonId, stepIndex, stars, completed?}` (monotonic upsert); GET `?childId=` -> `{childId, progress:[...]}` |
+| POST | `/v1/billing/apple/notifications`, `/v1/billing/google/rtdn`, `/v1/billing/verify` | Agent F; `501` stubs. Webhooks need no parent token |
+| POST / GET | `/v1/dev/entitlements`, `/v1/dev/parent-approval`, `/v1/dev/retention/purge`, `/v1/dev/spend` | DEV_MODE only |
+
+Header `X-Debug-Now: <unix ms>` sets the server clock in DEV_MODE only (tests).
+
+## 1.3 Differences from the prototype the client may notice
+
+- `childId` appears in session and quota replies. The Godot client may ignore
+  it; a session without `childId` uses the family's first (auto-created,
+  nickname-only) profile.
+- New error code `consent_required` (403): treat like `not_approved` (back to
+  the parent gate) — `backend_response.gd` already maps unknown 403s that way.
+- New error code `conflict` (409) on device registration.
+- Realtime never returns a mock token; without a provider it is `503`.
+- Quota is per child, not per `clientId`: two devices approved for the same
+  child share one daily allowance.
+
+---
+
+# 2. Prototype (`backend/`) reference
+
 Base URL: `TutorFlags.backend_url()` (default `http://127.0.0.1:8787`).
 All bodies are JSON with camelCase keys. All errors are
 `{"error":{"code":"...","message":"...", ...}}`. Source: `backend/src/app.js`.
