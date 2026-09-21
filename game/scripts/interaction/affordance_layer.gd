@@ -14,9 +14,9 @@ extends Control
 ##
 ## The PICTURE is small and the TAP TARGET is not. Every drawn size is stated
 ## at the 1366x1024 design reference (ART_BIBLE §8, the space the CanvasLayer
-## lays out in on a device) and scales with the viewport's height: a 120 px
-## disc with a 72 px verb glyph and a 40 px word pill under it, 88 / 53 / 29
-## px on a bare 750 px frame, 127 / 76 / 42 px at 1080. The invisible hit box
+## lays out in on a device) and scales with the viewport's height: a 104 px
+## disc with a 60 px verb glyph and a 36 px word pill under it, 76 / 44 / 26
+## px on a bare 750 px frame, 110 / 63 / 38 px at 1080. The invisible hit box
 ## under it stays at least 240 px whatever the viewport, and `layout_rects()`
 ## reports both so a test can hold the two apart. A press on that box that
 ## turns out to have nothing to do is handed to the floor router, so no tap
@@ -81,17 +81,17 @@ const HIT_SIZE: float = 240.0
 ## device. History: the first build drew a 148 px disc at every size and hid
 ## the thing it pointed at (owner, 2026-09-20); the second drew 12.8 % of the
 ## height (131 design px) and the owner still called it oversized (2026-09-21).
-## This one is 120 design px -- 11.7 % -- with the ring around the object
-## halved and the badge held off faces and silhouettes, which is where most of
-## the "big" came from.
+## This one is 104 design px -- 10.2 % -- with a quieter ring around the object
+## and the badge held off faces and silhouettes. The full 240 px target remains
+## deliberately much larger than the art a child sees.
 const REFERENCE_HEIGHT: float = 1024.0
 ## The visible disc, design px. `BADGE_RADIUS` is what the layout maths uses.
-const DISC_DIAMETER: float = 120.0
+const DISC_DIAMETER: float = 104.0
 const BADGE_RADIUS: float = DISC_DIAMETER * 0.5
 ## The square the verb picture fills inside the disc, design px. 60 % of the
 ## disc: big enough to read as a picture, small enough to leave the coloured
 ## rim that says which verb this is from across the room.
-const GLYPH_BOX: float = 72.0
+const GLYPH_BOX: float = 60.0
 const OUTLINE_PX: float = 4.0
 const MIN_SCALE: float = 0.6
 const MAX_SCALE: float = 2.2
@@ -118,23 +118,23 @@ const NUDGE_PX: float = 24.0
 ## played and no badge may show, whoever mounted this layer.
 const CARE_OVERLAY_NAME: String = "CareOverlay"
 
-## The word under the picture: 30 px at the design height (the §8 27 pt floor
-## with a little to spare; 22 px on a bare 750 px frame), on a cream pill that
+## The word under the picture: 27 px at the design height (the §8 floor;
+## 20 px on a bare 750 px frame), on a cream pill that
 ## fits the word (SOON's pill carries a short sentence).
-const LABEL_FONT_SIZE: int = 30
-const LABEL_WIDTH: float = 132.0
-const LABEL_HEIGHT: float = 40.0
-const LABEL_GAP: float = 8.0
-const LABEL_PAD: float = 22.0
+const LABEL_FONT_SIZE: int = 27
+const LABEL_WIDTH: float = 116.0
+const LABEL_HEIGHT: float = 36.0
+const LABEL_GAP: float = 6.0
+const LABEL_PAD: float = 18.0
 
 ## The highlight ring around the thing itself, design px, clamped so a fridge
 ## across the room and a table under the camera both get a ring you can see --
 ## and so a wardrobe never gets one that fills the room. Characters get no
 ## ring at all (`draws_ring()`): a circle round Bunny is a circle across his
 ## face, and the tail on the badge already says who it is about.
-const RING_MIN_PX: float = 40.0
-const RING_MAX_PX: float = 110.0
-const RING_WIDTH: float = 4.0
+const RING_MIN_PX: float = 36.0
+const RING_MAX_PX: float = 92.0
+const RING_WIDTH: float = 3.0
 const DEFAULT_EXTENT_M: float = 0.35
 
 ## A child character's face, metres above his root and either side of it:

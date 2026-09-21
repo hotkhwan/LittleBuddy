@@ -1137,28 +1137,28 @@ func _test_a_character_badge_keeps_off_his_bubble():
 
 
 ## Owner feedback (2026-09-20, again 2026-09-21): the badge hid the thing it
-## pointed at, then was still "oversized". The VISIBLE disc is 120 px at the
-## 1024 px design height (88 px on a bare 750 px frame, 127 px at 1080) with a
-## 72 px picture and a 30 px word; the invisible HIT BOX stays at the 240 px
+## pointed at, then was still "oversized". The VISIBLE disc is 104 px at the
+## 1024 px design height (76 px on a bare 750 px frame, 110 px at 1080) with a
+## 60 px picture and a 27 px word; the invisible HIT BOX stays at the 240 px
 ## floor regardless. `layout_rects()` reports both, and they must stay
 ## visibly different things: the target is twice the picture.
 func _test_badge_is_small_and_scales_with_the_screen():
 	var failures: Array = []
 	var design: float = LayerScript.badge_diameter(1024.0)
-	if absf(design - 120.0) > 0.5:
-		failures.append("affordance: the disc is %.0f px at the 1024 px design height; 120 px was asked for" % design)
+	if absf(design - 104.0) > 0.5:
+		failures.append("affordance: the disc is %.0f px at the 1024 px design height; 104 px was asked for" % design)
 	var bare: float = LayerScript.badge_diameter(750.0)
-	if absf(bare - 120.0 * 750.0 / 1024.0) > 1.0:
-		failures.append("affordance: the disc is %.0f px on a 750 px tall frame; it should be 120/1024 of the height" % bare)
+	if absf(bare - 104.0 * 750.0 / 1024.0) > 1.0:
+		failures.append("affordance: the disc is %.0f px on a 750 px tall frame; it should be 104/1024 of the height" % bare)
 	var phone: float = LayerScript.badge_diameter(1080.0)
-	if absf(phone - 120.0 * 1080.0 / 1024.0) > 1.0:
-		failures.append("affordance: the disc is %.0f px at 1080 px tall; it should scale with the height" % phone)
+	if absf(phone - 104.0 * 1080.0 / 1024.0) > 1.0:
+		failures.append("affordance: the disc is %.0f px at 1080 px tall; it should be 104/1024 of the height" % phone)
 	if phone <= bare:
 		failures.append("affordance: the badge does not grow with the viewport")
 	if design / 1024.0 > 0.125:
 		failures.append("affordance: the disc is %.1f%% of the screen height; the owner called 12.8%% oversized" % (design / 1024.0 * 100.0))
-	if absf(LayerScript.glyph_box(1024.0) - 72.0) > 0.5:
-		failures.append("affordance: the verb picture is %.0f px at the design height; 72 was asked for" % LayerScript.glyph_box(1024.0))
+	if absf(LayerScript.glyph_box(1024.0) - 60.0) > 0.5:
+		failures.append("affordance: the verb picture is %.0f px at the design height; 60 was asked for" % LayerScript.glyph_box(1024.0))
 	if LayerScript.LABEL_FONT_SIZE < 27 or LayerScript.LABEL_FONT_SIZE > 32:
 		failures.append("affordance: the pill text is %d px at the design height; ART_BIBLE §8 floors it at 27" % LayerScript.LABEL_FONT_SIZE)
 	if LayerScript.HIT_SIZE < 240.0:
@@ -1179,8 +1179,8 @@ func _test_badge_is_small_and_scales_with_the_screen():
 	var hit: Rect2 = rects["hit"]
 	if hit.size.x < 240.0 or hit.size.y < 240.0:
 		failures.append("affordance: the hit box %s is under 240 px" % str(hit))
-	if disc.size.x > 130.0 or disc.size.x < 120.0:
-		failures.append("affordance: the visible disc (with its outline) is %s; 120 px plus a 4 px rim was asked for" % str(disc.size))
+	if disc.size.x > 114.0 or disc.size.x < 104.0:
+		failures.append("affordance: the visible disc (with its outline) is %s; 104 px plus a 4 px rim was asked for" % str(disc.size))
 	if hit.size.x < disc.size.x * 1.8:
 		failures.append("affordance: the hit box (%s) is not visibly bigger than the disc (%s); the picture and the target must stay distinct"
 				% [str(hit.size), str(disc.size)])
@@ -1194,8 +1194,8 @@ func _test_badge_is_small_and_scales_with_the_screen():
 		failures.append("affordance: the hit box %s does not cover the disc %s and the pill %s" % [str(hit), str(disc), str(pill)])
 	if not footprint.encloses(disc) or not footprint.encloses(pill):
 		failures.append("affordance: the footprint %s is not the disc plus the pill" % str(footprint))
-	if footprint.size.x > 140.0 or footprint.size.y > 180.0:
-		failures.append("affordance: the drawn footprint %s is bigger than a 120 px disc and a 40 px pill" % str(footprint))
+	if footprint.size.x > 126.0 or footprint.size.y > 158.0:
+		failures.append("affordance: the drawn footprint %s is bigger than a 104 px disc and a 36 px pill" % str(footprint))
 	if not (hit.get_center().is_equal_approx(centre)) or not (disc.get_center().is_equal_approx(centre)):
 		failures.append("affordance: the hit box and the disc are not centred on the same point")
 

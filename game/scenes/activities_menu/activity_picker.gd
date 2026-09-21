@@ -57,8 +57,8 @@ const TITLE: String = "Play with Bunny"
 const BACK_LABEL: String = "Back"
 
 ## The title screen's card: 240 px (ART_BIBLE §8 floor, and what `main.tscn`
-## draws), 40 px gaps, the picture box 100 px from y 10 (the title's is 116
-## from y 12 with no stars to fit), the caption 30 pt in a two-line band, the
+## draws), 40 px gaps, the picture box 96 px from y 12 (matching the title's
+## visible picture scale), the caption 30 pt in a two-line band, the
 ## three stars under it. `test_ui_chrome.gd` pins the card side and caption
 ## size to the title screen's Play card so the two cannot drift apart again.
 const CARD_SIDE: float = 240.0
@@ -71,8 +71,8 @@ const BACK_SIZE: Vector2 = Vector2(260.0, 120.0)
 const MARGIN: float = 24.0
 const GRID_TOP: float = 168.0
 const STAR_SIZE: float = 38.0
-const PICTURE_TOP: float = 10.0
-const PICTURE_SIZE: float = 100.0
+const PICTURE_TOP: float = 12.0
+const PICTURE_SIZE: float = 96.0
 const CAPTION_TOP: float = 110.0
 const CAPTION_HEIGHT: float = 76.0
 const STARS_TOP: float = 192.0
