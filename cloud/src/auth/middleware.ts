@@ -17,6 +17,8 @@ export function isAuthExempt(method: string, path: string): boolean {
   const p = path.replace(/^\/api/, '');
   if (p === '/healthz' || p === '/v1/health') return true;
   if (method === 'POST' && p === '/v1/parents') return true;
+  if (method === 'POST' && (p === '/v1/auth/guest' || p === '/v1/auth/link')) return true;
+  if (method === 'GET' && p === '/v1/me/entitlements') return true;
   if (method === 'POST' && (p === '/v1/billing/apple/notifications' || p === '/v1/billing/google/rtdn')) return true;
   return false;
 }

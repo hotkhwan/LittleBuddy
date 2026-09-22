@@ -10,6 +10,12 @@ const TABLES = [
   'ai_usage_monthly', 'ai_sessions', 'ai_provider_usage', 'privacy_versions',
   'consents', 'organizations', 'schools', 'school_users', 'school_classes',
   'school_students', 'licenses', 'license_seats', 'device_activations', 'audit_logs',
+  'guest_accounts', 'identity_providers', 'parent_profiles', 'installations',
+  'guest_learning_progress', 'account_learning_progress', 'guest_reward_awards',
+  'account_reward_awards', 'guest_unlocks', 'account_unlocks', 'guest_settings',
+  'account_settings', 'guest_ai_usage', 'account_ai_usage', 'account_ai_usage_imports',
+  'account_trials', 'purchase_identity_mappings', 'friend_invites', 'friendships',
+  'house_visits', 'multiplayer_sessions', 'session_members',
 ];
 
 describe('D1 migrations', () => {
@@ -20,7 +26,7 @@ describe('D1 migrations', () => {
 
   it('record themselves in d1_migrations', async () => {
     const rows = (await env.DB.prepare('SELECT name FROM d1_migrations ORDER BY id').all<{ name: string }>()).results.map((r) => r.name);
-    expect(rows).toEqual(['0001_accounts.sql', '0002_entitlements_billing.sql', '0003_tutor.sql', '0004_progress.sql', '0005_account_privacy.sql', '0006_production_platform.sql']);
+    expect(rows).toEqual(['0001_accounts.sql', '0002_entitlements_billing.sql', '0003_tutor.sql', '0004_progress.sql', '0005_account_privacy.sql', '0006_production_platform.sql', '0007_guest_identity.sql']);
   });
 
   it('enforces subscription event and purchase transaction idempotency', async () => {

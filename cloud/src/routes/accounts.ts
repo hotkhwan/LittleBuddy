@@ -14,6 +14,7 @@ import { listProgress, progressToJson, upsertProgress } from '../db/progress';
 import { deleteChild, deleteParentAccount, exportFamily } from '../db/accounts_privacy';
 import { LESSONS } from '../tutor/lessons';
 import { IdentityError, createIdentityVerifiers, failureStatus, hashSubject, isIdentityProvider, type IdentityEnv } from '../auth/identity';
+import { uuid } from '../util/crypto';
 
 export const accountRoutes = new Hono<{ Bindings: Env; Variables: Vars }>();
 
@@ -79,6 +80,13 @@ accountRoutes.post('/parents', async (c) => {
     throw new ApiError(409, 'conflict', 'This account was deleted recently. A new account can be created after the waiting period.', { reason: 'account_deleted', availableAt });
   }
   const { parent, created } = outcome;
+  // Keep the legacy parent row as a compatibility projection while making
+  // the backend-owned account/provider model canonical for new features.
+  await c.env.DB.batch([
+    c.env.DB.prepare("INSERT OR IGNORE INTO accounts (id,status,created_at,updated_at) VALUES (?,'active',?,?)").bind(parent.id, now, now),
+    c.env.DB.prepare('INSERT OR IGNORE INTO parent_profiles (id,account_id,created_at,updated_at) VALUES (?,?,?,?)').bind(uuid(), parent.id, now, now),
+    ...(provider === 'apple' || provider === 'google' ? [c.env.DB.prepare('INSERT OR IGNORE INTO identity_providers (provider,provider_subject_hash,account_id,created_at,last_seen_at) VALUES (?,?,?,?,?)').bind(provider, subjectHash, parent.id, now, now)] : []),
+  ]);
   const parentToken = await tokens.mintParent(parent.id, now, config.parentTokenTtlSeconds);
   const out: Record<string, unknown> = {
     parentId: parent.id,
@@ -300,6 +308,15 @@ accountRoutes.get('/entitlements', async (c) => {
 
 // Normalized production contract. Store/provider internals never appear here.
 accountRoutes.get('/me/entitlements', async (c) => {
+  if (!c.get('auth')) {
+    const raw = (c.req.header('authorization') ?? '').replace(/^bearer\s+/i, '').trim();
+    const guest = await c.get('tokens').verifyGuest(raw, c.get('now'));
+    if (!guest.ok) throw new ApiError(401, 'invalid_guest_session', 'The guest session is missing, altered, or expired.');
+    const row = await c.env.DB.prepare('SELECT status FROM guest_accounts WHERE id=?').bind(guest.claims.gid).first<{ status: string }>();
+    const installation = await c.env.DB.prepare('SELECT guest_account_id,status FROM installations WHERE installation_id=?').bind(guest.claims.iid).first<{ guest_account_id: string | null; status: string }>();
+    if (!row || row.status !== 'active' || installation?.guest_account_id !== guest.claims.gid || installation.status !== 'active') throw new ApiError(401, 'invalid_guest_session', 'The guest session is no longer active.');
+    return c.json({ accountType: 'guest', plan: 'FREE', paid: false, canPurchase: false, features: ['core_game', 'local_lessons', 'standard_ai_trial'], premiumLiveTrial: false });
+  }
   const { auth } = await requireLiveParent(c);
   const config = c.get('config');
   const now = c.get('now');

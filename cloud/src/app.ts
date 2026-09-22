@@ -15,6 +15,7 @@ import { tutorRoutes } from './routes/tutor';
 import { devRoutes } from './routes/dev';
 import { billingRoutes } from './billing/index';
 import { LESSONS } from './tutor/lessons';
+import { identityRoutes } from './routes/identity';
 
 export const API_VERSION = 'v1';
 
@@ -124,6 +125,7 @@ export function createApp(options: AppOptions = {}) {
   // 4. routes, under /v1 and (for the shipped Godot clients) /api/v1
   const api = new Hono<{ Bindings: Env; Variables: Vars }>();
   api.route('/', accountRoutes);
+  api.route('/', identityRoutes);
   api.route('/', tutorRoutes);
   // Agent F's billing module is a plain fetch-style handler (returns null off
   // its mount); it is served here under /v1/billing with the Worker env.

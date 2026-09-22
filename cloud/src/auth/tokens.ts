@@ -15,6 +15,7 @@ import { DEV_PARENT_APPROVAL_LITERAL, DEV_PARENT_ID } from '../env';
 
 export interface ParentClaims { pid: string; iat: number; exp: number }
 export interface ApprovalClaims { sub: string; pid: string; cid?: string; iat: number; exp: number }
+export interface GuestClaims { gid: string; iid: string; iat: number; exp: number }
 
 export type VerifyResult<T> = { ok: true; claims: T; dev: boolean } | { ok: false; reason: 'missing' | 'malformed' | 'bad_signature' | 'expired' | 'not_configured' | 'wrong_client' };
 
@@ -37,6 +38,17 @@ export class TokenService {
     return this.sign('pa1', claims);
   }
 
+  async mintGuest(guestAccountId: string, installationId: string, nowMs: number, ttlSeconds: number): Promise<string> {
+    const iat = Math.floor(nowMs / 1000);
+    return this.sign('gt1', { gid: guestAccountId, iid: installationId, iat, exp: iat + Math.max(60, ttlSeconds) });
+  }
+
+  async verifyGuest(token: unknown, nowMs: number): Promise<VerifyResult<GuestClaims>> {
+    const r = await this.verify<GuestClaims>('gt1', token, nowMs);
+    if (r.ok && (typeof r.claims.gid !== 'string' || typeof r.claims.iid !== 'string')) return { ok: false, reason: 'malformed' };
+    return r;
+  }
+
   async verifyParent(token: unknown, nowMs: number): Promise<VerifyResult<ParentClaims>> {
     const r = await this.verify<ParentClaims>('pt1', token, nowMs);
     if (r.ok && typeof r.claims.pid !== 'string') return { ok: false, reason: 'malformed' };
@@ -55,7 +67,7 @@ export class TokenService {
     return r;
   }
 
-  private async sign(prefix: 'pt1' | 'pa1', claims: object): Promise<string> {
+  private async sign(prefix: 'pt1' | 'pa1' | 'gt1', claims: object): Promise<string> {
     if (!this.configured) throw new Error('PARENT_TOKEN_SECRET is not configured');
     const body = b64urlEncode(JSON.stringify(claims));
     return `${prefix}.${body}.${await hmacHex(this.secret, prefix, body)}`;
