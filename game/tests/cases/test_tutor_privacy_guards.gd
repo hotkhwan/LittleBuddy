@@ -71,6 +71,13 @@ const NETWORK_ALLOWLIST: Array[String] = [
 	"res://scripts/tutor/cloud/cloud_tutor_api.gd",
 ]
 
+## First-party identity is independent of the child tutor upload switch: guest
+## creation/linking is parent/account infrastructure and sends no child voice.
+## It must still have no committed host literal; project.godot keeps its URL empty.
+const IDENTITY_NETWORK_ALLOWLIST: Array[String] = [
+	"res://scripts/account/identity_api.gd",
+]
+
 ## Files that may construct `AudioStreamMicrophone`. EMPTY BY DESIGN: the game
 ## captures no audio itself; recognition is the on-device native plugin behind
 ## `SpeechService`. Adding an entry here requires an update to
@@ -295,7 +302,7 @@ func _test_network_primitives_only_on_the_allowlist():
 		if not allowed.begins_with(TUTOR_DIR) or not allowed.ends_with(".gd"):
 			failures.append("NETWORK_ALLOWLIST entry %s must be a script under %s" % [allowed, TUTOR_DIR])
 	for path: String in _files_to_scan():
-		if NETWORK_ALLOWLIST.has(path):
+		if NETWORK_ALLOWLIST.has(path) or IDENTITY_NETWORK_ALLOWLIST.has(path):
 			continue
 		var code: String = _code_of_file(path)
 		for primitive: String in NETWORK_PRIMITIVES:
@@ -332,6 +339,13 @@ func _test_allowlisted_files_check_the_flag_first():
 		for scheme: String in URL_SCHEMES:
 			if strings.contains(scheme):
 				failures.append("%s carries its own '%s' literal" % [path, scheme])
+	for path: String in IDENTITY_NETWORK_ALLOWLIST:
+		var strings: String = _strings_of(path)
+		for scheme: String in URL_SCHEMES:
+			if strings.contains(scheme):
+				failures.append("%s carries its own '%s' literal" % [path, scheme])
+		if not _read(PROJECT).contains("services/backend_url=\"\""):
+			failures.append("project.godot must keep the identity service URL empty until deployment configuration")
 	return failures
 
 
