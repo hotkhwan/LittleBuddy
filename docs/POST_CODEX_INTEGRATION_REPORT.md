@@ -94,4 +94,51 @@ with migrations 0001–0007, `AI` and `AI_SEARCH` bindings live. **Production wa
 not deployed and no production resource was touched.**
 
 ## 8. Builds, versions and the remaining device list
-(filled in below)
+
+**Final code commit `3b3bec4`**; the commits after it are this report only.
+
+| Artefact (from `3b3bec4`) | Path | Facts |
+|---|---|---|
+| iOS Xcode project + pck | `build/ios/LittleBuddy.xcodeproj`, `build/ios/LittleBuddy.pck` (17,238,384 B) | export preflight PASS (plugin folder real, untracked, arm64), post-export PASS (extension bundled), `CFBundleShortVersionString` 0.1.1, bundle id `com.pointit.littlebuddy` (Apple id deliberately unchanged) |
+| iOS arm64 compile | unsigned, `generic/platform=iOS` | `** BUILD SUCCEEDED **`, **0 undefined `little_buddy_speech` symbols**, 73 defined, binary arm64 |
+| Android App Bundle | `build/android/LittleDays-debug.aab` (45,940,102 B) | `jar verified`, SHA-256 `04a366013750a1310ad7d5392a87be0c77c4fd49b6ccc6228d7793ae9823421a`, package **`com.joinanny.littledays`**, version 0.1.1 (**versionCode 3**, up from Codex's RC 2), no permissions in the bundle manifest, 15 Meshy prop files, 0 concept-art files. **Debug-signed pipeline proof, not uploadable.** |
+| Android universal APK (for device installs) | `build/android/LittleDays-debug.apk` (98,019,248 B) | SHA-256 `4f89b2aed4e7654b4997a02ae8dd2fb4e9ffaeeacb2301fbabeea32513082ac7`, derived from the AAB with bundletool, debug-signed |
+
+**The uploadable release AAB was NOT built.** `tools/export_android.sh release --aab`
+requires `GODOT_ANDROID_KEYSTORE_RELEASE_PATH/_USER/_PASSWORD`; the keystore is
+at `~/Documents/LittleDays-Secure/littledays-upload.jks` (Codex's candidate
+upload key, certificate `CN=Little Days Upload, O=Join Anny`) but its password
+is not in the environment or the keychain, and nothing was uploaded. To
+produce it:
+```sh
+export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$HOME/Documents/LittleDays-Secure/littledays-upload.jks"
+export GODOT_ANDROID_KEYSTORE_RELEASE_USER=littledays-upload
+export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD='…'      # or store it in the keychain first
+tools/export_android.sh release --aab
+```
+versionCode 3 is monotonic over Codex's signed RC (2), which was never uploaded.
+
+### Remaining native sign-in work
+- **Apple:** no `AuthenticationServices` / `ASAuthorizationAppleIDProvider`
+  adapter exists in the game; `ParentAccountUx` offers a button that cannot yet
+  produce an `identityToken`. Needs the native plugin plus `APPLE_BUNDLE_ID`
+  and a Services ID (`APPLE_SERVICE_ID`) on the Worker; nonce handling is not
+  implemented in `identity_api.gd`.
+- **Google:** no Credential Manager adapter (`GetGoogleIdOption` /
+  `GoogleIdTokenCredential`); needs the Android plugin plus `GOOGLE_CLIENT_IDS`
+  on the Worker. Codex's `docs/GOOGLE_CREDENTIAL_MANAGER.md` has the plan.
+Until both exist, `POST /v1/parents` and `/v1/auth/link` answer 501 for
+apple/google, which is the honest state.
+
+### Physical-device QA list (owner)
+1. iPhone launch of the new build and the Learn with Aliz flow: microphone and
+   speech prompts, hands-free answers heard, **no doubled praise, no cut
+   words** (both were fixed at the source this night and last).
+2. Android install of the universal APK: launch, menu, a mission, Free Play.
+3. Click-to-walk around bed / wardrobe / bath / table / fridge / toy box /
+   doors; room transitions both ways with no bounce.
+4. Gestures at phone size (thumbs up, celebrate, thinking, encourage) and the
+   new Codex layouts in real safe areas; Thai reading comfort.
+5. Settings scrolling with real fingers; the Baby Room highchair Home button.
+6. Cloud AI is dev-only and not reachable from the shipped build; nothing to
+   test on the device for AI, identity or billing.
