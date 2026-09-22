@@ -19,7 +19,9 @@ func configure(installation_id: String, session: Dictionary = {}) -> void:
 
 func apply_guest_response(response: Dictionary) -> bool:
 	var account_id := String(response.get("guestAccountId", ""))
-	var token := String(response.get("sessionToken", response.get("token", "")))
+	# The Worker's /v1/auth/guest reply names the credential `guestToken`
+	# (identity e2e 2026-09-22); older shapes are still read.
+	var token := String(response.get("guestToken", response.get("sessionToken", response.get("token", ""))))
 	if account_id.is_empty() or token.is_empty():
 		return false
 	_session = {"accountId": account_id, "accountType": TYPE_GUEST, "sessionToken": token,
@@ -30,7 +32,8 @@ func apply_guest_response(response: Dictionary) -> bool:
 
 func apply_link_response(response: Dictionary) -> bool:
 	var account_id := String(response.get("parentAccountId", response.get("accountId", "")))
-	var token := String(response.get("sessionToken", response.get("token", "")))
+	# /v1/auth/link replies with `parentToken`.
+	var token := String(response.get("parentToken", response.get("sessionToken", response.get("token", ""))))
 	if account_id.is_empty() or token.is_empty():
 		return false
 	_session = {"accountId": account_id, "accountType": TYPE_PARENT, "sessionToken": token,

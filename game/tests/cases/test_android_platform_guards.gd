@@ -101,8 +101,11 @@ func _test_release_identity_contract():
 		failures.append("the independent Apple bundle id changed during the Android package migration")
 	if not presets.contains('gradle_build/target_sdk="36"'):
 		failures.append("Android target SDK must remain 36")
-	if not presets.contains('version/code=2') or not presets.contains('version/name="0.1.1"'):
-		failures.append("Android release metadata must be versionCode 2 / versionName 0.1.1 or newer")
+	# versionCode is monotonic: 2 was the first signed RC (2026-09-22, never uploaded), 3 the post-merge RC.
+	var code_match: RegExMatch = RegEx.create_from_string("version/code=(\\d+)").search(presets)
+	var version_code: int = int(code_match.get_string(1)) if code_match != null else 0
+	if version_code < 2 or not presets.contains('version/name="0.1.1"'):
+		failures.append("Android release metadata must be versionCode >= 2 / versionName 0.1.1 or newer (got %d)" % version_code)
 	return failures
 
 
