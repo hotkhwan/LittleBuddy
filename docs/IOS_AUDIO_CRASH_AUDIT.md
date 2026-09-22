@@ -22,6 +22,26 @@ one stream object. Peak levels are sane, and not a single NaN or Inf frame was
 produced in ~40 million decoded frames. No corrupt asset was found, so no
 `.fixed.ogg` was produced and no re-encode was needed or performed.
 
+## Follow-up: AVAudioSession candidate (2026-09-22)
+
+The asset result above remains unchanged. Inspection after checkpoint
+`5ad1165` found a separate integration risk: the speech plugin configured
+`AVAudioSession` when recognition started but did not preserve or restore the
+previous category/mode, while the shipped Tutor did not establish the stable
+VoiceChat lifecycle its comments described.
+
+The release-candidate change now configures `PlayAndRecord`/`VoiceChat` once
+when a gated Tutor session begins, keeps it stable across turns, stops
+recognition before exit, and restores the prior category/mode/options without
+deactivating the process-wide session. Route changes, interruptions, media
+service resets, silence hints, sample rate, buffer duration, channel counts,
+route, permission state, and speech state are recorded locally as metadata;
+no audio or transcript is included.
+
+This is an evidence-based risk reduction, not a confirmed root-cause claim.
+The original microphone-permission transition has not yet been reproduced in
+this environment because no physical Apple device is available to CoreDevice.
+
 All ten SFX are uncompressed 16-bit PCM WAV (`compress/mode=0`); **nothing in
 this build converts a WAV to Vorbis at import time**, so the crashing code path
 is reachable only through the two music tracks.

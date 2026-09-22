@@ -16,6 +16,7 @@ signal listening_stopped()
 signal partial_recognized(text: String)
 signal recognized(text: String)
 signal recognition_failed(reason: String)
+signal audio_session_changed(snapshot: Dictionary)
 
 
 func is_available() -> bool:

@@ -1,5 +1,16 @@
 # AI path — end-to-end verification (development Worker)
 
+## Stabilization audit — 2026-09-22
+
+After synchronizing `feature/codex-ui-polish` to Claude's `5ad1165`, the runtime
+topology below was re-audited without deploying or enabling child audio. The
+same gaps remain: the Workers AI adapter has structured lesson turns but no
+provider-neutral `generateChatTurn`; Learning Agent/AI Search is not called by
+the Tutor turn path; and `TutorExpressionDirector` is not instantiated by the
+shipped Classroom. The existing direct validated-turn → semantic face/gesture
+path remains operational. These are intentionally not expanded during the iOS
+audio device gate. Production child audio remains off.
+
 Date: 2026-09-22. Checkout: `feature/ui-meshy-cloud` at `41393bf` (Codex's `0f1bc51`
 merged; HEAD advanced to `7daea89` during the run, identity work only). Godot 4.7.2
 headless on macOS. Worker: `https://little-days-api-dev.hotkhwan.workers.dev`

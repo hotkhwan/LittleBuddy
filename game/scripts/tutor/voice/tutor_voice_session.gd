@@ -473,6 +473,7 @@ func start(lesson_id: String, opts: Dictionary = {}) -> bool:
 		_interrupting = false
 		_muted = false
 		_active = true
+		_set_platform_voice_session(true)
 		if bool(opts.get("simulation", false)) and _recognition.has_method("set_simulation_enabled"):
 			_recognition.call("set_simulation_enabled", true)
 		_wire()
@@ -502,6 +503,7 @@ func start(lesson_id: String, opts: Dictionary = {}) -> bool:
 	_interrupting = false
 	_muted = false
 	_active = true
+	_set_platform_voice_session(true)
 	if bool(opts.get("simulation", false)) and _recognition.has_method("set_simulation_enabled"):
 		_recognition.call("set_simulation_enabled", true)
 	_wire()
@@ -528,6 +530,7 @@ func stop(reason: String = REASON_STOPPED) -> void:
 	if _recognition != null:
 		_recognition.set_continuous(false)
 		_recognition.cancel()
+	_set_platform_voice_session(false)
 	if _synth != null and is_instance_valid(_synth):
 		_synth.cancel()
 	if _transport != null:
@@ -543,6 +546,14 @@ func stop(reason: String = REASON_STOPPED) -> void:
 	_set_state(STATE_ENDED)
 	_update_capture()
 	session_ended.emit(reason)
+
+
+func _set_platform_voice_session(enabled: bool) -> void:
+	if _recognition == null or not _recognition.has_method("speech_service"):
+		return
+	var service: Node = _recognition.call("speech_service")
+	if service != null and service.has_method("set_voice_processing"):
+		service.call("set_voice_processing", enabled)
 
 
 ## Silences the microphone path entirely; Aliz may still finish speaking.

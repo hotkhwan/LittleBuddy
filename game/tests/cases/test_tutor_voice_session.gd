@@ -96,6 +96,13 @@ class FakeVoice:
 		return "aliz"
 
 
+class FakeSpeechService:
+	extends Node
+	var voice_processing_calls: Array[bool] = []
+	func set_voice_processing(enabled: bool) -> void:
+		voice_processing_calls.append(enabled)
+
+
 class Log:
 	extends RefCounted
 	var states: Array = []
@@ -122,6 +129,7 @@ func run():
 	failures.append_array(_test_vad_truth_table())
 	failures.append_array(_test_vad_echo_gate_and_floor())
 	failures.append_array(_test_mic_scope())
+	failures.append_array(_test_platform_audio_session_lifecycle())
 	failures.append_array(_test_hands_free_turn_and_reprompt())
 	failures.append_array(_test_barge_in())
 	failures.append_array(_test_mock_transport())
@@ -424,6 +432,27 @@ func _test_mic_scope():
 		failures.append("capture_changed reports on and finally off: %s" % str(log.captures))
 	_free(h)
 	_free(h2)
+	return failures
+
+
+func _test_platform_audio_session_lifecycle():
+	var failures: Array = []
+	var h: Dictionary = _make()
+	var session: RefCounted = h["session"]
+	var service := FakeSpeechService.new()
+	session.set_speech_service(service)
+	if not session.start("animals_cat_dog", {"gatePassed": true}):
+		failures.append("Tutor session starts for audio-session lifecycle test")
+	if service.voice_processing_calls != [true]:
+		failures.append("Tutor entry configures one stable platform voice session: %s" % str(service.voice_processing_calls))
+	_run(h, 2.0)
+	if service.voice_processing_calls != [true]:
+		failures.append("individual Tutor turns must not toggle the platform audio session: %s" % str(service.voice_processing_calls))
+	session.stop("test_complete")
+	if service.voice_processing_calls != [true, false]:
+		failures.append("Tutor exit restores the platform audio session exactly once: %s" % str(service.voice_processing_calls))
+	service.free()
+	_free(h)
 	return failures
 
 

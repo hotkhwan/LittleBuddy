@@ -56,6 +56,7 @@ public:
 	void set_voice_processing(bool enabled);
 	bool is_voice_processing() const;
 	float get_input_level() const;
+	godot::String get_audio_session_diagnostics_json() const;
 
 	// Called by the Objective-C controller (LBSpeechController) to forward
 	// results back into the Godot/GDExtension signal system. Not part of
@@ -66,6 +67,7 @@ public:
 	void _emit_recognition_failed(const godot::String &reason);
 	void _emit_listening_started();
 	void _emit_listening_stopped();
+	void _emit_audio_session_event(const godot::String &json);
 
 protected:
 	static void _bind_methods();

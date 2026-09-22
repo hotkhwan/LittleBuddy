@@ -60,6 +60,12 @@ const ALLOWED_DIAG_KEYS: Array[String] = [
 	"hasPermission",
 	"speechEnabledSetting",
 	"ttsAvailable",
+	# Audio-session metadata used to correlate a native crash. The native JSON
+	# is restricted to route/configuration/permission flags and contains no
+	# transcript or audio samples.
+	"audioDriver",
+	"audioMixRate",
+	"nativeAudioSession",
 	"listenCount",
 	"recognizedCount",
 	"failedCount",
