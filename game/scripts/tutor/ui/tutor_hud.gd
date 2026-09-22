@@ -158,6 +158,8 @@ const BANNER_COLOURS: Dictionary = {
 }
 
 var _safe: Control = null
+var _mode_badge: PanelContainer = null
+var _mode_label: Label = null
 var _home: Button = null
 var _end: Button = null
 var _mute: Button = null
@@ -205,6 +207,7 @@ static func layout_rects(viewport_size: Vector2) -> Dictionary:
 	var answers_width: float = answer_size.x * MAX_ANSWER_CARDS + ANSWER_CARD_GAP * (MAX_ANSWER_CARDS - 1)
 	return {
 		"heading": Rect2(w * 0.5 - 220.0, 6.0, 440.0, 30.0),
+		"modeBadge": Rect2(32.0, 120.0, 220.0, 38.0),
 		"learningShelf": Rect2(w * 0.5 - 350.0, h - 180.0, 700.0, 156.0),
 		"home": Rect2(w + HOME_RIGHT - HOME_SIZE, HOME_TOP, HOME_SIZE, HOME_SIZE),
 		"end": Rect2(END_LEFT, END_TOP, END_WIDTH, END_HEIGHT),
@@ -252,6 +255,15 @@ func build() -> void:
 	heading.text = "Learn with Aliz"
 	_place(heading, Control.PRESET_CENTER_TOP, -220.0, 6.0, 220.0, 36.0)
 	_safe.add_child(heading)
+	_mode_badge = PanelContainer.new()
+	_mode_badge.name = "TutorModeBadge"
+	_mode_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mode_badge.add_theme_stylebox_override("panel", _pill(Palette.MINT, 18, Color.WHITE))
+	_place(_mode_badge, Control.PRESET_TOP_LEFT, 32.0, 120.0, 252.0, 158.0)
+	_safe.add_child(_mode_badge)
+	_mode_label = _label("TutorModeLabel", Typography.HELPER, Palette.INK)
+	_mode_label.text = "Lesson Mode"
+	_mode_badge.add_child(_mode_label)
 	# Keep controls on one low shelf, below Aliz's hands, instead of floating
 	# a giant microphone over her teaching table.
 	var shelf := Panel.new()
@@ -500,6 +512,31 @@ func set_banner(kind: String, text: String = "") -> void:
 		_banner_label.add_theme_color_override("font_color", Palette.INK)
 		_apply_banner()
 	_refresh_top_slot()
+
+
+## Provider details never reach this child-facing label. Remaining time is a
+## future parent-surface concern, not token/accounting chrome in the classroom.
+func set_tutor_mode(mode: String, tier: String = "standard") -> void:
+	build()
+	var label := "Lesson Mode"
+	var tint: Color = Palette.MINT
+	match mode:
+		"standard_chat":
+			label = "Ask Aliz anything"
+			tint = Palette.LAVENDER
+		"premium_live":
+			label = "Live with Aliz"
+			tint = Palette.STAR_NEXT
+		_:
+			pass
+	if tier == "premium" and mode == "premium_live":
+		label = "Live with Aliz  •  Premium"
+	_mode_label.text = label
+	_mode_badge.add_theme_stylebox_override("panel", _pill(tint, 18, Color.WHITE))
+
+
+func tutor_mode_label() -> String:
+	return _mode_label.text if _mode_label != null else ""
 
 
 ## What the banner says right now, or "" while it is hidden.

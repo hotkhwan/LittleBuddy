@@ -11,15 +11,39 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Entitlement, Env } from '../env';
 import type { QuotaState } from '../tutor/types';
-import { nextUtcMidnightIso, round1, utcDayKey } from '../util/time';
+import { nextUtcMidnightIso, nextUtcMonthIso, round1, utcDayKey, utcMonthKey } from '../util/time';
 
 interface QuotaRecord { childId: string; day: string; usedSeconds: number; turns: number }
+
+interface LiveQuotaRecord {
+  accountId: string;
+  month: string;
+  usedSeconds: number;
+  reservations: Record<string, number>;
+}
+
+export interface LiveQuotaKey {
+  accountId: string;
+  nowMs: number;
+  allowanceSeconds: number;
+  sessionMaxSeconds: number;
+}
+
+export interface LiveQuotaState {
+  allowanceSeconds: number;
+  usedSeconds: number;
+  reservedSeconds: number;
+  remainingSeconds: number;
+  resetAt: string;
+}
 
 export interface QuotaKey { childId: string; nowMs: number; entitlement: Entitlement; allowanceSeconds: number; turnAllowance: number }
 
 export class QuotaDO extends DurableObject<Env> {
   private rec: QuotaRecord | null = null;
   private loaded = false;
+  private live: LiveQuotaRecord | null = null;
+  private liveLoaded = false;
 
   private async load(childId: string, nowMs: number): Promise<QuotaRecord> {
     if (!this.loaded) {
@@ -32,6 +56,68 @@ export class QuotaDO extends DurableObject<Env> {
       await this.ctx.storage.put('rec', this.rec);
     }
     return this.rec;
+  }
+
+  private async loadLive(key: LiveQuotaKey): Promise<LiveQuotaRecord> {
+    if (!this.liveLoaded) {
+      this.live = (await this.ctx.storage.get<LiveQuotaRecord>('live')) ?? null;
+      this.liveLoaded = true;
+    }
+    const month = utcMonthKey(key.nowMs);
+    if (!this.live || this.live.accountId !== key.accountId || this.live.month !== month) {
+      this.live = { accountId: key.accountId, month, usedSeconds: 0, reservations: {} };
+      await this.ctx.storage.put('live', this.live);
+    }
+    return this.live;
+  }
+
+  private liveState(rec: LiveQuotaRecord, key: LiveQuotaKey): LiveQuotaState {
+    const allowance = Math.max(0, Math.floor(key.allowanceSeconds));
+    const reserved = Object.values(rec.reservations).reduce((sum, value) => sum + value, 0);
+    return {
+      allowanceSeconds: allowance,
+      usedSeconds: Math.min(rec.usedSeconds, allowance),
+      reservedSeconds: reserved,
+      remainingSeconds: Math.max(0, allowance - rec.usedSeconds - reserved),
+      resetAt: nextUtcMonthIso(key.nowMs),
+    };
+  }
+
+  async liveSnapshot(key: LiveQuotaKey): Promise<LiveQuotaState> {
+    return this.liveState(await this.loadLive(key), key);
+  }
+
+  /** Reserves pooled monthly Live time before credentials are minted. */
+  async reserveLive(key: LiveQuotaKey, sessionId: string, requestedSeconds: number): Promise<LiveQuotaState> {
+    const rec = await this.loadLive(key);
+    if (!rec.reservations[sessionId]) {
+      const state = this.liveState(rec, key);
+      const request = Math.max(0, Math.min(Math.floor(requestedSeconds), Math.floor(key.sessionMaxSeconds)));
+      if (request <= 0 || request > state.remainingSeconds) return state;
+      rec.reservations[sessionId] = request;
+      await this.ctx.storage.put('live', rec);
+    }
+    return this.liveState(rec, key);
+  }
+
+  /** Finalization is idempotent and charges no more than the reserved amount. */
+  async finalizeLive(key: LiveQuotaKey, sessionId: string, actualSeconds: number): Promise<LiveQuotaState> {
+    const rec = await this.loadLive(key);
+    const reserved = rec.reservations[sessionId];
+    if (reserved === undefined) return this.liveState(rec, key);
+    rec.usedSeconds += Math.max(0, Math.min(Math.floor(actualSeconds), reserved));
+    delete rec.reservations[sessionId];
+    await this.ctx.storage.put('live', rec);
+    await this.env.DB.prepare(`INSERT INTO ai_usage_monthly
+      (account_id, usage_month, live_used_seconds, live_allowance_seconds, reset_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(account_id, usage_month) DO UPDATE SET
+        live_used_seconds = excluded.live_used_seconds,
+        live_allowance_seconds = excluded.live_allowance_seconds,
+        reset_at = excluded.reset_at,
+        updated_at = excluded.updated_at`)
+      .bind(rec.accountId, rec.month, rec.usedSeconds, Math.max(0, Math.floor(key.allowanceSeconds)), Date.parse(nextUtcMonthIso(key.nowMs)), key.nowMs).run();
+    return this.liveState(rec, key);
   }
 
   private state(rec: QuotaRecord, key: QuotaKey): QuotaState {
@@ -86,6 +172,8 @@ export class QuotaDO extends DurableObject<Env> {
   async reset(): Promise<void> {
     this.rec = null;
     this.loaded = true;
+    this.live = null;
+    this.liveLoaded = true;
     await this.ctx.storage.deleteAll();
   }
 }

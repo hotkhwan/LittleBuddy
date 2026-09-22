@@ -315,7 +315,7 @@ func _process(delta: float) -> void:
 ## told a parent that, and told the child nothing). Fifteen characters: the card
 ## wraps it onto two lines, which is fine; what may not change is the wording,
 ## because the owner reads it aloud and `test_menu_start_continue.gd` pins it.
-const LABEL_PLAY_WITH_BUNNY: String = "Play with Bunny"
+const LABEL_PLAY_WITH_BUNNY: String = "Play with Baby"
 
 
 func _label_play_button() -> void:

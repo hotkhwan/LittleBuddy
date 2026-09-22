@@ -26,7 +26,7 @@ const CONVERT_TOOL: String = "res://../tools/voice_convert.sh"
 const OWNER_LINES: Array = [
 	["aliz_001_welcome", "aliz", "Welcome to Little Days!"],
 	["aliz_002_lets_play", "aliz", "Let's play together!"],
-	["aliz_003_come_on", "aliz", "Come on, Bunny!"],
+	["aliz_003_come_on", "aliz", "Come on, Baby!"],
 	["aliz_004_lets_go_home", "aliz", "Let's go home!"],
 	["aliz_005_what_shall_we_do", "aliz", "What shall we do today?"],
 	["aliz_006_good_job", "aliz", "Great job!"],
@@ -46,7 +46,7 @@ const OWNER_LINES: Array = [
 	["bunny_010_hug", "bunny", "Hug me, please!"],
 	["bunny_011_happy", "bunny", "Yay!"],
 	["bunny_012_upset", "bunny", "Hmph!"],
-	["aliz_011_apple", "aliz", "Let's give Bunny the apple!"],
+	["aliz_011_apple", "aliz", "Let's give Baby the apple!"],
 	["aliz_012_banana", "aliz", "Let's peel the banana!"],
 	["aliz_013_drink", "aliz", "Time for a drink!"],
 	["aliz_014_milk_time", "aliz", "Let's make some milk!"],

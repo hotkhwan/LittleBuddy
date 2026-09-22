@@ -478,7 +478,7 @@
       "title": "Brush My Teeth!",
       "thaiTitle": "แปรงฟันกันเถอะ",
       "category": "care",
-      "introPhrase": "Bunny needs help!",
+      "introPhrase": "Baby needs help!",
       "outroPhrase": "All clean! Put the brush away. Great job, Buddy!",
       "unlockAtStars": 0,
       "taskIds": [
@@ -496,7 +496,7 @@
       "levelTitle": "Brush My Teeth",
       "levelThaiTitle": "แปรงฟัน",
       "levelNumber": 20,
-      "storyBeat": "Buddy helps Bunny get clean before the day starts.",
+      "storyBeat": "Buddy helps Baby get clean before the day starts.",
       "template": "careRoutine",
       "roomPath": [
         "bedroom",
@@ -538,7 +538,7 @@
       "levelTitle": "I'm Hungry!",
       "levelThaiTitle": "หนูหิวแล้ว",
       "levelNumber": 11,
-      "storyBeat": "Bunny is hungry. Aliz makes milk in the kitchen and helps Bunny drink.",
+      "storyBeat": "Baby is hungry. Aliz makes milk in the kitchen and helps Baby drink.",
       "template": "careRoutine",
       "roomPath": [
         "bedroom",
@@ -585,7 +585,7 @@
       "levelTitle": "Snack Time!",
       "levelThaiTitle": "ถึงเวลากินขนม",
       "levelNumber": 12,
-      "storyBeat": "Bunny wants a snack. Aliz opens the fridge, mashes a banana and brings it over.",
+      "storyBeat": "Baby wants a snack. Aliz opens the fridge, mashes a banana and brings it over.",
       "template": "careRoutine",
       "roomPath": [
         "bedroom",

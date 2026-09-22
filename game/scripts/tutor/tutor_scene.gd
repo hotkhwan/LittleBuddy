@@ -99,7 +99,7 @@ const NUDGE_SECONDS: float = 10.0
 
 const WELCOME_TEXT: String = "Hi! What would you like to learn today?"
 const WELCOME_AGAIN_TEXT: String = "We can learn fruits, numbers, colors or animals. What would you like?"
-const CLOSING_TEXT: String = "Great job today! Come back tomorrow for more Little Days! Let's keep playing with Bunny!"
+const CLOSING_TEXT: String = "Great job today! Come back tomorrow for more Little Days! Let's keep playing with Baby!"
 
 ## Subject routing for the welcome question, keyed by subjectId.
 const SUBJECT_KEYWORDS: Dictionary = {

@@ -67,6 +67,13 @@ func _run() -> void:
 	await _settle(0.3)
 	await _shot("classroom_apple")
 	print("     face rect: %s" % str(_scene.face_screen_rect(Vector2(_frame))))
+	_scene.hud().set_tutor_mode("standard_chat", "standard")
+	await _settle(0.2)
+	await _shot("free_chat")
+	_scene.hud().set_tutor_mode("premium_live", "premium")
+	await _settle(0.2)
+	await _shot("premium_live")
+	_scene.hud().set_tutor_mode("lesson_local", "standard")
 
 	_scene.hud().set_banner("listening")
 	await _settle(0.5)

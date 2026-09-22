@@ -47,6 +47,10 @@ static func sanitise(raw: Variant) -> Dictionary:
 				DEFAULT_FREE_DAILY_SECONDS, MIN_DAILY_SECONDS, MAX_DAILY_SECONDS),
 		"familyClubDailySeconds": _bounded_int(source.get("familyClubDailySeconds", null),
 				DEFAULT_FAMILY_CLUB_DAILY_SECONDS, MIN_DAILY_SECONDS, MAX_DAILY_SECONDS),
+		"standardDailySeconds": _bounded_int(source.get("standardDailySeconds", source.get("freeDailySeconds", null)),
+				DEFAULT_FREE_DAILY_SECONDS, MIN_DAILY_SECONDS, MAX_DAILY_SECONDS),
+		"premiumLiveDailySeconds": _bounded_int(source.get("premiumLiveDailySeconds", source.get("familyClubDailySeconds", null)),
+				DEFAULT_FAMILY_CLUB_DAILY_SECONDS, MIN_DAILY_SECONDS, MAX_DAILY_SECONDS),
 		"warnAtSeconds": _bounded_int(source.get("warnAtSeconds", null),
 				DEFAULT_WARN_AT_SECONDS, 10, 600),
 		"cloudTimeoutSeconds": _bounded_int(source.get("cloudTimeoutSeconds", null),
@@ -73,6 +77,14 @@ static func free_daily_seconds() -> int:
 
 static func family_club_daily_seconds() -> int:
 	return int(load_config()["familyClubDailySeconds"])
+
+
+static func standard_daily_seconds() -> int:
+	return int(load_config()["standardDailySeconds"])
+
+
+static func premium_live_daily_seconds() -> int:
+	return int(load_config()["premiumLiveDailySeconds"])
 
 
 static func warn_at_seconds() -> int:

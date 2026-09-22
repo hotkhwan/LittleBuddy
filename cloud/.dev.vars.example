@@ -11,6 +11,11 @@ PARENT_TOKEN_SECRET=
 # the turn provider leave the deterministic mock (Agent E's module). Absent on this machine.
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
+# Alternate Standard provider. The app never receives this secret.
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=
+# Premium Live backend credentials. Public child audio remains feature-gated.
+GEMINI_API_KEY=
 # App Store Server API (Agent F, cloud/src/billing) - names reserved, not read yet.
 APPLE_ISSUER_ID=
 APPLE_KEY_ID=

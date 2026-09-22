@@ -18,7 +18,7 @@
       "folder": "res://assets/audio/voice/aliz/"
     },
     "bunny": {
-      "displayName": "Bunny",
+      "displayName": "Baby",
       "voice": "soft, adorable, expressive baby; laughs, delight, sleepy, a little sulky; never shrill",
       "role": "the baby being cared for; his lines are reactions and needs",
       "folder": "res://assets/audio/voice/bunny/"
@@ -46,7 +46,7 @@
     {
       "lineId": "aliz_003_come_on",
       "character": "aliz",
-      "text": "Come on, Bunny!",
+      "text": "Come on, Baby!",
       "emotion": "inviting",
       "usage": "callBunny",
       "set": "A",
@@ -226,7 +226,7 @@
     {
       "lineId": "aliz_011_apple",
       "character": "aliz",
-      "text": "Let's give Bunny the apple!",
+      "text": "Let's give Baby the apple!",
       "emotion": "bright, guiding",
       "usage": "taskApple",
       "set": "C",

@@ -2220,7 +2220,7 @@ static func Palette_soft_pink() -> Color:
 const BEDTIME_TASKS_PATH: String = "res://content/bedtime/tasks.json"
 const BEDTIME_TEDDY_TASK_ID: String = "bedtimeTeddy"
 const BEDTIME_TEDDY_ID: String = "teddy"
-const BEDTIME_GOODNIGHT: String = "Goodnight, Bunny! Sleep tight."
+const BEDTIME_GOODNIGHT: String = "Goodnight, Baby! Sleep tight."
 const BEDTIME_TEDDY_THANKS: String = "Night night!"
 const BEDTIME_DIM_SEC: float = 1.0
 ## How dark the night glow is: the key light and the ambient, as fractions of

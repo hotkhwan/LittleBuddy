@@ -64,7 +64,7 @@ Each drop-in folder has a README with the exact filenames.
 |---|--------|--------------|---------------------|-----------|
 | 1 | `aliz_001_welcome` | Welcome to Little Days! | cheerful | menuReady |
 | 2 | `aliz_002_lets_play` | Let's play together! | excited | menuReady |
-| 3 | `aliz_003_come_on` | Come on, Bunny! | inviting | callBunny |
+| 3 | `aliz_003_come_on` | Come on, Baby! | inviting | callBunny |
 | 4 | `aliz_004_lets_go_home` | Let's go home! | bright | startPressed |
 | 5 | `aliz_005_what_shall_we_do` | What shall we do today? | curious | freePlayStart |
 | 6 | `aliz_006_good_job` | Great job! | praise | encouragementGreat |
@@ -94,7 +94,7 @@ Each drop-in folder has a README with the exact filenames.
 
 | # | lineId | English text | Emotion / direction | Used when |
 |---|--------|--------------|---------------------|-----------|
-| 1 | `aliz_011_apple` | Let's give Bunny the apple! | bright, guiding | taskApple |
+| 1 | `aliz_011_apple` | Let's give Baby the apple! | bright, guiding | taskApple |
 | 2 | `aliz_012_banana` | Let's peel the banana! | bright, guiding | taskBanana |
 | 3 | `aliz_013_drink` | Time for a drink! | bright, guiding | taskDrink |
 | 4 | `aliz_014_milk_time` | Let's make some milk! | bright, excited | taskPrepareMilk |

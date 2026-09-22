@@ -28,7 +28,9 @@ export function tempDir() {
 export async function startServer(opts = {}) {
   const dataDir = opts.dataDir ?? tempDir();
   const clock = opts.clock ?? makeClock();
-  const env = { DEV_MODE: '1', DATA_DIR: dataDir, PARENT_APPROVAL_SECRET: 'test-secret', LESSONS_DIR: FIXTURE_LESSONS_DIR, ...(opts.env ?? {}) };
+  // Keep legacy pricing assertions deterministic while production defaults can
+  // advance independently to the configured Standard provider model.
+  const env = { DEV_MODE: '1', DATA_DIR: dataDir, PARENT_APPROVAL_SECRET: 'test-secret', LESSONS_DIR: FIXTURE_LESSONS_DIR, TUTOR_MODEL: 'gpt-4o-mini', ...(opts.env ?? {}) };
   const config = loadConfig(env);
   const app = createApp({ config, now: clock.now, provider: opts.provider, fetchImpl: opts.fetchImpl, persist: true });
   const server = createHttpServer({ app });

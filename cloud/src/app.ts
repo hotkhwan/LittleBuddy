@@ -38,14 +38,16 @@ export function createApp(options: AppOptions = {}) {
     const now = Number.isFinite(debugNow) && debugNow > 0 ? debugNow : Date.now();
     c.set('config', config);
     c.set('now', now);
-    c.set('requestId', uuid());
+    const requestId = c.req.header('cf-ray') || uuid();
+    c.set('requestId', requestId);
     c.set('tokens', new TokenService(c.env.PARENT_TOKEN_SECRET || '', config.devMode));
     c.set('provider', options.provider ?? resolveProvider(config, c.env.OPENAI_API_KEY, options.fetchImpl));
     c.set('body', undefined);
     c.set('auth', null);
     const started = Date.now();
     await next();
-    console.log(`[cloud] ${c.req.method} ${c.req.routePath} -> ${c.res.status} ${Date.now() - started}ms`);
+    c.header('x-request-id', requestId);
+    console.log(JSON.stringify({ event: 'request', requestId, method: c.req.method, route: c.req.routePath, status: c.res.status, durationMs: Date.now() - started }));
   });
 
   // 2. health (no auth, no rate limit)
@@ -72,9 +74,17 @@ export function createApp(options: AppOptions = {}) {
   app.get('/v1/health', health);
   app.get('/api/v1/health', health);
 
+  app.get('/readyz', async (c) => {
+    const config = c.get('config');
+    const checks: Record<string, boolean> = { worker: true, d1: false, durableObjects: Boolean(c.env.TUTOR_SESSION && c.env.QUOTA), requiredConfig: Boolean(c.env.PARENT_TOKEN_SECRET) };
+    try { await c.env.DB.prepare('SELECT 1 AS ok').first(); checks.d1 = true; } catch { checks.d1 = false; }
+    const ok = Object.values(checks).every(Boolean);
+    return c.json({ ok, closed: !config.productionEnabled, billingEnabled: config.billingEnabled, liveChildAudioEnabled: config.liveChildAudioEnabled, checks }, ok ? 200 : 503);
+  });
+
   // 3. per-IP rate limit, body cap + JSON parse, parent credential
   app.use('*', async (c, next) => {
-    if (c.req.path === '/healthz' || c.req.path.endsWith('/v1/health')) return next();
+    if (c.req.path === '/healthz' || c.req.path === '/readyz' || c.req.path.endsWith('/v1/health')) return next();
     const config = c.get('config');
     const ip = c.req.header('cf-connecting-ip') || 'unknown';
     const r = limiter.hit(`ip:${ip}`, config.ipPerMinute, c.get('now'));
@@ -98,6 +108,18 @@ export function createApp(options: AppOptions = {}) {
   });
   app.use('/v1/*', authMiddleware);
   app.use('/api/v1/*', authMiddleware);
+
+  // Closed production validates infrastructure without accepting child tutor,
+  // commerce or school activation traffic. DEV_MODE remains fully testable.
+  app.use('*', async (c, next) => {
+    const config = c.get('config');
+    if (config.devMode || config.productionEnabled) return next();
+    const path = c.req.path;
+    if (path.startsWith('/v1/tutor') || path.startsWith('/api/v1/tutor') || path.includes('/billing/') || path.startsWith('/v1/license') || path.startsWith('/v1/school')) {
+      throw errors.providerUnavailable('Little Days online learning is not open yet.');
+    }
+    return next();
+  });
 
   // 4. routes, under /v1 and (for the shipped Godot clients) /api/v1
   const api = new Hono<{ Bindings: Env; Variables: Vars }>();

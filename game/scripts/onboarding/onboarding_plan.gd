@@ -103,7 +103,7 @@ static func steps() -> Array:
 	return [
 		{
 			"stepId": STEP_MEET,
-			"speech": "Hi! I am Aliz. Let's take care of Bunny!",
+			"speech": "Hi! I am Aliz. Let's take care of Baby!",
 			"gesture": GESTURE_MEET,
 			"requires": REQUIRES_NOTHING,
 			"timeoutSec": 3.6,

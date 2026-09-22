@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "patterns": [
+    {"patternId": "listen_touch_say", "grades": ["preK", "kindergarten"], "skills": ["colors", "animals", "numbers", "vocabulary", "everydayObjects"], "responseSentencesMax": 1, "choicesMax": 3, "readingLevel": "preReader"},
+    {"patternId": "picture_sentence", "grades": ["kindergarten", "grade1"], "skills": ["vocabulary", "simpleSentences", "conversationalEnglish"], "responseSentencesMax": 2, "choicesMax": 4, "readingLevel": "earlyReader"},
+    {"patternId": "guided_practice", "grades": ["grade1", "grade2"], "skills": ["simpleSentences", "simpleMaths", "shortReadingComprehension"], "responseSentencesMax": 2, "choicesMax": 4, "readingLevel": "developingReader"},
+    {"patternId": "read_think_answer", "grades": ["grade2", "grade3", "grade4"], "skills": ["shortReadingComprehension", "simpleMaths", "conversationalEnglish"], "responseSentencesMax": 3, "choicesMax": 4, "readingLevel": "independentReader"},
+    {"patternId": "guided_conversation", "grades": ["preK", "kindergarten", "grade1", "grade2", "grade3", "grade4"], "skills": ["conversationalEnglish"], "responseSentencesMax": 3, "choicesMax": 0, "readingLevel": "adaptive"}
+  ]
+}

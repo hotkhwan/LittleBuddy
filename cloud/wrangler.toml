@@ -30,6 +30,13 @@ workers_dev = false
 DEV_MODE = "0"
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+PRODUCTION_ENABLED = "false"         # closed-mode gate; health/readiness only in production
+LIVE_CHILD_AUDIO_ENABLED = "false"   # synthetic/adult QA only until owner privacy approval
+STANDARD_PROVIDER = "mock"           # switch to openai/deepseek through environment policy
+PREMIUM_LIVE_PROVIDER = "mock"       # switch to gemini only after the audio privacy gate
+PROVIDER_BUDGET_CENTS_MONTHLY = "2500"
+PROVIDER_BUDGET_CENTS_DAILY = "200"
+STORE_PRODUCT_MAP_JSON = "{}"        # store product ids are created by the owner, never invented
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
 FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
 FREE_DAILY_TURNS = "60"
@@ -83,6 +90,13 @@ workers_dev = true
 DEV_MODE = "1"                       # dev sign-in, dev literal approval token, /v1/dev/* routes, X-Debug-Now
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+PRODUCTION_ENABLED = "false"
+LIVE_CHILD_AUDIO_ENABLED = "false"
+STANDARD_PROVIDER = "mock"
+PREMIUM_LIVE_PROVIDER = "mock"
+PROVIDER_BUDGET_CENTS_MONTHLY = "2500"
+PROVIDER_BUDGET_CENTS_DAILY = "200"
+STORE_PRODUCT_MAP_JSON = "{}"
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
 FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
 FREE_DAILY_TURNS = "60"
@@ -136,6 +150,13 @@ workers_dev = true
 DEV_MODE = "0"
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+PRODUCTION_ENABLED = "false"
+LIVE_CHILD_AUDIO_ENABLED = "false"
+STANDARD_PROVIDER = "mock"
+PREMIUM_LIVE_PROVIDER = "mock"
+PROVIDER_BUDGET_CENTS_MONTHLY = "2500"
+PROVIDER_BUDGET_CENTS_DAILY = "200"
+STORE_PRODUCT_MAP_JSON = "{}"
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
 FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
 FREE_DAILY_TURNS = "60"
@@ -197,6 +218,13 @@ routes = [{ pattern = "api.littledays.joinanny.com/*", zone_name = "joinanny.com
 DEV_MODE = "0"
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+PRODUCTION_ENABLED = "false"         # mandatory closed production mode
+LIVE_CHILD_AUDIO_ENABLED = "false"   # no public child audio
+STANDARD_PROVIDER = "mock"
+PREMIUM_LIVE_PROVIDER = "mock"
+PROVIDER_BUDGET_CENTS_MONTHLY = "2500"
+PROVIDER_BUDGET_CENTS_DAILY = "200"
+STORE_PRODUCT_MAP_JSON = "{}"
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
 FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
 FREE_DAILY_TURNS = "60"
@@ -237,6 +265,6 @@ new_sqlite_classes = ["TutorSessionDO", "QuotaDO"]
 
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "little-days-production"
-database_id = "REPLACE_WITH_PRODUCTION_DATABASE_ID"   # `wrangler d1 create little-days-production`
+database_name = "little-days-prod"
+database_id = "REPLACE_WITH_PRODUCTION_DATABASE_ID"   # fill only after `wrangler d1 create little-days-prod`
 migrations_dir = "migrations"

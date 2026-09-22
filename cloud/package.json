@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "wrangler dev --local --env dev",
     "test": "vitest run",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply little-days-dev --local --env dev",

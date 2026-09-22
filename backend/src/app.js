@@ -15,6 +15,8 @@ import { loadLessons, resolveLessonContext } from './lessons.js';
 import { fallbackTurn, loadAssetAllowlist, validateTurn } from './turn_validator.js';
 import { createMockProvider } from './providers/mock_provider.js';
 import { createOpenAIProvider } from './providers/openai_provider.js';
+import { createDeepSeekProvider } from './providers/deepseek_provider.js';
+import { sessionMetadata, TUTOR_MODES } from './providers/tutor_contract.js';
 import { createRealtimeTokenMinter, buildRealtimeInstructions, REALTIME_MAX_EXPIRY_SECONDS, REALTIME_MIN_EXPIRY_SECONDS } from './providers/openai_realtime.js';
 import { ApiError, errors } from './errors.js';
 
@@ -62,6 +64,15 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
       providerNote = primary.name;
     } else {
       providerNote = 'mock (TUTOR_PROVIDER=openai requested but OPENAI_API_KEY is not set)';
+      log(`provider: ${providerNote}`);
+    }
+  }
+  if (!provider && config.provider === 'deepseek') {
+    if (config.deepseekApiKey) {
+      primary = createDeepSeekProvider({ apiKey: config.deepseekApiKey, model: config.deepseekModel, baseUrl: config.deepseekBaseUrl, fetchImpl });
+      providerNote = primary.name;
+    } else {
+      providerNote = 'mock (TUTOR_PROVIDER=deepseek requested but DEEPSEEK_API_KEY is not set)';
       log(`provider: ${providerNote}`);
     }
   }
@@ -286,6 +297,8 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
     if (!ok.ok) throw errors.notApproved();
     if (!lessonSet.lessons.has(lessonId) && !config.devMode) throw errors.unknownLesson();
 
+    const requestedMode = str(ctx.body, 'mode', { max: 24 }) || 'lesson_local';
+    if (!TUTOR_MODES.includes(requestedMode)) throw errors.badRequest('mode must be lesson_local, standard_chat or premium_live');
     const t = now();
     settleClient(clientId, t);
     const entitlement = entitlements.get(clientId);
@@ -306,6 +319,7 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
       turnCount: 0,
       endedAt: null,
       endReason: null,
+      mode: requestedMode,
     };
     store.sessions.set(session.sessionId, session);
     return { session, quota: q, entitlement };
@@ -314,7 +328,8 @@ export function createApp({ config, now = () => Date.now(), fetchImpl, provider,
   router.add('POST', `/api/${API_VERSION}/tutor/sessions`, (ctx) => {
     limitIp(ctx.ip);
     const { session, quota: q, entitlement } = createSessionRecord(ctx);
-    return { status: 201, body: { sessionId: session.sessionId, entitlement, quota: q, lessonId: session.lessonId, lessonKnown: lessonSet.lessons.has(session.lessonId) } };
+    const tier = entitlement === 'family_club' ? 'premium' : 'standard';
+    return { status: 201, body: { sessionId: session.sessionId, entitlement, quota: q, tutor: sessionMetadata({ tier, mode: session.mode, quotaRemaining: q.remainingSeconds }), lessonId: session.lessonId, lessonKnown: lessonSet.lessons.has(session.lessonId) } };
   });
 
   // Realtime: mint an ephemeral client secret bound to a quota session. The

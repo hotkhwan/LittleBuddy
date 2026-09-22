@@ -9,7 +9,7 @@ import { getParent, upsertParent, type ParentRow } from '../db/parents';
 import { childToJson, createChild, getChild, listChildren } from '../db/children';
 import { PLATFORMS, listDevices, upsertDevice } from '../db/devices';
 import { CONSENT_KINDS, consentToJson, listConsent, setConsent, type ConsentKind } from '../db/consent';
-import { effectiveEntitlement, listEntitlements } from '../db/entitlements';
+import { effectiveEntitlement, effectivePlan, listEntitlements } from '../db/entitlements';
 import { listProgress, progressToJson, upsertProgress } from '../db/progress';
 import { deleteChild, deleteParentAccount, exportFamily } from '../db/accounts_privacy';
 import { LESSONS } from '../tutor/lessons';
@@ -21,7 +21,7 @@ const NICKNAME_RE = /^[\p{L}\p{N} '._-]{1,24}$/u;
 const BUCKET_RE = /^\d{4}-\d{4}$/;
 const LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/;
 const SEMVER_RE = /^[0-9A-Za-z.+-]{1,32}$/;
-const MAX_CHILDREN = 6; // the DEV_MODE literal parent is exempt so local test runs can mint a child per session
+const MAX_CHILDREN = 6; // hard safety ceiling; entitlement policy may be lower
 const MAX_IDENTITY_TOKEN = 8192;
 
 /**
@@ -194,7 +194,10 @@ accountRoutes.post('/children', async (c) => {
   const birthYearBucket = str(body, 'birthYearBucket', { max: 9, re: BUCKET_RE });
   const locale = str(body, 'locale', { max: 8, re: LOCALE_RE });
   const existing = await listChildren(c.env.DB, auth.parentId);
-  if (existing.length >= MAX_CHILDREN && !(c.get('config').devMode && auth.parentId === DEV_PARENT_ID)) throw errors.badRequest(`a family can have at most ${MAX_CHILDREN} child profiles`);
+  const config = c.get('config');
+  const effective = effectivePlan(await listEntitlements(c.env.DB, auth.parentId), config, c.get('now'));
+  const profileLimit = Math.min(MAX_CHILDREN, config.planPolicies[effective.plan].childProfileLimit);
+  if (existing.length >= profileLimit && !(config.devMode && auth.parentId === DEV_PARENT_ID)) throw errors.badRequest(`this plan allows at most ${profileLimit} child profiles`);
   const child = await createChild(c.env.DB, { parentId: auth.parentId, nickname, avatarId: avatarId || undefined, birthYearBucket: birthYearBucket || undefined, locale: locale || undefined, now: c.get('now') });
   return c.json(childToJson(child), 201);
 });
@@ -292,6 +295,34 @@ accountRoutes.get('/entitlements', async (c) => {
     products: config.familyClubProductIds.map((productId) => ({ productId, priceHint: config.priceHint })),
     billing: { enabled: config.billingEnabled },
     records: rows.map((r) => ({ productId: r.product_id, source: r.source, status: r.status, periodEnd: r.period_end === null ? null : new Date(r.period_end).toISOString() })),
+  });
+});
+
+// Normalized production contract. Store/provider internals never appear here.
+accountRoutes.get('/me/entitlements', async (c) => {
+  const { auth } = await requireLiveParent(c);
+  const config = c.get('config');
+  const now = c.get('now');
+  const rows = await listEntitlements(c.env.DB, auth.parentId);
+  const effective = effectivePlan(rows, config, now);
+  const policy = config.planPolicies[effective.plan];
+  const month = new Date(now).toISOString().slice(0, 7);
+  let liveUsed = 0;
+  try {
+    const usage = await c.env.DB.prepare('SELECT live_used_seconds AS used FROM ai_usage_monthly WHERE account_id = ? AND usage_month = ?').bind(auth.parentId, month).first<{ used: number }>();
+    liveUsed = Math.max(0, Number(usage?.used ?? 0));
+  } catch { liveUsed = 0; }
+  return c.json({
+    plan: effective.plan,
+    features: policy.features,
+    child_profile_limit: policy.childProfileLimit,
+    standard_daily_seconds: policy.standardDailySeconds,
+    live_monthly_seconds: policy.liveMonthlySeconds,
+    live_used_seconds: liveUsed,
+    live_remaining_seconds: Math.max(0, policy.liveMonthlySeconds - liveUsed),
+    subscription_status: effective.status,
+    expires_at: effective.expiresAt,
+    school_entitlements: [],
   });
 });
 

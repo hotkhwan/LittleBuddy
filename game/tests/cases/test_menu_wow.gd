@@ -402,8 +402,8 @@ func _test_four_buttons_dressed():
 		failures.append("the parent button says '%s', not 'Grown-ups'" % parent_caption.text)
 	# And the primary button says what it does, in the owner's exact words.
 	var play_caption: Label = host.get_node_or_null("PlayButton/PlayCaption") as Label
-	if play_caption == null or play_caption.text.replace("\n", " ").strip_edges() != "Play with Bunny":
-		failures.append("the primary button says '%s', not 'Play with Bunny'"
+	if play_caption == null or play_caption.text.replace("\n", " ").strip_edges() != "Play with Baby":
+		failures.append("the primary button says '%s', not 'Play with Baby'"
 				% (play_caption.text if play_caption != null else ""))
 
 	tree.root.remove_child(menu)

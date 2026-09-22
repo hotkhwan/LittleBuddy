@@ -197,10 +197,10 @@ func place(station_id: String) -> Dictionary:
 ## kitchen.
 func give_to_bunny() -> Dictionary:
 	if _hand == Items.NONE:
-		return _no("feed", "", "", "Let's get Bunny some food first!")
+		return _no("feed", "", "", "Let's get Baby some food first!")
 	if not Rules.is_feedable(_hand):
 		return _no("feed", "", _hand,
-				"Bunny doesn't eat the %s!" % Items.word_for(_hand))
+				"Baby doesn't eat the %s!" % Items.word_for(_hand))
 	var fed: String = _hand
 	_hand = Items.NONE
 	changed.emit()

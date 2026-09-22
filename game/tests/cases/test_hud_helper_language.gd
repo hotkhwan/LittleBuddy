@@ -61,8 +61,8 @@ func run():
 
 		# Arabic: RTL direction on the label.
 		save.settings["helperLanguage"] = "ar"
-		hud.call("set_prompt", "Give Bunny the bottle.", "ป้อนขวดนมให้น้องบันนี่")
-		if hint.text != "أعطِ الأرنب الزجاجة.":
+		hud.call("set_prompt", "Give Baby the bottle.", "ป้อนขวดนมให้เบบี๋")
+		if hint.text != "أعطِ الطفل الزجاجة.":
 			failures.append("Arabic helper expected, got '%s'" % hint.text)
 		if hint.text_direction != Control.TEXT_DIRECTION_RTL:
 			failures.append("Arabic helper must be TEXT_DIRECTION_RTL")
@@ -72,7 +72,7 @@ func run():
 		# A language change with no new prompt: refresh_helper_language() re-derives.
 		save.settings["helperLanguage"] = "hi"
 		hud.call("refresh_helper_language")
-		if hint.text != "बनी को बोतल दो।":
+		if hint.text != "बेबी को बोतल दो।":
 			failures.append("refresh_helper_language() did not switch to Hindi: '%s'" % hint.text)
 		if hint.text_direction == Control.TEXT_DIRECTION_RTL:
 			failures.append("Hindi must not stay right-to-left after Arabic")

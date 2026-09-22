@@ -1415,7 +1415,7 @@ func _test_turn_ux_states():
 		failures.append("timeout = Let's try together! + tilt: %s" % str(face.calls))
 	face.calls.clear()
 	ux.enter("unavailable")
-	if offers.size() != 1 or offers[0][0] != "Let's play with Bunny instead!" or String(offers[0][1]).is_empty():
+	if offers.size() != 1 or offers[0][0] != "Let's play with Baby instead!" or String(offers[0][1]).is_empty():
 		failures.append("unavailable offers the offline path with a way home: %s" % str(offers))
 	ux.enter("idle")
 	if not face.calls.has("speaking:false"):

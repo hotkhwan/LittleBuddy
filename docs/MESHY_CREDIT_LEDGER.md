@@ -1,5 +1,13 @@
 # Meshy Credit Ledger
 
+## Aliz AI Classroom Hero Feature — 2026-09-22
+
+- Paid operations: **none**
+- Credits spent: **0**
+- New paid assets: **none**
+- Decision: the four accepted, integrated tutor props already cover the classroom silhouettes that benefit from generated geometry. No accepted character or prop was regenerated, and no orphan paid asset was created.
+- Visual audit and rationale: `docs/AI_CLASSROOM_HERO_FEATURE.md`
+
 ## Visual Production V3 — 2026-09-21
 
 - Authentication verified with the existing Keychain-backed balance tool, HTTP 200.
