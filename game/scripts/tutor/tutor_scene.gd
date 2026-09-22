@@ -1443,6 +1443,12 @@ func leave_to_home() -> bool:
 	return _depart(HOME_SCENE_PATH, "home")
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		leave_to_home()
+
+
 ## Continue Playing: the house's Free Play, configured the way the title screen
 ## configures it. Falls back to Home when the house is not in this build.
 func leave_to_free_play() -> bool:

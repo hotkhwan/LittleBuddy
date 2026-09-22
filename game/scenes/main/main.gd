@@ -272,6 +272,16 @@ var _skip_catcher: Control = null
 var _picker: Control = null
 
 
+## Back closes the activity picker first. At the title itself it is consumed so
+## a child cannot leave the app accidentally.
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	get_viewport().set_input_as_handled()
+	if is_activity_picker_open():
+		_close_activity_picker()
+
+
 func _ready() -> void:
 	var showing_buddy: bool = _add_buddy_avatar()
 	_add_bunny()

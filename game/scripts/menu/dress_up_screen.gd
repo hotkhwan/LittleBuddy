@@ -352,6 +352,12 @@ func _on_back_pressed() -> void:
 	go_back()
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		go_back()
+
+
 ## Returns to the title screen by hand -- instantiate, add, make current, free
 ## this -- rather than `change_scene_to_file()`, which is deferred and so cannot
 ## be asserted by the headless runner. Idempotent: a second tap in flight does

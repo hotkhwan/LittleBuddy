@@ -1747,6 +1747,26 @@ func _on_feeding_back() -> void:
 		_runner.call("skip_current_task")
 
 
+func request_back() -> bool:
+	if _parent_settings != null and _parent_settings.has_method("request_back") \
+			and bool(_parent_settings.call("request_back")):
+		return true
+	if _summary != null and is_instance_valid(_summary) and _summary.visible:
+		_on_summary_closed()
+		return true
+	if _sticker_screen != null and is_instance_valid(_sticker_screen) and _sticker_screen.visible:
+		_on_sticker_screen_closed()
+		return true
+	if _feeding_open:
+		_close_feeding_table()
+		return true
+	if _break_open:
+		_on_break_keep_playing()
+		return true
+	_on_feeding_home()
+	return true
+
+
 ## -- Star counter ---------------------------------------------------------
 
 func _set_star_count(total: int) -> void:
@@ -1784,6 +1804,10 @@ func _hide_encouragement() -> void:
 ## input_event/_input handlers (they call set_input_as_handled() on success),
 ## so this never double-delivers.
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		request_back()
+		return
 	if _is_overlay_open() or _feeding_open:
 		# The highchair owns every touch while it is up; its own
 		# `_unhandled_input` runs the drag.

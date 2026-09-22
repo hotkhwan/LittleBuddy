@@ -1678,6 +1678,27 @@ func get_care_overlay() -> Control:
 	return _care
 
 
+## Close the uppermost Free Play overlay before the world handles Back.
+func request_back() -> bool:
+	if is_chooser_open():
+		_chooser.call("dismiss")
+		return true
+	if not is_care_open():
+		return false
+	_care.visible = false
+	_end_portrait()
+	if _hud != null and _hud.has_method("set_narration_covered"):
+		_hud.call("set_narration_covered", false)
+	if _care_child != null and is_instance_valid(_care_child) and _care_child.has_method("set_bubble_suppressed"):
+		_care_child.call("set_bubble_suppressed", false)
+	_care_child = null
+	_care_kind = ""
+	_care_surface = ""
+	_care_prev_activity = ""
+	_set_room_input(true)
+	return true
+
+
 func _ensure_care_overlay() -> Control:
 	if _care != null and is_instance_valid(_care):
 		return _care
