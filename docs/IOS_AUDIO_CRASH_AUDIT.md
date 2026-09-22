@@ -566,9 +566,62 @@ neither changes audio behaviour.
   cause until it reproduces.
 
 ## Status
-**NOT REPRODUCED by automation.** The crash is real (the owner has the
-disassembly), the assets are clean, and the driver is healthy. The next step
-needs the owner's reproduction steps with the instrumented build that is now
-installed on the iPad; `user://audio_diag.json` will then carry the audio state
-at the moment of the crash, and a crash run **without** the Xcode debugger will
-leave a real `.ips` report on the device.
+**NOT REPRODUCED by automation, before or after the fix.** The crash is real
+(the owner has the disassembly), the assets are clean, and the driver is
+healthy. See the verification run below.
+
+# Verification of Codex's audio-session fix (2026-09-22 21:15-21:28)
+
+Build: `develop` @ `4f98902` (merge of `feature/codex-ui-polish` `24a1420`,
+"fix(ios): stabilize Tutor audio session lifecycle"). Signed debug build
+installed over USB to the iPad Air 4th gen, iOS 26.6.2. The app binary was
+checked before install: `undef=0 def=101 sessionFix=1 arch=arm64` — the new
+session symbols (`get_audio_session_diagnostics_json`, `_emit_audio_session_event`)
+are present, so the fix is genuinely in the installed binary.
+
+## A false alarm that must not be repeated
+An earlier attempt reported `pid: GONE` ~50 s after launch and was very nearly
+written up as a reproduction. It was not. `devicectl`'s own console log for that
+run says:
+
+```
+The request was denied by service delegate (SBMainWorkspace) for reason: Locked
+("Unable to launch com.pointit.littlebuddy because the device was not, or could
+not be, unlocked").
+```
+
+The iPad had auto-locked, so **the app never launched at all**. `pid: GONE`
+meant "never started", not "crashed". Always confirm the launch succeeded
+before interpreting a missing pid.
+
+## What the run measured
+| Measure | Result |
+|---|---|
+| Wall clock, one continuous process | **21:15:57 → 21:28:29 (12 min 32 s)**, pid **9293** start to finish |
+| Foreground/background cycles | **27** (12 in round 1 + 15 in round 2), each an app→Preferences→app switch with music playing. Owner's bar was 20+. |
+| Process death or pid change | **none** — 54 consecutive liveness checks, all pid 9293 |
+| Audio soak | **1450 steps / 63 full loops** of menu → house → miniGame → reward → silent with cross-fades, ducking and SFX |
+| Native speech interleaved | yes (`--audio-soak-speech`): `set_voice_processing`, `start_listening`, `cancel_listening` interleaved with music throughout |
+| Driver across all recorded events | **CoreAudio only** — never fell back to Dummy |
+| Mix rate / bus count across all events | **48000 / 2**, constant — no route or session change disturbed them |
+| Music at the final event | still playing (`musicPlaying: true`, 788 s in) |
+| Vorbis decoder crash | **did not occur** |
+| Crash reports written for the app | **none.** The only `LittleBuddy` reports on the device are three `gpuEvent-…-1853xx.ips` from 18:53, which are GPU restarts (`restart_reason_desc: "BIF0 page fault"`) on an earlier build, not process crashes, and not audio. |
+
+`user://audio_diag.json` keeps a rolling window of `AUDIO_DIAG_MAX_EVENTS` (40)
+events, so the retained file shows the last 10 focus cycles, not all 27. The
+watcher log is the authoritative cycle count.
+
+## Honest verdict
+This is the strongest negative result so far: the instrumented build with the
+session fix survived 27 focus cycles and 1450 audio steps with speech, and the
+audio stack never degraded. **It is still a negative result.** The original
+crash has never reproduced under automation, before or after the fix, so this
+run cannot prove the fix cured it — it can only show the fix did not regress
+audio and that the previously suspected mechanism did not fire here.
+
+**Calling the Vorbis crash fixed requires the owner to play the build by hand**
+along the path that crashed it, ideally launched from the Home screen rather
+than Xcode so a real `.ips` is written if it happens again. Two questions are
+still open and only the owner can answer them: what they were doing when it
+crashed, and whether it still happens on this build.

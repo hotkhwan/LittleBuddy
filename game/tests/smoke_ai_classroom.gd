@@ -184,7 +184,7 @@ func _on_turn(turn: Dictionary) -> void:
 
 
 func _process(_delta: float) -> bool:
-	if _done:
+	if _done or _scene == null:
 		return true
 	var now: int = Time.get_ticks_msec()
 	var dt: float = float(now - _last_ticks) / 1000.0
