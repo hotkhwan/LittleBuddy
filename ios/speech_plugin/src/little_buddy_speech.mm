@@ -166,6 +166,13 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 // harmless, so `atomic` is enough. Reset to 0 on every teardown.
 @property(atomic, assign) BOOL voiceProcessing;
 @property(atomic, assign) float inputLevel;
+@property(nonatomic, assign) BOOL tutorSessionConfigured;
+@property(nonatomic, copy) NSString *savedCategory;
+@property(nonatomic, copy) NSString *savedMode;
+@property(nonatomic, assign) AVAudioSessionCategoryOptions savedOptions;
+@property(nonatomic, copy) NSString *lastAudioSessionEvent;
+@property(nonatomic, copy) NSString *lastAudioSessionReason;
+@property(nonatomic, copy) NSString *previousRouteSummary;
 
 - (instancetype)initWithOwner:(LittleBuddySpeech *)owner;
 - (void)setVoiceProcessingEnabled:(BOOL)enabled;
@@ -174,6 +181,7 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 - (void)requestPermission;
 - (void)startListeningWithLocale:(NSString *)locale;
 - (void)stopListening;
+- (NSString *)audioSessionDiagnosticsJSON;
 
 @end
 
@@ -185,7 +193,12 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 @interface LBSpeechController ()
 #if TARGET_OS_IPHONE
 - (void)_handleAudioSessionInterruption:(NSNotification *)notification;
+- (void)_handleAudioSessionRouteChange:(NSNotification *)notification;
 - (void)_handleMediaServicesWereReset:(NSNotification *)notification;
+- (void)_handleSilenceSecondaryAudioHint:(NSNotification *)notification;
+- (BOOL)_configureTutorAudioSession;
+- (void)_restoreTutorAudioSession;
+- (void)_recordAudioSessionEvent:(NSString *)event reason:(NSString *)reason;
 #endif
 - (void)_interruptListeningForReason:(NSString *)reason;
 @end
@@ -201,6 +214,8 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 				initWithLocale:[NSLocale localeWithLocaleIdentifier:_localeIdentifier]];
 		_recognizer.delegate = self;
 		_isListening = NO;
+		_lastAudioSessionEvent = @"startup";
+		_lastAudioSessionReason = @"";
 #if TARGET_OS_IPHONE
 		// Siri, an incoming call, another app seizing the mic, CarPlay, etc.
 		// all surface as AVAudioSessionInterruptionNotification, NOT as an
@@ -212,13 +227,22 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 		// only meaningful on iOS/tvOS/watchOS -- AVAudioSession does not exist
 		// on macOS (see the file-level comment). Removed in `dealloc` below.
 		[[NSNotificationCenter defaultCenter] addObserver:self
-												  selector:@selector(_handleAudioSessionInterruption:)
+										  selector:@selector(_handleAudioSessionRouteChange:)
+											  name:AVAudioSessionRouteChangeNotification
+											object:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self
+										  selector:@selector(_handleAudioSessionInterruption:)
 													  name:AVAudioSessionInterruptionNotification
 													object:nil];
 		[[NSNotificationCenter defaultCenter] addObserver:self
 												  selector:@selector(_handleMediaServicesWereReset:)
 													  name:AVAudioSessionMediaServicesWereResetNotification
-													object:nil];
+											object:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self
+										  selector:@selector(_handleSilenceSecondaryAudioHint:)
+											  name:AVAudioSessionSilenceSecondaryAudioHintNotification
+											object:nil];
+		[self _recordAudioSessionEvent:@"startup" reason:@""];
 #endif
 	}
 	return self;
@@ -236,25 +260,122 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 #endif
 }
 
+#if TARGET_OS_IPHONE
+static NSString *LBRouteSummary(AVAudioSessionRouteDescription *route) {
+	NSMutableArray<NSString *> *parts = [NSMutableArray array];
+	for (AVAudioSessionPortDescription *port in route.inputs) {
+		[parts addObject:[NSString stringWithFormat:@"in:%@", port.portType ?: @"unknown"]];
+	}
+	for (AVAudioSessionPortDescription *port in route.outputs) {
+		[parts addObject:[NSString stringWithFormat:@"out:%@", port.portType ?: @"unknown"]];
+	}
+	return [parts componentsJoinedByString:@","];
+}
+
+- (void)_recordAudioSessionEvent:(NSString *)event reason:(NSString *)reason {
+	AVAudioSession *session = [AVAudioSession sharedInstance];
+	self.lastAudioSessionEvent = event ?: @"unknown";
+	self.lastAudioSessionReason = reason ?: @"";
+	NSString *json = [self audioSessionDiagnosticsJSON];
+	if (self.owner != nullptr) {
+		self.owner->_emit_audio_session_event(String([json UTF8String]));
+	}
+	NSLog(@"[LittleBuddySpeech][audio_session] %@ reason=%@ category=%@ mode=%@ rate=%.0f io=%.4f in=%lu out=%lu route=%@",
+			self.lastAudioSessionEvent, self.lastAudioSessionReason, session.category, session.mode,
+			session.sampleRate, session.IOBufferDuration, (unsigned long)session.inputNumberOfChannels,
+			(unsigned long)session.outputNumberOfChannels, LBRouteSummary(session.currentRoute));
+}
+
+- (NSString *)audioSessionDiagnosticsJSON {
+	AVAudioSession *session = [AVAudioSession sharedInstance];
+	NSDictionary *row = @{
+		@"event": self.lastAudioSessionEvent ?: @"unknown",
+		@"reason": self.lastAudioSessionReason ?: @"",
+		@"timestamp": @([[NSDate date] timeIntervalSince1970]),
+		@"category": session.category ?: @"",
+		@"mode": session.mode ?: @"",
+		@"sampleRate": @(session.sampleRate),
+		@"ioBufferDuration": @(session.IOBufferDuration),
+		@"inputChannels": @(session.inputNumberOfChannels),
+		@"outputChannels": @(session.outputNumberOfChannels),
+		@"route": LBRouteSummary(session.currentRoute),
+		@"previousRoute": self.previousRouteSummary ?: @"",
+		@"secondaryAudioShouldBeSilencedHint": @(session.secondaryAudioShouldBeSilencedHint),
+		@"otherAudioPlaying": @(session.otherAudioPlaying),
+		@"microphonePermission": @([self hasPermission]),
+		@"speechListening": @(self.isListening),
+		@"voiceProcessing": @(self.voiceProcessing),
+		@"tutorSessionConfigured": @(self.tutorSessionConfigured),
+	};
+	NSData *data = [NSJSONSerialization dataWithJSONObject:row options:0 error:nil];
+	return data != nil ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
+}
+
+- (BOOL)_configureTutorAudioSession {
+	if (self.tutorSessionConfigured) {
+		return YES;
+	}
+	AVAudioSession *session = [AVAudioSession sharedInstance];
+	self.savedCategory = session.category;
+	self.savedMode = session.mode;
+	self.savedOptions = session.categoryOptions;
+	NSError *error = nil;
+	[session setCategory:AVAudioSessionCategoryPlayAndRecord
+				   mode:AVAudioSessionModeVoiceChat
+				options:AVAudioSessionCategoryOptionDefaultToSpeaker |
+						AVAudioSessionCategoryOptionAllowBluetoothHFP |
+						AVAudioSessionCategoryOptionMixWithOthers
+				  error:&error];
+	if (error == nil) {
+		[session setActive:YES error:&error];
+	}
+	if (error != nil) {
+		[self _recordAudioSessionEvent:@"tutor_config_failed" reason:error.domain ?: @"error"];
+		return NO;
+	}
+	self.tutorSessionConfigured = YES;
+	[self _recordAudioSessionEvent:@"tutor_configured" reason:@"classroom_enter"];
+	return YES;
+}
+
+- (void)_restoreTutorAudioSession {
+	if (!self.tutorSessionConfigured) {
+		return;
+	}
+	AVAudioSession *session = [AVAudioSession sharedInstance];
+	NSError *error = nil;
+	[session setCategory:self.savedCategory ?: AVAudioSessionCategorySoloAmbient
+				   mode:self.savedMode ?: AVAudioSessionModeDefault
+				options:self.savedOptions error:&error];
+	self.tutorSessionConfigured = NO;
+	[self _recordAudioSessionEvent:error == nil ? @"tutor_restored" : @"tutor_restore_failed"
+			reason:error == nil ? @"classroom_leave" : (error.domain ?: @"error")];
+}
+#else
+- (NSString *)audioSessionDiagnosticsJSON { return @"{}"; }
+#endif
+
 // Hands-free tutor: remembers the request and, when the microphone is open
 // right now, re-applies the session mode in place (the input node's own
 // voice processing follows on the next start, when the tap is rebuilt).
 - (void)setVoiceProcessingEnabled:(BOOL)enabled {
+	if (![NSThread isMainThread]) {
+		__weak LBSpeechController *weakSelf = self;
+		dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf setVoiceProcessingEnabled:enabled]; });
+		return;
+	}
 	if (self.voiceProcessing == enabled) {
 		return;
 	}
 	self.voiceProcessing = enabled;
 #if TARGET_OS_IPHONE
-	if (self.isListening) {
-		NSError *modeError = nil;
-		[[AVAudioSession sharedInstance] setMode:(enabled ? AVAudioSessionModeVoiceChat : AVAudioSessionModeDefault)
-										   error:&modeError];
-		if (modeError != nil) {
-			NSLog(@"[LittleBuddySpeech] setMode(%@) failed: %@", enabled ? @"voiceChat" : @"default",
-					modeError.localizedDescription);
+	if (enabled) {
+		if (![self _configureTutorAudioSession]) {
+			self.voiceProcessing = NO;
 		}
-		NSError *overrideError = nil;
-		[[AVAudioSession sharedInstance] overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&overrideError];
+	} else {
+		[self stopListening];
+		[self _restoreTutorAudioSession];
 	}
 #endif
 }
@@ -385,6 +506,7 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	// be overridden by category/mode side effects. `MixWithOthers` avoids
 	// forcing an exclusive activation that could interrupt Godot's own
 	// concurrently-active audio graph.
+	if (!self.tutorSessionConfigured) {
 	NSError *sessionError = nil;
 	AVAudioSession *session = [AVAudioSession sharedInstance];
 	// Hands-free tutor: VoiceChat mode enables the platform's acoustic echo
@@ -417,6 +539,8 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	// SFX) is while/after the mic session is active.
 	NSError *overrideError = nil;
 	[session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&overrideError];
+	[self _recordAudioSessionEvent:@"speech_activated" reason:@"utterance_start"];
+	}
 #endif
 
 	self.request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
@@ -703,10 +827,13 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 // just because e.g. a phone call ended.
 - (void)_handleAudioSessionInterruption:(NSNotification *)notification {
 	NSNumber *typeValue = notification.userInfo[AVAudioSessionInterruptionTypeKey];
-	if (typeValue == nil ||
-			(AVAudioSessionInterruptionType)typeValue.unsignedIntegerValue != AVAudioSessionInterruptionTypeBegan) {
+	if (typeValue == nil) {
 		return;
 	}
+	AVAudioSessionInterruptionType type = (AVAudioSessionInterruptionType)typeValue.unsignedIntegerValue;
+	[self _recordAudioSessionEvent:type == AVAudioSessionInterruptionTypeBegan ? @"interruption_begin" : @"interruption_end"
+			reason:[typeValue stringValue]];
+	if (type != AVAudioSessionInterruptionTypeBegan) return;
 	__weak LBSpeechController *weakSelf = self;
 	dispatch_async(dispatch_get_main_queue(), ^{
 	  __strong LBSpeechController *strongSelf = weakSelf;
@@ -715,6 +842,18 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 	  }
 	  [strongSelf _interruptListeningForReason:@"interrupted"];
 	});
+}
+
+- (void)_handleAudioSessionRouteChange:(NSNotification *)notification {
+	AVAudioSessionRouteDescription *previous = notification.userInfo[AVAudioSessionRouteChangePreviousRouteKey];
+	self.previousRouteSummary = previous != nil ? LBRouteSummary(previous) : @"";
+	NSNumber *reason = notification.userInfo[AVAudioSessionRouteChangeReasonKey];
+	[self _recordAudioSessionEvent:@"route_change" reason:reason != nil ? reason.stringValue : @"unknown"];
+}
+
+- (void)_handleSilenceSecondaryAudioHint:(NSNotification *)notification {
+	NSNumber *type = notification.userInfo[AVAudioSessionSilenceSecondaryAudioHintTypeKey];
+	[self _recordAudioSessionEvent:@"silence_secondary_audio_hint" reason:type != nil ? type.stringValue : @"unknown"];
 }
 
 // Rare, more severe than a plain interruption: coreaudiod itself restarted,
@@ -727,6 +866,7 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 // `startListeningWithLocale:` on every call, so no extra recovery is needed
 // for that part here.
 - (void)_handleMediaServicesWereReset:(NSNotification *)notification {
+	[self _recordAudioSessionEvent:@"media_services_reset" reason:@"coreaudiod_reset"];
 	__weak LBSpeechController *weakSelf = self;
 	dispatch_async(dispatch_get_main_queue(), ^{
 	  __strong LBSpeechController *strongSelf = weakSelf;
@@ -734,6 +874,18 @@ static const NSTimeInterval kListenTimeoutSeconds = 5.0;
 		  return;
 	  }
 	  [strongSelf _interruptListeningForReason:@"interrupted"];
+	  NSString *savedCategory = strongSelf.savedCategory;
+	  NSString *savedMode = strongSelf.savedMode;
+	  AVAudioSessionCategoryOptions savedOptions = strongSelf.savedOptions;
+	  strongSelf.tutorSessionConfigured = NO;
+	  if (strongSelf.voiceProcessing) {
+		  [strongSelf _configureTutorAudioSession];
+		  // A media-services reset changes the live session, not the state that
+		  // must be restored when the Classroom lifecycle eventually ends.
+		  strongSelf.savedCategory = savedCategory;
+		  strongSelf.savedMode = savedMode;
+		  strongSelf.savedOptions = savedOptions;
+	  }
 	  strongSelf.recognizer = [[SFSpeechRecognizer alloc]
 			  initWithLocale:[NSLocale localeWithLocaleIdentifier:strongSelf.localeIdentifier]];
 	  strongSelf.recognizer.delegate = strongSelf;
@@ -823,6 +975,7 @@ void LittleBuddySpeech::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_voice_processing", "enabled"), &LittleBuddySpeech::set_voice_processing);
 	ClassDB::bind_method(D_METHOD("is_voice_processing"), &LittleBuddySpeech::is_voice_processing);
 	ClassDB::bind_method(D_METHOD("get_input_level"), &LittleBuddySpeech::get_input_level);
+	ClassDB::bind_method(D_METHOD("get_audio_session_diagnostics_json"), &LittleBuddySpeech::get_audio_session_diagnostics_json);
 
 	ADD_SIGNAL(MethodInfo("permission_result", PropertyInfo(Variant::BOOL, "granted")));
 	ADD_SIGNAL(MethodInfo("recognized", PropertyInfo(Variant::STRING, "text")));
@@ -830,6 +983,7 @@ void LittleBuddySpeech::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("recognition_failed", PropertyInfo(Variant::STRING, "reason")));
 	ADD_SIGNAL(MethodInfo("listening_started"));
 	ADD_SIGNAL(MethodInfo("listening_stopped"));
+	ADD_SIGNAL(MethodInfo("audio_session_event", PropertyInfo(Variant::STRING, "json")));
 }
 
 bool LittleBuddySpeech::is_available() const {
@@ -880,6 +1034,12 @@ float LittleBuddySpeech::get_input_level() const {
 	return controller.inputLevel;
 }
 
+String LittleBuddySpeech::get_audio_session_diagnostics_json() const {
+	if (controller == nullptr) return String("{}");
+	NSString *json = [controller audioSessionDiagnosticsJSON];
+	return String([json UTF8String]);
+}
+
 // All six _emit_* methods below marshal into Godot via `call_deferred`
 // rather than calling `emit_signal` directly. They can be invoked from
 // Objective-C completion handlers/blocks that Apple documents as running on
@@ -911,4 +1071,8 @@ void LittleBuddySpeech::_emit_listening_started() {
 
 void LittleBuddySpeech::_emit_listening_stopped() {
 	call_deferred("emit_signal", StringName("listening_stopped"));
+}
+
+void LittleBuddySpeech::_emit_audio_session_event(const String &json) {
+	call_deferred("emit_signal", StringName("audio_session_event"), json);
 }

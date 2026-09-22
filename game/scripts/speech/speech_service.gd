@@ -198,6 +198,9 @@ func _write_diagnostics() -> void:
 		"hasPermission": has_permission(),
 		"speechEnabledSetting": _speech_enabled(),
 		"ttsAvailable": _tts_available(),
+		"audioDriver": AudioServer.get_driver_name() if AudioServer.has_method("get_driver_name") else "unknown",
+		"audioMixRate": AudioServer.get_mix_rate() if AudioServer.has_method("get_mix_rate") else 0,
+		"nativeAudioSession": audio_session_diagnostics(),
 		"listenCount": _listen_count,
 		"recognizedCount": _recognized_count,
 		"failedCount": _failed_count,
@@ -327,6 +330,12 @@ func get_input_level() -> float:
 	if not _session_active or _backend == null or not _backend.has_method("get_input_level"):
 		return 0.0
 	return clampf(float(_backend.get_input_level()), 0.0, 1.0)
+
+
+func audio_session_diagnostics() -> Dictionary:
+	if _backend != null and _backend.has_method("audio_session_diagnostics"):
+		return _backend.call("audio_session_diagnostics")
+	return {}
 
 
 func _open_session() -> void:
@@ -472,6 +481,7 @@ func _connect_backend_signals() -> void:
 	_backend.partial_recognized.connect(_on_partial_recognized)
 	_backend.recognized.connect(_on_recognized)
 	_backend.recognition_failed.connect(_on_recognition_failed)
+	_backend.audio_session_changed.connect(_on_audio_session_changed)
 
 
 func _disconnect_backend_signals() -> void:
@@ -491,6 +501,12 @@ func _disconnect_backend_signals() -> void:
 		_backend.recognized.disconnect(_on_recognized)
 	if _backend.recognition_failed.is_connected(_on_recognition_failed):
 		_backend.recognition_failed.disconnect(_on_recognition_failed)
+	if _backend.audio_session_changed.is_connected(_on_audio_session_changed):
+		_backend.audio_session_changed.disconnect(_on_audio_session_changed)
+
+
+func _on_audio_session_changed(_snapshot: Dictionary) -> void:
+	_write_diagnostics()
 
 
 func _on_availability_changed(available: bool) -> void:

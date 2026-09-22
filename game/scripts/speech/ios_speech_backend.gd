@@ -10,6 +10,7 @@ const SINGLETON_NAME := "LittleBuddySpeech"
 
 var _singleton: Object = null
 var _is_listening_cached: bool = false
+var _last_audio_session_event: Dictionary = {}
 
 
 func _init() -> void:
@@ -71,6 +72,13 @@ func get_input_level() -> float:
 	return 0.0
 
 
+func audio_session_diagnostics() -> Dictionary:
+	if _singleton == null or not _singleton.has_method("get_audio_session_diagnostics_json"):
+		return _last_audio_session_event.duplicate(true)
+	var parsed: Variant = JSON.parse_string(String(_singleton.call("get_audio_session_diagnostics_json")))
+	return parsed if parsed is Dictionary else _last_audio_session_event.duplicate(true)
+
+
 func get_backend_name() -> String:
 	return "ios"
 
@@ -84,6 +92,7 @@ func _connect_native_signals() -> void:
 	_safe_connect("recognition_failed", Callable(self, "_on_recognition_failed"))
 	_safe_connect("listening_started", Callable(self, "_on_listening_started"))
 	_safe_connect("listening_stopped", Callable(self, "_on_listening_stopped"))
+	_safe_connect("audio_session_event", Callable(self, "_on_audio_session_event"))
 
 
 func _safe_connect(signal_name: String, callable: Callable) -> void:
@@ -120,3 +129,10 @@ func _on_listening_started() -> void:
 func _on_listening_stopped() -> void:
 	_is_listening_cached = false
 	listening_stopped.emit()
+
+
+func _on_audio_session_event(json: String) -> void:
+	var parsed: Variant = JSON.parse_string(json)
+	if parsed is Dictionary:
+		_last_audio_session_event = parsed
+		audio_session_changed.emit(_last_audio_session_event.duplicate(true))
