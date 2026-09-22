@@ -46,6 +46,7 @@ signal fallback_used(reason: String)
 signal turn_meta(meta: Dictionary)
 
 const ScriptedProviderScript := preload("res://scripts/tutor/providers/scripted_conversation_provider.gd")
+const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
 
 const FIRST_DELTA_SECONDS: float = 6.0
 const FIRST_REPLY_SECONDS_TURNS: float = 10.0
@@ -171,7 +172,10 @@ func submit_turn(transcript: String, lesson_context: Dictionary) -> void:
 		return
 	_pending = {"localTurn": local_turn, "answered": false, "phase": phase, "stepId": String(step.get("stepId", "")), "said": said}
 	var turns_path: bool = _cloud.has_method("is_turns_mode") and bool(_cloud.call("is_turns_mode"))
-	_first_delta_left = FIRST_REPLY_SECONDS_TURNS if turns_path else FIRST_DELTA_SECONDS
+	# A developer run may widen the wait (`--tutor-timeout=`, dev only, with the
+	# cloud flag); the product default stays.
+	var first_wait: float = FIRST_REPLY_SECONDS_TURNS if turns_path else FIRST_DELTA_SECONDS
+	_first_delta_left = maxf(first_wait, TutorFlags.request_timeout_from_args(OS.get_cmdline_user_args()))
 
 
 func end_session() -> void:
@@ -222,7 +226,9 @@ func _emit_early(words: String) -> void:
 	_pending["answered"] = true
 	_first_delta_left = -1.0
 	var turn: Dictionary = (_pending["localTurn"] as Dictionary).duplicate(true)
-	var line: String = TurnValidator.sanitize_text(words, TurnValidator.MAX_SPEECH)
+	# Server words get the same adjacent-phrase rule as local ones (the Worker's
+	# mock still stacks openers: "Great! Great job! ... Great job! ...").
+	var line: String = TurnValidator.dedupe_adjacent_phrases(TurnValidator.sanitize_text(words, TurnValidator.MAX_SPEECH))
 	if not line.is_empty() and TurnValidator.check_text(line, "speech", TurnValidator.MAX_SPEECH, true).is_empty():
 		turn["speech"] = line
 		turn["subtitle"] = line
@@ -236,6 +242,9 @@ func _on_cloud_turn(turn: Dictionary) -> void:
 		return
 	var answered: bool = bool(_pending["answered"])
 	var final_turn: Dictionary = TurnValidator.coerce(turn)
+	for key: String in ["speech", "subtitle"]:
+		if final_turn.has(key):
+			final_turn[key] = TurnValidator.dedupe_adjacent_phrases(String(final_turn[key]))
 	if not answered:
 		# No delta ever streamed (a text-less reply): this is the one turn.
 		_pending["answered"] = true

@@ -97,6 +97,7 @@ workers_dev = true
 
 [env.dev.vars]
 DEV_MODE = "1"
+PROVIDER_TIMEOUT_MS = "12000"        # dev only: Workers AI standard models take 7-8 s (benchmark medians); the 6 s default fell to the mock on every turn (AI e2e 2026-09-22)
 FREE_CHAT_ENABLED = "1"              # dev only: chat mode (mock provider until OPENAI_API_KEY is set); refused outside DEV_MODE regardless
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA

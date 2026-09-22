@@ -28,6 +28,10 @@ const SETTING_CLOUD: String = "little_days/ai_tutor/cloud_enabled"
 const SETTING_BACKEND_URL: String = "little_days/ai_tutor/backend_url"
 const USER_ARG_CLOUD: String = "--ai-tutor-cloud"
 const USER_ARG_BACKEND_URL_PREFIX: String = "--tutor-backend-url="
+## Developer runs only (with `--ai-tutor-cloud`): how long the client waits for
+## one Worker turn. The product default (8 s) is unchanged; the dev Worker's
+## Workers AI models take 7-12 s, so AI verification runs pass e.g. 14.
+const USER_ARG_TIMEOUT_PREFIX: String = "--tutor-timeout="
 const DEFAULT_BACKEND_URL: String = "http://127.0.0.1:8787"
 
 
@@ -69,3 +73,24 @@ static func backend_url_from_args(args: PackedStringArray) -> String:
 		if url.contains("://") and scheme in ["http", "https"] and url.length() > scheme.length() + 3:
 			return url
 	return ""
+
+
+## The developer request-timeout override in seconds, or 0.0 when absent,
+## malformed, out of range (1..60) or not accompanied by `--ai-tutor-cloud`.
+static func request_timeout_from_args(args: PackedStringArray) -> float:
+	if not args.has(USER_ARG_CLOUD):
+		return 0.0
+	for arg: String in args:
+		if not arg.begins_with(USER_ARG_TIMEOUT_PREFIX):
+			continue
+		var text: String = arg.trim_prefix(USER_ARG_TIMEOUT_PREFIX).strip_edges()
+		if text.is_valid_float():
+			var seconds: float = float(text)
+			if seconds >= 1.0 and seconds <= 60.0:
+				return seconds
+	return 0.0
+
+
+static func request_timeout_seconds(default_seconds: float) -> float:
+	var dev: float = request_timeout_from_args(OS.get_cmdline_user_args())
+	return dev if dev > 0.0 else default_seconds

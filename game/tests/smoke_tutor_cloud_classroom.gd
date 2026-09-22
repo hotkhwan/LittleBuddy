@@ -24,7 +24,7 @@ extends SceneTree
 const SCENE_PATH: String = "res://scenes/tutor/classroom.tscn"
 const TutorFlags := preload("res://scripts/tutor/tutor_flags.gd")
 const LESSON_ID: String = "animals_cat_dog"
-const MAX_SECONDS: float = 150.0
+const MAX_SECONDS: float = 400.0
 
 
 class FakeSave extends RefCounted:

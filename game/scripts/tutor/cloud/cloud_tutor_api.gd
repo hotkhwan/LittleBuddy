@@ -155,7 +155,7 @@ var _dev_override: bool = false
 ## The one non-loopback host a test-armed client may dial: the development
 ## Worker named by the LD_TUTOR_DEV_URL environment variable, never a literal.
 var _dev_remote_host: String = ""
-var _timeout_seconds: float = TIMEOUT_SECONDS
+var _timeout_seconds: float = TutorFlags.request_timeout_seconds(TIMEOUT_SECONDS)
 var _debug_now_ms: int = 0
 
 var _http = null  # HTTPClient, constructed only inside the guarded branch
