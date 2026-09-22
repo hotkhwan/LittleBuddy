@@ -28,6 +28,12 @@ describe('WorkersAIProvider', () => {
     expect(run).toHaveBeenCalledWith('model', expect.objectContaining({ response_format: { type: 'json_schema', json_schema: { type: 'object' } } }), {});
   });
 
+  it('accepts object-valued structured responses from the binding', async () => {
+    const provider = new WorkersAIProvider({ ai: binding(async () => ({ response: { answer: 'green' }, usage: { prompt_tokens: 2, completion_tokens: 1 } })), model: 'model' });
+    const result = await provider.structured({ messages: [{ role: 'user', content: 'Color?' }], schema: { type: 'object' } });
+    expect(result.parsed).toEqual({ answer: 'green' });
+  });
+
   it('normalizes OpenAI-style function calls', async () => {
     const run = vi.fn(async () => ({ tool_calls: [{ id: 'call-1', function: { name: 'show_learning_card', arguments: '{"assetId":"milk"}' } }] }));
     const provider = new WorkersAIProvider({ ai: binding(run), model: 'model' });

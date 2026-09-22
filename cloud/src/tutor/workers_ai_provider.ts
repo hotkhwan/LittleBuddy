@@ -175,15 +175,19 @@ function normalizeResult(raw: unknown, parseJson: boolean): WorkersAIResult {
   const record = asRecord(raw);
   const nested = asRecord(record.result);
   const body = Object.keys(nested).length ? nested : record;
+  const responseObject = asRecord(body.response);
   const text = firstString(typeof raw === 'string' ? raw : undefined, body.response, body.text, body.content, record.response);
   const usage = normalizeUsage(asRecord(body.usage ?? record.usage));
-  const toolCalls = normalizeToolCalls(body.tool_calls ?? body.toolCalls ?? record.tool_calls);
+  const toolCalls = normalizeToolCalls(body.tool_calls ?? body.toolCalls ?? responseObject.tool_calls ?? responseObject.toolCalls ?? record.tool_calls);
   let parsed: unknown;
   if (parseJson) {
     if (body.json !== undefined) parsed = body.json;
+    else if (Object.keys(responseObject).length) parsed = responseObject;
     else if (text) {
       try { parsed = JSON.parse(stripJsonFence(text)); }
       catch { throw new WorkersAIProviderError('invalid_response', 'Workers AI returned malformed structured JSON', false); }
+    } else if (Object.keys(body).length && !('usage' in body)) {
+      parsed = body;
     } else {
       throw new WorkersAIProviderError('invalid_response', 'Workers AI returned no structured response', false);
     }
