@@ -217,6 +217,15 @@ func _ready() -> void:
 	# Off unless a human armed it on this machine. See music_licence_override.gd.
 	if not allow_unverified_music:
 		allow_unverified_music = LicenceOverride.is_armed()
+	_audio_diag("startup")
+	# Device diagnostic only: `-- --audio-soak` in a debug build (audio_soak.gd).
+	var soak_script: Resource = load("res://scripts/audio/audio_soak.gd")
+	if soak_script != null and soak_script.call("armed"):
+		var soak: Node = soak_script.new()
+		soak.name = "AudioSoak"
+		add_child(soak)
+		soak.call("bind", self)
+		print("[audio_soak] armed")
 	_ensure_voices()
 	_ensure_manifest()
 	apply_saved_music_volume()
@@ -1118,3 +1127,77 @@ func _get_save_service() -> Node:
 		return null
 	_save_service = get_node_or_null(SAVE_SERVICE_PATH)
 	return _save_service
+
+
+# ---------------------------------------------------------------------------
+# Audio driver diagnostic (debug builds only)
+# ---------------------------------------------------------------------------
+##
+## The iPad crash of 2026-09-22 died inside the Ogg Vorbis decoder
+## (`res2_inverse` -> `vorbis_book_decodevv_add`). Godot's Apple-embedded OS
+## calls `audio_driver.start()` on every focus-in whatever driver the
+## AudioServer actually chose, and `AudioDriverCoreAudio::init()` leaves its
+## `audio_unit` allocated when it fails. If CoreAudio failed at startup the
+## engine runs the Dummy driver AND CoreAudio's render callback at once, and
+## two threads mix the same playbacks.
+##
+## So the one number that matters on a device is the driver's NAME. This
+## records it at startup and at every focus change, prints it with a findable
+## prefix, and keeps the last entries in `user://audio_diag.json`. It changes
+## no audio behaviour -- a native race must never be papered over from
+## GDScript -- and a release build does none of it.
+const AUDIO_DIAG_PATH: String = "user://audio_diag.json"
+const AUDIO_DIAG_MAX_EVENTS: int = 40
+var _audio_diag_events: Array = []
+
+
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_FOCUS_OUT:
+			_audio_diag("focus_out")
+		NOTIFICATION_APPLICATION_FOCUS_IN:
+			_audio_diag("focus_in")
+		NOTIFICATION_APPLICATION_PAUSED:
+			_audio_diag("paused")
+		NOTIFICATION_APPLICATION_RESUMED:
+			_audio_diag("resumed")
+		NOTIFICATION_PREDELETE:
+			_audio_diag("predelete")
+
+
+## The audio stack as the engine sees it right now. Numbers and names only.
+func audio_diagnostics() -> Dictionary:
+	return {
+		"driver": AudioServer.get_driver_name() if AudioServer.has_method("get_driver_name") else "unknown",
+		"mixRate": AudioServer.get_mix_rate(),
+		"outputLatency": snappedf(AudioServer.get_output_latency(), 0.0001),
+		"busCount": AudioServer.bus_count,
+		"outputDevice": AudioServer.output_device,
+		"playbackSpeed": AudioServer.playback_speed_scale,
+		"musicPlaying": is_playing_music(),
+		"state": current_state(),
+		"debugBuild": OS.is_debug_build(),
+	}
+
+
+func _audio_diag(event: String) -> void:
+	if not OS.is_debug_build():
+		return
+	var row: Dictionary = audio_diagnostics()
+	row["event"] = event
+	var soak: Node = get_node_or_null("AudioSoak")
+	if soak != null and soak.has_method("soak_progress"):
+		row["soak"] = soak.call("soak_progress")
+	row["atMs"] = Time.get_ticks_msec()
+	_audio_diag_events.append(row)
+	if _audio_diag_events.size() > AUDIO_DIAG_MAX_EVENTS:
+		_audio_diag_events.pop_front()
+	# One findable line per event in the device console.
+	print("[audio_diag] %s driver=%s mixRate=%d latency=%.4f playing=%s state=%s"
+			% [event, row["driver"], int(row["mixRate"]), float(row["outputLatency"]),
+			str(row["musicPlaying"]), str(row["state"])])
+	var file: FileAccess = FileAccess.open(AUDIO_DIAG_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify({"events": _audio_diag_events,
+				"writtenAt": Time.get_datetime_string_from_system(true)}, "  "))
+		file.close()
