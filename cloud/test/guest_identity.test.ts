@@ -37,7 +37,9 @@ describe('guest identity', () => {
     const ent = await c.api('GET', '/v1/me/entitlements', undefined, h);
     expect(ent.status).toBe(200);
     expect(ent.body).toMatchObject({ accountType: 'guest', plan: 'FREE', paid: false, canPurchase: false, premiumLiveTrial: false });
-    expect((await c.api('GET', '/v1/me/purchase-identity', undefined, h)).status).toBe(403);
+    const purchase = await c.api('GET', '/v1/me/purchase-identity', undefined, h);
+    expect(purchase.status).toBe(403);
+    expect(purchase.body.error.code).toBe('parent_account_required');
   });
 });
 

@@ -33,7 +33,7 @@ setObfuscatedAccountId(HMAC-SHA256(serverSecret, parentAccountId))
 setObfuscatedProfileId(HMAC-SHA256(serverSecret, childProfileId))  // optional
 ```
 
-Use a versioned, URL-safe encoding within Play's length rules. Neither field may contain email, name, or other PII. The current endpoint uses SHA-256 of a namespaced parent ID; before production, move this to HMAC with a server secret so enumerable IDs cannot be guessed offline. The backend independently computes the expected value and compares it to the verified Play purchase. A mismatch does not grant entitlement.
+Use a versioned, URL-safe encoding within Play's length rules. Neither field may contain email, name, or other PII. The current endpoint uses HMAC-SHA-256 with the server secret, so enumerable account IDs cannot be guessed offline. The backend independently computes the expected value and compares it to the verified Play purchase. A mismatch does not grant entitlement.
 
 Required configuration and access:
 

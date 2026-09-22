@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This document defines the production identity architecture for Little Days. It does not assert that the current branch is deployed. Migration `0007_guest_identity.sql` and `cloud/src/routes/identity.ts` implement guest creation, guest tokens, Apple/Google linking, deterministic data migration, guest-aware entitlements, installation records, and purchase identity values. Production migration application, credentials, integration testing, and release approval remain outstanding.
+This document defines the production identity architecture for Little Days. Migration `0007_guest_identity.sql` and `cloud/src/routes/identity.ts` implement guest creation, guest tokens, Apple/Google linking, deterministic data migration, guest-aware entitlements, installation records, and purchase identity values. Development deployment evidence is recorded separately; production migration application, credentials, physical-device testing, and release approval remain outstanding.
 
 Core play and local lessons remain offline-first. An account is not required before play. Public child audio, real billing, and multiplayer remain disabled.
 
@@ -104,4 +104,4 @@ Trial eligibility and consumption are keyed by `parent_account_id`, not installa
 
 Implemented in the repository: guest creation/token verification; installation binding and replay checks; Apple/Google JWS verification; HMAC subject mapping; deterministic guest progress/reward/unlock/settings/AI-usage import; parent tokens/approval tokens; parent-owned child access; guest/parent entitlement responses; account purchase identity values; billing verification and notification handlers; development-gated tutor sessions; local lesson fallback.
 
-Still required before production: migration/deployment evidence; stronger concurrency/idempotency validation around linking; projection of imported guest AI usage into canonical quota; strict comparison of store account markers with the authenticated account; native StoreKit/Play/Credential Manager adapters; production credential configuration; and physical-device verification. Social schema exists without routes or UI, by design.
+Still required before production: closed-production migration/deployment approval; native StoreKit/Play/Credential Manager adapters; production credential configuration; and physical-device verification. Linking is claim-guarded and idempotent, guest AI usage is imported once into canonical account usage, and verified store markers are compared with the authenticated account mapping. Social schema exists without routes or UI, by design.

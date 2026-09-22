@@ -9,6 +9,9 @@ signal prop_requested(asset_id: String)
 signal hint_requested(level: int)
 signal star_requested(reason: String)
 signal lesson_completed(result: String)
+signal minigame_requested(activity_id: String)
+signal activity_suggested(activity_id: String)
+signal repeat_requested()
 
 const SAFE_IDS := "^[a-z0-9][a-z0-9_-]{0,47}$"
 const RESULTS: Array[String] = ["completed", "mastered", "needs_practice"]
@@ -55,6 +58,13 @@ func apply(call: Dictionary) -> Dictionary:
 		"complete_lesson":
 			if not _exact(values, ["result"]) or not RESULTS.has(String(values.get("result", ""))): return _rejected("result:invalid")
 			lesson_completed.emit(String(values.result))
+		"start_minigame", "suggest_activity":
+			if not _exact(values, ["activityId"]) or not _safe_id(String(values.get("activityId", ""))): return _rejected("activity:invalid")
+			if name == "start_minigame": minigame_requested.emit(String(values.activityId))
+			else: activity_suggested.emit(String(values.activityId))
+		"repeat_prompt":
+			if not values.is_empty(): return _rejected("repeat:invalid")
+			repeat_requested.emit()
 		_:
 			return _rejected("tool:not_allowed")
 	return {"accepted": true, "name": name}

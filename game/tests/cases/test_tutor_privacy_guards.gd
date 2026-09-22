@@ -78,6 +78,13 @@ const IDENTITY_NETWORK_ALLOWLIST: Array[String] = [
 	"res://scripts/account/identity_api.gd",
 ]
 
+## Provider-neutral realtime voice transport. It accepts only a server-issued
+## WSS URL and refuses to connect unless adult/synthetic QA is active or both
+## the remote child-audio switch and current parent consent are true.
+const VOICE_NETWORK_ALLOWLIST: Array[String] = [
+	"res://scripts/voice/voice_client.gd",
+]
+
 ## Files that may construct `AudioStreamMicrophone`. EMPTY BY DESIGN: the game
 ## captures no audio itself; recognition is the on-device native plugin behind
 ## `SpeechService`. Adding an entry here requires an update to
@@ -89,6 +96,8 @@ const URL_LITERAL_ALLOWLIST: Array[String] = [
 	"res://scripts/tutor/tutor_flags.gd",           # loopback dev default only
 	"res://scenes/parent/parent_settings.gd",       # Songs for Fun text link, gated
 	"res://scripts/tutor/turn/tutor_turn.gd",       # URL markers the validator REJECTS on
+	"res://scripts/voice/voice_client.gd",          # validates a server-issued WSS URL
+	"res://scripts/voice/test/test_voice_client.gd", # negative/positive URL validation fixtures
 ]
 
 # -- constants ------------------------------------------------------------------
@@ -302,7 +311,7 @@ func _test_network_primitives_only_on_the_allowlist():
 		if not allowed.begins_with(TUTOR_DIR) or not allowed.ends_with(".gd"):
 			failures.append("NETWORK_ALLOWLIST entry %s must be a script under %s" % [allowed, TUTOR_DIR])
 	for path: String in _files_to_scan():
-		if NETWORK_ALLOWLIST.has(path) or IDENTITY_NETWORK_ALLOWLIST.has(path):
+		if NETWORK_ALLOWLIST.has(path) or IDENTITY_NETWORK_ALLOWLIST.has(path) or VOICE_NETWORK_ALLOWLIST.has(path):
 			continue
 		var code: String = _code_of_file(path)
 		for primitive: String in NETWORK_PRIMITIVES:
@@ -346,6 +355,15 @@ func _test_allowlisted_files_check_the_flag_first():
 				failures.append("%s carries its own '%s' literal" % [path, scheme])
 		if not _read(PROJECT).contains("services/backend_url=\"\""):
 			failures.append("project.godot must keep the identity service URL empty until deployment configuration")
+	for path: String in VOICE_NETWORK_ALLOWLIST:
+		var code: String = _code_of_file(path)
+		var strings: String = _strings_of(path)
+		if not code.contains("if not is_allowed()"):
+			failures.append("%s must reject connection before opening a socket when the voice privacy gate is closed" % path)
+		if not code.contains("live_child_audio_enabled and parent_voice_consent"):
+			failures.append("%s must require both the child-audio switch and parent consent" % path)
+		if not (code.contains("url.begins_with") and strings.contains("wss://")):
+			failures.append("%s must accept only server-issued TLS WebSocket URLs" % path)
 	return failures
 
 
