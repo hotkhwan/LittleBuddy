@@ -60,7 +60,7 @@ The authoritative curriculum is the reviewed corpus in `cloud/curriculum/english
 
 `LearningPlanner` constrains candidates to English, grade, available activity types, remaining session time, parent settings, mastery, preferences, and recent lessons. AI retrieval/ranking can help find candidates; it cannot randomly invent the curriculum or override these constraints.
 
-The configured binding name is `AI_SEARCH`, and the intended instance name is `little-days-curriculum`. Until that managed instance is successfully created, populated, indexed, and retrieval-tested, the approved local retriever is the operational path and the managed search must be reported as not ready.
+The configured binding name is `AI_SEARCH`. The actual `little-days-curriculum` instance exists in namespace `default`, contains 12 approved English lesson documents, and passed live semantic retrieval. Managed search remains bounded by the approved local catalog; unknown or draft IDs are discarded and local retrieval remains the outage fallback.
 
 ## Agent state and tools
 
@@ -103,7 +103,7 @@ Current development and closed-production configuration keeps `LIVE_CHILD_AUDIO_
 | D1 | `little-days-dev` | `little-days-prod` |
 | Workers AI binding | `AI` configured | `AI` configured |
 | AI Gateway | Actual `default`; dedicated gateway pending permission | Actual `default`; dedicated gateway pending permission |
-| AI Search binding | `AI_SEARCH` configured for namespace `default`; target instance pending actual setup verification | Same; do not claim indexed until verified |
+| AI Search binding | `AI_SEARCH` in namespace `default`; `little-days-curriculum` indexed and retrieval-tested | Same binding, with closed-production request gates |
 | Production gate | `PRODUCTION_ENABLED=false` | `PRODUCTION_ENABLED=false` |
 | Billing | disabled | disabled |
 | Live child audio | disabled | disabled |
@@ -132,4 +132,3 @@ invalid model output -> validated deterministic TutorTurn fallback
 ```
 
 Children must not see HTTP status codes, quota infrastructure messages, provider names, stack traces or raw exception strings. Closed production may expose health/readiness endpoints while tutor, billing, school and child-audio traffic remains closed.
-

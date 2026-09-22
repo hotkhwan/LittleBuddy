@@ -1,6 +1,6 @@
 # Aliz Voice Agent
 
-Status: prototype contract implemented; live provider exercise **NR**. Cloudflare Voice is Beta. Production child audio remains disabled.
+Status: provider-neutral protocol and `@cloudflare/voice` prototype implemented; one adult STT and one synthetic TTS smoke test passed. Cloudflare Voice is Beta. Production child audio remains disabled.
 
 ## Purpose and release boundary
 
@@ -29,6 +29,8 @@ Server-neutral contracts live in `cloud/src/voice/`:
 The Godot client lives in `game/scripts/voice/voice_client.gd`. It uses `WebSocketPeer`, sends PCM16 as binary frames, handles partial/final transcription, assistant text/audio, metrics, interrupt/cancel, bounded reconnect, and fallback events. It does not use React and does not retain packet buffers after dispatch.
 
 Cloudflare's Beta Voice package supplies server-side `withVoice`/`withVoiceInput`, Workers AI STT/TTS adapters, persistence, streaming TTS, interruption handling, and a framework-neutral client. Little Days keeps its own protocol boundary because the Godot client and privacy policy cannot depend on a web UI implementation. [Cloudflare Voice documentation](https://developers.cloudflare.com/agents/communication-channels/voice/)
+
+`cloud/src/voice/aliz_voice_agent.ts` now subclasses `withVoice(Agent)`, uses `WorkersAIFluxSTT` and `WorkersAITTS`, rejects calls while `LIVE_CHILD_AUDIO_ENABLED=false`, and overrides message saving so transcripts are not persisted. It is intentionally not bound to a production Durable Object while the privacy gate is closed.
 
 ## Protocol
 
@@ -90,9 +92,9 @@ Cloudflare added typed turn metrics for successful and failed/aborted turns, inc
 | Provider fallback | PASS | focused Vitest |
 | Content-free metrics | PASS | focused Vitest |
 | Godot parse/runtime | NR | Godot executable unavailable in implementation environment |
-| Cloudflare Voice deployment | NR | no deployed Voice Agent evidence recorded |
-| Cloudflare STT synthetic/adult benchmark | NR | no live audio run recorded |
-| Cloudflare TTS synthetic/adult benchmark | NR | no live audio run recorded |
+| Cloudflare Voice deployment | Prototype only | binding class compiles; no production DO binding while audio gate is closed |
+| Cloudflare STT synthetic/adult smoke | PASS | Nova-3 transcribed a public adult English WAV at 0.999 confidence; inference 1,855 ms, audio fetch + inference 2,928 ms |
+| Cloudflare TTS synthetic smoke | PASS | Aura-1 generated “Great job! This is a green apple.” as an 89,208-byte WAV in 587 ms |
 | Interruption/barge-in live behavior | NR | requires deployed provider and audio client |
 | Physical Android/iOS child-audio QA | NR and gated | requires owner device; child audio must remain off |
 
@@ -100,9 +102,8 @@ Cloudflare added typed turn metrics for successful and failed/aborted turns, inc
 
 1. Deploy a Beta Voice Agent only in development with a Workers AI binding and SQLite Durable Object migration.
 2. Disable or minimize conversation persistence and inspect actual stored state.
-3. Exercise adult/synthetic English utterances: short speech, silence, pauses, interruption, cancel, disconnect/reconnect, STT error, TTS error, and quota exhaustion.
+3. Expand the single smoke samples into repeated adult/synthetic English tests for short speech, silence, pauses, interruption, cancel, disconnect/reconnect, STT error, TTS error, and quota exhaustion.
 4. Record median/p95 STT, LLM, TTS, first-audio, and total-turn latency from typed metrics.
 5. Reconcile metered STT minutes, TTS characters, LLM tokens, Worker requests, and Durable Object usage with provider dashboards.
 6. Compare native device STT/TTS on the same fixed utterances.
 7. Keep `LIVE_CHILD_AUDIO_ENABLED=false` in closed production until the owner approves privacy/legal and physical-device gates.
-

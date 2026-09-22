@@ -2,18 +2,18 @@
 
 Last updated: 2026-09-22
 
-## Decision status
+## Measured selection
 
-The routing contract is implemented, but the final standard-model winner is pending the completed live benchmark and human quality/safety review. Current model names in environment configuration are deployment candidates, not a final evidence-backed selection:
+The fixed live Workers AI benchmark selected these routes. This is an engineering selection for closed testing; educator review remains required before public child use.
 
-| Role | Current candidate | Decision state |
+| Role | Selected model | Evidence summary |
 |---|---|---|
-| Standard primary | `@cf/zai-org/glm-4.7-flash` | Pending live benchmark winner |
-| Standard fallback | `@cf/google/gemma-4-26b-a4b-it` | Pending live benchmark comparison |
-| Complex reasoning | `@cf/openai/gpt-oss-120b` | Pending quality, latency and cost gate |
-| External fallback | OpenAI Luna or DeepSeek Flash | Not available without owner-managed external credentials and separate live results |
+| Standard primary | `@cf/google/gemma-4-26b-a4b-it` | Best deterministic adherence (96.7%) and 3/3 tool plus 3/3 JSON validity; 7,542 ms median, 17,667 ms p95 |
+| Standard fallback | `@cf/zai-org/glm-4.7-flash` | Strong Thai and concise responses, but tool arguments failed exact validation in 3/3 cases; 7,290 ms median, 12,667 ms p95 |
+| Complex reasoning | `@cf/openai/gpt-oss-120b` | Fastest and no transport failures; 2,791 ms median, 6,446 ms p95, but too verbose/inconsistent for routine child turns |
+| External fallback | OpenAI Luna or DeepSeek Flash | NR because owner-managed external credentials were unavailable |
 
-Do not promote a candidate solely because it is cheapest or because its endpoint returned HTTP 200. Selection requires measured correctness, English quality, Thai comprehension, age fit, brevity, safety, tool accuracy, JSON reliability, median/p95 latency, usage and estimated cost.
+The detailed evidence and limitations are recorded in `AI_PROVIDER_BENCHMARK.md`. A model is not promoted solely because it is cheapest or returns HTTP 200.
 
 ## Routing order
 

@@ -1,6 +1,6 @@
 # Voice Provider Cost Comparison
 
-Pricing checked 2026-09-22. This is a planning model, not a bill or a completed provider benchmark. Cloudflare Voice is Beta. Live STT/TTS benchmark results are **NR** because no synthetic/adult audio execution evidence was available when this document was written. Production child audio remains off.
+Pricing checked 2026-09-22. This is a planning model, not a bill or a completed repeated provider benchmark. Cloudflare Voice is Beta. One adult Nova-3 STT smoke and one synthetic Aura-1 TTS smoke passed; Gemini remains **NR**. Production child audio remains off.
 
 ## Published unit prices
 
@@ -78,10 +78,9 @@ monthly total = STT audio minutes * STT rate
 | Product maturity | Beta | Not evaluated here |
 | Godot protocol compatibility | Implemented provider-neutral protocol; live integration NR | Same protocol can adapt; live integration NR |
 | STT/TTS unit pricing | Published for default Workers AI components | NR |
-| Measured median/p95 latency | NR | NR |
-| Recognition/voice quality | NR | NR |
+| Measured median/p95 latency | NR; one STT inference was 1,855 ms and one TTS generation was 587 ms | NR |
+| Recognition/voice quality | Adult STT sample matched the reference at reported 0.999 confidence; TTS produced a valid 89,208-byte WAV, but listening review remains NR | NR |
 | Barge-in quality | NR | NR |
 | Estimated full-pipeline cost | Pending live tokens/platform telemetry | NR |
 
 No premium provider winner is selected. Run identical synthetic/adult scripts, collect actual metrics and bills, then decide on quality, safety, latency, reliability, and total cost—not price alone.
-
