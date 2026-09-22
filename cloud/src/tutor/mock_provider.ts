@@ -26,13 +26,20 @@ export function createMockTurnProvider(opts: { allowlist?: readonly string[] } =
       const successLine = firstString(ctx.successLine);
       const answerLine = firstString(ctx.answerLine);
       if (outcome === 'correct') {
+        // One acknowledgement per praise (owner playtest 2026-09-22: "Great!
+        // Great job! It's an apple! Great job! What colour is it?"). The
+        // lesson's own success line and the next question may each start
+        // with one; the picked opener replaces the line's, and the question
+        // drops its own after praise.
         const praise = PRAISE[seed % PRAISE.length];
-        const echo = successLine ? ` ${successLine}` : answer ? ` ${cap(answer)}!` : '';
+        const echoLine = stripLeadingAck(successLine);
+        const echo = echoLine ? ` ${echoLine}` : answer ? ` ${cap(answer)}!` : '';
+        const nextAfterPraise = stripLeadingAck(next);
         const finishing = !next || ctx.lessonAction === 'complete' || ctx.lessonAction === 'end_session';
         if (!finishing) {
-          turn = { speech: clip(`${praise}${echo} ${next}`, MAX_SPEECH), emotion: 'happy', gesture: 'clap', visual, lessonAction: 'next_question', nextQuestion: clip(next, MAX_NEXT_QUESTION) };
+          turn = { speech: clip(`${praise}${echo} ${nextAfterPraise}`, MAX_SPEECH), emotion: 'happy', gesture: 'clap', visual, lessonAction: 'next_question', nextQuestion: clip(next, MAX_NEXT_QUESTION) };
         } else {
-          turn = { speech: clip(`${praise}${echo} ${next || 'You did the whole lesson. Great job today!'}`, MAX_SPEECH), emotion: 'happy', gesture: 'wave', visual, lessonAction: ctx.lessonAction === 'end_session' ? 'end_session' : 'complete' };
+          turn = { speech: clip(`${praise}${echo} ${nextAfterPraise || 'You did the whole lesson. Well done today!'}`, MAX_SPEECH), emotion: 'happy', gesture: 'wave', visual, lessonAction: ctx.lessonAction === 'end_session' ? 'end_session' : 'complete' };
         }
       } else if (outcome === 'incorrect') {
         const enc = ENCOURAGE[seed % ENCOURAGE.length];
@@ -87,4 +94,11 @@ function hash(s: string): number {
     h = Math.imul(h, 16777619) >>> 0;
   }
   return h;
+}
+
+/** Drops a leading acknowledgement sentence ("Great job!", "Yes!", "Nice!") so praise never stacks. */
+function stripLeadingAck(text: string): string {
+  const t = (text || '').trim();
+  const m = /^((great job|great|well done|wonderful|super|nice|yes|yay|awesome|good job)[!.]\s*)+/i.exec(t);
+  return m ? t.slice(m[0].length).trim() : t;
 }

@@ -15,7 +15,10 @@ describe('session lifecycle', () => {
     const t = await c.api('POST', `/v1/tutor/sessions/${sid}/turns`, lessonTurnBody(), { 'idempotency-key': 't1' });
     expect(t.status).toBe(200);
     expect(t.body.turn).toMatchObject({ emotion: 'happy', gesture: 'clap', visual: { type: 'flashcard', assetId: 'color_red' }, lessonAction: 'next_question', nextQuestion: 'What colour is this?' });
-    expect(t.body.turn.speech).toMatch(/Yes! Red!/);
+    // One acknowledgement per praise: the picked opener replaces the lesson
+    // line's own ("Yes! Red!" -> "<opener>! Red! <question>").
+    expect(t.body.turn.speech).toMatch(/Red!/);
+    expect(t.body.turn.speech).not.toMatch(/(Yes|Great|Nice|Super|Well done|Wonderful|Yay)[!.]\s+(Yes|Great|Nice|Super|Well done|Wonderful|Yay)[!.]/i);
     expect(t.body).toMatchObject({ endAtBoundary: false, turnIndex: 1, chargedSeconds: 12, provider: 'mock', cached: false, fallback: null, contextSource: 'server' });
     expect(t.body.quota).toMatchObject({ usedSeconds: 12, remainingSeconds: 288, usedTurns: 1 });
     expect(t.body.usage).toMatchObject({ llmInputTokens: 0, llmOutputTokens: 0, costUsd: 0 });
