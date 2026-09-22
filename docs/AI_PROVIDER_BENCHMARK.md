@@ -1,21 +1,21 @@
 # AI provider benchmark
 
 Date: 2026-09-22  
-Status: **benchmark specification and cost comparison complete; live quality/latency run blocked by unavailable credentials**
+Status: **Workers AI live run complete; external comparisons remain NR because provider keys are unavailable**
 
 ## Executive result
 
-No model is ranked in this report. A live benchmark was attempted, but the saved Wrangler OAuth token failed `wrangler whoami` because it had expired and could not refresh non-interactively. The repository has no Workers AI binding or inference route. `OPENAI_API_KEY` and `DEEPSEEK_API_KEY` are also unavailable in the environment and macOS Keychain. Consequently, Thai quality, pedagogy, factual accuracy, safety behaviour, brevity, tool-call success, latency, and measured token usage are **not run**, not zero and not inferred from vendor claims.
+The live Workers AI binding run selected **Gemma 4 26B A4B IT as `STANDARD_PRIMARY`**, **GLM 4.7 Flash as `STANDARD_FALLBACK`**, and **GPT-OSS 120B as `COMPLEX_REASONING`**. Gemma had the strongest deterministic instruction/safety/tool/JSON score (58/60), exact tool calls in 3/3 repeats, and valid structured output in 3/3. GPT-OSS was fastest and had no transport errors, but one Thai response leaked a long analysis-like answer and its structured answers were much too elaborate for routine child turns. GLM was concise and strong in Thai, but its tool schema was rejected in 3/3 repeats and structured output failed once.
 
-The pricing comparison and capability inventory below use current official provider documentation. Re-run the fixed prompt suite after credentials are restored; do not enable these models in child-facing production from this document alone.
+This is a closed-platform selection, not approval for child-facing production. `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, and `GEMINI_API_KEY` were absent, so Luna and DeepSeek remain **NR**. Production child audio remains disabled.
 
 ## Models and integration reality
 
 | Requested model | Context | Published tool support | Current application path | Live run |
 |---|---:|---|---|---|
-| `@cf/zai-org/glm-4.7-flash` | 131,072 | Function calling | No Workers AI binding/adapter | Not run: Wrangler authentication expired |
-| `@cf/google/gemma-4-26b-a4b-it` | 256,000 | Function calling, structured tools | No Workers AI binding/adapter | Not run: Wrangler authentication expired |
-| `@cf/openai/gpt-oss-120b` | 128,000 | Function calling | No Workers AI binding/adapter | Not run: Wrangler authentication expired |
+| `@cf/zai-org/glm-4.7-flash` | 131,072 | Function calling | `env.AI`, normalized adapter, gateway cache bypass | 60 samples |
+| `@cf/google/gemma-4-26b-a4b-it` | 256,000 | Function calling, structured tools | `env.AI`, normalized adapter, gateway cache bypass | 60 samples |
+| `@cf/openai/gpt-oss-120b` | 128,000 | Function calling | `env.AI`, normalized adapter, gateway cache bypass | 60 samples |
 | OpenAI Luna (`gpt-5.6-luna`) | 1,050,000; 128,000 max output | Functions and other OpenAI tools | Existing adapter requests strict TutorTurn JSON but supplies no tools | Not run: API key unavailable |
 | DeepSeek Flash (`deepseek-flash`, documented by DeepSeek as V4.1 Flash) | 1,000,000; 384,000 max output | Tool calls; strict mode documented as beta | Existing adapter requests JSON output but supplies no tools | Not run: API key unavailable |
 
@@ -23,7 +23,7 @@ The repository defaults come from `backend/src/config.js` and the OpenAI/DeepSee
 
 ## Fixed test suite
 
-Use temperature `0.2`, a 160-token output cap, no conversation history, and three cold repeats per case. Run from the same region and within one short time window. Preserve raw responses, returned model IDs, usage, HTTP status, finish reason, tool calls, time to first token when streaming is uniformly available, and total wall latency.
+The run used temperature `0.2`, no conversation history, three cache-bypassed repeats per case, and a 1,024-token completion ceiling. The higher ceiling was necessary because these reasoning models count reasoning inside the completion budget; a 160-token ceiling produced empty final answers. Raw artifacts are stored outside shipped content at `/private/tmp/little-days-ai-benchmark-raw.json`.
 
 | ID | Area | Prompt | Pass criteria |
 |---|---|---|---|
@@ -52,17 +52,19 @@ Score each non-tool response independently from 0–2 for correctness, child saf
 
 Automated length/fact/tool checks may be deterministic. Thai naturalness, pedagogy, and nuanced safety require blinded human review, ideally by a native Thai educator and a child-safety reviewer.
 
-## Unmeasured result table
+## Live result table
 
-`NR` means not run due to authentication/key availability. It must never be treated as a failing score or a zero-cost result.
+The deterministic score checks factual answers, Thai-script response, requested word limits, safety refusal, exact tool arguments, and schema validity. It is not a substitute for native-Thai educator or child-safety review.
 
-| Model | Thai | English | Grade 1–4 | Safety | Short | Tool call | Median / p95 latency |
-|---|---|---|---|---|---|---|---|
-| GLM 4.7 Flash | NR | NR | NR | NR | NR | NR | NR |
-| Gemma 4 26B A4B IT | NR | NR | NR | NR | NR | NR | NR |
-| GPT-OSS 120B | NR | NR | NR | NR | NR | NR | NR |
-| OpenAI Luna | NR | NR | NR | NR | NR | NR through current adapter | NR |
-| DeepSeek Flash | NR | NR | NR | NR | NR | NR through current adapter | NR |
+| Model | Successful calls | Deterministic pass | Tool exact | JSON valid | Median / p95 latency | Input / output tokens | Measured suite cost |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GLM 4.7 Flash | 56/60 | 50/60 (83.3%) | 0/3 | 2/3 | 7,290 / 12,667 ms | 3,589 / 26,646 | $0.01088 |
+| Gemma 4 26B A4B IT | 58/60 | 58/60 (96.7%) | 3/3 | 3/3 | 7,542 / 17,667 ms | 4,209 / 26,481 | $0.00837 |
+| GPT-OSS 120B | 60/60 | 54/60 (90.0%) | 3/3 | 3/3 | 2,791 / 6,446 ms | 7,374 / 9,906 | $0.01001 |
+| OpenAI Luna | NR | NR | NR | NR | NR | NR | NR: key unavailable |
+| DeepSeek Flash | NR | NR | NR | NR | NR | NR | NR: key unavailable |
+
+Observed risks: Gemma had two empty-final failures and the highest p95; GLM cannot currently satisfy the submitted tool schema; GPT-OSS emitted one unusable 4,896-character Thai response and often overproduced formatting. The runtime therefore uses deterministic complexity routing and a one-model retry before the existing local lesson fallback.
 
 ## Published pricing and estimated cost
 
@@ -76,6 +78,8 @@ Prices are USD per one million text tokens, checked on 2026-09-22. These are pub
 | OpenAI Luna | $0.20 | $0.02 | $1.20 | $0.1960 |
 | DeepSeek Flash, off-peak | $0.15 cache miss | $0.003 cache hit | $0.60 | $0.1230 |
 | DeepSeek Flash, peak | $0.30 cache miss | $0.006 cache hit | $1.20 | $0.2460 |
+
+Using measured successful-call token consumption, the approximate model-only costs per 1,000 successful turns were **Gemma $0.144**, **GPT-OSS $0.167**, and **GLM $0.194**. These figures reflect benchmark reasoning-token behavior and are more representative than the fixed 500/80 planning row, but still exclude retries and platform/audio costs.
 
 The estimate assumes **500 uncached input tokens and 80 output tokens per turn**, no retries, no batch discount, and no audio/STT/TTS, Worker, network, or storage charges. Formula:
 
@@ -93,12 +97,10 @@ Actual Little Days turns should be recalculated from measured usage. Cloudflare 
 - DeepSeek: [models and pricing](https://api-docs.deepseek.com/quick_start/pricing/)
 - DeepSeek: [tool calls](https://api-docs.deepseek.com/guides/tool_calls/)
 
-## Required rerun actions
+## Remaining benchmark actions
 
-1. Restore Wrangler authentication or provide a scoped Workers AI API token; verify `wrangler whoami` before testing.
-2. Add a standalone, non-production benchmark Worker or direct Workers AI harness with an `AI` binding. Do not route benchmarking through the closed child production API.
-3. Supply OpenAI and DeepSeek keys through secret/environment storage only.
-4. Implement one normalized direct-provider tool schema; do not claim tool-call performance from TutorTurn JSON generation.
-5. Run three cold repeats, then optional warm/cache repeats, without child data or real names.
-6. Record raw artifacts outside the shipped game, redact request IDs/credentials, and fill the `NR` table only from captured results.
-7. Keep production flags, billing, and live child audio disabled. Benchmark text is synthetic adult-operated QA data only.
+1. Supply OpenAI and DeepSeek keys through secret storage to replace their NR rows.
+2. Run blinded Thai-educator and child-safety review before any child-facing enablement.
+3. Investigate Gemma empty-final responses and enforce a shorter post-generation speech limit.
+4. Re-run after model or prompt changes and preserve raw artifacts outside shipped game content.
+5. Keep production, billing, and live child audio disabled until their independent gates pass.

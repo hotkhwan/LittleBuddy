@@ -97,6 +97,9 @@ export interface Config {
   consentVersion: number;
   providerName: 'mock' | 'faulty' | 'workers_ai' | 'openai';
   model: string;
+  standardPrimaryModel: string;
+  standardFallbackModel: string;
+  complexReasoningModel: string;
   realtimeModel: string;
   realtimeVoice: string;
   realtimeTurnDetection: 'semantic_vad' | 'server_vad';
@@ -207,6 +210,9 @@ export function loadConfig(env: Env): Config {
     consentVersion: Math.max(1, Math.floor(num(env, 'CONSENT_VERSION', 1))),
     providerName,
     model: env.TUTOR_MODEL || 'gpt-4o-mini',
+    standardPrimaryModel: env.STANDARD_PRIMARY_MODEL || '@cf/zai-org/glm-4.7-flash',
+    standardFallbackModel: env.STANDARD_FALLBACK_MODEL || '@cf/google/gemma-4-26b-a4b-it',
+    complexReasoningModel: env.COMPLEX_REASONING_MODEL || '@cf/openai/gpt-oss-120b',
     realtimeModel: env.REALTIME_MODEL || 'gpt-realtime-mini',
     realtimeVoice: env.REALTIME_VOICE || 'marin',
     realtimeTurnDetection: env.REALTIME_TURN_DETECTION === 'server_vad' ? 'server_vad' : 'semantic_vad',

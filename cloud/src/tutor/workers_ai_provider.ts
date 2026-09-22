@@ -171,6 +171,25 @@ export function createWorkersAITurnProvider(options: WorkersAIProviderOptions): 
   };
 }
 
+/** Deterministic cost/complexity router: one retry to another Workers model, then the session's local fallback. */
+export function createWorkersAIRoutedTurnProvider(options: Omit<WorkersAIProviderOptions, 'model'> & { primaryModel: string; fallbackModel: string; reasoningModel: string }): TurnProvider {
+  const primary = createWorkersAITurnProvider({ ...options, model: options.primaryModel });
+  const fallback = createWorkersAITurnProvider({ ...options, model: options.fallbackModel });
+  const reasoning = createWorkersAITurnProvider({ ...options, model: options.reasoningModel });
+  return {
+    name: `workers-ai-router:${options.primaryModel}`,
+    async generateTurn(input: TurnInput): Promise<ProviderTurnResult> {
+      const complex = /\b(why|explain|compare|reason|infer|because)\b/i.test(input.transcript) && input.transcript.length > 24;
+      const selected = complex ? reasoning : primary;
+      try { return await selected.generateTurn(input); }
+      catch (error) {
+        if (input.signal.aborted) throw error;
+        return fallback.generateTurn(input);
+      }
+    },
+  };
+}
+
 function normalizeResult(raw: unknown, parseJson: boolean): WorkersAIResult {
   const record = asRecord(raw);
   const nested = asRecord(record.result);

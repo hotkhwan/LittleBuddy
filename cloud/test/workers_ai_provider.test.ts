@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkersAITurnProvider, WorkersAIProvider, WorkersAIProviderError, type WorkersAIBinding } from '../src/tutor/workers_ai_provider';
+import { createWorkersAIRoutedTurnProvider, createWorkersAITurnProvider, WorkersAIProvider, WorkersAIProviderError, type WorkersAIBinding } from '../src/tutor/workers_ai_provider';
 
 function binding(run: WorkersAIBinding['run']): WorkersAIBinding { return { run }; }
 
@@ -83,5 +83,20 @@ describe('Workers AI Tutor bridge', () => {
     const payload = capturedPayload as unknown as { messages: Array<{ content: string }> };
     expect(payload.messages[1]?.content).toContain('"lessonId":"colors"');
     expect(payload.messages[1]?.content).toContain('"outcome":"correct"');
+  });
+
+  it('routes complex questions to reasoning and retries ordinary failures on fallback', async () => {
+    const models: string[] = [];
+    const turn = { speech: 'Try this.', subtitle: 'Try this.', emotion: 'encouraging', gesture: 'nod', visual: { type: 'none' }, lessonAction: 'retry' };
+    const run: WorkersAIBinding['run'] = async (model) => {
+      models.push(model);
+      if (model === 'primary') throw { status: 503, message: 'capacity' };
+      return { response: JSON.stringify(turn) };
+    };
+    const provider = createWorkersAIRoutedTurnProvider({ ai: binding(run), primaryModel: 'primary', fallbackModel: 'fallback', reasoningModel: 'reasoning' });
+    const base = { lessonId: 'lesson', lessonContext: { stepId: 's1', outcome: 'unclear' as const, expectedAnswers: [], hint: '', nextQuestionText: '', visualAssetId: '', matched: '', lessonAction: 'retry' as const }, signal: new AbortController().signal };
+    await provider.generateTurn({ ...base, transcript: 'apple' });
+    await provider.generateTurn({ ...base, transcript: 'Can you explain why the moon changes shape?' });
+    expect(models).toEqual(['primary', 'fallback', 'reasoning']);
   });
 });

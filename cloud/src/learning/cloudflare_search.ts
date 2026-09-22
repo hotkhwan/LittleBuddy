@@ -20,7 +20,7 @@ export class CloudflareCurriculumSearch implements ManagedSearchClient {
         },
       },
     });
-    return (response.chunks ?? []).flatMap((value) => {
+    const rows = (response.chunks ?? []).flatMap((value) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
       const chunk = value as Record<string, unknown>;
       const metadata = chunk.metadata && typeof chunk.metadata === 'object' && !Array.isArray(chunk.metadata) ? chunk.metadata as Record<string, unknown> : {};
@@ -31,5 +31,8 @@ export class CloudflareCurriculumSearch implements ManagedSearchClient {
       const score = Number(chunk.score ?? chunk.similarity ?? 0);
       return [{ id: match[1], score: Number.isFinite(score) ? score : 0 }];
     });
+    const best = new Map<string, number>();
+    for (const row of rows) best.set(row.id, Math.max(best.get(row.id) ?? -Infinity, row.score));
+    return [...best].map(([id, score]) => ({ id, score })).sort((a, b) => b.score - a.score);
   }
 }

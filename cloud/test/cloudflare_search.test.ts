@@ -5,6 +5,7 @@ describe('CloudflareCurriculumSearch', () => {
   it('maps only indexed curriculum filenames to lesson IDs', async () => {
     const search = vi.fn().mockResolvedValue({ chunks: [
       { score: 0.9, item: { key: 'curriculum/english/grade1/en-grade1-family-listening-v1.md' } },
+      { score: 0.7, item: { key: 'curriculum/english/grade1/en-grade1-family-listening-v1.md' } },
       { score: 1, item: { key: 'untrusted-without-markdown-extension' } },
     ] });
     const client = new CloudflareCurriculumSearch({ get: vi.fn(() => ({ search })) });
