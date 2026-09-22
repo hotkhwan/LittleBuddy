@@ -24,7 +24,8 @@ export class CloudflareCurriculumSearch implements ManagedSearchClient {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
       const chunk = value as Record<string, unknown>;
       const metadata = chunk.metadata && typeof chunk.metadata === 'object' && !Array.isArray(chunk.metadata) ? chunk.metadata as Record<string, unknown> : {};
-      const source = [metadata.filename, metadata.key, chunk.filename, chunk.id].find((candidate) => typeof candidate === 'string') as string | undefined;
+      const item = chunk.item && typeof chunk.item === 'object' && !Array.isArray(chunk.item) ? chunk.item as Record<string, unknown> : {};
+      const source = [metadata.filename, metadata.key, item.key, chunk.filename, chunk.id].find((candidate) => typeof candidate === 'string') as string | undefined;
       const match = source?.match(/([a-z0-9][a-z0-9_-]+)\.md$/i);
       if (!match) return [];
       const score = Number(chunk.score ?? chunk.similarity ?? 0);
