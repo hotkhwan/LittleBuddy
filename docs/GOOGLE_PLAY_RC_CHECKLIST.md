@@ -100,6 +100,24 @@ Assets:
 6. Copy the tester opt-in link from the Testers tab. Testers must join with the invited Google account, accept, install from Play, and report the delivered version/build.
 7. Record Play pre-launch report results. Automated reports do not replace child/family policy review or real-device QA.
 
+### Play diagnostic files
+
+- Deobfuscation mapping is required only when R8/ProGuard minification was
+  enabled and generated a real `mapping.txt`. This release has minification and
+  resource shrinking disabled, so no mapping exists and the Play warning is
+  safe to ignore. Do not upload a placeholder. For a future minified build,
+  select that exact version in **App Bundle Explorer → Downloads/Assets** and
+  upload `build/android/release-metadata/mapping.txt` as the deobfuscation file.
+- Native debug symbols improve native crash/ANR stack traces. This release uses
+  stripped official Godot template libraries, so no valid symbols can be
+  produced retroactively and the current warning is safe to leave unresolved.
+  For a future custom symbol-bearing Godot template, confirm Build IDs match
+  the shipped libraries, then upload
+  `build/android/release-metadata/native-debug-symbols.zip` under that exact
+  version's **App Bundle Explorer → Downloads/Assets → Native debug symbols**.
+- Confirm `release-metadata/version.txt`, `sha256.txt`, and
+  `signing-cert.txt` match the AAB before any optional diagnostic upload.
+
 ## Closed testing
 
 1. After the internal device gate passes, open **Testing → Closed testing → Create track**.

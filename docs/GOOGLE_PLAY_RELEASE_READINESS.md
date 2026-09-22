@@ -325,6 +325,43 @@ With Play App Signing this is the *upload* key: losing it is recoverable via
 Play Console support (upload-key reset); a leaked one must be reset the same
 way. The *app-signing* key is Google's.
 
+### Deobfuscation and native symbols
+
+The measured Godot 4.7.2 release Gradle configuration does not set
+`minifyEnabled`, `shrinkResources`, or `proguardFiles`; Android Gradle Plugin
+defaults both shrinking switches to false. No R8/ProGuard configuration or
+`mapping.txt` exists. Play's “no deobfuscation file” warning is therefore
+expected and safe to ignore. Never upload an empty or fabricated mapping file.
+If minification is deliberately enabled later, the export pipeline copies the
+real `build/outputs/mapping/standardRelease/mapping.txt` to
+`build/android/release-metadata/mapping.txt`. In Play Console, open the exact
+App Bundle Explorer version → Downloads/Assets → upload the deobfuscation file.
+
+The AAB contains ARM64 native code:
+
+- `base/lib/arm64-v8a/libgodot_android.so`
+- `base/lib/arm64-v8a/libc++_shared.so`
+
+Both libraries in the official Godot template are already stripped. The
+pre-strip and post-strip Gradle intermediates are byte-identical and contain no
+symbol table/debug sections, so no valid native symbol archive can be recovered
+from this AAB. Play's native-symbol warning is diagnostic, not an upload error.
+
+For a future symbol-enabled release, build the exact matching Godot Android
+export template from Godot source with native symbols retained or separated.
+Use `ndk.debugSymbolLevel 'SYMBOL_TABLE'` or `FULL` only with symbol-bearing
+inputs, and verify each ELF Build ID matches the `.so` shipped in that AAB. The
+Play ZIP must contain `lib/arm64-v8a/*.so` at that path. The export script will
+archive only genuinely unstripped libraries as
+`build/android/release-metadata/native-debug-symbols.zip`; it refuses to make a
+fake ZIP from stripped binaries. Upload it from the exact release in App Bundle
+Explorer → Downloads/Assets → Native debug symbols.
+
+Every future release export recreates `build/android/release-metadata/` with
+`version.txt`, `sha256.txt`, and `signing-cert.txt`, plus `mapping.txt` and
+`native-debug-symbols.zip` only when those real diagnostics exist. This folder
+is a local CI/release artifact and is not committed.
+
 ---
 
 ## 9. Remaining steps to a submission, in order

@@ -87,6 +87,7 @@ PRESETS="$GAME_DIR/export_presets.cfg"
 PRESET_NAME="Android"
 EXPECTED_PACKAGE="com.joinanny.littledays"
 OUT_DIR="$REPO_ROOT/build/android"
+RELEASE_METADATA_DIR="$OUT_DIR/release-metadata"
 # Mode-suffixed on purpose. A debug and a release APK are NOT interchangeable
 # (the debug one is signed with a throwaway key and is android:debuggable), and
 # a single filename lets one silently overwrite the other.
@@ -122,6 +123,19 @@ warn()    { WARNINGS+=("$1"); }
 ok()      { printf '  \033[32mok\033[0m    %s\n' "$1"; }
 bad()     { printf '  \033[31mMISSING\033[0m %s\n' "$1"; }
 note()    { printf '  \033[33mwarn\033[0m  %s\n' "$1"; }
+
+# AAB manifests are protobuf, so release identity checks use bundletool rather
+# than grepping binary content. Set BUNDLETOOL_JAR in CI if it is not on PATH.
+BUNDLETOOL_BIN="$(command -v bundletool 2>/dev/null || true)"
+BUNDLETOOL_JAR="${BUNDLETOOL_JAR:-}"
+if [ -z "$BUNDLETOOL_BIN" ] && [ -z "$BUNDLETOOL_JAR" ]; then
+	for CANDIDATE in "$HOME/.cache/little-days/bundletool-all.jar" "/private/tmp/bundletool-all-1.18.3.jar"; do
+		if [ -f "$CANDIDATE" ]; then BUNDLETOOL_JAR="$CANDIDATE"; break; fi
+	done
+fi
+run_bundletool() {
+	if [ -n "$BUNDLETOOL_BIN" ]; then "$BUNDLETOOL_BIN" "$@"; else "$JAVA_BIN" -jar "$BUNDLETOOL_JAR" "$@"; fi
+}
 
 FORMAT_LABEL="apk"; [ "$AAB" -eq 1 ] && FORMAT_LABEL="aab (Gradle build)"
 echo "==> Little Buddy Android export preflight ($MODE, $FORMAT_LABEL)"
@@ -270,6 +284,14 @@ fi
 BUILD_TEMPLATE_DIR="$GAME_DIR/android/build"
 BUILD_VERSION_FILE="$GAME_DIR/android/.build_version"
 if [ "$AAB" -eq 1 ]; then
+	if [ -n "$BUNDLETOOL_BIN" ] || { [ -n "$BUNDLETOOL_JAR" ] && [ -f "$BUNDLETOOL_JAR" ]; }; then
+		ok "bundletool: ${BUNDLETOOL_BIN:-$BUNDLETOOL_JAR}"
+	else
+		bad "bundletool"
+		blocker "AAB verification requires bundletool. Install it on PATH or set
+     BUNDLETOOL_JAR to bundletool-all.jar. Release exports fail closed unless
+     package, version and debuggable state can be inspected."
+	fi
 	TEMPLATE_STAMP=""
 	[ -f "$BUILD_VERSION_FILE" ] && TEMPLATE_STAMP="$(head -1 "$BUILD_VERSION_FILE" | tr -d '\r')"
 	if [ -n "$TEMPLATE_STAMP" ] && [ "$TEMPLATE_STAMP" = "${TEMPLATE_VERSION:-}" ] \
@@ -610,6 +632,60 @@ if [ "$AAB" -eq 1 ]; then
 	esac
 	echo "    SHA-256: $(shasum -a 256 "$OUT_APK" | cut -d' ' -f1)"
 	echo "    size:    $(stat -f %z "$OUT_APK") bytes"
+
+	MANIFEST_XML="$(run_bundletool dump manifest --bundle "$OUT_APK" --module base)"
+	ACTUAL_PACKAGE="$(printf '%s\n' "$MANIFEST_XML" | sed -n '1s/.* package="\([^"]*\)".*/\1/p')"
+	VERSION_CODE="$(printf '%s\n' "$MANIFEST_XML" | sed -n '1s/.*android:versionCode="\([^"]*\)".*/\1/p')"
+	VERSION_NAME="$(printf '%s\n' "$MANIFEST_XML" | sed -n '1s/.*android:versionName="\([^"]*\)".*/\1/p')"
+	if [ "$ACTUAL_PACKAGE" != "$EXPECTED_PACKAGE" ] || [ -z "$VERSION_CODE" ] || [ -z "$VERSION_NAME" ]; then
+		echo "Bundle identity verification failed: package=$ACTUAL_PACKAGE version=$VERSION_NAME ($VERSION_CODE)." >&2
+		exit 1
+	fi
+	if [ "$MODE" = "release" ] && printf '%s\n' "$MANIFEST_XML" | grep -q 'android:debuggable="true"'; then
+		echo "Release verification failed: the AAB is debuggable." >&2
+		exit 1
+	fi
+	echo "    package:  $ACTUAL_PACKAGE"
+	echo "    version:  $VERSION_NAME ($VERSION_CODE)"
+	if printf '%s\n' "$MANIFEST_XML" | grep -q 'android:debuggable="true"'; then echo "    debuggable=true ($MODE build)"; else echo "    debuggable=false"; fi
+
+	if [ "$MODE" = "release" ]; then
+		rm -rf "$RELEASE_METADATA_DIR"
+		mkdir -p "$RELEASE_METADATA_DIR"
+		printf 'package=%s\nversionName=%s\nversionCode=%s\n' "$ACTUAL_PACKAGE" "$VERSION_NAME" "$VERSION_CODE" > "$RELEASE_METADATA_DIR/version.txt"
+		shasum -a 256 "$OUT_APK" > "$RELEASE_METADATA_DIR/sha256.txt"
+		keytool -printcert -jarfile "$OUT_APK" > "$RELEASE_METADATA_DIR/signing-cert.txt"
+
+		MAPPING_SOURCE="$GAME_DIR/android/build/build/outputs/mapping/standardRelease/mapping.txt"
+		if [ -s "$MAPPING_SOURCE" ]; then
+			cp "$MAPPING_SOURCE" "$RELEASE_METADATA_DIR/mapping.txt"
+			echo "    R8 mapping archived: $RELEASE_METADATA_DIR/mapping.txt"
+		else
+			echo "    WARNING: no mapping.txt was generated. The Godot template has minification disabled; do not upload a fake mapping file."
+		fi
+
+		SYMBOL_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/little-days-native-symbols.XXXXXX")"
+		SYMBOL_COUNT=0
+		for SO in "$GAME_DIR/android/build/build/intermediates/merged_native_libs/standardRelease/mergeStandardReleaseNativeLibs/out/lib"/*/*.so; do
+			[ -f "$SO" ] || continue
+			FILE_INFO="$(file "$SO")"
+			case "$FILE_INFO" in
+				*"not stripped"*|*"with debug_info"*)
+					REL="${SO#*/out/lib/}"
+					mkdir -p "$SYMBOL_STAGE/lib/$(dirname "$REL")"
+					cp "$SO" "$SYMBOL_STAGE/lib/$REL"
+					SYMBOL_COUNT=$((SYMBOL_COUNT + 1)) ;;
+			esac
+		done
+		if [ "$SYMBOL_COUNT" -gt 0 ]; then
+			( cd "$SYMBOL_STAGE" && zip -q -r "$RELEASE_METADATA_DIR/native-debug-symbols.zip" . )
+			echo "    native symbols archived: $RELEASE_METADATA_DIR/native-debug-symbols.zip ($SYMBOL_COUNT libraries)"
+		else
+			echo "    WARNING: no unstripped native libraries exist in this export. Godot's official prebuilt release template ships stripped .so files; build a matching custom Godot Android template with symbols to create a valid Play archive."
+		fi
+		rm -rf "$SYMBOL_STAGE"
+		echo "    release metadata: $RELEASE_METADATA_DIR"
+	fi
 	if [ "$MODE" = "debug" ]; then
 		echo ""
 		echo "    NOTE: this .aab is DEBUG-signed. It proves the Gradle/AAB pipeline"
