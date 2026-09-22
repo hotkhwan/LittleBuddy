@@ -1,11 +1,12 @@
 # Google Play release readiness — Little Days (`com.joinanny.littledays`)
 
-> **Package-migration inspection build 2026-09-22:** `build/android/LittleDays-debug.aab`,
-> SHA-256 `6fe8dcbcc9adb9b62795011375e5cf17d45eeef54a5d601fae8bed90b6e74f0f`.
+> **Signed release candidate 2026-09-22:** `build/android/LittleDays-release.aab`,
+> SHA-256 `f3b8d8257630062406ab9556048ee1f373c134d70a9bea0ef4419b6da0acb1e7`.
 > Bundletool confirms package `com.joinanny.littledays`, versionName `0.1.1`,
 > versionCode `2`, compile/target SDK `36`, and no declared permissions. It is
-> debug-signed for inspection only and must not be uploaded. Release export correctly
-> refuses to run until the owner supplies the external release upload keystore.
+> signed by the candidate Little Days upload certificate, has no
+> `debuggable=true` declaration, and has not been uploaded. Before any upload,
+> the owner must move and back up the only current keystore copy as described below.
 
 **Prepared:** 2026-09-20, from worktree `wt/android` (base `cca0198`), on the MacBook.
 **Scope:** what Play Console will ask for, answered from the **actual exported
@@ -13,10 +14,10 @@ APK and the actual code**, not from intent. Every claim below names where it was
 measured. Items nobody on this machine can verify are marked **OWNER** and are
 not ticked.
 
-> **One-line status.** The Android *build* is ready: a signed debug APK with zero
-> permissions exists and the Gradle/AAB pipeline is installed. The Android
-> *release* is **not** ready: there is no release keystore, no Play Console app,
-> no privacy-policy URL, no store graphics, and the game has never run on an
+> **One-line status.** A real signed release AAB with zero permissions exists.
+> Public release is **not** ready: the candidate upload key needs durable owner
+> custody, there is no Play Console app, privacy-policy URL, completed store
+> listing, or physical-device pass, and the game has never run on an
 > Android device. Nothing below is a PASS from Google; it is the input sheet.
 
 ---
@@ -25,10 +26,10 @@ not ticked.
 
 | | |
 |---|---|
-| File | `build/android/LittleDays-debug.aab` (git-ignored inspection artifact) |
+| File | `build/android/LittleDays-release.aab` (git-ignored release artifact) |
 | Built | 2026-09-22 from the package-migration branch |
-| Size | 45,907,083 bytes |
-| SHA-256 | `6fe8dcbcc9adb9b62795011375e5cf17d45eeef54a5d601fae8bed90b6e74f0f` |
+| Size | 44,106,193 bytes |
+| SHA-256 | `f3b8d8257630062406ab9556048ee1f373c134d70a9bea0ef4419b6da0acb1e7` |
 | Package / label | `com.joinanny.littledays` / **Little Days** |
 | versionCode / versionName | `2` / `0.1.1` |
 | minSdk / targetSdk / compileSdk | **29 / 36 / 36** |
@@ -38,8 +39,8 @@ not ticked.
 | Adaptive icon | `res/mipmap-anydpi-v26/icon.xml` + background/foreground/monochrome webp layers — present |
 | `allowBackup` | `false` (`user_data_backup/allow=false`) |
 | `isGame` / `appCategory` | `true` / `0` (game) |
-| Debuggable | **yes** — this is the debug build. A Play upload must be the release build |
-| Signature | JAR verified; signer `CN=Android Debug, O=Android, C=US` — **inspection only, not uploadable** |
+| Debuggable | **no** — bundle manifest contains no `debuggable=true` declaration |
+| Signature | JAR verified; signer `CN=Little Days Upload, OU=Mobile, O=Join Anny, C=TH` |
 
 The lead will rebuild from the integrated HEAD with this toolchain; the hash
 and build time above will change, nothing else in this document should.
@@ -47,7 +48,7 @@ and build time above will change, nothing else in this document should.
 ### Declared permissions: **none**
 
 ```
-$ bundletool dump manifest --bundle LittleDays-debug.aab
+$ bundletool dump manifest --bundle LittleDays-release.aab
 package: com.joinanny.littledays
 ```
 
@@ -288,29 +289,26 @@ Installed and verified today, all **user-local, no sudo**:
 | Godot Android build template 4.7.2 | `game/android/build` (git-ignored) + `game/android/.build_version` | 217 MB per checkout |
 | Gradle 8.11.1 + AGP 8.6.1 + Kotlin 2.1.21 deps | `~/.gradle` (downloaded by `gradlew` on the first build) | 1.2 GB; first build 3 min 08 s, warm build 56 s |
 | Debug keystore | `~/Library/Application Support/Godot/keystores/debug.keystore` | generated today; **not for Play** |
-| **Release (upload) keystore** | **does not exist — OWNER** | |
+| **Candidate release upload certificate** | generated outside Git; fingerprints in `GOOGLE_CREDENTIAL_MANAGER.md` | The owner must move it from temporary storage and make durable, separate backups before use. |
 
 **How the owner supplies the release key — never in the repo:**
 
 ```sh
-# once, anywhere outside the repository; back the file up (password manager + offline copy)
-keytool -genkeypair -v \
-  -keystore "$HOME/Library/Application Support/Godot/keystores/littledays-upload.jks" \
-  -alias littledays-upload -keyalg RSA -keysize 2048 -validity 10000
+# one-time helper; choose a path outside the repository
+export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="/secure/owner/path/littledays-upload.jks"
+tools/create_android_upload_keystore.sh
 
 # in the shell that runs the export (Godot 4.7 reads these when the preset's
 # keystore/release* fields are empty -- they are, deliberately)
-export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$HOME/Library/Application Support/Godot/keystores/littledays-upload.jks"
 export GODOT_ANDROID_KEYSTORE_RELEASE_USER=littledays-upload
 read -s GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD && export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD
 
 tools/export_android.sh release --aab     # -> build/android/LittleDays-release.aab
 ```
 
-**Pipeline proof (debug key, not uploadable):** `tools/export_android.sh debug --aab`
-produced `build/android/LittleDays-debug.aab` (36,495,426 bytes, sha256
-`bd7cc54a…c5c9`), verified with bundletool 1.18.3: same package/version, zero
-permissions, arm64-v8a only. **Finding:** Gradle returned the bundle *unsigned*
+**Pipeline proof:** `tools/export_android.sh release --aab` produced the signed
+release candidate described in §0 and bundletool verified its package/version,
+zero permissions, and arm64-v8a-only native payload. **Finding:** Gradle returned the bundle *unsigned*
 although Godot asked it to sign; the script now detects that and signs with
 `jarsigner` (Google's documented tool for bundles), re-verifies, and fails if
 the result is not `jar verified`. Verify the release bundle yourself before
@@ -336,8 +334,10 @@ way. The *app-signing* key is Google's.
 2. **OWNER:** decide the public name (`docs/NAMING_AND_TRADEMARK.md`) — change
    only `config/name` in `project.godot` and `package/name` in the Android
    preset if you switch; never the package id.
-3. **OWNER:** create the upload keystore (§8) and keep it outside the repo.
-4. Build `tools/export_android.sh release --aab`; `aapt2`/`bundletool` check:
+3. **OWNER:** move the candidate upload keystore to durable encrypted storage
+   and test its separate backups (§8).
+4. Rebuild with `tools/export_android.sh release --aab` when the final owner-held
+   path is in use; `aapt2`/`bundletool` check:
    permissions still empty, `debuggable=false`, versionCode bumped for every
    upload (`version/code` in the Android preset — Play rejects a repeat).
 5. **OWNER:** publish the privacy-policy URL (§4).
@@ -356,7 +356,8 @@ way. The *app-signing* key is Google's.
 
 ## 10. Blockers, plainly
 
-- No release keystore (owner must create).
+- Candidate upload keystore exists, but its only current copy is in temporary
+  storage and is not operationally safe until the owner moves and backs it up.
 - No Play Console app / unknown account eligibility (owner login required).
 - No privacy-policy URL.
 - No store graphics at Play sizes; no Android screenshots.

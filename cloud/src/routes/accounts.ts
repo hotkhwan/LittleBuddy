@@ -308,14 +308,19 @@ accountRoutes.get('/entitlements', async (c) => {
 
 // Normalized production contract. Store/provider internals never appear here.
 accountRoutes.get('/me/entitlements', async (c) => {
+  const raw = (c.req.header('authorization') ?? '').replace(/^bearer\s+/i, '').trim();
   if (!c.get('auth')) {
-    const raw = (c.req.header('authorization') ?? '').replace(/^bearer\s+/i, '').trim();
-    const guest = await c.get('tokens').verifyGuest(raw, c.get('now'));
-    if (!guest.ok) throw new ApiError(401, 'invalid_guest_session', 'The guest session is missing, altered, or expired.');
-    const row = await c.env.DB.prepare('SELECT status FROM guest_accounts WHERE id=?').bind(guest.claims.gid).first<{ status: string }>();
-    const installation = await c.env.DB.prepare('SELECT guest_account_id,status FROM installations WHERE installation_id=?').bind(guest.claims.iid).first<{ guest_account_id: string | null; status: string }>();
-    if (!row || row.status !== 'active' || installation?.guest_account_id !== guest.claims.gid || installation.status !== 'active') throw new ApiError(401, 'invalid_guest_session', 'The guest session is no longer active.');
-    return c.json({ accountType: 'guest', plan: 'FREE', paid: false, canPurchase: false, features: ['core_game', 'local_lessons', 'standard_ai_trial'], premiumLiveTrial: false });
+    const parent = await c.get('tokens').verifyParent(raw, c.get('now'));
+    if (parent.ok) {
+      c.set('auth', { parentId: parent.claims.pid, clientId: null, childId: null, approvalToken: null, via: 'bearer' });
+    } else {
+      const guest = await c.get('tokens').verifyGuest(raw, c.get('now'));
+      if (!guest.ok) throw new ApiError(401, 'invalid_guest_session', 'The guest session is missing, altered, or expired.');
+      const row = await c.env.DB.prepare('SELECT status FROM guest_accounts WHERE id=?').bind(guest.claims.gid).first<{ status: string }>();
+      const installation = await c.env.DB.prepare('SELECT guest_account_id,status FROM installations WHERE installation_id=?').bind(guest.claims.iid).first<{ guest_account_id: string | null; status: string }>();
+      if (!row || row.status !== 'active' || installation?.guest_account_id !== guest.claims.gid || installation.status !== 'active') throw new ApiError(401, 'invalid_guest_session', 'The guest session is no longer active.');
+      return c.json({ accountType: 'guest', plan: 'FREE', paid: false, canPurchase: false, features: ['core_game', 'local_lessons', 'standard_ai_trial'], premiumLiveTrial: false });
+    }
   }
   const { auth } = await requireLiveParent(c);
   const config = c.get('config');
@@ -330,7 +335,10 @@ accountRoutes.get('/me/entitlements', async (c) => {
     liveUsed = Math.max(0, Number(usage?.used ?? 0));
   } catch { liveUsed = 0; }
   return c.json({
+    accountType: 'parent',
     plan: effective.plan,
+    paid: effective.plan !== 'FREE',
+    canPurchase: true,
     features: policy.features,
     child_profile_limit: policy.childProfileLimit,
     standard_daily_seconds: policy.standardDailySeconds,

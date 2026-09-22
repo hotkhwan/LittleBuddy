@@ -120,4 +120,22 @@ describe('subscription-safe parent identity', () => {
     expect(trial).toEqual({ status: 'active', expires_at: T0 + 86400000 });
     expect((await c.env.DB.prepare('SELECT account_id FROM installations WHERE installation_id=?').bind(i2).first<{ account_id: string }>())?.account_id).toBe(accountId);
   });
+
+  it('allows a linked parent account, but never a guest, to receive a future paid entitlement', async () => {
+    const productId = 'little_days.premium.monthly.test';
+    const c = makeClient({ defaultToken: null, env: { STORE_PRODUCT_MAP_JSON: JSON.stringify({ [productId]: { plan: 'PREMIUM', platform: 'google' } }) } });
+    const accountId = uniqueId('entitled-parent');
+    await c.env.DB.batch([
+      c.env.DB.prepare("INSERT INTO accounts(id,status,created_at,updated_at) VALUES (?,'active',?,?)").bind(accountId, T0, T0),
+      c.env.DB.prepare("INSERT INTO parent_accounts(id,provider,subject_hash,email_hash,consent_version,created_at,updated_at) VALUES (?,'google',?,NULL,0,?,?)")
+        .bind(accountId, uniqueId('subject-hash'), T0, T0),
+      c.env.DB.prepare("INSERT INTO entitlements(parent_id,product_id,source,status,period_end,raw_receipt_ref,updated_at) VALUES (?,?,?,'active',?,NULL,?)")
+        .bind(accountId, productId, 'google', T0 + 86400000, T0),
+    ]);
+    const { TokenService } = await import('../src/auth/tokens');
+    const parentToken = await new TokenService('test-only-parent-token-secret-not-for-deployment', true).mintParent(accountId, T0, 3600);
+    const entitlement = await c.api('GET', '/v1/me/entitlements', undefined, { authorization: `Bearer ${parentToken}` });
+    expect(entitlement.status).toBe(200);
+    expect(entitlement.body).toMatchObject({ accountType: 'parent', plan: 'PREMIUM', paid: true, canPurchase: true });
+  });
 });

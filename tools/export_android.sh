@@ -600,11 +600,14 @@ if [ "$AAB" -eq 1 ]; then
 	echo ""
 	echo "==> Bundle signature (jarsigner -verify):"
 	VERIFY_OUT="$("$JARSIGNER" -verify -verbose:summary -certs "$OUT_APK" 2>&1)"
-	printf '%s\n' "$VERIFY_OUT" | grep -E "jar verified|Signed by|unsigned|error" | sort -u | sed 's/^/    /' | head -4
-	if ! printf '%s\n' "$VERIFY_OUT" | grep -q "jar verified"; then
+	printf '%s\n' "$VERIFY_OUT" | grep -E "jar verified|Signed by|unsigned|error" | sort -u | sed 's/^/    /' | awk 'NR <= 4'
+	case "$VERIFY_OUT" in
+	*"jar verified"*) ;;
+	*)
 		echo "Bundle is not signed after all attempts; do not upload it." >&2
 		exit 1
-	fi
+		;;
+	esac
 	echo "    SHA-256: $(shasum -a 256 "$OUT_APK" | cut -d' ' -f1)"
 	echo "    size:    $(stat -f %z "$OUT_APK") bytes"
 	if [ "$MODE" = "debug" ]; then

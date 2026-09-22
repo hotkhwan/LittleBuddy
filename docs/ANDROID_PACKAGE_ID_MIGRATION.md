@@ -75,10 +75,17 @@ certificates require separate Android OAuth clients when both are tested.
 - versionName: 0.1.1
 - versionCode: 2
 
-The inspection AAB is `build/android/LittleDays-debug.aab`, SHA-256
-`6fe8dcbcc9adb9b62795011375e5cf17d45eeef54a5d601fae8bed90b6e74f0f`.
-Bundletool verified the base and asset-pack manifests use the final ID. It is
-not a Play upload artifact because it is signed with the debug key.
+The release AAB is `build/android/LittleDays-release.aab`, SHA-256
+`f3b8d8257630062406ab9556048ee1f373c134d70a9bea0ef4419b6da0acb1e7`.
+Bundletool verified the base and asset-pack manifests use the final ID, version
+`0.1.1` / code `2`, min/target/compile SDK `29` / `36` / `36`, and contain no
+`debuggable=true` declaration or permissions. `jarsigner` verified the upload
+signature. The bundle has not been uploaded to Play.
+
+The candidate upload key was generated outside the repository. Its public
+certificate fingerprints are recorded in `GOOGLE_CREDENTIAL_MANAGER.md`. The
+owner must move the only current copy out of `/private/tmp`, back up the
+keystore and password separately, and retain them for every future upload.
 
 ## Files changed
 
