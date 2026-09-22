@@ -5,7 +5,7 @@ import { decodeJws } from '../crypto/jws.ts';
 import { GoogleVerifier, type SubscriptionPurchaseV2 } from '../google.ts';
 import { DAY_MS, NOW_MS, clock, fakeFetch, rsaPkcs8Pem } from './helpers.ts';
 
-const PKG = 'com.littledays.app';
+const PKG = 'com.joinanny.littlebuddy';
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEF';
 
 function subscription(overrides: Partial<SubscriptionPurchaseV2> = {}, item: Partial<NonNullable<SubscriptionPurchaseV2['lineItems']>[number]> = {}): SubscriptionPurchaseV2 {

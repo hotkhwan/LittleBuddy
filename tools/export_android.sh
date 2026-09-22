@@ -85,6 +85,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GAME_DIR="$REPO_ROOT/game"
 PRESETS="$GAME_DIR/export_presets.cfg"
 PRESET_NAME="Android"
+EXPECTED_PACKAGE="com.joinanny.littlebuddy"
 OUT_DIR="$REPO_ROOT/build/android"
 # Mode-suffixed on purpose. A debug and a release APK are NOT interchangeable
 # (the debug one is signed with a throwaway key and is android:debuggable), and
@@ -420,6 +421,12 @@ if [ -f "$PRESETS" ]; then
      end of the file, or add it through Project > Export > Add > Android and
      then reconcile it against that document."
 	fi
+	if grep -q "^package/unique_name=\"$EXPECTED_PACKAGE\"$" "$PRESETS"; then
+		ok "Android package id: $EXPECTED_PACKAGE"
+	else
+		bad "Android package id is not $EXPECTED_PACKAGE"
+		blocker "Set package/unique_name=\"$EXPECTED_PACKAGE\" in the Android export preset before building or uploading."
+	fi
 else
 	bad "game/export_presets.cfg"
 	blocker "game/export_presets.cfg does not exist at $PRESETS."
@@ -645,7 +652,7 @@ if [ "$DO_INSTALL" -eq 1 ]; then
 	echo "==> Installing to device"
 	"$ADB" install -r "$OUT_APK"
 	echo "==> Installed. Launch it from the launcher, or:"
-	echo "    $ADB shell monkey -p com.pointit.littlebuddy -c android.intent.category.LAUNCHER 1"
+	echo "    $ADB shell monkey -p $EXPECTED_PACKAGE -c android.intent.category.LAUNCHER 1"
 fi
 
 echo ""

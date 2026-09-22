@@ -230,7 +230,7 @@ Known and accepted: two live App Store apps share the name in the baby/parenting
 space, and a French class-41 registration exists. The risk is discoverability,
 not legality — clear at USPTO, EUIPO and Thailand.
 
-**Frozen and verified unchanged:** bundle identifier `com.pointit.littlebuddy`,
+**Frozen and verified unchanged:** Apple bundle identifier `com.pointit.littlebuddy` (Android now uses `com.joinanny.littlebuddy`),
 `user://profile.json`, `profileVersion` and all save keys, every `missionId`,
 `taskId`, `levelId` and `objectId`, and the repo name. Only display strings moved.
 

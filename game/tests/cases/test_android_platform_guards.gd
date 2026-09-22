@@ -83,11 +83,26 @@ func test_name() -> String:
 
 func run():
 	var failures: Array = []
+	failures.append_array(_test_release_identity_contract())
 	failures.append_array(_test_safe_area_guards_still_name_android())
 	failures.append_array(_test_joystick_clears_speak_at_android_shapes())
 	failures.append_array(_test_joystick_stays_inside_the_safe_area())
 	failures.append_array(_test_backendless_speech_is_inert())
 	failures.append_array(_test_back_navigation_contract())
+	return failures
+
+
+func _test_release_identity_contract():
+	var failures: Array = []
+	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
+	if not presets.contains('package/unique_name="com.joinanny.littlebuddy"'):
+		failures.append("Android package id must be com.joinanny.littlebuddy before the first Play upload")
+	if not presets.contains('application/bundle_identifier="com.pointit.littlebuddy"'):
+		failures.append("the independent Apple bundle id changed during the Android package migration")
+	if not presets.contains('gradle_build/target_sdk="36"'):
+		failures.append("Android target SDK must remain 36")
+	if not presets.contains('version/code=2') or not presets.contains('version/name="0.1.1"'):
+		failures.append("Android release metadata must be versionCode 2 / versionName 0.1.1 or newer")
 	return failures
 
 

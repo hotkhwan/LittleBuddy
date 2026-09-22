@@ -20,7 +20,7 @@
 | Recommendation | **Switch.** Use a character-led brand: **"Aliz & Bunny"**, with a descriptive subtitle. Verified clear on the App Store and clear in TMview across all offices. |
 | Is "Bunny" safe as the brand? | **No — do not use "Bunny" alone.** Playboy Enterprises holds an all-class "BUNNY" EU registration (classes 1–45, including 9, 28 and 41), and App Store "bunny" searches surface adult-labelled titles. As a *paired* element ("Aliz & Bunny") it is fine. |
 | Is "Little Buddy" safe to keep as the **public** name? | **No.** It is heavily registered (incl. a live **US class 9** registration) and there is already a Google Play preschool-learning app and a Steam virtual-pet-care game literally named "Little Buddy". |
-| Is "Little Buddy" safe to keep as an **internal** identifier? | **Yes.** Keep `com.pointit.littlebuddy`, `user://profile.json`, all save keys, all mission IDs, and the repo name exactly as they are. Change the **display name only**. |
+| Is "Little Buddy" safe to keep as an **internal** identifier? | **Yes.** Keep save keys, mission IDs, and the repo name. The owner separately changed the Android application ID to `com.joinanny.littlebuddy` before its first Play upload; the Apple bundle ID remains `com.pointit.littlebuddy`. |
 
 ### The one-line version
 "Little Days" is not legally catastrophic, but it is commercially weak: it is taken three times over, it is descriptive and hard to own, and it drops your children's game into the middle of the baby-tracker naming cluster. **Switch to "Aliz & Bunny", change only the display name, and freeze every internal identifier.**
@@ -63,7 +63,7 @@ All three confirmed via Apple's own lookup API on 2026-09-19.
 | **LittleDaysFamily** | Luke Hakso | `com.lukehakso.LittleDays` | Lifestyle | 4+ | Live in the US storefront. |
 | *(unverified)* Little Days — diary app | listed as "YUJIN HAN" | — | — | — | App Store ID `6456071590`. Listing now 404s in US and FR. **Appears delisted; could not verify.** |
 
-**Note on bundle IDs:** `com.littledaysapp.app`, `com.beyondy.littledays` and `com.lukehakso.LittleDays` are all taken. This does not block you (your bundle ID is already `com.pointit.littlebuddy` and should stay), but it shows the name is genuinely occupied by active developers.
+**Note on bundle IDs:** `com.littledaysapp.app`, `com.beyondy.littledays` and `com.lukehakso.LittleDays` are all taken. This does not block the independent identifiers: Android is `com.joinanny.littlebuddy`; Apple remains `com.pointit.littlebuddy`.
 
 ### 1.2 Google Play
 

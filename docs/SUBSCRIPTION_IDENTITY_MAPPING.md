@@ -38,13 +38,13 @@ Use a versioned, URL-safe encoding within Play's length rules. Neither field may
 Required configuration and access:
 
 - Google Cloud OAuth client IDs accepted by the backend (`GOOGLE_CLIENT_IDS`), including the Android client configuration needed by Credential Manager.
-- Android package name, SHA-256 signing certificate fingerprints, and a configured Play Console app.
+- Android package name `com.joinanny.littlebuddy`, SHA-256 signing certificate fingerprints, and a configured Play Console app.
 - Play subscription/base plans/offers and license tester accounts.
 - Google Play Developer API service account with least privilege, linked to Play Console.
 - Real-time developer notification Pub/Sub topic/push authentication.
 - A signed build installed through an internal test track for realistic Billing tests.
 
-The current billing module uses `GOOGLE_PACKAGE_NAME`, `GOOGLE_SERVICE_ACCOUNT_JSON`, and `GOOGLE_RTDN_TOKEN`; example configuration currently uses different reserved names. Normalize them before deployment.
+The billing module and example configuration use `GOOGLE_PACKAGE_NAME=com.joinanny.littlebuddy`, `GOOGLE_SERVICE_ACCOUNT_JSON`, and `GOOGLE_RTDN_TOKEN`. Real credentials remain server-side and billing remains disabled.
 
 ## Backend purchase sequence
 

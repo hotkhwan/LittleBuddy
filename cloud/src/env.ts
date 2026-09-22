@@ -61,9 +61,9 @@ export interface Env {
   APPLE_KEY_ID?: string;
   APPLE_PRIVATE_KEY?: string;
   APPLE_BUNDLE_ID?: string;
-  GOOGLE_PLAY_PACKAGE?: string;
+  GOOGLE_PACKAGE_NAME?: string;
   GOOGLE_SERVICE_ACCOUNT_JSON?: string;
-  GOOGLE_RTDN_PUBSUB_TOKEN?: string;
+  GOOGLE_RTDN_TOKEN?: string;
   // tests only
   TEST_MIGRATIONS?: unknown;
 }

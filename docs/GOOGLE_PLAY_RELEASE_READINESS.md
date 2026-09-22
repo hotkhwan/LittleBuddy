@@ -1,12 +1,11 @@
-# Google Play release readiness — Little Days (`com.pointit.littlebuddy`)
+# Google Play release readiness — Little Days (`com.joinanny.littlebuddy`)
 
-> **Integrated build 2026-09-20 (lead):** `build/android/LittleDays-debug.apk` rebuilt
-> from commit `b10ab01` with the toolchain below: 36,810,544 B, SHA-256
-> `3699976273f888e78177f49f1e2166678afaecf0bb300ba12550004a287844c1` (apksigner verify OK),
-> `com.pointit.littlebuddy` 0.1.0 (versionCode 1), minSdk 24, targetSdk 36,
-> arm64-v8a, zero permissions, signed v2+v3 with the local debug key. Music now
-> plays in this build (owner rights confirmation, `docs/licences/music/`).
-> Still no release keystore, no AAB release artefact, no Play Console app.
+> **Package-migration inspection build 2026-09-22:** `build/android/LittleDays-debug.aab`,
+> SHA-256 `ce885ba22815b666d65625a95b0eb55aaaf14cdb3cd0ca95feb945a03b917c21`.
+> Bundletool confirms package `com.joinanny.littlebuddy`, versionName `0.1.1`,
+> versionCode `2`, compile/target SDK `36`, and no declared permissions. It is
+> debug-signed for inspection only and must not be uploaded. Release export correctly
+> refuses to run until the owner supplies the external release upload keystore.
 
 **Prepared:** 2026-09-20, from worktree `wt/android` (base `cca0198`), on the MacBook.
 **Scope:** what Play Console will ask for, answered from the **actual exported
@@ -26,13 +25,13 @@ not ticked.
 
 | | |
 |---|---|
-| File | `build/android/LittleDays-debug.apk` (git-ignored; exists only on the machine that built it) |
-| Built | 2026-09-20 12:23, from `wt/android` with game content at `cca0198` (before the preset gained its three empty `keystore/release*` keys, which do not affect the APK) |
-| Size | 36,647,845 bytes (34.9 MiB) |
-| SHA-256 | `1a8f7f7bc7cf9369cb530c32c59116b38d8fd31c42c052ecbf47f737bce754e2` |
-| Package / label | `com.pointit.littlebuddy` / **Little Days** |
-| versionCode / versionName | `1` / `0.1.0` — matches `VERSION` (0.1.0) |
-| minSdk / targetSdk / compileSdk | **24 / 36 / 36** in this prebuilt-template APK. **The Play AAB says minSdk 29** — Godot's Gradle build applies `VULKAN_MIN_SDK_VERSION = 29` because the mobile renderer runs on Vulkan (`docs/ANDROID_READINESS.md` §7 step 9). targetSdk 36 was not raised by hand |
+| File | `build/android/LittleDays-debug.aab` (git-ignored inspection artifact) |
+| Built | 2026-09-22 from the package-migration branch |
+| Size | 45,907,082 bytes |
+| SHA-256 | `ce885ba22815b666d65625a95b0eb55aaaf14cdb3cd0ca95feb945a03b917c21` |
+| Package / label | `com.joinanny.littlebuddy` / **Little Days** |
+| versionCode / versionName | `2` / `0.1.1` |
+| minSdk / targetSdk / compileSdk | **29 / 36 / 36** |
 | ABIs | `arm64-v8a` only (`libgodot_android.so` 76.2 MB uncompressed, `libc++_shared.so`) |
 | 16 KB page size | both `.so` have `LOAD p_align = 0x4000` — **compliant** with Play's 16 KB requirement for targetSdk ≥ 35 |
 | Orientation | `screenOrientation=11` (sensorLandscape), from `project.godot` `window/handheld/orientation=4` |
@@ -40,7 +39,7 @@ not ticked.
 | `allowBackup` | `false` (`user_data_backup/allow=false`) |
 | `isGame` / `appCategory` | `true` / `0` (game) |
 | Debuggable | **yes** — this is the debug build. A Play upload must be the release build |
-| Signature | APK Signature Scheme **v2 + v3**, signer `CN=Android Debug, O=Android, C=US`, cert SHA-256 `fbdbc747…33ac` — **debug key; not uploadable** |
+| Signature | JAR verified; signer `CN=Android Debug, O=Android, C=US` — **inspection only, not uploadable** |
 
 The lead will rebuild from the integrated HEAD with this toolchain; the hash
 and build time above will change, nothing else in this document should.
@@ -48,8 +47,8 @@ and build time above will change, nothing else in this document should.
 ### Declared permissions: **none**
 
 ```
-$ aapt2 dump permissions LittleDays-debug.apk
-package: com.pointit.littlebuddy
+$ bundletool dump manifest --bundle LittleDays-debug.aab
+package: com.joinanny.littlebuddy
 ```
 
 Zero `uses-permission` elements. In particular:
@@ -333,7 +332,7 @@ way. The *app-signing* key is Google's.
 ## 9. Remaining steps to a submission, in order
 
 1. **OWNER:** sign in to Play Console; note account type + creation date; create
-   the app (`com.pointit.littlebuddy`, Game, free).
+   the app (`com.joinanny.littlebuddy`, Game, free).
 2. **OWNER:** decide the public name (`docs/NAMING_AND_TRADEMARK.md`) — change
    only `config/name` in `project.godot` and `package/name` in the Android
    preset if you switch; never the package id.
