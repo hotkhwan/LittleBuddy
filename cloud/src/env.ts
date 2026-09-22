@@ -5,6 +5,8 @@ import type { QuotaDO } from './do/quota_do';
 
 export interface Env {
   DB: D1Database;
+  AI: Ai;
+  AI_SEARCH: AiSearchNamespace;
   TUTOR_SESSION: DurableObjectNamespace<TutorSessionDO>;
   QUOTA: DurableObjectNamespace<QuotaDO>;
   // vars (wrangler.toml)
@@ -44,6 +46,10 @@ export interface Env {
   PREMIUM_LIVE_PROVIDER?: string;
   PROVIDER_BUDGET_CENTS_MONTHLY?: string;
   PROVIDER_BUDGET_CENTS_DAILY?: string;
+  STANDARD_PRIMARY_MODEL?: string;
+  STANDARD_FALLBACK_MODEL?: string;
+  COMPLEX_REASONING_MODEL?: string;
+  AI_SEARCH_INSTANCE?: string;
   // secrets (.dev.vars locally, `wrangler secret put` remotely)
   PARENT_TOKEN_SECRET?: string;
   OPENAI_API_KEY?: string;
@@ -89,7 +95,7 @@ export interface Config {
   familyClubProductIds: string[];
   priceHint: { currency: string; monthly: number; status: string };
   consentVersion: number;
-  providerName: 'mock' | 'faulty' | 'openai';
+  providerName: 'mock' | 'faulty' | 'workers_ai' | 'openai';
   model: string;
   realtimeModel: string;
   realtimeVoice: string;
@@ -99,7 +105,7 @@ export interface Config {
   hasOpenAiKey: boolean;
   productionEnabled: boolean;
   liveChildAudioEnabled: boolean;
-  standardProvider: 'openai' | 'deepseek' | 'mock';
+  standardProvider: 'workers_ai' | 'openai' | 'deepseek' | 'mock';
   premiumLiveProvider: 'gemini' | 'mock';
   providerBudgetCentsMonthly: number;
   providerBudgetCentsDaily: number;
@@ -176,7 +182,7 @@ export function loadConfig(env: Env): Config {
   const hasOpenAiKey = typeof env.OPENAI_API_KEY === 'string' && env.OPENAI_API_KEY.length > 0;
   const requested = (env.TUTOR_PROVIDER || '').toLowerCase();
   // `faulty` exists for chaos tests of the fallback path and is honoured in DEV_MODE only.
-  const providerName: Config['providerName'] = requested === 'faulty' && devMode ? 'faulty' : hasOpenAiKey && requested !== 'mock' ? 'openai' : 'mock';
+  const providerName: Config['providerName'] = requested === 'faulty' && devMode ? 'faulty' : requested === 'workers_ai' ? 'workers_ai' : hasOpenAiKey && requested !== 'mock' ? 'openai' : 'mock';
   return {
     devMode,
     appName: env.APP_NAME || 'Little Days',
@@ -207,7 +213,7 @@ export function loadConfig(env: Env): Config {
     realtimeWsUrl: env.REALTIME_WS_URL || 'wss://api.openai.com/v1/realtime',
     providerTimeoutMs: Math.max(500, num(env, 'PROVIDER_TIMEOUT_MS', 6000)),
     hasOpenAiKey,
-    standardProvider: env.STANDARD_PROVIDER === 'deepseek' ? 'deepseek' : env.STANDARD_PROVIDER === 'openai' ? 'openai' : 'mock',
+    standardProvider: env.STANDARD_PROVIDER === 'workers_ai' ? 'workers_ai' : env.STANDARD_PROVIDER === 'deepseek' ? 'deepseek' : env.STANDARD_PROVIDER === 'openai' ? 'openai' : 'mock',
     premiumLiveProvider: env.PREMIUM_LIVE_PROVIDER === 'gemini' ? 'gemini' : 'mock',
     providerBudgetCentsMonthly: Math.max(0, Math.floor(num(env, 'PROVIDER_BUDGET_CENTS_MONTHLY', 2500))),
     providerBudgetCentsDaily: Math.max(0, Math.floor(num(env, 'PROVIDER_BUDGET_CENTS_DAILY', 200))),

@@ -41,7 +41,7 @@ export function createApp(options: AppOptions = {}) {
     const requestId = c.req.header('cf-ray') || uuid();
     c.set('requestId', requestId);
     c.set('tokens', new TokenService(c.env.PARENT_TOKEN_SECRET || '', config.devMode));
-    c.set('provider', options.provider ?? resolveProvider(config, c.env.OPENAI_API_KEY, options.fetchImpl));
+    c.set('provider', options.provider ?? resolveProvider(config, c.env.OPENAI_API_KEY, options.fetchImpl, c.env.AI));
     c.set('body', undefined);
     c.set('auth', null);
     const started = Date.now();

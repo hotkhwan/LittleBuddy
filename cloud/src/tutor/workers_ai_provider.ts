@@ -66,7 +66,7 @@ export class WorkersAIProvider {
   chat(input: { messages: AIMessage[]; maxTokens?: number; temperature?: number; signal?: AbortSignal }): Promise<WorkersAIResult> {
     return this.invoke({
       messages: input.messages,
-      max_tokens: input.maxTokens ?? 160,
+      max_tokens: Math.max(input.maxTokens ?? 160, 1024),
       temperature: input.temperature ?? 0.2,
     }, input.signal);
   }
@@ -75,7 +75,7 @@ export class WorkersAIProvider {
     const schemaBody = asRecord(input.schema.schema);
     return this.invoke({
       messages: input.messages,
-      max_tokens: input.maxTokens ?? 220,
+      max_tokens: Math.max(input.maxTokens ?? 220, 1024),
       temperature: input.temperature ?? 0.2,
       response_format: { type: 'json_schema', json_schema: Object.keys(schemaBody).length ? schemaBody : input.schema },
     }, input.signal, true);
@@ -85,7 +85,7 @@ export class WorkersAIProvider {
     return this.invoke({
       messages: input.messages,
       tools: input.tools,
-      max_tokens: input.maxTokens ?? 160,
+      max_tokens: Math.max(input.maxTokens ?? 160, 1024),
       temperature: input.temperature ?? 0.2,
     }, input.signal);
   }
@@ -176,9 +176,11 @@ function normalizeResult(raw: unknown, parseJson: boolean): WorkersAIResult {
   const nested = asRecord(record.result);
   const body = Object.keys(nested).length ? nested : record;
   const responseObject = asRecord(body.response);
-  const text = firstString(typeof raw === 'string' ? raw : undefined, body.response, body.text, body.content, record.response);
+  const firstChoice = Array.isArray(body.choices) ? asRecord(body.choices[0]) : {};
+  const message = asRecord(firstChoice.message);
+  const text = firstString(typeof raw === 'string' ? raw : undefined, body.response, body.text, body.content, message.content, record.response);
   const usage = normalizeUsage(asRecord(body.usage ?? record.usage));
-  const toolCalls = normalizeToolCalls(body.tool_calls ?? body.toolCalls ?? responseObject.tool_calls ?? responseObject.toolCalls ?? record.tool_calls);
+  const toolCalls = normalizeToolCalls(body.tool_calls ?? body.toolCalls ?? responseObject.tool_calls ?? responseObject.toolCalls ?? message.tool_calls ?? record.tool_calls);
   let parsed: unknown;
   if (parseJson) {
     if (body.json !== undefined) parsed = body.json;

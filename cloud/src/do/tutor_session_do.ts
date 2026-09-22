@@ -125,7 +125,7 @@ export class TutorSessionDO extends DurableObject<Env> {
     if (!this.primary) {
       const rec = this.rec!;
       const cfg = { ...this.config, providerName: rec.providerName };
-      this.primary = resolveProvider(cfg, this.env.OPENAI_API_KEY).turns;
+      this.primary = resolveProvider(cfg, this.env.OPENAI_API_KEY, undefined, this.env.AI).turns;
     }
     return this.primary;
   }

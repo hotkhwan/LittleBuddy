@@ -10,7 +10,7 @@ describe('WorkersAIProvider', () => {
     const result = await provider.chat({ messages: [{ role: 'user', content: 'Hi' }] });
     expect(result.text).toBe('Hello!');
     expect(result.usage).toEqual({ llmInputTokens: 12, llmOutputTokens: 4, totalTokens: 16 });
-    expect(run).toHaveBeenCalledWith('@cf/example/model', expect.objectContaining({ max_tokens: 160, temperature: 0.2 }), {});
+    expect(run).toHaveBeenCalledWith('@cf/example/model', expect.objectContaining({ max_tokens: 1024, temperature: 0.2 }), {});
   });
 
   it('uses AI Gateway with personalized caching disabled by default', async () => {
