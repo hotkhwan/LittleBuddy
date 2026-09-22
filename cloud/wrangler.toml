@@ -30,6 +30,14 @@ workers_dev = false
 DEV_MODE = "0"
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+PRODUCTION_ENABLED = "false"         # closed-mode gate; health/readiness only in production
+LIVE_CHILD_AUDIO_ENABLED = "false"   # synthetic/adult QA only until owner privacy approval
+STANDARD_PROVIDER = "mock"           # switch to openai/deepseek through environment policy
+TUTOR_PROVIDER = "mock"
+PREMIUM_LIVE_PROVIDER = "mock"       # switch to gemini only after the audio privacy gate
+PROVIDER_BUDGET_CENTS_MONTHLY = "2500"
+PROVIDER_BUDGET_CENTS_DAILY = "200"
+STORE_PRODUCT_MAP_JSON = "{}"        # store product ids are created by the owner, never invented
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
 FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
 FREE_DAILY_TURNS = "60"
@@ -52,6 +60,14 @@ TUTOR_MODEL = "gpt-4o-mini"
 REALTIME_MODEL = "gpt-realtime-mini"
 REALTIME_VOICE = "marin"
 REALTIME_TURN_DETECTION = "semantic_vad"
+
+[ai]
+binding = "AI"
+
+[[ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "default"
+remote = true
 
 [triggers]
 crons = ["17 3 * * *"]               # daily retention purge (UTC)
@@ -81,9 +97,17 @@ workers_dev = true
 
 [env.dev.vars]
 DEV_MODE = "1"
-FREE_CHAT_ENABLED = "1"              # dev only: chat mode (mock provider until OPENAI_API_KEY is set); refused outside DEV_MODE regardless                       # dev sign-in, dev literal approval token, /v1/dev/* routes, X-Debug-Now
+FREE_CHAT_ENABLED = "1"              # dev only: chat mode (mock provider until OPENAI_API_KEY is set); refused outside DEV_MODE regardless
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+PRODUCTION_ENABLED = "false"
+LIVE_CHILD_AUDIO_ENABLED = "false"
+STANDARD_PROVIDER = "workers_ai"
+TUTOR_PROVIDER = "workers_ai"
+PREMIUM_LIVE_PROVIDER = "mock"
+PROVIDER_BUDGET_CENTS_MONTHLY = "2500"
+PROVIDER_BUDGET_CENTS_DAILY = "200"
+STORE_PRODUCT_MAP_JSON = "{}"
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
 FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
 FREE_DAILY_TURNS = "60"
@@ -102,10 +126,22 @@ FAMILY_CLUB_PRODUCT_IDS = "little_days.family_club.monthly,little_days.family_cl
 FAMILY_CLUB_PRICE_CURRENCY = "THB"   # price hypothesis; config, never hard-coded in clients
 FAMILY_CLUB_PRICE_MONTHLY = "99"
 FAMILY_CLUB_PRICE_STATUS = "proposed"
-TUTOR_MODEL = "gpt-4o-mini"
+TUTOR_MODEL = "@cf/zai-org/glm-4.7-flash"
 REALTIME_MODEL = "gpt-realtime-mini"
 REALTIME_VOICE = "marin"
 REALTIME_TURN_DETECTION = "semantic_vad"
+STANDARD_PRIMARY_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+STANDARD_FALLBACK_MODEL = "@cf/zai-org/glm-4.7-flash"
+COMPLEX_REASONING_MODEL = "@cf/openai/gpt-oss-120b"
+AI_SEARCH_INSTANCE = "little-days-curriculum"
+
+[env.dev.ai]
+binding = "AI"
+
+[[env.dev.ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "default"
+remote = true
 
 [env.dev.triggers]
 crons = ["17 3 * * *"]
@@ -137,6 +173,14 @@ workers_dev = true
 DEV_MODE = "0"
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+PRODUCTION_ENABLED = "false"
+LIVE_CHILD_AUDIO_ENABLED = "false"
+STANDARD_PROVIDER = "mock"
+TUTOR_PROVIDER = "mock"
+PREMIUM_LIVE_PROVIDER = "mock"
+PROVIDER_BUDGET_CENTS_MONTHLY = "2500"
+PROVIDER_BUDGET_CENTS_DAILY = "200"
+STORE_PRODUCT_MAP_JSON = "{}"
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
 FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
 FREE_DAILY_TURNS = "60"
@@ -159,6 +203,18 @@ TUTOR_MODEL = "gpt-4o-mini"
 REALTIME_MODEL = "gpt-realtime-mini"
 REALTIME_VOICE = "marin"
 REALTIME_TURN_DETECTION = "semantic_vad"
+STANDARD_PRIMARY_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+STANDARD_FALLBACK_MODEL = "@cf/zai-org/glm-4.7-flash"
+COMPLEX_REASONING_MODEL = "@cf/openai/gpt-oss-120b"
+AI_SEARCH_INSTANCE = "little-days-curriculum"
+
+[env.staging.ai]
+binding = "AI"
+
+[[env.staging.ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "default"
+remote = true
 
 [env.staging.triggers]
 crons = ["17 3 * * *"]
@@ -192,12 +248,20 @@ workers_dev = false
 # ("Workers are disabled on this route"). Deploying production by hand attaches
 # this Worker to it. littledays.joinanny.com (the website, Worker littledays-web)
 # is untouched.
-routes = [{ pattern = "api.littledays.joinanny.com/*", zone_name = "joinanny.com" }]
+routes = [{ pattern = "api.littledays.joinanny.com", custom_domain = true }]
 
 [env.production.vars]
 DEV_MODE = "0"
 APP_NAME = "Little Days"
 BILLING_ENABLED = "false"            # real billing stays off until owner approval + device QA
+PRODUCTION_ENABLED = "false"         # mandatory closed production mode
+LIVE_CHILD_AUDIO_ENABLED = "false"   # no public child audio
+STANDARD_PROVIDER = "workers_ai"
+TUTOR_PROVIDER = "workers_ai"
+PREMIUM_LIVE_PROVIDER = "mock"
+PROVIDER_BUDGET_CENTS_MONTHLY = "2500"
+PROVIDER_BUDGET_CENTS_DAILY = "200"
+STORE_PRODUCT_MAP_JSON = "{}"
 FREE_DAILY_SECONDS = "300"           # 5 min/day free AI Tutor time (owner decision)
 FAMILY_CLUB_DAILY_SECONDS = "1800"   # Family Club = paid expansion of tutor time
 FREE_DAILY_TURNS = "60"
@@ -216,10 +280,22 @@ FAMILY_CLUB_PRODUCT_IDS = "little_days.family_club.monthly,little_days.family_cl
 FAMILY_CLUB_PRICE_CURRENCY = "THB"   # price hypothesis; config, never hard-coded in clients
 FAMILY_CLUB_PRICE_MONTHLY = "99"
 FAMILY_CLUB_PRICE_STATUS = "proposed"
-TUTOR_MODEL = "gpt-4o-mini"
+TUTOR_MODEL = "@cf/zai-org/glm-4.7-flash"
 REALTIME_MODEL = "gpt-realtime-mini"
 REALTIME_VOICE = "marin"
 REALTIME_TURN_DETECTION = "semantic_vad"
+STANDARD_PRIMARY_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+STANDARD_FALLBACK_MODEL = "@cf/zai-org/glm-4.7-flash"
+COMPLEX_REASONING_MODEL = "@cf/openai/gpt-oss-120b"
+AI_SEARCH_INSTANCE = "little-days-curriculum"
+
+[env.production.ai]
+binding = "AI"
+
+[[env.production.ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "default"
+remote = true
 
 [env.production.triggers]
 crons = ["17 3 * * *"]
@@ -238,6 +314,6 @@ new_sqlite_classes = ["TutorSessionDO", "QuotaDO"]
 
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "little-days-production"
-database_id = "REPLACE_WITH_PRODUCTION_DATABASE_ID"   # `wrangler d1 create little-days-production`
+database_name = "little-days-prod"
+database_id = "88f3043d-d7a8-47b3-b315-33c4cf077f63"   # created in APAC 2026-09-22
 migrations_dir = "migrations"

@@ -864,6 +864,17 @@ func leave_to_home() -> bool:
 	return true
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	if _free_play_director != null and _free_play_director.has_method("request_back") \
+			and bool(_free_play_director.call("request_back")):
+		get_viewport().set_input_as_handled()
+		return
+	get_viewport().set_input_as_handled()
+	leave_to_home()
+
+
 func is_leaving() -> bool:
 	return _leaving
 

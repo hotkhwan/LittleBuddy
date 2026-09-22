@@ -250,8 +250,8 @@ func _test_the_screen_is_child_sized():
 	tree.root.add_child(picker)
 	picker.call("build", entries)
 
-	if String((picker.get_node_or_null("TitleLabel") as Label).text) != "Play with Bunny":
-		failures.append("the picker's title is not 'Play with Bunny'")
+	if String((picker.get_node_or_null("TitleLabel") as Label).text) != "Play with Baby":
+		failures.append("the picker's title is not 'Play with Baby'")
 	var back: Button = picker.call("get_back_button")
 	if back == null:
 		failures.append("the picker has no Back button")

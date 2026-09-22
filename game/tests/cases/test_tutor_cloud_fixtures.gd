@@ -569,6 +569,12 @@ func _session_harness(api: FakeApi = null, with_player: bool = true) -> Dictiona
 	var transport: RefCounted = h["transport"]
 	var tap: Tap = h["tap"]
 	var session: RefCounted = SessionScript.new()
+	# The recorded realtime token expires on 2026-09-21. Keep fixture-driven
+	# sessions on the recording's clock so this deterministic offline test does
+	# not begin failing merely because the wall clock has passed that date.
+	# The explicit expiry-boundary case below replaces this clock itself.
+	var fixture_now: int = int(Time.get_unix_time_from_datetime_string("2026-09-21T23:50:00"))
+	session.set_clock(func() -> int: return fixture_now)
 	session.set_api(fake)
 	session.set_transport(transport)
 	var player: Node = null

@@ -1,7 +1,22 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
-const TABLES = ['parent_accounts', 'child_profiles', 'devices', 'consent_status', 'entitlements', 'purchase_events', 'tutor_sessions', 'daily_quota', 'usage_events', 'learning_progress', 'api_idempotency'];
+const TABLES = [
+  'parent_accounts', 'child_profiles', 'devices', 'consent_status', 'entitlements',
+  'purchase_events', 'tutor_sessions', 'daily_quota', 'usage_events',
+  'learning_progress', 'api_idempotency', 'accounts', 'parents', 'plans',
+  'plan_features', 'subscriptions', 'subscription_events', 'store_products',
+  'purchase_transactions', 'entitlement_grants', 'content_entitlements', 'ai_usage_daily',
+  'ai_usage_monthly', 'ai_sessions', 'ai_provider_usage', 'privacy_versions',
+  'consents', 'organizations', 'schools', 'school_users', 'school_classes',
+  'school_students', 'licenses', 'license_seats', 'device_activations', 'audit_logs',
+  'guest_accounts', 'identity_providers', 'parent_profiles', 'installations',
+  'guest_learning_progress', 'account_learning_progress', 'guest_reward_awards',
+  'account_reward_awards', 'guest_unlocks', 'account_unlocks', 'guest_settings',
+  'account_settings', 'guest_ai_usage', 'account_ai_usage', 'account_ai_usage_imports',
+  'account_trials', 'purchase_identity_mappings', 'friend_invites', 'friendships',
+  'house_visits', 'multiplayer_sessions', 'session_members',
+];
 
 describe('D1 migrations', () => {
   it('apply cleanly and create every table', async () => {
@@ -9,9 +24,24 @@ describe('D1 migrations', () => {
     for (const t of TABLES) expect(rows, t).toContain(t);
   });
 
-  it('record themselves in d1_migrations (five files)', async () => {
+  it('record themselves in d1_migrations', async () => {
     const rows = (await env.DB.prepare('SELECT name FROM d1_migrations ORDER BY id').all<{ name: string }>()).results.map((r) => r.name);
-    expect(rows).toEqual(['0001_accounts.sql', '0002_entitlements_billing.sql', '0003_tutor.sql', '0004_progress.sql', '0005_account_privacy.sql']);
+    expect(rows).toEqual(['0001_accounts.sql', '0002_entitlements_billing.sql', '0003_tutor.sql', '0004_progress.sql', '0005_account_privacy.sql', '0006_production_platform.sql', '0007_guest_identity.sql']);
+  });
+
+  it('enforces subscription event and purchase transaction idempotency', async () => {
+    await env.DB.prepare("INSERT INTO subscription_events (id, store, external_event_id, event_type, payload_hash, received_at) VALUES ('se1','apple','notification-1','renewed','hash',1)").run();
+    await expect(env.DB.prepare("INSERT INTO subscription_events (id, store, external_event_id, event_type, payload_hash, received_at) VALUES ('se2','apple','notification-1','renewed','hash',2)").run()).rejects.toThrow(/UNIQUE/);
+    await env.DB.prepare("INSERT INTO purchase_transactions (id, platform, external_transaction_id, state, created_at, updated_at) VALUES ('pt1','google','order-1','purchased',1,1)").run();
+    await expect(env.DB.prepare("INSERT INTO purchase_transactions (id, platform, external_transaction_id, state, created_at, updated_at) VALUES ('pt2','google','order-1','purchased',1,1)").run()).rejects.toThrow(/UNIQUE/);
+  });
+
+  it('rejects negative AI consumption and invalid license periods', async () => {
+    await env.DB.prepare("INSERT INTO accounts (id, created_at, updated_at) VALUES ('acct-schema',1,1)").run();
+    await expect(env.DB.prepare("INSERT INTO ai_usage_monthly (account_id, usage_month, live_used_seconds, live_allowance_seconds, reset_at, updated_at) VALUES ('acct-schema','2027-01',-1,300,2,1)").run()).rejects.toThrow(/CHECK/);
+    await env.DB.prepare("INSERT INTO organizations (id,name,created_at,updated_at) VALUES ('org-schema','School Group',1,1)").run();
+    await env.DB.prepare("INSERT INTO schools (id,organization_id,name,created_at,updated_at) VALUES ('school-schema','org-schema','School',1,1)").run();
+    await expect(env.DB.prepare("INSERT INTO licenses (id,school_id,entitlement_type,license_model,status,valid_from,valid_until,created_at,updated_at) VALUES ('lic-schema','school-schema','SCHOOL_AI','pooled','active',10,5,1,1)").run()).rejects.toThrow(/CHECK/);
   });
 
   it('create the indexes retention and lookups rely on', async () => {

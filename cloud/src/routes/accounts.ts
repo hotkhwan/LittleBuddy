@@ -9,11 +9,12 @@ import { getParent, upsertParent, type ParentRow } from '../db/parents';
 import { childToJson, createChild, getChild, listChildren } from '../db/children';
 import { PLATFORMS, listDevices, upsertDevice } from '../db/devices';
 import { CONSENT_KINDS, consentToJson, listConsent, setConsent, type ConsentKind } from '../db/consent';
-import { effectiveEntitlement, listEntitlements } from '../db/entitlements';
+import { effectiveEntitlement, effectivePlan, listEntitlements } from '../db/entitlements';
 import { listProgress, progressToJson, upsertProgress } from '../db/progress';
 import { deleteChild, deleteParentAccount, exportFamily } from '../db/accounts_privacy';
 import { LESSONS } from '../tutor/lessons';
 import { IdentityError, createIdentityVerifiers, failureStatus, hashSubject, isIdentityProvider, type IdentityEnv } from '../auth/identity';
+import { uuid } from '../util/crypto';
 
 export const accountRoutes = new Hono<{ Bindings: Env; Variables: Vars }>();
 
@@ -21,7 +22,7 @@ const NICKNAME_RE = /^[\p{L}\p{N} '._-]{1,24}$/u;
 const BUCKET_RE = /^\d{4}-\d{4}$/;
 const LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/;
 const SEMVER_RE = /^[0-9A-Za-z.+-]{1,32}$/;
-const MAX_CHILDREN = 6; // the DEV_MODE literal parent is exempt so local test runs can mint a child per session
+const MAX_CHILDREN = 6; // hard safety ceiling; entitlement policy may be lower
 const MAX_IDENTITY_TOKEN = 8192;
 
 /**
@@ -79,6 +80,13 @@ accountRoutes.post('/parents', async (c) => {
     throw new ApiError(409, 'conflict', 'This account was deleted recently. A new account can be created after the waiting period.', { reason: 'account_deleted', availableAt });
   }
   const { parent, created } = outcome;
+  // Keep the legacy parent row as a compatibility projection while making
+  // the backend-owned account/provider model canonical for new features.
+  await c.env.DB.batch([
+    c.env.DB.prepare("INSERT OR IGNORE INTO accounts (id,status,created_at,updated_at) VALUES (?,'active',?,?)").bind(parent.id, now, now),
+    c.env.DB.prepare('INSERT OR IGNORE INTO parent_profiles (id,account_id,created_at,updated_at) VALUES (?,?,?,?)').bind(uuid(), parent.id, now, now),
+    ...(provider === 'apple' || provider === 'google' ? [c.env.DB.prepare('INSERT OR IGNORE INTO identity_providers (provider,provider_subject_hash,account_id,created_at,last_seen_at) VALUES (?,?,?,?,?)').bind(provider, subjectHash, parent.id, now, now)] : []),
+  ]);
   const parentToken = await tokens.mintParent(parent.id, now, config.parentTokenTtlSeconds);
   const out: Record<string, unknown> = {
     parentId: parent.id,
@@ -194,7 +202,10 @@ accountRoutes.post('/children', async (c) => {
   const birthYearBucket = str(body, 'birthYearBucket', { max: 9, re: BUCKET_RE });
   const locale = str(body, 'locale', { max: 8, re: LOCALE_RE });
   const existing = await listChildren(c.env.DB, auth.parentId);
-  if (existing.length >= MAX_CHILDREN && !(c.get('config').devMode && auth.parentId === DEV_PARENT_ID)) throw errors.badRequest(`a family can have at most ${MAX_CHILDREN} child profiles`);
+  const config = c.get('config');
+  const effective = effectivePlan(await listEntitlements(c.env.DB, auth.parentId), config, c.get('now'));
+  const profileLimit = Math.min(MAX_CHILDREN, config.planPolicies[effective.plan].childProfileLimit);
+  if (existing.length >= profileLimit && !(config.devMode && auth.parentId === DEV_PARENT_ID)) throw errors.badRequest(`this plan allows at most ${profileLimit} child profiles`);
   const child = await createChild(c.env.DB, { parentId: auth.parentId, nickname, avatarId: avatarId || undefined, birthYearBucket: birthYearBucket || undefined, locale: locale || undefined, now: c.get('now') });
   return c.json(childToJson(child), 201);
 });
@@ -292,6 +303,51 @@ accountRoutes.get('/entitlements', async (c) => {
     products: config.familyClubProductIds.map((productId) => ({ productId, priceHint: config.priceHint })),
     billing: { enabled: config.billingEnabled },
     records: rows.map((r) => ({ productId: r.product_id, source: r.source, status: r.status, periodEnd: r.period_end === null ? null : new Date(r.period_end).toISOString() })),
+  });
+});
+
+// Normalized production contract. Store/provider internals never appear here.
+accountRoutes.get('/me/entitlements', async (c) => {
+  const raw = (c.req.header('authorization') ?? '').replace(/^bearer\s+/i, '').trim();
+  if (!c.get('auth')) {
+    const parent = await c.get('tokens').verifyParent(raw, c.get('now'));
+    if (parent.ok) {
+      c.set('auth', { parentId: parent.claims.pid, clientId: null, childId: null, approvalToken: null, via: 'bearer' });
+    } else {
+      const guest = await c.get('tokens').verifyGuest(raw, c.get('now'));
+      if (!guest.ok) throw new ApiError(401, 'invalid_guest_session', 'The guest session is missing, altered, or expired.');
+      const row = await c.env.DB.prepare('SELECT status FROM guest_accounts WHERE id=?').bind(guest.claims.gid).first<{ status: string }>();
+      const installation = await c.env.DB.prepare('SELECT guest_account_id,status FROM installations WHERE installation_id=?').bind(guest.claims.iid).first<{ guest_account_id: string | null; status: string }>();
+      if (!row || row.status !== 'active' || installation?.guest_account_id !== guest.claims.gid || installation.status !== 'active') throw new ApiError(401, 'invalid_guest_session', 'The guest session is no longer active.');
+      return c.json({ accountType: 'guest', plan: 'FREE', paid: false, canPurchase: false, features: ['core_game', 'local_lessons', 'standard_ai_trial'], premiumLiveTrial: false });
+    }
+  }
+  const { auth } = await requireLiveParent(c);
+  const config = c.get('config');
+  const now = c.get('now');
+  const rows = await listEntitlements(c.env.DB, auth.parentId);
+  const effective = effectivePlan(rows, config, now);
+  const policy = config.planPolicies[effective.plan];
+  const month = new Date(now).toISOString().slice(0, 7);
+  let liveUsed = 0;
+  try {
+    const usage = await c.env.DB.prepare('SELECT live_used_seconds AS used FROM ai_usage_monthly WHERE account_id = ? AND usage_month = ?').bind(auth.parentId, month).first<{ used: number }>();
+    liveUsed = Math.max(0, Number(usage?.used ?? 0));
+  } catch { liveUsed = 0; }
+  return c.json({
+    accountType: 'parent',
+    plan: effective.plan,
+    paid: effective.plan !== 'FREE',
+    canPurchase: true,
+    features: policy.features,
+    child_profile_limit: policy.childProfileLimit,
+    standard_daily_seconds: policy.standardDailySeconds,
+    live_monthly_seconds: policy.liveMonthlySeconds,
+    live_used_seconds: liveUsed,
+    live_remaining_seconds: Math.max(0, policy.liveMonthlySeconds - liveUsed),
+    subscription_status: effective.status,
+    expires_at: effective.expiresAt,
+    school_entitlements: [],
   });
 });
 

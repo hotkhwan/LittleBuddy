@@ -1,0 +1,135 @@
+[
+  {
+    "id": "en-prek-colors-look-touch-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "3-4", "grade": "prek", "skill": "colors", "difficulty": "beginner", "lessonType": "vocabulary", "learningStandard": "LD-EN-PREK-VOC-01",
+    "learningObjective": "Identify and say red, blue, and green with familiar objects.", "prerequisites": ["Can point to a named object"],
+    "targetVocabulary": ["red", "blue", "green"], "teacherPrompts": ["Touch the red apple.", "What color is the cup?", "Can you say green?"],
+    "expectedResponses": [{"promptId":"touch_red","accepted":["touch red apple","red"]},{"promptId":"say_green","accepted":["green"]}],
+    "hints": ["Look for the apple that matches Aliz's red card.", "Green is the color of this leaf."],
+    "successCriteria": ["Selects two of three named colors", "Attempts one color word"], "commonMistakes": ["Confuses blue and green", "Points correctly but does not speak"],
+    "activityRecommendation": "learning_cards", "learningProps": ["color_red", "color_blue", "color_green", "apple_red", "leaf_green"],
+    "difficultyVariants": [{"level":"beginner","adaptation":"Offer two choices and model the word."},{"level":"developing","adaptation":"Offer three choices and pause before modeling."}],
+    "durationMinutes": 4, "content": "Aliz names one color at a time, shows a safe everyday object, then invites pointing and an optional spoken response. Touch remains a complete response path."
+  },
+  {
+    "id": "en-prek-body-actions-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "3-4", "grade": "prek", "skill": "body_actions", "difficulty": "beginner", "lessonType": "listening", "learningStandard": "LD-EN-PREK-LIS-01",
+    "learningObjective": "Follow one-step English directions using safe body actions.", "prerequisites": ["Can imitate a simple movement"],
+    "targetVocabulary": ["hands", "head", "clap", "wave"], "teacherPrompts": ["Wave your hand.", "Touch your head.", "Clap your hands."],
+    "expectedResponses": [{"promptId":"wave","accepted":["wave gesture"]},{"promptId":"clap","accepted":["clap gesture"]}],
+    "hints": ["Aliz waves slowly first.", "Aliz points to her head."], "successCriteria": ["Follows two one-step directions", "Matches one body word to the action"],
+    "commonMistakes": ["Copies the previous action", "Touches face instead of head"], "activityRecommendation": "say_and_show", "learningProps": ["body_hand", "body_head"],
+    "difficultyVariants": [{"level":"beginner","adaptation":"Demonstrate while speaking."},{"level":"developing","adaptation":"Speak first, then demonstrate only as a hint."}],
+    "durationMinutes": 4, "content": "Use playful one-step directions with no timer. Praise participation; never penalize a child who prefers touch or movement to speech."
+  },
+  {
+    "id": "en-kindergarten-numbers-food-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "4-6", "grade": "kindergarten", "skill": "numbers_food", "difficulty": "beginner", "lessonType": "speaking", "learningStandard": "LD-EN-K-SPE-01",
+    "learningObjective": "Count one to five food items and answer with a short English phrase.", "prerequisites": ["Recognizes quantities one and two"],
+    "targetVocabulary": ["one", "two", "three", "four", "five", "apple", "banana"], "teacherPrompts": ["How many apples?", "Let's count the bananas.", "Say: three apples."],
+    "expectedResponses": [{"promptId":"three_apples","accepted":["three","three apples"]},{"promptId":"five_bananas","accepted":["five","five bananas"]}],
+    "hints": ["Touch each fruit once as we count.", "The last number tells how many."], "successCriteria": ["Counts a set to five", "Uses number plus food word once"],
+    "commonMistakes": ["Counts one item twice", "Omits the food word"], "activityRecommendation": "prop_play", "learningProps": ["apple_red", "banana_yellow", "number_1", "number_2", "number_3", "number_4", "number_5"],
+    "difficultyVariants": [{"level":"beginner","adaptation":"Count together with visible number cards."},{"level":"developing","adaptation":"Hide number cards and ask for the short phrase."}],
+    "durationMinutes": 5, "content": "Count familiar foods using visible one-to-one pointing. Accept the number alone before gently expanding it to a two-word phrase."
+  },
+  {
+    "id": "en-kindergarten-phonics-animals-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "4-6", "grade": "kindergarten", "skill": "initial_sounds", "difficulty": "developing", "lessonType": "phonics", "learningStandard": "LD-EN-K-PHO-01",
+    "learningObjective": "Match the initial sounds c, d, and f to familiar animal words.", "prerequisites": ["Knows the animal pictures cat, dog, and fish"],
+    "targetVocabulary": ["cat", "dog", "fish"], "teacherPrompts": ["Cat starts with /k/.", "Which animal starts with /d/?", "Listen: fish. What sound comes first?"],
+    "expectedResponses": [{"promptId":"d_animal","accepted":["dog"]},{"promptId":"fish_sound","accepted":["f","/f/"]}],
+    "hints": ["D-d-dog. Listen to the first sound.", "Watch Aliz's mouth for /f/."], "successCriteria": ["Matches two of three sounds", "Attempts one initial sound"],
+    "commonMistakes": ["Says the letter name instead of sound", "Chooses by picture position"], "activityRecommendation": "listen_and_choose", "learningProps": ["animal_cat", "animal_dog", "animal_fish", "letter_c", "letter_d", "letter_f"],
+    "difficultyVariants": [{"level":"beginner","adaptation":"Contrast two animal sounds."},{"level":"developing","adaptation":"Choose among three and produce one sound."}],
+    "durationMinutes": 5, "content": "Model natural initial sounds without requiring perfect pronunciation. Use only the approved animal cards and repeat slowly when asked."
+  },
+  {
+    "id": "en-grade1-everyday-sentences-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "6-7", "grade": "grade1", "skill": "simple_sentences", "difficulty": "developing", "lessonType": "sentence_building", "learningStandard": "LD-EN-G1-SEN-01",
+    "learningObjective": "Build I see a... sentences with familiar everyday objects.", "prerequisites": ["Names cup, spoon, book, and ball"],
+    "targetVocabulary": ["cup", "spoon", "book", "ball", "I see a"], "teacherPrompts": ["What do you see?", "Finish: I see a...", "Choose an object and make a sentence."],
+    "expectedResponses": [{"promptId":"see_cup","accepted":["I see a cup","a cup","cup"]},{"promptId":"see_book","accepted":["I see a book","a book","book"]}],
+    "hints": ["Start with: I see a...", "The object is something we read."], "successCriteria": ["Builds two complete sentences", "Names three everyday objects"],
+    "commonMistakes": ["Omits a", "Uses this instead of I see"], "activityRecommendation": "prop_play", "learningProps": ["object_cup", "object_spoon", "object_book", "toy_ball"],
+    "difficultyVariants": [{"level":"beginner","adaptation":"Provide the sentence frame aloud."},{"level":"secure","adaptation":"Ask for color plus object."}],
+    "durationMinutes": 5, "content": "Move approved room props into view and build one concrete sentence at a time. Recast gently rather than labeling grammar as wrong."
+  },
+  {
+    "id": "en-grade1-family-listening-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "6-7", "grade": "grade1", "skill": "family_listening", "difficulty": "developing", "lessonType": "listening", "learningStandard": "LD-EN-G1-LIS-01",
+    "learningObjective": "Identify family-role words in short fictional descriptions.", "prerequisites": ["Understands this is"],
+    "targetVocabulary": ["mother", "father", "sister", "brother", "family"], "teacherPrompts": ["Listen: This is Mina's sister. Point to the sister.", "Who is reading?", "Say one family word."],
+    "expectedResponses": [{"promptId":"point_sister","accepted":["sister"]},{"promptId":"say_family","accepted":["mother","father","sister","brother","family"]}],
+    "hints": ["A sister is a girl in the story's family.", "Listen again for the family word."], "successCriteria": ["Identifies three story roles", "Says one family word"],
+    "commonMistakes": ["Uses a real family member's name", "Confuses sister and brother"], "activityRecommendation": "listen_and_choose", "learningProps": ["story_family_card", "story_sister", "story_brother"],
+    "difficultyVariants": [{"level":"beginner","adaptation":"Use two fictional picture choices."},{"level":"developing","adaptation":"Use four choices and a full sentence."}],
+    "durationMinutes": 5, "content": "Use a fictional picture family. Do not ask for names, household details, or information about the child's real family."
+  },
+  {
+    "id": "en-grade2-actions-present-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "7-8", "grade": "grade2", "skill": "action_sentences", "difficulty": "developing", "lessonType": "speaking", "learningStandard": "LD-EN-G2-SPE-01",
+    "learningObjective": "Describe visible actions with a subject and present-progressive verb.", "prerequisites": ["Names run, read, eat, and sleep"],
+    "targetVocabulary": ["running", "reading", "eating", "sleeping", "She is", "He is"], "teacherPrompts": ["What is the girl doing?", "Finish: He is...", "Show me reading, then say the sentence."],
+    "expectedResponses": [{"promptId":"girl_running","accepted":["She is running","running"]},{"promptId":"boy_reading","accepted":["He is reading","reading"]}],
+    "hints": ["Start with She is.", "Look at the book for reading."], "successCriteria": ["Produces two subject-action sentences", "Distinguishes two actions"],
+    "commonMistakes": ["Omits is", "Uses the base verb after is"], "activityRecommendation": "say_and_show", "learningProps": ["action_run", "action_read", "action_eat", "action_sleep"],
+    "difficultyVariants": [{"level":"developing","adaptation":"Keep the sentence frame visible."},{"level":"secure","adaptation":"Remove the frame and mix four actions."}],
+    "durationMinutes": 6, "content": "Describe only the action visible on approved cards. Accept a correct action word, then model the complete sentence once."
+  },
+  {
+    "id": "en-grade2-phonics-short-vowels-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "7-8", "grade": "grade2", "skill": "short_vowels", "difficulty": "developing", "lessonType": "phonics", "learningStandard": "LD-EN-G2-PHO-01",
+    "learningObjective": "Distinguish short a, i, and o in simple consonant-vowel-consonant words.", "prerequisites": ["Recognizes common consonant sounds"],
+    "targetVocabulary": ["cat", "sit", "dog", "map", "fish", "top"], "teacherPrompts": ["Listen: cat. Which middle sound?", "Choose the word with short i.", "Blend: d-o-g."],
+    "expectedResponses": [{"promptId":"cat_vowel","accepted":["a","short a"]},{"promptId":"short_i","accepted":["sit","fish"]}],
+    "hints": ["Stretch the middle sound, not the first sound.", "Short i is the middle sound in fish."], "successCriteria": ["Sorts four of six words", "Blends one three-sound word"],
+    "commonMistakes": ["Chooses the first letter", "Uses the long vowel name"], "activityRecommendation": "minigame", "learningProps": ["word_cat", "word_sit", "word_dog", "word_map", "word_fish", "word_top"],
+    "difficultyVariants": [{"level":"developing","adaptation":"Contrast two vowel sounds."},{"level":"secure","adaptation":"Sort all three vowel sounds."}],
+    "durationMinutes": 6, "content": "Use clear natural pronunciation and visual word cards. A child may replay each approved sound without losing progress."
+  },
+  {
+    "id": "en-grade3-reading-main-idea-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "8-9", "grade": "grade3", "skill": "main_idea", "difficulty": "developing", "lessonType": "reading", "learningStandard": "LD-EN-G3-REA-01",
+    "learningObjective": "Find the main idea and one supporting detail in a short original passage.", "prerequisites": ["Reads four connected simple sentences"],
+    "targetVocabulary": ["garden", "seed", "water", "grow", "main idea", "detail"], "teacherPrompts": ["Read the garden story with Aliz.", "What is the passage mostly about?", "Which detail supports your answer?"],
+    "expectedResponses": [{"promptId":"garden_main","accepted":["growing a plant","how a seed grows","taking care of a plant"]},{"promptId":"garden_detail","accepted":["Mali waters the seed","the seed grows leaves"]}],
+    "hints": ["Think about what all four sentences share.", "Find one event from the passage."], "successCriteria": ["States a relevant main idea", "Selects a supporting detail"],
+    "commonMistakes": ["Repeats only the first sentence", "Adds a fact not in the passage"], "activityRecommendation": "shared_reading", "learningProps": ["story_garden", "prop_seed", "prop_watering_can"],
+    "difficultyVariants": [{"level":"developing","adaptation":"Offer two main-idea choices."},{"level":"secure","adaptation":"Ask for an answer in the child's own words."}],
+    "durationMinutes": 7, "content": "Mali puts a seed in a small pot. She gives it water and places it near the window. Soon, green leaves appear. Mali keeps caring for her growing plant."
+  },
+  {
+    "id": "en-grade3-food-descriptions-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "8-9", "grade": "grade3", "skill": "descriptive_language", "difficulty": "secure", "lessonType": "sentence_building", "learningStandard": "LD-EN-G3-SEN-01",
+    "learningObjective": "Use two observable adjectives to describe familiar food.", "prerequisites": ["Names common fruit and basic colors"],
+    "targetVocabulary": ["crunchy", "soft", "sweet", "round", "yellow", "green"], "teacherPrompts": ["Describe the apple with two words.", "How are the banana and apple different?", "Build a sentence with looks or feels."],
+    "expectedResponses": [{"promptId":"apple_two","accepted":["red and crunchy","round and red","The apple looks red and round"]},{"promptId":"banana_sentence","accepted":["The banana looks yellow","The banana feels soft"]}],
+    "hints": ["Choose one color and one texture.", "Start with: The apple looks..."], "successCriteria": ["Uses two relevant adjectives", "Builds one complete descriptive sentence"],
+    "commonMistakes": ["Uses a personal preference instead of an observation", "Lists nouns rather than adjectives"], "activityRecommendation": "prop_play", "learningProps": ["apple_red", "banana_yellow", "pear_green"],
+    "difficultyVariants": [{"level":"developing","adaptation":"Provide an adjective bank."},{"level":"secure","adaptation":"Compare two foods in one sentence."}],
+    "durationMinutes": 6, "content": "Use illustrated foods rather than requesting eating or allergy information. Keep descriptions to observable color, shape, and texture."
+  },
+  {
+    "id": "en-grade4-comprehension-inference-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "9-10", "grade": "grade4", "skill": "reading_inference", "difficulty": "secure", "lessonType": "comprehension", "learningStandard": "LD-EN-G4-COM-01",
+    "learningObjective": "Make a simple inference and support it with evidence from an original passage.", "prerequisites": ["Identifies explicit details and main idea"],
+    "targetVocabulary": ["evidence", "infer", "practice", "performance"], "teacherPrompts": ["What can you infer about Arun?", "Which words are your evidence?", "Could another answer fit the evidence?"],
+    "expectedResponses": [{"promptId":"arun_infer","accepted":["Arun practiced a lot","Arun was prepared","Arun cared about the performance"]},{"promptId":"arun_evidence","accepted":["he knew every line","he arrived early to practice"]}],
+    "hints": ["An inference combines a story clue with what you know.", "Look at what Arun did before the curtain opened."], "successCriteria": ["Makes a plausible inference", "Cites one relevant story detail"],
+    "commonMistakes": ["States an unrelated opinion", "Gives an inference without evidence"], "activityRecommendation": "shared_reading", "learningProps": ["story_stage", "prop_script", "prop_curtain"],
+    "difficultyVariants": [{"level":"developing","adaptation":"Offer two plausible inferences and compare evidence."},{"level":"stretch","adaptation":"Ask for a second possible inference."}],
+    "durationMinutes": 8, "content": "Arun arrived early and practiced each line softly. Before the curtain opened, he checked the script one last time. During the performance, he knew every line and spoke clearly."
+  },
+  {
+    "id": "en-grade4-conversation-reasons-v1", "version": 1, "publishedAt": "2026-09-22T00:00:00Z", "active": true,
+    "language": "en", "subject": "english", "ageBand": "9-10", "grade": "grade4", "skill": "conversational_reasoning", "difficulty": "secure", "lessonType": "speaking", "learningStandard": "LD-EN-G4-SPE-01",
+    "learningObjective": "Express a choice and support it with a clear because reason.", "prerequisites": ["Answers familiar what and which questions"],
+    "targetVocabulary": ["I would choose", "because", "useful", "interesting", "compare"], "teacherPrompts": ["Would you read about the ocean or space? Why?", "Use because in your answer.", "Ask Aliz about her fictional choice."],
+    "expectedResponses": [{"promptId":"topic_choice","accepted":["I would choose the ocean because it is interesting","I would choose space because I want to learn about planets"]},{"promptId":"follow_up","accepted":["Why would you choose that","What would you choose"]}],
+    "hints": ["Start with: I would choose... because...", "Give a reason about what you want to learn."], "successCriteria": ["States a clear choice", "Supports it with a relevant reason", "Uses one respectful follow-up question"],
+    "commonMistakes": ["Repeats the choice after because", "Shares identifying personal details as a reason"], "activityRecommendation": "say_and_show", "learningProps": ["topic_ocean", "topic_space"],
+    "difficultyVariants": [{"level":"secure","adaptation":"Use a sentence frame for one turn."},{"level":"stretch","adaptation":"Compare both choices before deciding."}],
+    "durationMinutes": 7, "content": "Keep the conversation on fictional learning preferences. Aliz gives a brief character answer and never asks for a name, school, location, phone number, password, or private family information."
+  }
+]

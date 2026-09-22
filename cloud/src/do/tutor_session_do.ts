@@ -146,7 +146,14 @@ export class TutorSessionDO extends DurableObject<Env> {
     if (!this.primary) {
       const rec = this.rec!;
       const cfg = { ...this.config, providerName: rec.providerName };
-      this.primary = resolveProvider(cfg, this.env.OPENAI_API_KEY, undefined, { baseUrl: this.env.OPENAI_BASE_URL, maxOutputTokens: rec.chat?.maxOutputTokens }).turns;
+      // Both providers: Workers AI through the `AI` binding (Codex), OpenAI
+      // through the key with the chat extras (Claude). The registry picks by
+      // `providerName`; the mock serves when neither is configured.
+      this.primary = resolveProvider(cfg, this.env.OPENAI_API_KEY, undefined, {
+        ai: this.env.AI,
+        baseUrl: this.env.OPENAI_BASE_URL,
+        maxOutputTokens: rec.chat?.maxOutputTokens,
+      }).turns;
     }
     return this.primary;
   }

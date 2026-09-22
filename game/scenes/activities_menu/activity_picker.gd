@@ -55,7 +55,7 @@ const Typography := preload("res://scripts/ui/typography.gd")
 const HOUSE_CHAPTER_ID: String = "ch3"
 
 ## Shown to the child, in this exact form.
-const TITLE: String = "Play with Bunny"
+const TITLE: String = "Play with Baby"
 const BACK_LABEL: String = "Back"
 
 ## The title screen's card: 240 px (ART_BIBLE §8 floor, and what `main.tscn`

@@ -33,7 +33,7 @@ Common to both:
 
 | | |
 |---|---|
-| Package | `com.pointit.littlebuddy` |
+| Android package | `com.joinanny.littledays` |
 | Launcher label | **Little Days** |
 | Version | `0.1.0` (versionCode 1) |
 | Signature | Verified, APK Signature Scheme v2 + v3. Signer `CN=Android Debug, O=Android, C=US`, RSA 2048 |
@@ -44,7 +44,7 @@ Common to both:
 | Debuggable | yes (`android:debuggable=true`) |
 
 Because the two debug keys differ, a phone that has the Mac Mini build must
-`adb uninstall com.pointit.littlebuddy` (this deletes the save) before it will
+`adb uninstall com.joinanny.littledays` (this deletes the save) before it will
 accept the MacBook build, and vice versa.
 
 Two consequences of that permission list worth knowing before you test:
@@ -163,7 +163,7 @@ from the app drawer, or from the Mac:
 
 ```sh
 /Users/hotkhwan/Library/Android/sdk/platform-tools/adb shell monkey \
-  -p com.pointit.littlebuddy -c android.intent.category.LAUNCHER 1
+  -p com.joinanny.littledays -c android.intent.category.LAUNCHER 1
 ```
 
 One command does export + install together, if you would rather not copy paths:
@@ -176,7 +176,7 @@ One command does export + install together, if you would rather not copy paths:
 
 | What you see | Why | What to do |
 |---|---|---|
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | An older Little Days is installed, signed with a different key. Android never lets a debug key overwrite another key. | `adb uninstall com.pointit.littlebuddy` then install again. **This deletes the save.** |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` / `signatures do not match` | An older Little Days is installed, signed with a different key. Android never lets a debug key overwrite another key. | `adb uninstall com.joinanny.littledays` then install again. **This deletes the save.** |
 | "Blocked by Play Protect" / *unsafe app* | Play Protect always says this about an unknown developer. It is not a virus report. | Tap **More details → Install anyway**. Or turn off Play Protect scanning in Play Store → Profile → Play Protect → Settings for the session. |
 | `INSTALL_FAILED_VERIFICATION_FAILURE` | Google's install verifier. | Developer options → turn off **Verify apps over USB**. |
 | `INSTALL_FAILED_USER_RESTRICTED` (Xiaomi / Redmi / POCO / MIUI) | MIUI blocks USB installs by default. | Developer options → turn on **Install via USB** *and* **USB debugging (Security settings)**. These require being signed in to a Mi account and, on some builds, a SIM. |
@@ -230,7 +230,7 @@ then run the game from the Godot editor. Delete that file to disarm.
 
 ```sh
 ADB=/Users/hotkhwan/Library/Android/sdk/platform-tools/adb
-$ADB shell run-as com.pointit.littlebuddy \
+$ADB shell run-as com.joinanny.littledays \
   sh -c 'echo armed > files/OWNER_ACKNOWLEDGED_UNVERIFIED_MUSIC'
 ```
 
@@ -280,7 +280,7 @@ xcrun devicectl device copy from --device <UDID> \
 
 ```sh
 ADB=/Users/hotkhwan/Library/Android/sdk/platform-tools/adb
-$ADB shell run-as com.pointit.littlebuddy cat files/speech_diag.json
+$ADB shell run-as com.joinanny.littledays cat files/speech_diag.json
 $ADB logcat -d godot:V *:S > /tmp/littledays-logcat.txt
 ```
 

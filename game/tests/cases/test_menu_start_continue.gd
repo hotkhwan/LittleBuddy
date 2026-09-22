@@ -19,7 +19,7 @@ extends RefCounted
 
 const MainScript := preload("res://scenes/main/main.gd")
 const MENU_SCENE: String = "res://scenes/main/main.tscn"
-const EXPECTED_LABEL: String = "Play with Bunny"
+const EXPECTED_LABEL: String = "Play with Baby"
 
 
 func test_name() -> String:

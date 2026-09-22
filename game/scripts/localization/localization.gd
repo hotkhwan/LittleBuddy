@@ -263,6 +263,21 @@ static func helper_line(english: String, thai_hint: String = "", language: Strin
 		if not authored.is_empty():
 			return authored
 	var found: String = helper(key, "", code)
+	# Display copy changed from Bunny to Baby while localization keys remain a
+	# compatibility contract for saved/content references.
+	if found.is_empty():
+		var legacy_keys: Dictionary = {
+			"go_to_baby": "go_to_bunny",
+			"take_it_to_baby": "take_it_to_bunny",
+			"walk_back_to_baby": "walk_back_to_bunny",
+			"give_baby_the_bottle": "give_bunny_the_bottle",
+			"baby_wants_a_cuddle": "bunny_wants_a_cuddle",
+			"give_baby_a_big_hug": "give_bunny_a_big_hug",
+			"give_baby_the_food": "give_bunny_the_food",
+			"lets_keep_playing_with_baby": "lets_keep_playing_with_bunny",
+		}
+		if legacy_keys.has(key):
+			found = helper(String(legacy_keys[key]), "", code)
 	if found.strip_edges() == english.strip_edges():
 		return ""
 	return found

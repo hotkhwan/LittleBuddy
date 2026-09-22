@@ -93,7 +93,7 @@ export function asciiNormalize(s) {
  */
 export function createOpenAIProvider(opts) {
   if (!opts.apiKey) throw new Error('OPENAI_API_KEY is required for the openai provider');
-  const model = opts.model || 'gpt-4o-mini';
+  const model = opts.model || 'gpt-5.6-luna';
   const baseUrl = (opts.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const fetchImpl = opts.fetchImpl || globalThis.fetch;
   const extraHeaders = opts.extraHeaders || {};

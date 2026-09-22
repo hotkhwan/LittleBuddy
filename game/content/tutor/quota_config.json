@@ -1,6 +1,8 @@
 {
   "freeDailySeconds": 300,
   "familyClubDailySeconds": 1800,
+  "standardDailySeconds": 300,
+  "premiumLiveDailySeconds": 1800,
   "warnAtSeconds": 60,
   "cloudTimeoutSeconds": 10,
   "pricingProposed": {

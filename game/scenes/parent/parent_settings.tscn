@@ -456,14 +456,14 @@ theme_override_constants/separation = 2
 layout_mode = 2
 theme_override_font_sizes/font_size = 30
 theme_override_colors/font_color = Color(0.29, 0.22, 0.12, 1)
-text = "Bunny's voice"
+text = "Baby's voice"
 
 [node name="BunnyVoiceHelp" type="Label" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow/BunnyVoiceText"]
 layout_mode = 2
 autowrap_mode = 2
 theme_override_font_sizes/font_size = 23
 theme_override_colors/font_color = Color(0.43, 0.35, 0.24, 1)
-text = "How loud Bunny speaks."
+text = "How loud Baby speaks."
 
 [node name="BunnyVoiceHelper" type="Label" parent="SafeArea/Center/Panel/Margin/Content/BunnyVoiceRow/BunnyVoiceText"]
 unique_name_in_owner = true

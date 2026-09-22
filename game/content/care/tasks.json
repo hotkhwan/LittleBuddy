@@ -1,19 +1,20 @@
 {
   "contentVersion": 1,
   "categoryId": "care",
-  "title": "Caring for Bunny",
+  "title": "Caring for Baby",
   "tasks": [
     {
       "taskId": "talkToChild",
       "category": "care",
       "mode": "followInstruction",
-      "prompt": "Bunny needs you!",
-      "instruction": "Go to Bunny.",
-      "thaiHint": "ไปหาน้องบันนี่",
+      "prompt": "Baby needs you!",
+      "instruction": "Go to Baby.",
+      "thaiHint": "ไปหาเบบี๋",
       "targetWords": [
-        "bunny"
+        "baby"
       ],
       "acceptedCommands": [
+        "baby",
         "bunny",
         "buddy",
         "coming"
@@ -30,7 +31,7 @@
       "speechRequired": false,
       "assistAfterAttempts": 3,
       "objectId": "teddy",
-      "repeatPrompt": "Can you say Bunny?",
+      "repeatPrompt": "Can you say baby?",
       "cooldown": 3
     },
     {
@@ -124,7 +125,7 @@
       "taskId": "brushTeethCare",
       "category": "care",
       "mode": "followInstruction",
-      "prompt": "Brush Bunny's teeth!",
+      "prompt": "Brush Baby's teeth!",
       "instruction": "Rub the brush back and forth.",
       "thaiHint": "แปรงฟันให้น้อง",
       "targetWords": [
@@ -154,7 +155,7 @@
       "category": "care",
       "mode": "followInstruction",
       "prompt": "Time to rinse.",
-      "instruction": "Give Bunny the water.",
+      "instruction": "Give Baby the water.",
       "thaiHint": "บ้วนปากด้วยน้ำ",
       "targetWords": [
         "water"
@@ -242,14 +243,15 @@
       "mode": "followInstruction",
       "objectId": "teddy",
       "prompt": "I'm hungry, Aliz!",
-      "instruction": "Go to Bunny.",
+      "instruction": "Go to Baby.",
       "repeatPrompt": "Can you say hungry?",
-      "thaiHint": "น้องบันนี่หิวแล้ว",
+      "thaiHint": "เบบี๋หิวแล้ว",
       "targetWords": [
         "hungry"
       ],
       "acceptedCommands": [
         "hungry",
+        "baby",
         "bunny",
         "coming"
       ],
@@ -361,15 +363,16 @@
       "category": "care",
       "mode": "followInstruction",
       "objectId": "milk",
-      "prompt": "Take it to Bunny!",
-      "instruction": "Walk back to Bunny.",
+      "prompt": "Take it to Baby!",
+      "instruction": "Walk back to Baby.",
       "repeatPrompt": "Can you say milk?",
-      "thaiHint": "เอาไปให้น้องบันนี่",
+      "thaiHint": "เอาไปให้เบบี๋",
       "targetWords": [
         "milk"
       ],
       "acceptedCommands": [
         "milk",
+        "baby",
         "bunny",
         "back"
       ],
@@ -392,7 +395,7 @@
       "mode": "followInstruction",
       "objectId": "milk",
       "prompt": "Time to drink!",
-      "instruction": "Give Bunny the bottle.",
+      "instruction": "Give Baby the bottle.",
       "repeatPrompt": "Can you say drink?",
       "thaiHint": "ดื่มนมกันเถอะ",
       "targetWords": [
@@ -421,10 +424,10 @@
       "category": "care",
       "mode": "followInstruction",
       "objectId": "teddy",
-      "prompt": "Bunny wants a cuddle.",
-      "instruction": "Give Bunny a big hug.",
+      "prompt": "Baby wants a cuddle.",
+      "instruction": "Give Baby a big hug.",
       "repeatPrompt": "Can you say hug?",
-      "thaiHint": "กอดน้องบันนี่",
+      "thaiHint": "กอดเบบี๋",
       "targetWords": [
         "hug"
       ],
@@ -451,15 +454,16 @@
       "category": "care",
       "mode": "followInstruction",
       "objectId": "teddy",
-      "prompt": "Bunny wants a snack!",
-      "instruction": "Go and see Bunny.",
+      "prompt": "Baby wants a snack!",
+      "instruction": "Go and see Baby.",
       "repeatPrompt": "Can you say snack?",
-      "thaiHint": "น้องบันนี่อยากกินขนม",
+      "thaiHint": "เบบี๋อยากกินขนม",
       "targetWords": [
         "snack"
       ],
       "acceptedCommands": [
         "snack",
+        "baby",
         "bunny",
         "hungry"
       ],
@@ -666,16 +670,17 @@
       "category": "care",
       "mode": "followInstruction",
       "objectId": "banana",
-      "prompt": "Take it to Bunny!",
+      "prompt": "Take it to Baby!",
       "instruction": "Pick up the snack.",
       "repeatPrompt": "Can you say banana?",
-      "thaiHint": "เอาไปให้น้องบันนี่",
+      "thaiHint": "เอาไปให้เบบี๋",
       "targetWords": [
         "banana"
       ],
       "acceptedCommands": [
         "banana",
         "snack",
+        "baby",
         "bunny"
       ],
       "interaction": "tap",
@@ -699,7 +704,7 @@
       "mode": "followInstruction",
       "objectId": "banana",
       "prompt": "Snack time!",
-      "instruction": "Give Bunny the food.",
+      "instruction": "Give Baby the food.",
       "repeatPrompt": "Can you say eat?",
       "thaiHint": "ให้น้องกินขนม",
       "targetWords": [

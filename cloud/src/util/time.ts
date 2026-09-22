@@ -9,6 +9,15 @@ export function utcMonthStartMs(nowMs: number): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
 }
 
+export function utcMonthKey(nowMs: number): string {
+  return new Date(nowMs).toISOString().slice(0, 7);
+}
+
+export function nextUtcMonthIso(nowMs: number): string {
+  const d = new Date(nowMs);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString();
+}
+
 export function nextUtcMidnightIso(nowMs: number): string {
   const d = new Date(nowMs);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + DAY_MS).toISOString();

@@ -128,7 +128,20 @@ export async function handleVerify(request: Request, env: BillingEnv, deps: Bill
   const tx = await verifyWithStore(store as Store, payload as Record<string, unknown>, transactionId, env, deps);
   if (tx.productId !== productId) throw new BillingError(400, 'product_mismatch', 'the store reports a different product than the receipt claims');
 
-  const result = await processPurchaseEvent(deps.repo, tx, { nowMs: deps.now(), subjectId: clientId });
+  // The verified store marker must resolve to the signed-in parent account.
+  // A guest installation cannot buy, and a marker issued for another parent
+  // cannot be replayed against this installation.
+  let subjectId = clientId;
+  if (store !== 'mock') {
+    if (!env.DB) throw new BillingError(503, 'store_unavailable');
+    const owner = await env.DB.prepare('SELECT account_id,guest_account_id FROM installations WHERE installation_id=?').bind(clientId).first<{ account_id: string | null; guest_account_id: string | null }>();
+    if (!owner?.account_id || owner.guest_account_id) throw new BillingError(403, 'parent_account_required', 'link a parent account before purchasing');
+    const expected = await env.DB.prepare('SELECT mapping_value FROM purchase_identity_mappings WHERE account_id=? AND platform=?').bind(owner.account_id, store).first<{ mapping_value: string }>();
+    if (!expected || !tx.accountToken || expected.mapping_value !== tx.accountToken) throw new BillingError(409, 'purchase_account_mismatch', 'the verified store account marker does not match this parent account');
+    subjectId = owner.account_id;
+  }
+
+  const result = await processPurchaseEvent(deps.repo, tx, { nowMs: deps.now(), subjectId });
   // Google: acknowledge after a granting decision has been stored, never before.
   if (store === 'google' && deps.google && result.decision && (result.decision.status === 'active' || result.decision.status === 'grace') && result.outcome === 'applied') {
     const token = String((payload as Record<string, unknown>).purchaseToken ?? '');

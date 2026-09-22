@@ -10,6 +10,8 @@ import { monthlySpendMicro } from '../db/usage';
 import { LESSONS } from '../tutor/lessons';
 import { ASSET_ALLOWLIST } from '../tutor/content';
 import { openAiFactoryWired } from '../tutor/provider_registry';
+import { CloudflareCurriculumSearch, ManagedCurriculumRetriever } from '../learning';
+import type { Grade } from '../learning';
 
 export const devRoutes = new Hono<{ Bindings: Env; Variables: Vars }>();
 
@@ -45,4 +47,16 @@ devRoutes.get('/dev/spend', async (c) => {
   const config = c.get('config');
   const spend = await monthlySpendMicro(c.env.DB, c.get('now'));
   return c.json({ ...spend, spentUsd: spend.spentUsdMicro / 1e6, monthlyBudgetUsd: config.monthlyBudgetUsd, provider: config.providerName, openAiFactoryWired: openAiFactoryWired(), lessons: [...LESSONS.keys()], allowlistSource: ASSET_ALLOWLIST.source });
+});
+
+devRoutes.get('/dev/learning/search', async (c) => {
+  requireAuth(c);
+  const query = (c.req.query('q') || '').trim().slice(0, 240);
+  const grade = (c.req.query('grade') || '') as Grade;
+  if (!query) throw errors.badRequest('q is required');
+  if (!['prek', 'kindergarten', 'grade1', 'grade2', 'grade3', 'grade4'].includes(grade)) throw errors.badRequest('grade is invalid');
+  const client = new CloudflareCurriculumSearch(c.env.AI_SEARCH, c.env.AI_SEARCH_INSTANCE || 'little-days-curriculum');
+  const retriever = new ManagedCurriculumRetriever(client);
+  const results = await retriever.search({ text: query, language: 'en', subject: 'english', grade, activeOnly: true, limit: 5 });
+  return c.json({ query, grade, results: results.map(({ lesson, score }) => ({ lessonId: lesson.id, score, objective: lesson.learningObjective, activity: lesson.activityRecommendation })) });
 });

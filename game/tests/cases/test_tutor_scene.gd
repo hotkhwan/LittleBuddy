@@ -600,7 +600,7 @@ func _test_break_card_copy():
 	var card: Control = scene.break_card()
 	card.open(false)
 	var texts: Array = card.texts()
-	for wanted in ["Great job today!", "Come back tomorrow for more Little Days!", "Let's keep playing with Bunny!", "Continue Playing", "Home"]:
+	for wanted in ["Great job today!", "Come back tomorrow for more Little Days!", "Let's keep playing with Baby!", "Continue Playing", "Home"]:
 		if not texts.has(wanted):
 			failures.append("break card is missing '%s' (has %s)" % [wanted, str(texts)])
 	for text in texts:

@@ -272,6 +272,16 @@ var _skip_catcher: Control = null
 var _picker: Control = null
 
 
+## Back closes the activity picker first. At the title itself it is consumed so
+## a child cannot leave the app accidentally.
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	get_viewport().set_input_as_handled()
+	if is_activity_picker_open():
+		_close_activity_picker()
+
+
 func _ready() -> void:
 	var showing_buddy: bool = _add_buddy_avatar()
 	_add_bunny()
@@ -315,7 +325,7 @@ func _process(delta: float) -> void:
 ## told a parent that, and told the child nothing). Fifteen characters: the card
 ## wraps it onto two lines, which is fine; what may not change is the wording,
 ## because the owner reads it aloud and `test_menu_start_continue.gd` pins it.
-const LABEL_PLAY_WITH_BUNNY: String = "Play with Bunny"
+const LABEL_PLAY_WITH_BUNNY: String = "Play with Baby"
 
 
 func _label_play_button() -> void:

@@ -95,7 +95,7 @@ describe('session lifecycle', () => {
     expect(t.body.contextSource).toBe('server');
     expect((await c.api('POST', `/v1/tutor/sessions/${sessionId}/turns`, { transcript: 'x', lessonContext: { stepId: 's03_blue', outcome: 'maybe' } })).status).toBe(400);
     const { fam, h } = await familyClient('prod-lesson');
-    const prod = makeClient({ defaultToken: null, env: { DEV_MODE: '0' } });
+    const prod = makeClient({ defaultToken: null, env: { DEV_MODE: '0', PRODUCTION_ENABLED: 'true' } });
     const u = await prod.api('POST', '/v1/tutor/sessions', { lessonId: 'fruits_99', clientId: fam.clientId }, h);
     expect(u.status).toBe(400);
     expect(u.body.error.code).toBe('unknown_lesson');

@@ -83,10 +83,48 @@ func test_name() -> String:
 
 func run():
 	var failures: Array = []
+	failures.append_array(_test_release_identity_contract())
 	failures.append_array(_test_safe_area_guards_still_name_android())
 	failures.append_array(_test_joystick_clears_speak_at_android_shapes())
 	failures.append_array(_test_joystick_stays_inside_the_safe_area())
 	failures.append_array(_test_backendless_speech_is_inert())
+	failures.append_array(_test_back_navigation_contract())
+	return failures
+
+
+func _test_release_identity_contract():
+	var failures: Array = []
+	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
+	if not presets.contains('package/unique_name="com.joinanny.littledays"'):
+		failures.append("Android package id must be com.joinanny.littledays before the first Play upload")
+	if not presets.contains('application/bundle_identifier="com.pointit.littlebuddy"'):
+		failures.append("the independent Apple bundle id changed during the Android package migration")
+	if not presets.contains('gradle_build/target_sdk="36"'):
+		failures.append("Android target SDK must remain 36")
+	if not presets.contains('version/code=2') or not presets.contains('version/name="0.1.1"'):
+		failures.append("Android release metadata must be versionCode 2 / versionName 0.1.1 or newer")
+	return failures
+
+
+func _test_back_navigation_contract():
+	var failures: Array = []
+	var project := FileAccess.get_file_as_string("res://project.godot")
+	if not project.contains("config/quit_on_go_back=false"):
+		failures.append("Android Back may quit the app before scene navigation handles it")
+	if not project.contains("AndroidBack=\"*res://scripts/navigation/android_back.gd\""):
+		failures.append("Android Back notification translator is not registered")
+	var router := FileAccess.get_file_as_string("res://scripts/navigation/android_back.gd")
+	if not router.contains("NOTIFICATION_WM_GO_BACK_REQUEST") or not router.contains("ui_cancel"):
+		failures.append("Android Back is not translated into the shared ui_cancel path")
+	for source_path: String in [
+		"res://scenes/main/main.gd",
+		"res://scripts/menu/dress_up_screen.gd",
+		"res://scripts/house/house_world.gd",
+		"res://scenes/baby_room/baby_room.gd",
+		"res://scripts/tutor/tutor_scene.gd",
+	]:
+		if not FileAccess.get_file_as_string(source_path).contains("ui_cancel"):
+			failures.append("%s has no shared Back handler" % source_path)
 	return failures
 
 

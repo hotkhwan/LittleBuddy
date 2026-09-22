@@ -30,17 +30,17 @@ const EXTENSIONS: Array[String] = ["ogg", "wav", "mp3"]
 const LINES: Dictionary = {
 	# -- Mission 01: I'm Hungry! ---------------------------------------------
 	"im_hungry_aliz": {"text": "I'm hungry, Aliz!", "emotion": "hungry, a little whiny, cute", "seconds": 1.6},
-	"go_to_bunny": {"text": "Go to Bunny.", "emotion": "warm, guiding", "seconds": 1.2},
+	"go_to_bunny": {"text": "Go to Baby.", "emotion": "warm, guiding", "seconds": 1.2},
 	"lets_make_some_milk": {"text": "Let's make some milk!", "emotion": "bright, excited", "seconds": 1.6},
 	"walk_to_the_kitchen": {"text": "Walk to the kitchen.", "emotion": "calm, clear", "seconds": 1.5},
 	"where_is_the_bottle": {"text": "Where is the bottle?", "emotion": "curious, playful", "seconds": 1.5},
 	"find_the_baby_bottle": {"text": "Find the baby bottle.", "emotion": "calm, clear", "seconds": 1.5},
 	"pour_the_water_then_mix": {"text": "Pour the water, then mix.", "emotion": "calm, step by step", "seconds": 2.0},
-	"take_it_to_bunny": {"text": "Take it to Bunny!", "emotion": "encouraging", "seconds": 1.3},
+	"take_it_to_bunny": {"text": "Take it to Baby!", "emotion": "encouraging", "seconds": 1.3},
 	"time_to_drink": {"text": "Time to drink!", "emotion": "happy", "seconds": 1.2},
-	"give_bunny_the_bottle": {"text": "Give Bunny the bottle.", "emotion": "warm", "seconds": 1.5},
-	"bunny_wants_a_cuddle": {"text": "Bunny wants a cuddle.", "emotion": "soft, tender", "seconds": 1.6},
-	"give_bunny_a_big_hug": {"text": "Give Bunny a big hug.", "emotion": "warm, smiling", "seconds": 1.6},
+	"give_bunny_the_bottle": {"text": "Give Baby the bottle.", "emotion": "warm", "seconds": 1.5},
+	"bunny_wants_a_cuddle": {"text": "Baby wants a cuddle.", "emotion": "soft, tender", "seconds": 1.6},
+	"give_bunny_a_big_hug": {"text": "Give Baby a big hug.", "emotion": "warm, smiling", "seconds": 1.6},
 	"thank_you_aliz": {"text": "Thank you, Aliz!", "emotion": "grateful, happy", "seconds": 1.3},
 	# -- Feeding -------------------------------------------------------------
 	"im_hungry": {"text": "I'm hungry.", "emotion": "hungry, cute", "seconds": 1.0},

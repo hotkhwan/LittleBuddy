@@ -17,6 +17,11 @@ FREE_CHAT_ENABLED=
 CHAT_CONTEXT_TURNS=
 CHAT_RESPONSE_MAX_WORDS=
 CHAT_MAX_OUTPUT_TOKENS=
+# Alternate Standard provider. The app never receives this secret.
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=
+# Premium Live backend credentials. Public child audio remains feature-gated.
+GEMINI_API_KEY=
 # App Store Server API (Agent F, cloud/src/billing) - names reserved, not read yet.
 APPLE_ISSUER_ID=
 APPLE_KEY_ID=
@@ -30,7 +35,8 @@ APPLE_SERVICE_ID=
 # Google Sign-In (cloud/src/auth/identity/google.ts): comma-separated OAuth client ids
 # (iOS client id, web client id) accepted as the ID token `aud`. Empty -> 501.
 GOOGLE_CLIENT_IDS=
-# Google Play (Agent F) - names reserved, not read yet.
-GOOGLE_PLAY_PACKAGE=
+# Google Play server verification. Package name is public configuration;
+# service-account JSON and the RTDN token are secrets in deployed environments.
+GOOGLE_PACKAGE_NAME=com.joinanny.littledays
 GOOGLE_SERVICE_ACCOUNT_JSON=
-GOOGLE_RTDN_PUBSUB_TOKEN=
+GOOGLE_RTDN_TOKEN=

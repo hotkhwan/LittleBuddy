@@ -293,7 +293,7 @@ func _build_prompt_bar() -> void:
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_theme_constant_override("separation", 6)
 	bar.add_child(column)
-	var title := _label("Bunny's table", _Typography.HELPER, _Palette.INK_SOFT)
+	var title := _label("Baby's table", _Typography.HELPER, _Palette.INK_SOFT)
 	title.name = "ActivityTitle"
 	column.add_child(title)
 

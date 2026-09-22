@@ -1687,6 +1687,27 @@ func get_care_overlay() -> Control:
 	return _care
 
 
+## Close the uppermost Free Play overlay before the world handles Back.
+func request_back() -> bool:
+	if is_chooser_open():
+		_chooser.call("dismiss")
+		return true
+	if not is_care_open():
+		return false
+	_care.visible = false
+	_end_portrait()
+	if _hud != null and _hud.has_method("set_narration_covered"):
+		_hud.call("set_narration_covered", false)
+	if _care_child != null and is_instance_valid(_care_child) and _care_child.has_method("set_bubble_suppressed"):
+		_care_child.call("set_bubble_suppressed", false)
+	_care_child = null
+	_care_kind = ""
+	_care_surface = ""
+	_care_prev_activity = ""
+	_set_room_input(true)
+	return true
+
+
 func _ensure_care_overlay() -> Control:
 	if _care != null and is_instance_valid(_care):
 		return _care
@@ -2229,7 +2250,7 @@ static func Palette_soft_pink() -> Color:
 const BEDTIME_TASKS_PATH: String = "res://content/bedtime/tasks.json"
 const BEDTIME_TEDDY_TASK_ID: String = "bedtimeTeddy"
 const BEDTIME_TEDDY_ID: String = "teddy"
-const BEDTIME_GOODNIGHT: String = "Goodnight, Bunny! Sleep tight."
+const BEDTIME_GOODNIGHT: String = "Goodnight, Baby! Sleep tight."
 const BEDTIME_TEDDY_THANKS: String = "Night night!"
 const BEDTIME_DIM_SEC: float = 1.0
 ## How dark the night glow is: the key light and the ambient, as fractions of

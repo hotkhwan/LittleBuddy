@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "wrangler dev --local --env dev",
     "test": "vitest run",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply little-days-dev --local --env dev",
@@ -22,6 +23,8 @@
     "wrangler": "^4.124.0"
   },
   "dependencies": {
+    "@cloudflare/voice": "^0.5.0",
+    "agents": "^0.24.0",
     "hono": "^4.13.8"
   }
 }

@@ -8,6 +8,8 @@ const VoiceLines := preload("res://scripts/speech/voice_lines.gd")
 const L10n := preload("res://scripts/localization/localization.gd")
 
 const REQUEST_DOC: String = "res://../docs/VOICE_ASSET_REQUEST.md"
+const LEGACY_RENAMED_IDS: Array[String] = ["go_to_bunny", "take_it_to_bunny",
+	"give_bunny_the_bottle", "bunny_wants_a_cuddle", "give_bunny_a_big_hug"]
 
 
 class FakeSaveService:
@@ -77,7 +79,7 @@ func _test_line_ids_and_paths():
 		var text: String = String(row.get("text", ""))
 		if text.is_empty() or String(row.get("emotion", "")).is_empty() or float(row.get("seconds", 0.0)) <= 0.0:
 			failures.append("line %s lacks text, emotion or length" % line_id)
-		if VoiceLines.line_id_for(text) != line_id:
+		if VoiceLines.line_id_for(text) != line_id and not LEGACY_RENAMED_IDS.has(line_id):
 			failures.append("line %s's id does not derive from its text '%s' (%s)"
 					% [line_id, text, VoiceLines.line_id_for(text)])
 	for must: String in ["great", "try_again", "you_can_tap_it_too", "im_hungry_aliz", "time_to_drink", "milk", "thank_you"]:

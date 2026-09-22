@@ -8,7 +8,7 @@ import { MemoryBillingRepo } from '../repo.ts';
 import { DAY_MS, NOW_MS, appleTransactionPayload, clock, fakeFetch, fixtureRootSha256, jsonOf, pem, request, rsaPkcs8Pem, signWithFixtureLeaf } from './helpers.ts';
 
 const BUNDLE = 'com.littledays.app';
-const PKG = 'com.littledays.app';
+const PKG = 'com.joinanny.littledays';
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEF';
 
 async function rig(env: BillingEnv = {}, routes: Parameters<typeof fakeFetch>[0] = []) {
