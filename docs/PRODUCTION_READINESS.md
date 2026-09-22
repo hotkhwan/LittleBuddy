@@ -17,7 +17,7 @@ Verdict: **closed production deployed; not ready to open**. Infrastructure is de
 
 ## Failed or blocked gates
 
-- HTTPS endpoint and closed-mode synthetic probes await completion of the newly provisioned Custom Domain edge certificate.
+- Full Worker integration tests still require an environment where workerd may bind its local loopback listener; the isolated commerce/licensing suite and production synthetic probes are green.
 - Full Worker suite: workerd attempted a loopback listener forbidden by this sandbox (`EPERM`), so the integration matrix is not green here.
 - Store credentials/products and webhook trust chains are absent; billing stays disabled.
 - Gemini credentials/privacy approval are absent; child Live audio stays disabled.

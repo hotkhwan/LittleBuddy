@@ -18,7 +18,8 @@
 - A unique production `PARENT_TOKEN_SECRET` was generated directly into Cloudflare Secrets (not persisted locally).
 - Worker `little-days-api` was deployed with production, billing, and live-child-audio gates all disabled and both AI providers set to `mock`.
 - `api.littledays.joinanny.com` is enabled as a Custom Domain for `little-days-api`. The obsolete exact-host route with no script was removed; the website Worker and `littledays.joinanny.com` were not changed.
-- Cloudflare public DNS resolves the hostname. At the end of the deployment window the new edge certificate was still provisioning, so HTTPS health and synthetic probes must be repeated after TLS activation.
+- Cloudflare public DNS and the edge certificate are active. HTTPS probes returned: `/healthz` 200, `/readyz` 200 with `closed=true`, billing and live child audio disabled, and all readiness checks true; `/healthz?db=1` 200 with six migrations.
+- Closed-production synthetic probes confirmed the unauthenticated Apple billing notification path is blocked with 503 `provider_unavailable`; unauthenticated tutor, license, and school requests are rejected with 403 before reaching their closed gates. Automated commerce tests separately cover the post-auth closed/billing-disabled policy.
 
 ## Recovery
 
