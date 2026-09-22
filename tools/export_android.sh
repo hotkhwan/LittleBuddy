@@ -85,7 +85,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GAME_DIR="$REPO_ROOT/game"
 PRESETS="$GAME_DIR/export_presets.cfg"
 PRESET_NAME="Android"
-EXPECTED_PACKAGE="com.joinanny.littlebuddy"
+EXPECTED_PACKAGE="com.joinanny.littledays"
 OUT_DIR="$REPO_ROOT/build/android"
 # Mode-suffixed on purpose. A debug and a release APK are NOT interchangeable
 # (the debug one is signed with a throwaway key and is android:debuggable), and

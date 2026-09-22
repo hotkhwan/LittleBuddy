@@ -95,8 +95,8 @@ func run():
 func _test_release_identity_contract():
 	var failures: Array = []
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
-	if not presets.contains('package/unique_name="com.joinanny.littlebuddy"'):
-		failures.append("Android package id must be com.joinanny.littlebuddy before the first Play upload")
+	if not presets.contains('package/unique_name="com.joinanny.littledays"'):
+		failures.append("Android package id must be com.joinanny.littledays before the first Play upload")
 	if not presets.contains('application/bundle_identifier="com.pointit.littlebuddy"'):
 		failures.append("the independent Apple bundle id changed during the Android package migration")
 	if not presets.contains('gradle_build/target_sdk="36"'):

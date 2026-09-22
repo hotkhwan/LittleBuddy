@@ -117,7 +117,7 @@ application/bundle_identifier="com.pointit.littlebuddy" # iOS only; unchanged
 
 (`game/export_presets.cfg:26`, with `application/app_store_team_id="JZDAUN45CF"`).
 
-The Android preset uses **`com.joinanny.littlebuddy`** for
+The Android preset uses **`com.joinanny.littledays`** for
 `package/unique_name`. The independent iOS bundle identifier remains `com.pointit.littlebuddy`. This
 is deliberate and it is the right call: a mismatched identifier makes every later
 piece of store plumbing (Play Console app, Firebase project if one ever appears,
@@ -151,7 +151,7 @@ quotes.
 **The iOS bundle id did NOT change**, and must not: `com.pointit.littlebuddy` on
 both platforms. Apple forbids changing a bundle id after submission, and the
 owner has frozen all internal identifiers. The APK confirms it:
-`package: name='com.joinanny.littlebuddy'`. Only the Android application ID changed before the first Play upload; the *display name* is
+`package: name='com.joinanny.littledays'`. Only the Android application ID changed before the first Play upload; the *display name* is
 "Little Days" — the identifier keeps the original spelling deliberately.
 
 ### Orientation is NOT in this preset — it comes from `project.godot`
@@ -272,7 +272,7 @@ architectures/x86=false
 architectures/x86_64=false
 version/code=1
 version/name="0.1.0"
-package/unique_name="com.joinanny.littlebuddy"
+package/unique_name="com.joinanny.littledays"
 package/name="Little Days"
 package/signed=true
 package/app_category=2
@@ -993,7 +993,7 @@ premultiplied box-downscale → centre-composite. Promoting it to
 
 ### App name
 
-- Android application ID: `com.joinanny.littlebuddy`; iOS bundle ID: `com.pointit.littlebuddy` (unchanged).
+- Android application ID: `com.joinanny.littledays`; iOS bundle ID: `com.pointit.littlebuddy` (unchanged).
 - `project.godot` `config/name`: `"Little Buddy"`.
 - Android launcher label: the preset sets `package/name="Little Days"` **as
   instructed** — and see the warning in section 1. The string "Little Days"
@@ -1316,7 +1316,7 @@ one-time key creation.
 | Warm run | **56 s** end to end |
 | Output | `build/android/LittleDays-debug.aab`, 36,495,426 bytes, sha256 `bd7cc54aa1c1f47a1457f352ac3a633777e2fc6b372fe1ae490524cda25cc5c9` |
 | Preset after the run | sha256 identical to before (`98a19fd9…b239`), on success and on the earlier failed run alike |
-| Bundle manifest (current inspection build) | package `com.joinanny.littlebuddy`, versionCode 2 / 0.1.1, targetSdk 36; inspect permissions, debug state, backup, orientation and ABI again on every release artifact |
+| Bundle manifest (current inspection build) | package `com.joinanny.littledays`, versionCode 2 / 0.1.1, targetSdk 36; inspect permissions, debug state, backup, orientation and ABI again on every release artifact |
 
 Two findings that are **not** in the Godot docs:
 
@@ -1378,7 +1378,7 @@ Two findings that are **not** in the Godot docs:
   bumped on every upload) is unguarded. Not fixed here — tests are outside this
   worktree's ownership.
 - The **debug keystore differs per machine** (Mac Mini vs MacBook). A phone
-  that has one machine's pre-migration build must `adb uninstall com.pointit.littlebuddy`; current builds use `adb uninstall com.joinanny.littlebuddy`
+  that has one machine's pre-migration build must `adb uninstall com.pointit.littlebuddy`; current builds use `adb uninstall com.joinanny.littledays`
   before it accepts the other's (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`).
 
 9. **No Android device.** Nothing in section 9 has been verified. This is now

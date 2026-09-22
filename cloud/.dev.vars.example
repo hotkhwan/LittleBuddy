@@ -31,6 +31,6 @@ APPLE_SERVICE_ID=
 GOOGLE_CLIENT_IDS=
 # Google Play server verification. Package name is public configuration;
 # service-account JSON and the RTDN token are secrets in deployed environments.
-GOOGLE_PACKAGE_NAME=com.joinanny.littlebuddy
+GOOGLE_PACKAGE_NAME=com.joinanny.littledays
 GOOGLE_SERVICE_ACCOUNT_JSON=
 GOOGLE_RTDN_TOKEN=

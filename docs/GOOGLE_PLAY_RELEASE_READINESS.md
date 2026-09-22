@@ -1,8 +1,8 @@
-# Google Play release readiness — Little Days (`com.joinanny.littlebuddy`)
+# Google Play release readiness — Little Days (`com.joinanny.littledays`)
 
 > **Package-migration inspection build 2026-09-22:** `build/android/LittleDays-debug.aab`,
-> SHA-256 `ce885ba22815b666d65625a95b0eb55aaaf14cdb3cd0ca95feb945a03b917c21`.
-> Bundletool confirms package `com.joinanny.littlebuddy`, versionName `0.1.1`,
+> SHA-256 `6fe8dcbcc9adb9b62795011375e5cf17d45eeef54a5d601fae8bed90b6e74f0f`.
+> Bundletool confirms package `com.joinanny.littledays`, versionName `0.1.1`,
 > versionCode `2`, compile/target SDK `36`, and no declared permissions. It is
 > debug-signed for inspection only and must not be uploaded. Release export correctly
 > refuses to run until the owner supplies the external release upload keystore.
@@ -27,9 +27,9 @@ not ticked.
 |---|---|
 | File | `build/android/LittleDays-debug.aab` (git-ignored inspection artifact) |
 | Built | 2026-09-22 from the package-migration branch |
-| Size | 45,907,082 bytes |
-| SHA-256 | `ce885ba22815b666d65625a95b0eb55aaaf14cdb3cd0ca95feb945a03b917c21` |
-| Package / label | `com.joinanny.littlebuddy` / **Little Days** |
+| Size | 45,907,083 bytes |
+| SHA-256 | `6fe8dcbcc9adb9b62795011375e5cf17d45eeef54a5d601fae8bed90b6e74f0f` |
+| Package / label | `com.joinanny.littledays` / **Little Days** |
 | versionCode / versionName | `2` / `0.1.1` |
 | minSdk / targetSdk / compileSdk | **29 / 36 / 36** |
 | ABIs | `arm64-v8a` only (`libgodot_android.so` 76.2 MB uncompressed, `libc++_shared.so`) |
@@ -48,7 +48,7 @@ and build time above will change, nothing else in this document should.
 
 ```
 $ bundletool dump manifest --bundle LittleDays-debug.aab
-package: com.joinanny.littlebuddy
+package: com.joinanny.littledays
 ```
 
 Zero `uses-permission` elements. In particular:
@@ -332,7 +332,7 @@ way. The *app-signing* key is Google's.
 ## 9. Remaining steps to a submission, in order
 
 1. **OWNER:** sign in to Play Console; note account type + creation date; create
-   the app (`com.joinanny.littlebuddy`, Game, free).
+   the app (`com.joinanny.littledays`, Game, free).
 2. **OWNER:** decide the public name (`docs/NAMING_AND_TRADEMARK.md`) — change
    only `config/name` in `project.godot` and `package/name` in the Android
    preset if you switch; never the package id.

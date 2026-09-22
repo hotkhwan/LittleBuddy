@@ -83,7 +83,7 @@ class MockReceipt:
 
 	static func google_play() -> Dictionary:
 		return {"purchaseToken": "mock-token", "productId": "little_days.family_club.monthly",
-				"packageName": "com.joinanny.littlebuddy"}
+				"packageName": "com.joinanny.littledays"}
 
 
 func test_name() -> String:

@@ -8,7 +8,7 @@ Android phone.
 Build: `feature/overnight-production-candidate` @ `90afbfa`
 · iPad: Xcode project at `build/ios/LittleBuddy.xcodeproj`
 · Android: `build/android/LittleDays-debug.apk` (34.8 MB, signed, package
-`com.joinanny.littlebuddy`, **zero declared permissions**)
+`com.joinanny.littledays`, **zero declared permissions**)
 
 **Installation steps for both platforms: `docs/INSTALL_GUIDE.md`.** Read the
 "two rows that lie" section there before judging music or speech — on both
