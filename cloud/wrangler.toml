@@ -212,7 +212,7 @@ workers_dev = false
 # ("Workers are disabled on this route"). Deploying production by hand attaches
 # this Worker to it. littledays.joinanny.com (the website, Worker littledays-web)
 # is untouched.
-routes = [{ pattern = "api.littledays.joinanny.com/*", zone_name = "joinanny.com" }]
+routes = [{ pattern = "api.littledays.joinanny.com", custom_domain = true }]
 
 [env.production.vars]
 DEV_MODE = "0"
@@ -266,5 +266,5 @@ new_sqlite_classes = ["TutorSessionDO", "QuotaDO"]
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "little-days-prod"
-database_id = "REPLACE_WITH_PRODUCTION_DATABASE_ID"   # fill only after `wrangler d1 create little-days-prod`
+database_id = "88f3043d-d7a8-47b3-b315-33c4cf077f63"   # created in APAC 2026-09-22
 migrations_dir = "migrations"

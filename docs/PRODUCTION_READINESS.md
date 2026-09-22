@@ -1,6 +1,6 @@
 # Production Readiness
 
-Verdict: **not production-ready**. The platform foundation is suitable for integration review, but automated and operational gates remain.
+Verdict: **closed production deployed; not ready to open**. Infrastructure is deployed behind mandatory disabled feature gates, but store, provider, legal, security, and operational gates remain.
 
 ## Completed
 
@@ -11,17 +11,22 @@ Verdict: **not production-ready**. The platform foundation is suitable for integ
 - Monthly pooled Live reservation/finalization in Durable Objects.
 - Request IDs, structured errors/logging, `/healthz`, `/readyz`, consent/privacy/audit schema.
 - 31 pure commerce/licensing tests passing; full Cloud TypeScript type-check passing.
+- Production D1 created in APAC and migrations 0001–0006 applied with foreign keys enabled.
+- Production Worker deployed with a unique signing secret, mock providers, and `PRODUCTION_ENABLED=false`, `BILLING_ENABLED=false`, `LIVE_CHILD_AUDIO_ENABLED=false`.
+- `api.littledays.joinanny.com` attached as a Cloudflare Custom Domain without changing the website Worker.
 
 ## Failed or blocked gates
 
-- Cloudflare live inspection: the saved Wrangler OAuth token is expired and cannot refresh non-interactively (an earlier package lookup also hit restricted DNS); production Worker, D1, route, and domain state remain unverified.
+- HTTPS endpoint and closed-mode synthetic probes await completion of the newly provisioned Custom Domain edge certificate.
 - Full Worker suite: workerd attempted a loopback listener forbidden by this sandbox (`EPERM`), so the integration matrix is not green here.
 - Store credentials/products and webhook trust chains are absent; billing stays disabled.
 - Gemini credentials/privacy approval are absent; child Live audio stays disabled.
 - School service still needs its production D1/DO repository and routes wired before activation can open.
 - OpenAI/DeepSeek/Gemini Cloud provider adapters must be wired to the Worker registry and contract-tested in staging; mock is the configured safe default.
 - Distributed account/plan endpoint rate limiting, production CORS decision, data-recovery drill, external security review, and legal privacy approval remain.
-- Git commit is blocked in this linked worktree if the external worktree metadata remains unwritable.
+- Apple and Google products, server credentials, notifications, sandbox/license testers, and physical-device purchase/restore/refund/expiry tests remain owner work.
+- Product IDs are inconsistent between the newer billing implementation (`little_days_family_monthly/yearly`) and the account/API configuration (`little_days.family_club.monthly/yearly`); reconcile this before configuring store products or enabling billing.
+- Stripe is intentionally unsupported in the mobile billing scope. No Stripe credential is required unless a later owner-approved web-billing scope is added.
 
 ## Launch gates
 
